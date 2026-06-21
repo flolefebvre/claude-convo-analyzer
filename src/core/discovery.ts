@@ -85,6 +85,43 @@ export function discoverSessions(logsRoot: string): DiscoveredSession[] {
   return sessions;
 }
 
+/** A discovered sub-agent transcript plus the parent linkage from its PATH. */
+export type DiscoveredSubAgent = {
+  /** The spawned agent id (file stem `agent-<agentId>.jsonl`). */
+  agentId: string;
+  /** Absolute path to the sub-agent `.jsonl` file. */
+  sourcePath: string;
+};
+
+/**
+ * Discover every sub-agent transcript for one session: the files at
+ * `<projectDir>/<sessionId>/subagents/agent-<agentId>.jsonl` (finding #1). The
+ * parent sessionId/agentId live in the PATH; the caller already holds the
+ * session, so we return only the agentId + path. Missing dirs → empty list.
+ */
+export function discoverSubAgents(
+  projectDir: string,
+  sessionId: string,
+): DiscoveredSubAgent[] {
+  const subagentsDir = path.join(projectDir, sessionId, "subagents");
+  let entries;
+  try {
+    entries = readdirSync(subagentsDir, { withFileTypes: true });
+  } catch {
+    return []; // no subagents/ dir → no sub-agents (not fatal)
+  }
+
+  const out: DiscoveredSubAgent[] = [];
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    const name = entry.name;
+    if (!name.startsWith("agent-") || !name.endsWith(".jsonl")) continue;
+    const agentId = name.slice("agent-".length, -".jsonl".length);
+    out.push({ agentId, sourcePath: path.join(subagentsDir, name) });
+  }
+  return out;
+}
+
 /**
  * Decode a dash-encoded project folder name back to an absolute path
  * (`/` ⇐ `-`). Lossy/ambiguous on a real `-` (finding #10) — used only as a

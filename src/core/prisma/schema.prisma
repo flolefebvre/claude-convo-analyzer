@@ -65,6 +65,9 @@ model Agent {
 
   /// NULL ⇒ root/main agent.
   parentAgentId Int? @map("parent_agent_id")
+
+  /// On-disk agent id from `agent-<id>.jsonl` (sub-agents only; NULL for root).
+  externalAgentId String? @map("external_agent_id")
   /// For sub-agents: the main-thread message (Agent tool call) that launched it.
   spawnedByMessageId Int? @map("spawned_by_message_id")
 
