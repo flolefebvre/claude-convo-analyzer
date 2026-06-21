@@ -14,6 +14,7 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
 
+import { RefreshButton } from "@/app/_components/refresh-button";
 import {
   formatCost,
   formatGrandTotalCost,
@@ -62,8 +63,11 @@ export default function Page({
             cost rollups.
           </p>
         </div>
-        {/* Slice 3 mounts the Refresh button here. */}
-        <div data-slot="refresh-action" />
+        {/* Slice 3: the Refresh control. A client component that calls the
+            refreshConversations server action; the page stays a server component. */}
+        <div data-slot="refresh-action">
+          <RefreshButton />
+        </div>
       </header>
 
       <Suspense fallback={<p className="text-sm text-muted-foreground">Loading conversations…</p>}>
