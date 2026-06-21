@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint && echo 'LINT OK'",
     "test": "vitest && echo 'TEST OK'",
-    "fallow": "fallow --format markdown && echo 'FALLOW OK'"
+    "fallow": "fallow dupes --format markdown && echo 'FALLOW OK'"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
