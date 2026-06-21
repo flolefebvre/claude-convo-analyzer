@@ -1,0 +1,2 @@
+{"type":"user","uuid":"su1","timestamp":"2026-06-20T12:00:00.000Z","cwd":"/Users/me/dev/demo","message":{"role":"user","content":"a plain string prompt"}}
+{"type":"assistant","uuid":"sa1","requestId":"str-1","timestamp":"2026-06-20T12:00:01.000Z","cwd":"/Users/me/dev/demo","message":{"id":"str-1","role":"assistant","model":"claude-opus-4-8","content":"a plain string reply","usage":{"input_tokens":5,"output_tokens":7,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}}}
