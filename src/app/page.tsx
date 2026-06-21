@@ -1,65 +1,261 @@
-import Image from "next/image";
+// Conversation list — the app's single page (issue #3). A React Server
+// Component: it reads the core read API (`listConversations`) at request time
+// and renders a sortable shadcn table with a grand-total footer. Sorting is
+// server-side via search-param links (no client JS); the pure sort/label logic
+// lives in `@/app/_lib/sort` and is unit-tested there.
+//
+// ADR-0002 boundary: core is imported ONLY here (a server component). The
+// shadcn Table/Button are client components but receive plain serializable
+// props/children — they never import core.
+//
+// `cacheComponents` (PPR) is on, so the request-time `searchParams` read is
+// wrapped in <Suspense>: the page shell prerenders, the data table streams in.
 
-export default function Home() {
+import { connection } from "next/server";
+import { Suspense } from "react";
+
+import {
+  formatCost,
+  formatGrandTotalCost,
+  formatTokens,
+  grandTotal,
+} from "@/app/_lib/format";
+import {
+  type SortableField,
+  type SortState,
+  modelLabel,
+  resolveSort,
+  sortHref,
+  sortIndicator,
+} from "@/app/_lib/sort";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableFooter,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import type { ConversationSummary } from "@/core/refresh";
+
+type PageSearchParams = {
+  sortBy?: string | string[];
+  dir?: string | string[];
+};
+
+export default function Page({
+  searchParams,
+}: {
+  searchParams: Promise<PageSearchParams>;
+}) {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <main className="mx-auto w-full max-w-7xl px-6 py-10">
+      <header className="mb-6 flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Claude Conversation Analyzer
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          <p className="text-sm text-muted-foreground">
+            Every conversation from your local Claude Code logs, with token and
+            cost rollups.
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+        {/* Slice 3 mounts the Refresh button here. */}
+        <div data-slot="refresh-action" />
+      </header>
+
+      <Suspense fallback={<p className="text-sm text-muted-foreground">Loading conversations…</p>}>
+        <ConversationTable searchParams={searchParams} />
+      </Suspense>
+    </main>
+  );
+}
+
+/**
+ * Reads the active sort from `searchParams` and the rows from the core, then
+ * renders the table (or the empty state). Kept separate from {@link Page} so the
+ * request-time data fetch sits inside the page's <Suspense> boundary (PPR).
+ */
+async function ConversationTable({
+  searchParams,
+}: {
+  searchParams: Promise<PageSearchParams>;
+}) {
+  const params = await searchParams;
+  const sort = resolveSort(params.sortBy, params.dir);
+  // Exclude the synchronous better-sqlite3 query from prerendering: with Cache
+  // Components on, sync DB drivers otherwise complete at build time (where the
+  // core's import.meta.dirname-based paths are unresolved). connection() stops
+  // prerendering here so the read runs only on a real request (Next 16 docs).
+  await connection();
+  // Dynamic import so the core module (which evaluates import.meta.dirname-based
+  // paths at load) is only loaded at request time, never during the build-time
+  // page-config collection that would otherwise crash on undefined dirname.
+  const { listConversations } = await import("@/core/refresh");
+  const rows = await listConversations({ sortBy: sort.sortBy, dir: sort.dir });
+
+  if (rows.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed p-12 text-center">
+        <p className="text-sm text-muted-foreground">
+          No conversations yet. Click Refresh to scan your conversations.
+        </p>
+      </div>
+    );
+  }
+
+  const total = grandTotal(rows);
+
+  return (
+    <div className="rounded-lg border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Folder</TableHead>
+            <SortableHead field="title" sort={sort}>
+              Title
+            </SortableHead>
+            <TableHead>Model(s)</TableHead>
+            <TableHead className="text-right">Input</TableHead>
+            <TableHead className="text-right">Output</TableHead>
+            <TableHead className="text-right">Cache-write</TableHead>
+            <TableHead className="text-right">Cache-read</TableHead>
+            <TableHead className="text-right">Total</TableHead>
+            <SortableHead field="costUsd" sort={sort} className="text-right">
+              Cost
+            </SortableHead>
+          </TableRow>
+        </TableHeader>
+
+        <TableBody>
+          {rows.map((row) => (
+            <ConversationRow key={row.id} row={row} />
+          ))}
+        </TableBody>
+
+        <TableFooter>
+          <TableRow>
+            <TableCell colSpan={3} className="font-medium">
+              {rows.length} conversation{rows.length === 1 ? "" : "s"}
+            </TableCell>
+            <TableCell className="text-right tabular-nums">
+              {formatTokens(total.tokens.input)}
+            </TableCell>
+            <TableCell className="text-right tabular-nums">
+              {formatTokens(total.tokens.output)}
+            </TableCell>
+            <TableCell className="text-right tabular-nums">
+              {formatTokens(total.tokens.cacheWrite)}
+            </TableCell>
+            <TableCell className="text-right tabular-nums">
+              {formatTokens(total.tokens.cacheRead)}
+            </TableCell>
+            <TableCell className="text-right tabular-nums">
+              {formatTokens(total.tokens.total)}
+            </TableCell>
+            <TableCell className="text-right font-medium tabular-nums">
+              {total.hasUnpriced ? (
+                <span
+                  title="Includes unpriced model usage — this total is a lower bound."
+                >
+                  {"~"}
+                  {formatGrandTotalCost(total.costUsd)}
+                </span>
+              ) : (
+                formatGrandTotalCost(total.costUsd)
+              )}
+            </TableCell>
+          </TableRow>
+        </TableFooter>
+      </Table>
     </div>
+  );
+}
+
+/** A header cell that links to the toggled sort + shows the active arrow. */
+function SortableHead({
+  field,
+  sort,
+  className,
+  children,
+}: {
+  field: SortableField;
+  sort: SortState;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const indicator = sortIndicator(field, sort);
+  const ariaSort =
+    sort.sortBy === field
+      ? sort.dir === "asc"
+        ? "ascending"
+        : "descending"
+      : "none";
+  return (
+    <TableHead className={className} aria-sort={ariaSort}>
+      <a
+        href={sortHref(field, sort)}
+        className="inline-flex items-center gap-1 hover:underline"
+      >
+        {children}
+        {indicator !== "" && (
+          <span aria-hidden className="text-muted-foreground">
+            {indicator}
+          </span>
+        )}
+      </a>
+    </TableHead>
+  );
+}
+
+/** One conversation row. Slice 4 will make this expandable into a detail view. */
+function ConversationRow({ row }: { row: ConversationSummary }) {
+  const model = modelLabel(row.models);
+  return (
+    <TableRow>
+      <TableCell title={row.project.path} className="text-muted-foreground">
+        {row.project.folder}
+      </TableCell>
+      <TableCell className="max-w-xs truncate font-medium">
+        {row.title ?? (
+          <span className="text-muted-foreground">{row.id}</span>
+        )}
+      </TableCell>
+      <TableCell>
+        <span className="inline-flex items-center gap-1">
+          {model.dominant || <span className="text-muted-foreground">—</span>}
+          {model.extra > 0 && (
+            <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+              +{model.extra}
+            </span>
+          )}
+        </span>
+      </TableCell>
+      <TableCell className="text-right tabular-nums">
+        {formatTokens(row.tokens.input)}
+      </TableCell>
+      <TableCell className="text-right tabular-nums">
+        {formatTokens(row.tokens.output)}
+      </TableCell>
+      <TableCell className="text-right tabular-nums">
+        {formatTokens(row.tokens.cacheWrite)}
+      </TableCell>
+      <TableCell className="text-right tabular-nums">
+        {formatTokens(row.tokens.cacheRead)}
+      </TableCell>
+      <TableCell className="text-right tabular-nums">
+        {formatTokens(row.tokens.total)}
+      </TableCell>
+      <TableCell className="text-right tabular-nums">
+        {row.unpriced ? (
+          <span title="Cost excludes unpriced model usage — lower bound.">
+            ~{formatCost(row.costUsd)}
+          </span>
+        ) : (
+          formatCost(row.costUsd)
+        )}
+      </TableCell>
+    </TableRow>
   );
 }
