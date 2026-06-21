@@ -1,6 +1,5 @@
 {
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
-  "entry": ["src/index.{ts,tsx,js,jsx}", "src/main.{ts,tsx,js,jsx}"],
   "duplicates": {
     "minOccurrences": 3,
     "ignore": ["src/components/ui"]
@@ -15,5 +14,16 @@
   ],
   "rules": {
     "unused-dependencies": "warn"
+  },
+  "rulePacks": ["fallow/core-isolation.rulepack.json"],
+  "boundaries": {
+    "zones": [
+      { "name": "core", "patterns": ["src/core/**"] },
+      { "name": "app", "patterns": ["src/app/**", "src/components/**"] }
+    ],
+    "rules": [
+      { "from": "core", "allow": ["core"] },
+      { "from": "app", "allow": ["app", "core"] }
+    ]
   }
 }

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/rule-pack-schema.json",
+  "version": 1,
+  "name": "core-isolation",
+  "description": "ADR-0002: src/core is the UI-agnostic in-app module (log discovery, parsing, DB access). It must never import the Next.js/React UI stack so it stays reusable and server-only.",
+  "rules": [
+    {
+      "id": "no-ui-framework-imports",
+      "kind": "banned-import",
+      "specifiers": ["next", "react", "react-dom"],
+      "files": ["src/core/**"],
+      "message": "src/core must not import next/react/react-dom (ADR-0002): keep the core UI-agnostic. Move UI concerns into src/app or src/components.",
+      "severity": "error"
+    }
+  ]
+}
