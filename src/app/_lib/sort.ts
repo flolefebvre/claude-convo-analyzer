@@ -1,12 +1,13 @@
-// Pure sort-state + label helpers for the conversation list table.
+// Pure sort-state, comparator, and label helpers for the conversation list
+// table.
 //
-// Sorting is done server-side by `listConversations({ sortBy, dir })`, whose
-// `sortBy` is a `keyof ConversationSummary`. Its comparator only handles
-// TOP-LEVEL scalar fields (it does `a[sortBy]` then compares numbers, else
-// String()-compares): nested fields like `tokens` / `models` / `project` would
-// stringify to "[object Object]" and sort meaninglessly. So we expose ONLY the
-// fields the core can honestly honor as sortable, and the page renders plain
-// (non-link) headers for the rest. See `src/core/refresh.ts` `sortSummaries`.
+// Sorting is done SERVER-SIDE BY THE APP, not by the core. The core's
+// `listConversations` comparator only handles top-level scalar
+// `keyof ConversationSummary` fields, so nested columns (folder, model, each
+// token bucket) could never be sorted through it. Instead the page fetches all
+// rows and orders them with {@link sortConversations} here. That frees the URL
+// `sortBy` keys from `keyof ConversationSummary`: they are now app column keys
+// (e.g. `cost`, `input`, `model`) that map to value extractors below.
 //
 // React-free + I/O-free so it unit-tests in the node vitest environment; the
 // page is a thin shell over these.
@@ -21,33 +22,84 @@ export type SortState = {
   dir: SortDir;
 };
 
-/**
- * The fields the core comparator can honestly sort, each with the direction a
- * fresh click should start at (costs/counts/dates read best newest-first =
- * desc; text reads best A→Z = asc). Only `keyof ConversationSummary` scalars.
- */
-const SORTABLE_DEFAULT_DIR = {
-  costUsd: "desc",
-  title: "asc",
-  id: "asc",
-  startedAt: "desc",
-  endedAt: "desc",
-  subAgentCount: "desc",
-} as const satisfies Partial<Record<keyof ConversationSummary, SortDir>>;
+/** How a column's values compare: text reads A→Z, numbers high→low. */
+type SortKind = "string" | "number";
 
-export type SortableField = keyof typeof SORTABLE_DEFAULT_DIR;
+/** Per-column spec: extract a comparable value, its kind, and the direction a
+ *  fresh click starts at (numbers newest/biggest-first = desc; text A→Z = asc). */
+type ColumnSpec = {
+  kind: SortKind;
+  defaultDir: SortDir;
+  /** The comparable value; `null` (e.g. a missing title) always sorts last. */
+  value: (row: ConversationSummary) => string | number | null;
+};
+
+/**
+ * Every sortable column, keyed by its URL `sortBy` value. These are app column
+ * keys, deliberately NOT `keyof ConversationSummary` — the app sorts, so the
+ * keys describe the table's columns, not the core's field names.
+ */
+const COLUMNS = {
+  folder: {
+    kind: "string",
+    defaultDir: "asc",
+    value: (r) => r.project.folder,
+  },
+  title: {
+    kind: "string",
+    defaultDir: "asc",
+    value: (r) => r.title,
+  },
+  model: {
+    kind: "string",
+    defaultDir: "asc",
+    value: (r) => r.models.dominant,
+  },
+  input: {
+    kind: "number",
+    defaultDir: "desc",
+    value: (r) => r.tokens.input,
+  },
+  output: {
+    kind: "number",
+    defaultDir: "desc",
+    value: (r) => r.tokens.output,
+  },
+  cacheWrite: {
+    kind: "number",
+    defaultDir: "desc",
+    value: (r) => r.tokens.cacheWrite,
+  },
+  cacheRead: {
+    kind: "number",
+    defaultDir: "desc",
+    value: (r) => r.tokens.cacheRead,
+  },
+  total: {
+    kind: "number",
+    defaultDir: "desc",
+    value: (r) => r.tokens.total,
+  },
+  cost: {
+    kind: "number",
+    defaultDir: "desc",
+    value: (r) => r.costUsd,
+  },
+} as const satisfies Record<string, ColumnSpec>;
+
+export type SortableField = keyof typeof COLUMNS;
 
 /** Default when the URL carries no (valid) sort params. */
-export const DEFAULT_SORT: SortState = { sortBy: "costUsd", dir: "desc" };
+export const DEFAULT_SORT: SortState = { sortBy: "cost", dir: "desc" };
 
-/** True when `field` is a column the core can actually sort by. */
+/** True when `field` is one of the table's sortable columns. */
 export function isSortableField(field: string): field is SortableField {
-  return field in SORTABLE_DEFAULT_DIR;
+  return field in COLUMNS;
 }
 
 /** The direction a fresh (inactive) click on `field` should start at. */
 function defaultDirFor(field: SortableField): SortDir {
-  return SORTABLE_DEFAULT_DIR[field];
+  return COLUMNS[field].defaultDir;
 }
 
 /** First value of a `searchParams` entry (Next gives string | string[]). */
@@ -56,10 +108,9 @@ function firstParam(value: string | string[] | undefined): string | undefined {
 }
 
 /**
- * Resolve the active sort from raw `searchParams` values, defaulting unknown /
- * unsortable fields and invalid directions. Never trusts the URL blindly — an
- * unsortable `sortBy` (e.g. `tokens`) would make the core stringify-compare
- * objects, so it falls back to {@link DEFAULT_SORT}.
+ * Resolve the active sort from raw `searchParams` values, defaulting unknown
+ * fields and invalid directions. Never trusts the URL blindly — an unknown
+ * `sortBy` falls back to {@link DEFAULT_SORT}.
  */
 export function resolveSort(
   rawSortBy: string | string[] | undefined,
@@ -96,6 +147,54 @@ export function sortHref(field: SortableField, current: SortState): string {
 export function sortIndicator(field: SortableField, current: SortState): string {
   if (current.sortBy !== field) return "";
   return current.dir === "asc" ? "↑" : "↓";
+}
+
+/**
+ * Compare two column values for the primary sort. `null` (a missing title)
+ * always sorts LAST regardless of direction. Strings compare
+ * case-insensitively via `localeCompare`; numbers compare numerically. Returns
+ * the asc-ordered comparison; {@link sortConversations} negates it for desc.
+ */
+function compareValues(
+  a: string | number | null,
+  b: string | number | null,
+  kind: SortKind,
+): number {
+  // Nulls last, in both directions (the caller never negates a null result).
+  if (a === null && b === null) return 0;
+  if (a === null) return 1;
+  if (b === null) return -1;
+
+  if (kind === "number") return (a as number) - (b as number);
+  return String(a).localeCompare(String(b), undefined, {
+    sensitivity: "base",
+  });
+}
+
+/**
+ * Order conversations by the resolved sort, returning a NEW array (input is not
+ * mutated). Equal primary values fall back to a stable tiebreak on `id`
+ * (always ascending) so the order is deterministic. `null` values sort last in
+ * both directions; the direction only flips non-null comparisons.
+ */
+export function sortConversations(
+  rows: readonly ConversationSummary[],
+  sort: SortState,
+): ConversationSummary[] {
+  const column = COLUMNS[sort.sortBy];
+  const sign = sort.dir === "asc" ? 1 : -1;
+
+  return [...rows].sort((a, b) => {
+    const av = column.value(a);
+    const bv = column.value(b);
+    // Nulls are anchored last: only direction-flip a comparison of two non-nulls.
+    const primary =
+      av === null || bv === null
+        ? compareValues(av, bv, column.kind)
+        : sign * compareValues(av, bv, column.kind);
+    if (primary !== 0) return primary;
+    return a.id.localeCompare(b.id);
+  });
 }
 
 /**

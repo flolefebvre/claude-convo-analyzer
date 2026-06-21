@@ -25,6 +25,7 @@ import {
   type SortState,
   modelLabel,
   resolveSort,
+  sortConversations,
   sortHref,
   sortIndicator,
 } from "@/app/_lib/sort";
@@ -93,7 +94,11 @@ async function ConversationTable({
   // paths at load) is only loaded at request time, never during the build-time
   // page-config collection that would otherwise crash on undefined dirname.
   const { listConversations } = await import("@/core/refresh");
-  const rows = await listConversations({ sortBy: sort.sortBy, dir: sort.dir });
+  // The APP is the source of truth for ordering (core's comparator only handles
+  // top-level scalar fields). Fetch all rows, then sort with the app-zone
+  // comparator so every column — including nested folder/model/token ones — is
+  // sortable. We don't pass sortBy/dir to core (its keys differ from ours).
+  const rows = sortConversations(await listConversations(), sort);
 
   if (rows.length === 0) {
     return (
@@ -112,17 +117,31 @@ async function ConversationTable({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Folder</TableHead>
+            <SortableHead field="folder" sort={sort}>
+              Folder
+            </SortableHead>
             <SortableHead field="title" sort={sort}>
               Title
             </SortableHead>
-            <TableHead>Model(s)</TableHead>
-            <TableHead className="text-right">Input</TableHead>
-            <TableHead className="text-right">Output</TableHead>
-            <TableHead className="text-right">Cache-write</TableHead>
-            <TableHead className="text-right">Cache-read</TableHead>
-            <TableHead className="text-right">Total</TableHead>
-            <SortableHead field="costUsd" sort={sort} className="text-right">
+            <SortableHead field="model" sort={sort}>
+              Model(s)
+            </SortableHead>
+            <SortableHead field="input" sort={sort} className="text-right">
+              Input
+            </SortableHead>
+            <SortableHead field="output" sort={sort} className="text-right">
+              Output
+            </SortableHead>
+            <SortableHead field="cacheWrite" sort={sort} className="text-right">
+              Cache-write
+            </SortableHead>
+            <SortableHead field="cacheRead" sort={sort} className="text-right">
+              Cache-read
+            </SortableHead>
+            <SortableHead field="total" sort={sort} className="text-right">
+              Total
+            </SortableHead>
+            <SortableHead field="cost" sort={sort} className="text-right">
               Cost
             </SortableHead>
           </TableRow>
