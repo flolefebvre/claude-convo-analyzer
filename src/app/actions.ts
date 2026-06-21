@@ -12,7 +12,7 @@
 import { revalidatePath } from "next/cache";
 import { connection } from "next/server";
 
-import type { RefreshSummary } from "@/core/refresh";
+import type { ConversationDetail, RefreshSummary } from "@/core/refresh";
 
 /**
  * Re-scan the local Claude Code logs into the DB and refresh the list.
@@ -34,4 +34,22 @@ export async function refreshConversations(): Promise<RefreshSummary> {
   // so the next render reflects the freshly-scanned rows.
   revalidatePath("/");
   return summary;
+}
+
+/**
+ * Fetch one conversation's full detail for the expandable row (slice 4).
+ *
+ * The interactive row is a client component (it owns expand state) and so may
+ * NOT import core (ADR-0002); it calls THIS action on first expand instead. We
+ * use the same request-time pattern as {@link refreshConversations}: `connection()`
+ * first (no prerender / build-time evaluation of the core's `import.meta.dirname`
+ * DB path), then a dynamic `import("@/core/refresh")`. Returns the plain
+ * serializable {@link ConversationDetail}, or `null` for an unknown id.
+ */
+export async function getConversationDetail(
+  id: string,
+): Promise<ConversationDetail | null> {
+  await connection();
+  const { getConversation } = await import("@/core/refresh");
+  return getConversation(id);
 }

@@ -14,9 +14,9 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
 
+import { ConversationRow } from "@/app/_components/conversation-row";
 import { RefreshButton } from "@/app/_components/refresh-button";
 import {
-  formatCost,
   formatGrandTotalCost,
   formatTokens,
   grandTotal,
@@ -24,7 +24,6 @@ import {
 import {
   type SortableField,
   type SortState,
-  modelLabel,
   resolveSort,
   sortConversations,
   sortHref,
@@ -39,7 +38,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { ConversationSummary } from "@/core/refresh";
 
 type PageSearchParams = {
   sortBy?: string | string[];
@@ -232,53 +230,3 @@ function SortableHead({
   );
 }
 
-/** One conversation row. Slice 4 will make this expandable into a detail view. */
-function ConversationRow({ row }: { row: ConversationSummary }) {
-  const model = modelLabel(row.models);
-  return (
-    <TableRow>
-      <TableCell title={row.project.path} className="text-muted-foreground">
-        {row.project.folder}
-      </TableCell>
-      <TableCell className="max-w-xs truncate font-medium">
-        {row.title ?? (
-          <span className="text-muted-foreground">{row.id}</span>
-        )}
-      </TableCell>
-      <TableCell>
-        <span className="inline-flex items-center gap-1">
-          {model.dominant || <span className="text-muted-foreground">—</span>}
-          {model.extra > 0 && (
-            <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-              +{model.extra}
-            </span>
-          )}
-        </span>
-      </TableCell>
-      <TableCell className="text-right tabular-nums">
-        {formatTokens(row.tokens.input)}
-      </TableCell>
-      <TableCell className="text-right tabular-nums">
-        {formatTokens(row.tokens.output)}
-      </TableCell>
-      <TableCell className="text-right tabular-nums">
-        {formatTokens(row.tokens.cacheWrite)}
-      </TableCell>
-      <TableCell className="text-right tabular-nums">
-        {formatTokens(row.tokens.cacheRead)}
-      </TableCell>
-      <TableCell className="text-right tabular-nums">
-        {formatTokens(row.tokens.total)}
-      </TableCell>
-      <TableCell className="text-right tabular-nums">
-        {row.unpriced ? (
-          <span title="Cost excludes unpriced model usage — lower bound.">
-            ~{formatCost(row.costUsd)}
-          </span>
-        ) : (
-          formatCost(row.costUsd)
-        )}
-      </TableCell>
-    </TableRow>
-  );
-}
