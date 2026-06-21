@@ -1,0 +1,2 @@
+{"type":"ai-title","aiTitle":"Synthetic session"}
+{"type":"assistant","uuid":"sy1","requestId":"syn-1","timestamp":"2026-06-20T13:00:00.000Z","cwd":"/Users/me/dev/synth","message":{"id":"syn-1","role":"assistant","model":"<synthetic>","content":[{"type":"text","text":"synthetic"}],"usage":{"input_tokens":99,"output_tokens":99,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}}}

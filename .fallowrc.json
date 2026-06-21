@@ -3,27 +3,5 @@
   "duplicates": {
     "minOccurrences": 3,
     "ignore": ["src/components/ui"]
-  },
-  "health": {
-    "ignore": ["src/components/ui/**"]
-  },
-  "ignoreDependencies": [
-    "class-variance-authority",
-    "lucide-react",
-    "radix-ui"
-  ],
-  "rules": {
-    "unused-dependencies": "warn"
-  },
-  "rulePacks": ["fallow/core-isolation.rulepack.json"],
-  "boundaries": {
-    "zones": [
-      { "name": "core", "patterns": ["src/core/**"] },
-      { "name": "app", "patterns": ["src/app/**", "src/components/**"] }
-    ],
-    "rules": [
-      { "from": "core", "allow": ["core"] },
-      { "from": "app", "allow": ["app", "core"] }
-    ]
   }
 }

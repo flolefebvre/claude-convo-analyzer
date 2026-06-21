@@ -40,3 +40,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .fallow/
+
+# local sqlite database (ADR-0002)
+/data/
+
+# generated Prisma client (commit schema + migrations only)
+/src/core/prisma/generated/

@@ -1,0 +1,3 @@
+{"type":"ai-title","aiTitle":"Has a bad line"}
+this is not valid json at all }{
+{"type":"assistant","uuid":"m1","requestId":"mal-1","timestamp":"2026-06-20T14:00:00.000Z","cwd":"/Users/me/dev/demo","message":{"id":"mal-1","role":"assistant","model":"claude-opus-4-8","content":[{"type":"text","text":"still parsed"}],"usage":{"input_tokens":3,"output_tokens":4,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}}}
