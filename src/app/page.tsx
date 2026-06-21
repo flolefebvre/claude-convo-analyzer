@@ -14,6 +14,7 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
 
+import { listConversations } from "@/core/refresh";
 import { ConversationRow } from "@/app/_components/conversation-row";
 import { RefreshButton } from "@/app/_components/refresh-button";
 import {
@@ -88,14 +89,11 @@ async function ConversationTable({
   const params = await searchParams;
   const sort = resolveSort(params.sortBy, params.dir);
   // Exclude the synchronous better-sqlite3 query from prerendering: with Cache
-  // Components on, sync DB drivers otherwise complete at build time (where the
-  // core's import.meta.dirname-based paths are unresolved). connection() stops
-  // prerendering here so the read runs only on a real request (Next 16 docs).
+  // Components on, sync DB drivers otherwise complete at build time. connection()
+  // stops prerendering here so the read runs only on a real request (Next 16
+  // docs). Core itself is a top-level import — loading it opens no DB (see
+  // `import-side-effects.test.ts`); connection() is what defers the actual read.
   await connection();
-  // Dynamic import so the core module (which evaluates import.meta.dirname-based
-  // paths at load) is only loaded at request time, never during the build-time
-  // page-config collection that would otherwise crash on undefined dirname.
-  const { listConversations } = await import("@/core/refresh");
   // The APP is the source of truth for ordering (core's comparator only handles
   // top-level scalar fields). Fetch all rows, then sort with the app-zone
   // comparator so every column — including nested folder/model/token ones — is
