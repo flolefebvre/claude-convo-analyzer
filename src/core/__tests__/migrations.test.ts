@@ -3,18 +3,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createPrismaClient } from "@/core/db";
-
-const MIGRATIONS_DIR = path.join(
-  import.meta.dirname,
-  "..",
-  "prisma",
-  "migrations",
-);
+import { createPrismaClient, migrationsDir } from "@/core/db";
 
 /** Every committed migration directory (timestamp-prefixed, sorted). */
 function committedMigrations(): string[] {
-  return readdirSync(MIGRATIONS_DIR, { withFileTypes: true })
+  return readdirSync(migrationsDir(), { withFileTypes: true })
     .filter((e) => e.isDirectory())
     .map((e) => e.name)
     .sort();
