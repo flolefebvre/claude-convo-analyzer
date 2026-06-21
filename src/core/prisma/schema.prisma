@@ -53,6 +53,8 @@ model Conversation {
   continuations     Conversation[] @relation("ConversationContinuation")
   agents            Agent[]
   messages          Message[]
+  prLinks           PrLink[]
+  turnDurations     TurnDuration[]
 
   @@index([projectId])
   @@map("conversation")
@@ -178,6 +180,8 @@ model PrLink {
   prUrl        String  @map("pr_url")
   prRepository String? @map("pr_repository")
 
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
   @@index([conversationId])
   @@map("pr_link")
 }
@@ -189,6 +193,8 @@ model TurnDuration {
 
   durationMs   BigInt @map("duration_ms")
   messageCount Int    @map("message_count")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId])
   @@map("turn_duration")

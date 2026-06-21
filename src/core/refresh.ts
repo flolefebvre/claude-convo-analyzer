@@ -2,15 +2,18 @@
 // session files + their sub-agent transcripts, parses them, and writes ALL seven
 // tables. `listConversations()` and `getConversation()` are the stable read seams.
 //
-// SLICE SCOPE (Slice 4): full scan + write of all 7 tables (sub-agents, tool_call,
-// pr_link, turn_duration) + continued-from resolution + the detail read API. Still
-// NO incremental skip/delete (Slice 5); sourceMtime/sourceSize ARE captured for it.
+// INCREMENTAL REFRESH (Slice 5): `refresh()` skips conversations whose source
+// has not changed, re-parses changed/new ones, and drops conversations whose
+// source file disappeared. The change key is a COMPOSITE of the main session
+// file PLUS its sub-agent transcripts (max mtime, summed size) — a sub-agent
+// file changing alone (the main file untouched) still triggers a re-parse,
+// because sub-agents have no independent conversation/mtime row of their own.
 //
 // ROLLUP DESIGN (ADR-0001): conversation totals/cost are SUM queries over ALL
 // messages of ALL agents in the conversation — so sub-agent tokens roll up
 // automatically, counted ONCE (the parent Agent aggregate is never summed in).
 
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { priceTokenSplit, resolveModel, type Tokens } from "@/core/cost";
 import {
@@ -92,16 +95,37 @@ type ParsedConversation = {
   session: DiscoveredSession;
   parsed: ParsedSession;
   subAgents: { agentId: string; parsed: ParsedSession }[];
+  /** Existing conversation row id to delete before re-write (null = new). */
+  priorId: number | null;
+};
+
+/** A discovered session paired with its computed composite change key. */
+type DiscoveredWithKey = {
+  session: DiscoveredSession;
+  /** Sub-agent transcript paths (folded into the change key + parsed if dirty). */
+  subAgentPaths: { agentId: string; sourcePath: string }[];
+  /** Composite mtime: max over the session file + every sub-agent transcript. */
+  compositeMtime: number;
+  /** Composite size: sum over the session file + every sub-agent transcript. */
+  compositeSize: number;
 };
 
 /**
- * Full scan → parse → write of the logs root into a fresh-or-existing DB. Two
- * passes: (1) parse every main session AND its sub-agent transcripts, building a
- * global `message-uuid → sessionId` index; write each conversation with its
- * agents/messages/tool_calls/pr_links/turn_durations. (2) resolve
- * `continued_from` across sessions. Each conversation's writes are wrapped in a
- * transaction (finding #11). The sub-agent transcript is the single source of
- * truth for its tokens (GOTCHA 3) — the parent aggregate is a cross-check only.
+ * Incremental scan → parse → write of the logs root into a fresh-or-existing DB.
+ *
+ * For every discovered session we compute a COMPOSITE change key — the max mtime
+ * and total size across the main `<sessionId>.jsonl` AND its
+ * `subagents/agent-*.jsonl` transcripts — and compare it against the stored
+ * `conversation.sourceMtime`/`sourceSize`. Unchanged conversations are skipped
+ * (not re-parsed). Changed conversations are deleted (cascading to all child
+ * tables) and re-written, so a re-parse never duplicates rows. New conversations
+ * are written. Conversations whose source file no longer exists are deleted.
+ *
+ * Then two passes over the (re)parsed set only: (1) write each conversation with
+ * its agents/messages/tool_calls/pr_links/turn_durations (each in a transaction,
+ * finding #11), building a global `message-uuid → sessionId` index; (2) resolve
+ * `continued_from`. The sub-agent transcript is the single source of truth for
+ * its tokens (GOTCHA 3) — the parent aggregate is a cross-check only.
  */
 export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary> {
   const start = Date.now();
@@ -110,37 +134,82 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
   const prisma = createPrismaClient(dbPath);
 
   let conversationsParsed = 0;
+  let conversationsSkipped = 0;
+  let conversationsDeleted = 0;
   let malformedLinesSkipped = 0;
 
   try {
-    // Pass 1a — parse all sessions + sub-agents; build the cross-session index.
+    const discovered = discoverWithKeys(logsRoot);
+
+    // Existing rows, keyed by sessionId, for the skip/changed/delete decision.
+    const existing = new Map<string, { id: number; mtime: bigint; size: bigint }>();
+    for (const row of await prisma.conversation.findMany({
+      select: { id: true, sessionId: true, sourceMtime: true, sourceSize: true },
+    })) {
+      existing.set(row.sessionId, {
+        id: row.id,
+        mtime: row.sourceMtime,
+        size: row.sourceSize,
+      });
+    }
+
+    // Delete conversations whose source file is gone (single delete cascades).
+    const onDisk = new Set(discovered.map((d) => d.session.sessionId));
+    for (const [sessionId, row] of existing) {
+      if (onDisk.has(sessionId)) continue;
+      await prisma.conversation.delete({ where: { id: row.id } });
+      conversationsDeleted += 1;
+    }
+
+    // Pass 1a — parse only NEW or CHANGED sessions; build the cross-session index.
     const conversations: ParsedConversation[] = [];
     const uuidToSession = new Map<string, string>();
 
-    for (const session of discoverSessions(logsRoot)) {
+    for (const d of discovered) {
+      const prior = existing.get(d.session.sessionId);
+      const unchanged =
+        prior !== undefined &&
+        prior.mtime === BigInt(d.compositeMtime) &&
+        prior.size === BigInt(d.compositeSize);
+      if (unchanged) {
+        conversationsSkipped += 1;
+        continue;
+      }
+
+      // Store the COMPOSITE key on the conversation row so a later run can detect
+      // a sub-agent-only change (the main file's own mtime/size alone would not).
+      const session: DiscoveredSession = {
+        ...d.session,
+        sourceMtime: d.compositeMtime,
+        sourceSize: d.compositeSize,
+      };
+
       const parsed = parseSession(session.sourcePath);
       malformedLinesSkipped += parsed.malformedLines;
       indexMessageUuids(parsed, session.sessionId, uuidToSession);
 
       const subAgents: { agentId: string; parsed: ParsedSession }[] = [];
-      const projectDir = path.dirname(session.sourcePath);
-      for (const sub of discoverSubAgents(projectDir, session.sessionId)) {
+      for (const sub of d.subAgentPaths) {
         const subParsed = parseSession(sub.sourcePath);
         malformedLinesSkipped += subParsed.malformedLines;
         indexMessageUuids(subParsed, session.sessionId, uuidToSession);
         subAgents.push({ agentId: sub.agentId, parsed: subParsed });
       }
 
-      conversations.push({ session, parsed, subAgents });
+      conversations.push({ session, parsed, subAgents, priorId: prior?.id ?? null });
     }
 
-    // Pass 1b — write each conversation (+ agents, messages, side tables).
+    // Pass 1b — (re)write each parsed conversation. A CHANGED conversation's old
+    // rows are deleted first (cascade) so the re-parse never duplicates rows.
     for (const convo of conversations) {
+      if (convo.priorId !== null) {
+        await prisma.conversation.delete({ where: { id: convo.priorId } });
+      }
       await writeConversation(prisma, convo);
       conversationsParsed += 1;
     }
 
-    // Pass 2 — resolve continued-from now that every session row exists.
+    // Pass 2 — resolve continued-from over the (re)parsed conversations.
     await resolveContinuedFrom(prisma, conversations, uuidToSession);
   } finally {
     await prisma.$disconnect();
@@ -148,11 +217,37 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
 
   return {
     conversationsParsed,
-    conversationsSkipped: 0,
-    conversationsDeleted: 0,
+    conversationsSkipped,
+    conversationsDeleted,
     malformedLinesSkipped,
     durationMs: Date.now() - start,
   };
+}
+
+/**
+ * Discover every session and fold its sub-agent transcripts into a composite
+ * change key. A sub-agent file changing without the main file changing still
+ * shifts the composite (max mtime / summed size), so the parent re-parses.
+ */
+function discoverWithKeys(logsRoot: string): DiscoveredWithKey[] {
+  const out: DiscoveredWithKey[] = [];
+  for (const session of discoverSessions(logsRoot)) {
+    const projectDir = path.dirname(session.sourcePath);
+    const subAgentPaths = discoverSubAgents(projectDir, session.sessionId).map(
+      (s) => ({ agentId: s.agentId, sourcePath: s.sourcePath }),
+    );
+
+    let compositeMtime = session.sourceMtime;
+    let compositeSize = session.sourceSize;
+    for (const sub of subAgentPaths) {
+      const stat = statSync(sub.sourcePath);
+      compositeMtime = Math.max(compositeMtime, Math.floor(stat.mtimeMs));
+      compositeSize += stat.size;
+    }
+
+    out.push({ session, subAgentPaths, compositeMtime, compositeSize });
+  }
+  return out;
 }
 
 /** Read + parse one transcript file (main or sub-agent — same per-turn shape). */

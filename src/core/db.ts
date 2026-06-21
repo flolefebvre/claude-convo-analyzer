@@ -16,15 +16,22 @@ const MIGRATIONS_DIR = path.join(
   "migrations",
 );
 
+/** Tracker table: which committed migrations have been applied to this DB. */
+const MIGRATION_LEDGER = "_cca_migrations";
+
 /**
  * Apply every committed migration's `migration.sql` to the database at `dbPath`,
- * in lexicographic (timestamp) order, idempotently. Used to bring a fresh
- * sqlite file up to the current schema — notably for per-test temp databases,
- * where running the Prisma CLI would be too slow.
+ * in lexicographic (timestamp) order, idempotently and EXACTLY ONCE each. Used
+ * to bring a sqlite file up to the current schema — notably for per-test temp
+ * databases, where running the Prisma CLI would be too slow.
  *
- * Migrations are applied inside a transaction; already-applied DDL is tracked
- * by Prisma's own `_prisma_migrations` table created by `prisma migrate deploy`,
- * but for the lightweight programmatic path we simply guard on table existence.
+ * Applied migrations are recorded by name in a small `_cca_migrations` ledger
+ * (mirroring Prisma's `_prisma_migrations` semantics). On every open we apply
+ * only the migrations NOT yet in the ledger, each in its own transaction with
+ * its ledger insert — so a pre-existing DB still picks up a newly added
+ * migration (no schema drift on upgrade) and re-opening is a no-op. The previous
+ * "short-circuit if the `project` table exists" guard is gone: it would have
+ * silently skipped any migration added after the initial one.
  */
 function applyMigrations(dbPath: string): void {
   const dir = path.dirname(dbPath);
@@ -34,24 +41,42 @@ function applyMigrations(dbPath: string): void {
 
   const db = new Database(dbPath);
   try {
-    const alreadyInitialized = db
-      .prepare(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'project'",
-      )
-      .get();
-    if (alreadyInitialized) {
-      return;
-    }
+    db.exec(
+      `CREATE TABLE IF NOT EXISTS "${MIGRATION_LEDGER}" (
+         "migration_name" TEXT NOT NULL PRIMARY KEY,
+         "applied_at" BIGINT NOT NULL
+       )`,
+    );
+
+    const applied = new Set(
+      (
+        db
+          .prepare(`SELECT migration_name FROM "${MIGRATION_LEDGER}"`)
+          .all() as { migration_name: string }[]
+      ).map((r) => r.migration_name),
+    );
 
     const migrationDirs = readdirSync(MIGRATIONS_DIR, { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name)
       .sort();
 
+    const insertLedger = db.prepare(
+      `INSERT INTO "${MIGRATION_LEDGER}" (migration_name, applied_at) VALUES (?, ?)`,
+    );
+
     for (const name of migrationDirs) {
+      if (applied.has(name)) continue;
       const sqlPath = path.join(MIGRATIONS_DIR, name, "migration.sql");
       if (!existsSync(sqlPath)) continue;
-      db.exec(readFileSync(sqlPath, "utf8"));
+      const sql = readFileSync(sqlPath, "utf8");
+      // Each migration + its ledger row land atomically: a half-applied
+      // migration must never be recorded as done.
+      const run = db.transaction(() => {
+        db.exec(sql);
+        insertLedger.run(name, Date.now());
+      });
+      run();
     }
   } finally {
     db.close();
