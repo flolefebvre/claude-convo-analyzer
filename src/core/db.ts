@@ -10,11 +10,28 @@ import { PrismaClient } from "@/core/prisma/generated/client";
  */
 export const DEFAULT_DB_PATH = path.join(process.cwd(), "data", "analyzer.db");
 
+/**
+ * On-disk location of the committed Prisma migrations.
+ *
+ * Resolved cwd-relative (NOT via `import.meta.dirname`, the module's own
+ * location): Turbopack sets `import.meta.dirname` to `undefined` in the Next.js
+ * server bundle, so a module-relative resolve throws `ERR_INVALID_ARG_TYPE` at
+ * load and crashes the server render. cwd-relative is bundler-safe and stays
+ * consistent with {@link DEFAULT_DB_PATH} above.
+ */
 const MIGRATIONS_DIR = path.join(
-  import.meta.dirname,
+  process.cwd(),
+  "src",
+  "core",
   "prisma",
   "migrations",
 );
+
+/** The resolved migrations directory. Exposed as a testable seam so the
+ * cwd-relative resolution above stays correct (see `migrations-dir.test.ts`). */
+export function migrationsDir(): string {
+  return MIGRATIONS_DIR;
+}
 
 /** Tracker table: which committed migrations have been applied to this DB. */
 const MIGRATION_LEDGER = "_cca_migrations";
