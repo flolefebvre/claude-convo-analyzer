@@ -1,0 +1,192 @@
+// Claude Conversation Analyzer — data model.
+// Seven tables per ADR-0001 (docs/adr/0001-token-accounting-and-data-model.md).
+// Prisma 7: `prisma-client` generator + @prisma/adapter-better-sqlite3 driver adapter.
+// The generated client output is gitignored (commit schema + migrations only).
+
+generator client {
+  provider = "prisma-client"
+  output   = "./generated"
+  runtime  = "nodejs"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+/// One per `~/.claude/projects/` folder (decoded cwd / launch directory).
+model Project {
+  id            Int            @id @default(autoincrement())
+  /// Decoded absolute launch directory (the Project's cwd).
+  path          String         @unique
+  /// On-disk folder name (e.g. `-Users-prezbar-Documents-dev-pvm2-0`).
+  folderName    String         @map("folder_name")
+  conversations Conversation[]
+
+  @@map("project")
+}
+
+/// One per top-level `<sessionId>.jsonl`; the user-facing row.
+model Conversation {
+  id        Int    @id @default(autoincrement())
+  /// The session id (file stem of `<sessionId>.jsonl`).
+  sessionId String @unique @map("session_id")
+  projectId Int    @map("project_id")
+
+  /// Human-readable name from an `ai-title` record (may be null).
+  title     String?
+  gitBranch String? @map("git_branch")
+  /// Claude Code version that produced the session.
+  ccVersion String? @map("cc_version")
+
+  /// Source file path on disk.
+  sourcePath  String  @map("source_path")
+  /// Source file mtime (epoch ms) — incremental-refresh change key.
+  sourceMtime BigInt  @map("source_mtime")
+  /// Source file size in bytes — incremental-refresh change key.
+  sourceSize  BigInt  @map("source_size")
+
+  /// Set when the first message's parentUuid resolves into a prior session (--resume/fork).
+  continuedFromConversationId Int? @map("continued_from_conversation_id")
+
+  project           Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  continuedFrom     Conversation?  @relation("ConversationContinuation", fields: [continuedFromConversationId], references: [id], onDelete: SetNull)
+  continuations     Conversation[] @relation("ConversationContinuation")
+  agents            Agent[]
+  messages          Message[]
+
+  @@index([projectId])
+  @@map("conversation")
+}
+
+/// One per transcript (main thread AND sub-agent). Self-referential lineage.
+model Agent {
+  id             Int  @id @default(autoincrement())
+  conversationId Int  @map("conversation_id")
+
+  /// NULL ⇒ root/main agent.
+  parentAgentId Int? @map("parent_agent_id")
+  /// For sub-agents: the main-thread message (Agent tool call) that launched it.
+  spawnedByMessageId Int? @map("spawned_by_message_id")
+
+  /// e.g. `Explore`, `Plan`; NULL for the main thread.
+  agentType     String? @map("agent_type")
+  /// Concrete Anthropic model the agent ran on (sub-agents report once).
+  resolvedModel String? @map("resolved_model")
+  durationMs    BigInt? @map("duration_ms")
+  toolCallCount Int?    @map("tool_call_count")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  parentAgent  Agent?       @relation("AgentLineage", fields: [parentAgentId], references: [id], onDelete: SetNull)
+  childAgents  Agent[]      @relation("AgentLineage")
+
+  /// The Agent-tool message that spawned this sub-agent.
+  spawnedBy        Message?  @relation("AgentSpawn", fields: [spawnedByMessageId], references: [id], onDelete: SetNull)
+  messages         Message[] @relation("AgentMessages")
+  toolCalls        ToolCall[]
+
+  @@index([conversationId])
+  @@index([parentAgentId])
+  @@map("agent")
+}
+
+/// One row per user or assistant message (assistant turns deduplicated by message.id).
+model Message {
+  id             Int    @id @default(autoincrement())
+  conversationId Int    @map("conversation_id")
+  agentId        Int    @map("agent_id")
+
+  /// Source message id (Anthropic `message.id`); the dedup key for assistant turns.
+  messageId String? @map("message_id")
+  /// `user` | `assistant`.
+  role      String
+  text      String?
+
+  /// Token split — NULL for user messages (no usage of their own).
+  inputTokens          Int? @map("input_tokens")
+  outputTokens         Int? @map("output_tokens")
+  cacheCreation5mTokens Int? @map("cache_creation_5m_tokens")
+  cacheCreation1hTokens Int? @map("cache_creation_1h_tokens")
+  cacheReadTokens       Int? @map("cache_read_tokens")
+
+  /// Resolved model for this turn (assistant `message.model`).
+  model String?
+
+  /// Per-turn attribution — what drove this assistant message.
+  attributionSkill     String? @map("attribution_skill")
+  attributionAgent     String? @map("attribution_agent")
+  attributionPlugin    String? @map("attribution_plugin")
+  attributionMcpServer String? @map("attribution_mcp_server")
+
+  permissionMode String? @map("permission_mode")
+  /// True when the turn recorded an API error.
+  isApiError     Boolean @default(false) @map("is_api_error")
+  apiErrorMessage String? @map("api_error_message")
+
+  /// Record timestamp (epoch ms).
+  timestamp BigInt?
+
+  conversation  Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  agent         Agent        @relation("AgentMessages", fields: [agentId], references: [id], onDelete: Cascade)
+  spawnedAgents Agent[]      @relation("AgentSpawn")
+  toolCalls     ToolCall[]
+
+  @@index([conversationId])
+  @@index([agentId])
+  @@index([messageId])
+  @@map("message")
+}
+
+/// One per `tool_use` block.
+model ToolCall {
+  id        Int    @id @default(autoincrement())
+  messageId Int    @map("message_id")
+  agentId   Int    @map("agent_id")
+
+  /// `tool_use` block id.
+  toolUseId String? @map("tool_use_id")
+  /// Tool name (e.g. `Bash`, `Read`, `Skill`, `Agent`).
+  name      String
+  /// Full tool input, serialized JSON (small; powers skill/CLI detection).
+  inputJson String  @map("input_json")
+
+  /// Tool result truncated to ~10k chars (NULL until paired).
+  resultText      String? @map("result_text")
+  /// True when the result was truncated.
+  resultTruncated Boolean @default(false) @map("result_truncated")
+  /// Full (untruncated) result length — a token-cost proxy.
+  resultCharSize  Int?    @map("result_char_size")
+  /// True when the tool result was an error.
+  isError         Boolean @default(false) @map("is_error")
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  agent   Agent   @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@index([agentId])
+  @@map("tool_call")
+}
+
+/// PRs surfaced in a conversation (`pr-link` records).
+model PrLink {
+  id             Int    @id @default(autoincrement())
+  conversationId Int    @map("conversation_id")
+
+  prNumber     Int?    @map("pr_number")
+  prUrl        String  @map("pr_url")
+  prRepository String? @map("pr_repository")
+
+  @@index([conversationId])
+  @@map("pr_link")
+}
+
+/// Wall-clock turn timings (`system/turn_duration` records).
+model TurnDuration {
+  id             Int    @id @default(autoincrement())
+  conversationId Int    @map("conversation_id")
+
+  durationMs   BigInt @map("duration_ms")
+  messageCount Int    @map("message_count")
+
+  @@index([conversationId])
+  @@map("turn_duration")
+}
