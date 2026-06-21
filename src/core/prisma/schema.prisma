@@ -102,6 +102,9 @@ model Message {
 
   /// Source message id (Anthropic `message.id`); the dedup key for assistant turns.
   messageId String? @map("message_id")
+  /// Record `uuid` — the cross-session key for continued-from resolution (a
+  /// child's first-message `parentUuid` points at the parent message's `uuid`).
+  uuid      String? @map("uuid")
   /// `user` | `assistant`.
   role      String
   text      String?
@@ -138,6 +141,7 @@ model Message {
   @@index([conversationId])
   @@index([agentId])
   @@index([messageId])
+  @@index([uuid])
   @@map("message")
 }
 

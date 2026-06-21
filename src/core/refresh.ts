@@ -123,9 +123,11 @@ type DiscoveredWithKey = {
  *
  * Then two passes over the (re)parsed set only: (1) write each conversation with
  * its agents/messages/tool_calls/pr_links/turn_durations (each in a transaction,
- * finding #11), building a global `message-uuid → sessionId` index; (2) resolve
- * `continued_from`. The sub-agent transcript is the single source of truth for
- * its tokens (GOTCHA 3) — the parent aggregate is a cross-check only.
+ * finding #11), persisting each message's `uuid`; (2) resolve `continued_from` by
+ * looking up each child's first-message `parentUuid` against the persisted
+ * `message` rows of ALL conversations — so a skipped (unchanged) parent still
+ * resolves. The sub-agent transcript is the single source of truth for its tokens
+ * (GOTCHA 3) — the parent aggregate is a cross-check only.
  */
 export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary> {
   const start = Date.now();
@@ -161,9 +163,8 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
       conversationsDeleted += 1;
     }
 
-    // Pass 1a — parse only NEW or CHANGED sessions; build the cross-session index.
+    // Pass 1a — parse only NEW or CHANGED sessions.
     const conversations: ParsedConversation[] = [];
-    const uuidToSession = new Map<string, string>();
 
     for (const d of discovered) {
       const prior = existing.get(d.session.sessionId);
@@ -186,13 +187,11 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
 
       const parsed = parseSession(session.sourcePath);
       malformedLinesSkipped += parsed.malformedLines;
-      indexMessageUuids(parsed, session.sessionId, uuidToSession);
 
       const subAgents: { agentId: string; parsed: ParsedSession }[] = [];
       for (const sub of d.subAgentPaths) {
         const subParsed = parseSession(sub.sourcePath);
         malformedLinesSkipped += subParsed.malformedLines;
-        indexMessageUuids(subParsed, session.sessionId, uuidToSession);
         subAgents.push({ agentId: sub.agentId, parsed: subParsed });
       }
 
@@ -209,8 +208,9 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
       conversationsParsed += 1;
     }
 
-    // Pass 2 — resolve continued-from over the (re)parsed conversations.
-    await resolveContinuedFrom(prisma, conversations, uuidToSession);
+    // Pass 2 — resolve continued-from over the (re)parsed conversations,
+    // authoritatively against the persisted message uuids of ALL conversations.
+    await resolveContinuedFrom(prisma, conversations);
   } finally {
     await prisma.$disconnect();
   }
@@ -255,17 +255,6 @@ function parseSession(sourcePath: string): ParsedSession {
   return parseSessionLines(readFileSync(sourcePath, "utf8").split("\n"));
 }
 
-/** Record every message uuid → owning sessionId, for continued-from resolution. */
-function indexMessageUuids(
-  parsed: ParsedSession,
-  sessionId: string,
-  index: Map<string, string>,
-): void {
-  for (const m of parsed.messages) {
-    if (m.uuid !== null) index.set(m.uuid, sessionId);
-  }
-}
-
 /** Resolve (find-or-create) the project row for an on-disk folder. */
 async function upsertProject(
   prisma: PrismaClient,
@@ -293,6 +282,7 @@ function messageData(
     conversationId,
     agentId,
     messageId: m.messageId,
+    uuid: m.uuid,
     role: m.role,
     text: m.text,
     inputTokens: m.inputTokens,
@@ -496,34 +486,48 @@ function toolUseToMessageRow(
 
 /**
  * Pass 2: set `continuedFromConversationId` when a conversation's FIRST message's
- * `parentUuid` resolves (via the global uuid index) into a DIFFERENT session
- * (a `--resume`/fork). Resumed sessions stay DISTINCT rows (ADR-0001) — the link
- * only records lineage; tokens are never merged.
+ * `parentUuid` resolves into a DIFFERENT session (a `--resume`/fork). Resumed
+ * sessions stay DISTINCT rows (ADR-0001) — the link only records lineage; tokens
+ * are never merged.
+ *
+ * Resolution is authoritative against the DATABASE, not just the conversations
+ * parsed in this run: on an incremental refresh the parent session may be
+ * UNCHANGED (and thus skipped, never re-parsed), so its message uuids are absent
+ * from any in-memory index — but its rows (with their `uuid`) persist. We look up
+ * the owning conversation of each child's `parentUuid` via the `message` table by
+ * uuid (a targeted, indexed query — never loading every message into memory), so
+ * a skipped parent still resolves. An unresolved/own-session parentUuid leaves
+ * the link null.
  */
 async function resolveContinuedFrom(
   prisma: PrismaClient,
   conversations: ParsedConversation[],
-  uuidToSession: Map<string, string>,
 ): Promise<void> {
-  const idBySessionId = new Map<string, number>();
-  const rows = await prisma.conversation.findMany({
-    select: { id: true, sessionId: true },
-  });
-  for (const r of rows) idBySessionId.set(r.sessionId, r.id);
-
   for (const convo of conversations) {
     const first = convo.parsed.messages[0];
     if (first?.parentUuid == null) continue;
-    const ownerSession = uuidToSession.get(first.parentUuid);
-    if (ownerSession === undefined || ownerSession === convo.session.sessionId) {
+
+    // Find the conversation that OWNS a persisted message with this uuid.
+    const owner = await prisma.message.findFirst({
+      where: { uuid: first.parentUuid },
+      select: { conversation: { select: { id: true, sessionId: true } } },
+    });
+    const from = owner?.conversation;
+    if (from === undefined || from.sessionId === convo.session.sessionId) {
       continue; // unresolved, or points within the same session.
     }
-    const fromId = idBySessionId.get(ownerSession);
-    const toId = idBySessionId.get(convo.session.sessionId);
-    if (fromId === undefined || toId === undefined) continue;
+
+    const toId = (
+      await prisma.conversation.findUnique({
+        where: { sessionId: convo.session.sessionId },
+        select: { id: true },
+      })
+    )?.id;
+    if (toId === undefined) continue;
+
     await prisma.conversation.update({
       where: { id: toId },
-      data: { continuedFromConversationId: fromId },
+      data: { continuedFromConversationId: from.id },
     });
   }
 }

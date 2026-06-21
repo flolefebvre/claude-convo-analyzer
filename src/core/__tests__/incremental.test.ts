@@ -153,6 +153,54 @@ describe("incremental refresh", () => {
     }
   });
 
+  it("resolves continued_from to a parent that was SKIPPED on this refresh", async () => {
+    // First refresh ingests the parent (sess-origin). On a SECOND refresh a NEW
+    // child appears whose first-message parentUuid points into the parent — but
+    // the parent is UNCHANGED and thus skipped (not re-parsed). The link must
+    // still resolve, authoritatively, against the persisted parent rows.
+    const resumeDir = path.join(logsRoot, "-Users-me-dev-resume");
+    const childPath = path.join(resumeDir, "sess-child.jsonl");
+
+    // Remove the committed sibling that would otherwise be parsed in the same
+    // run, so the parent is the ONLY thing the child can resolve against — and
+    // it is already on disk + in the DB from the first refresh.
+    rmSync(path.join(resumeDir, "sess-resumed.jsonl"));
+
+    await refresh({ logsRoot, dbPath });
+    const originBefore = (await listConversations({ dbPath })).find(
+      (c) => c.id === "sess-origin",
+    );
+    expect(originBefore).toBeDefined();
+
+    // A brand-new child resuming from sess-origin's last message (orig-a1).
+    writeFileSync(
+      childPath,
+      [
+        '{"type":"ai-title","aiTitle":"Child of origin"}',
+        '{"type":"user","uuid":"child-u1","parentUuid":"orig-a1","timestamp":"2026-06-20T09:00:00.000Z","cwd":"/Users/me/dev/resume","version":"2.1.180","message":{"role":"user","content":"resume from origin"}}',
+        '{"type":"assistant","uuid":"child-a1","parentUuid":"child-u1","requestId":"creq-1","timestamp":"2026-06-20T09:00:05.000Z","cwd":"/Users/me/dev/resume","version":"2.1.180","message":{"id":"cmsg-1","role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"continued"}],"usage":{"input_tokens":5,"output_tokens":5,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}}}',
+        "",
+      ].join("\n"),
+    );
+
+    const second = await refresh({ logsRoot, dbPath });
+    // The parent was skipped (unchanged); only the child was parsed.
+    expect(second.conversationsParsed).toBe(1);
+    expect(second.conversationsSkipped).toBeGreaterThanOrEqual(1);
+
+    const convos = await listConversations({ dbPath });
+    const origin = convos.find((c) => c.id === "sess-origin");
+    const child = convos.find((c) => c.id === "sess-child");
+    expect(origin).toBeDefined();
+    expect(child).toBeDefined();
+
+    // The link resolves even though the parent was not re-parsed this run.
+    expect(child?.continuedFromId).toBe("sess-origin");
+    // Parent and child stay DISTINCT rows; the parent has no continuation.
+    expect(origin?.continuedFromId).toBeNull();
+    expect(child?.id).not.toBe(origin?.id);
+  });
+
   it("re-parses the parent when only a sub-agent transcript changes", async () => {
     await refresh({ logsRoot, dbPath });
     const before = await getConversation("sess-sub", { dbPath });
