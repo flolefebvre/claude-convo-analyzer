@@ -21,6 +21,11 @@ Within-session `cwd` drift (the agent `cd`-ing into a subdirectory) does not
 change the Project. Git worktrees launch in their own folder and therefore
 appear as **separate** Projects.
 
+The **friendly name** of a Project is the last segment of its path (e.g.
+`pvm2.0`), used as the human label in the UI; the full path is shown alongside
+it, and the dash-encoded folder name is the stable identity used to **scope**
+the conversation list to one Project.
+
 ### Conversation (Session)
 One continuous Claude Code session. On disk it is a single `<sessionId>.jsonl`
 file inside a Project folder. Each line is a typed Record. A Conversation is the
