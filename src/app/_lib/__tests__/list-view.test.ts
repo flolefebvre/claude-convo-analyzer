@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Tokens } from "@/core/cost";
-import type { ConversationSummary } from "@/core/refresh";
+import type { ConversationSummary } from "@/core/read";
 
 import { buildListView } from "@/app/_lib/list-view";
 import type { SortState } from "@/app/_lib/sort";

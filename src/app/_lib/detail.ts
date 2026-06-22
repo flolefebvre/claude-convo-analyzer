@@ -6,7 +6,7 @@
 // environment; the client expansion component is a thin renderer over these.
 
 import type { Tokens } from "@/core/cost";
-import type { ConversationDetail } from "@/core/refresh";
+import type { ConversationDetail } from "@/core/read";
 
 /**
  * Display label for a sub-agent row. The root/main thread carries an empty

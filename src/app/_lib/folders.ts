@@ -6,7 +6,7 @@
 // React-free + I/O-free so it unit-tests in the node vitest environment; the
 // page/sidebar are thin shells over these.
 
-import type { ConversationSummary } from "@/core/refresh";
+import type { ConversationSummary } from "@/core/read";
 
 /** One left-sidebar row: a distinct Project, summarized for display + linking. */
 export type FolderEntry = {

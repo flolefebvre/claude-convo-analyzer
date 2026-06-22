@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { ConversationSummary } from "@/core/refresh";
+import type { ConversationSummary } from "@/core/read";
 
 import { deriveFolders, type FolderEntry } from "@/app/_lib/folders";
 

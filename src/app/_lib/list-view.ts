@@ -20,7 +20,7 @@
 // intent, never raw searchParams (ADR-0004).
 
 import type { Tokens } from "@/core/cost";
-import type { ConversationSummary } from "@/core/refresh";
+import type { ConversationSummary } from "@/core/read";
 
 import { deriveFolders, type FolderEntry } from "@/app/_lib/folders";
 import { sortConversations, type SortState } from "@/app/_lib/sort";

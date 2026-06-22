@@ -32,7 +32,7 @@ import {
 } from "@/app/_lib/format";
 import { modelLabel } from "@/app/_lib/sort";
 import { TableCell, TableRow } from "@/components/ui/table";
-import type { ConversationDetail, ConversationSummary } from "@/core/refresh";
+import type { ConversationDetail, ConversationSummary } from "@/core/read";
 
 type DetailState =
   | { status: "idle" }
