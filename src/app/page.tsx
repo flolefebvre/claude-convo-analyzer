@@ -124,7 +124,7 @@ async function ConversationTable({
           breadcrumb (with a way back to all folders) instead of a Folder column. */}
       {selectedFolder && <FolderBreadcrumb folder={selectedFolder} sort={sort} />}
 
-      <div className="rounded-lg border">
+      <div className="overflow-hidden rounded-xl border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
@@ -179,7 +179,7 @@ async function ConversationTable({
               <TableCell className="text-right tabular-nums">
                 {formatTokens(total.tokens.total)}
               </TableCell>
-              <TableCell className="text-right font-medium tabular-nums">
+              <TableCell className="text-right font-semibold tabular-nums text-cost">
                 {total.hasUnpriced ? (
                   <span
                     title="Includes unpriced model usage — this total is a lower bound."
@@ -207,7 +207,7 @@ async function ConversationTable({
  */
 function EmptyState({ scoped, sort }: { scoped: boolean; sort: SortState }) {
   return (
-    <div className="rounded-lg border border-dashed p-12 text-center">
+    <div className="rounded-xl border border-dashed bg-card p-16 text-center">
       {scoped ? (
         <>
           <p className="text-sm text-muted-foreground">
@@ -278,24 +278,24 @@ function SortableHead({
   children: React.ReactNode;
 }) {
   const indicator = sortIndicator(field, sort);
-  const ariaSort =
-    sort.sortBy === field
-      ? sort.dir === "asc"
-        ? "ascending"
-        : "descending"
-      : "none";
+  const isActive = sort.sortBy === field;
+  const ariaSort = isActive
+    ? sort.dir === "asc"
+      ? "ascending"
+      : "descending"
+    : "none";
   return (
     <TableHead className={className} aria-sort={ariaSort}>
+      {/* Quiet uppercase labels echo the overview band's stat-card captions. The
+          active sort column lifts to full foreground; the rest stay muted. */}
       <Link
         href={sortHref(field, sort, folder)}
-        className="inline-flex items-center gap-1 hover:underline"
+        className={`inline-flex items-center gap-1 text-xs font-medium tracking-wide uppercase transition-colors hover:text-foreground ${
+          isActive ? "text-foreground" : "text-muted-foreground"
+        }`}
       >
         {children}
-        {indicator !== "" && (
-          <span aria-hidden className="text-muted-foreground">
-            {indicator}
-          </span>
-        )}
+        {indicator !== "" && <span aria-hidden>{indicator}</span>}
       </Link>
     </TableHead>
   );

@@ -4,11 +4,13 @@ import { Suspense } from "react";
 
 import "./globals.css";
 import { FolderSidebar } from "@/app/_components/folder-sidebar";
+import { OverviewBand } from "@/app/_components/overview-band";
 import { RefreshButton } from "@/app/_components/refresh-button";
 import { ThemeProvider } from "@/app/_components/theme-provider";
 import { ThemeToggle } from "@/app/_components/theme-toggle";
 import { loadConversations } from "@/app/_lib/conversations";
 import { deriveFolders } from "@/app/_lib/folders";
+import { deriveOverview, topProjectsByCost } from "@/app/_lib/overview";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -74,6 +76,15 @@ export default function RootLayout({
               </div>
             </header>
 
+            {/* The analysis surface, full-width above the split. Global (scope-
+                independent), like the sidebar, so it can live in the layout —
+                which cannot read `searchParams` — and persists across navigation
+                without flashing. Its own Suspense boundary defers the request-
+                time read out of prerendering (PPR). */}
+            <Suspense fallback={null}>
+              <Overview />
+            </Suspense>
+
             <div className="flex flex-col gap-6 md:flex-row md:items-start">
               <aside className="w-full shrink-0 md:w-64">
                 {/* The sidebar reads the live URL (useSearchParams) for its active
@@ -108,5 +119,30 @@ export default function RootLayout({
 async function Sidebar() {
   const allRows = await loadConversations();
   const folders = deriveFolders(allRows);
-  return <FolderSidebar folders={folders} totalCount={allRows.length} />;
+  // The "All folders" anchor's total cost / lower-bound flag, summed from the
+  // already-derived per-folder entries (no extra core touch).
+  const totalCost = folders.reduce((sum, f) => sum + f.costUsd, 0);
+  const totalUnpriced = folders.some((f) => f.unpriced);
+  return (
+    <FolderSidebar
+      folders={folders}
+      totalCount={allRows.length}
+      totalCost={totalCost}
+      totalUnpriced={totalUnpriced}
+    />
+  );
+}
+
+/**
+ * The overview band's data: the headline aggregate plus the cost-ranked top
+ * Projects, both derived from ALL conversations (scope-independent). Split out
+ * so the request-time read sits inside its own <Suspense> boundary. The
+ * `loadConversations()` read is deduped with the sidebar/page via React
+ * `cache()`, so the band adds no extra DB work.
+ */
+async function Overview() {
+  const allRows = await loadConversations();
+  const overview = deriveOverview(allRows);
+  const topProjects = topProjectsByCost(deriveFolders(allRows), 5);
+  return <OverviewBand overview={overview} topProjects={topProjects} />;
 }

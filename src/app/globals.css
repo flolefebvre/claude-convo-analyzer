@@ -39,6 +39,11 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  /* The single signature accent — a warm clay/terracotta used ONLY for cost
+     emphasis: the cost bars, the active-sidebar marker, the hero cost figure.
+     Everything else stays on the neutral grayscale base. */
+  --color-cost: var(--cost);
+  --color-cost-muted: var(--cost-muted);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -81,6 +86,9 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  --cost: oklch(0.62 0.13 40);
+  /* A faint clay tint for bar tracks / active-row backgrounds. */
+  --cost-muted: oklch(0.62 0.13 40 / 12%);
 }
 
 .dark {
@@ -115,6 +123,9 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+  /* Lifted lightness + a touch more chroma so the clay reads on the dark base. */
+  --cost: oklch(0.72 0.14 45);
+  --cost-muted: oklch(0.72 0.14 45 / 16%);
 }
 
 @layer base {

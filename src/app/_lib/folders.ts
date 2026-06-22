@@ -20,6 +20,14 @@ export type FolderEntry = {
   path: string;
   /** Number of conversations in this Project. */
   count: number;
+  /** Summed cost (USD) across the Project's conversations. A lower bound when
+   *  {@link unpriced} is true. */
+  costUsd: number;
+  /** Summed total token count across the Project's conversations. */
+  tokensTotal: number;
+  /** True when ANY conversation in the Project has unpriced model usage, so the
+   *  UI can mark the Project's cost as a lower bound (mirrors `grandTotal`). */
+  unpriced: boolean;
   /** Latest activity across the Project's conversations, as an ISO string
    *  (max of `endedAt`, falling back to `startedAt`). `""` if none is known. */
   latestActivity: string;
@@ -40,6 +48,9 @@ export function deriveFolders(summaries: ConversationSummary[]): FolderEntry[] {
       label: friendlyFolderName(project.path),
       path: project.path,
       count: rows.length,
+      costUsd: rows.reduce((sum, r) => sum + r.costUsd, 0),
+      tokensTotal: rows.reduce((sum, r) => sum + r.tokens.total, 0),
+      unpriced: rows.some((r) => r.unpriced),
       latestActivity: latestActivity(rows),
     };
   });

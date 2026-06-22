@@ -120,10 +120,12 @@ export function ConversationRow({
             )}
           </span>
         </TableCell>
-        <TableCell className="text-right tabular-nums">
+        {/* Token total is secondary context → muted. Cost is the payload →
+            full-weight foreground, so the eye lands on spend first. */}
+        <TableCell className="text-right tabular-nums text-muted-foreground">
           {formatTokens(row.tokens.total)}
         </TableCell>
-        <TableCell className="text-right tabular-nums">
+        <TableCell className="text-right font-medium tabular-nums">
           {row.unpriced ? (
             <span title="Cost excludes unpriced model usage — lower bound.">
               ~{formatCost(row.costUsd)}
