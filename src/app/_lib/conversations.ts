@@ -12,7 +12,7 @@
 import { cache } from "react";
 import { connection } from "next/server";
 
-import { listConversations } from "@/core/refresh";
+import { listConversations } from "@/core/read";
 
 /**
  * Read every conversation summary once per request. Wrapped in React `cache()`

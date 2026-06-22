@@ -12,7 +12,7 @@
 // React-free + I/O-free so it unit-tests in the node vitest environment; the
 // page is a thin shell over these.
 
-import type { ConversationSummary } from "@/core/refresh";
+import type { ConversationSummary } from "@/core/read";
 
 export type SortDir = "asc" | "desc";
 

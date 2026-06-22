@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { ConversationDetail } from "@/core/refresh";
+import type { ConversationDetail } from "@/core/read";
 
 import { detailSections, subAgentLabel } from "@/app/_lib/detail";
 

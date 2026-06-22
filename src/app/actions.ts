@@ -13,12 +13,8 @@
 import { revalidatePath } from "next/cache";
 import { connection } from "next/server";
 
-import {
-  type ConversationDetail,
-  type RefreshSummary,
-  getConversation,
-  refresh,
-} from "@/core/refresh";
+import { type ConversationDetail, getConversation } from "@/core/read";
+import { type RefreshSummary, refresh } from "@/core/refresh";
 
 /**
  * Re-scan the local Claude Code logs into the DB and refresh the list.

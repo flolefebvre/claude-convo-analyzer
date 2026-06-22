@@ -9,8 +9,7 @@ import { RefreshButton } from "@/app/_components/refresh-button";
 import { ThemeProvider } from "@/app/_components/theme-provider";
 import { ThemeToggle } from "@/app/_components/theme-toggle";
 import { loadConversations } from "@/app/_lib/conversations";
-import { deriveFolders } from "@/app/_lib/folders";
-import { deriveOverview, topProjectsByCost } from "@/app/_lib/overview";
+import { buildListView } from "@/app/_lib/list-view";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -118,17 +117,16 @@ export default function RootLayout({
  */
 async function Sidebar() {
   const allRows = await loadConversations();
-  const folders = deriveFolders(allRows);
-  // The "All folders" anchor's total cost / lower-bound flag, summed from the
-  // already-derived per-folder entries (no extra core touch).
-  const totalCost = folders.reduce((sum, f) => sum + f.costUsd, 0);
-  const totalUnpriced = folders.some((f) => f.unpriced);
+  // No sort intent -> the scope-independent slice only (folder list + totals);
+  // the table slice is skipped. The "All folders" anchor totals are summed from
+  // the already-derived per-folder entries (no extra core touch).
+  const { folders, totals } = buildListView(allRows);
   return (
     <FolderSidebar
       folders={folders}
-      totalCount={allRows.length}
-      totalCost={totalCost}
-      totalUnpriced={totalUnpriced}
+      totalCount={totals.count}
+      totalCost={totals.costUsd}
+      totalUnpriced={totals.unpriced}
     />
   );
 }
@@ -142,7 +140,8 @@ async function Sidebar() {
  */
 async function Overview() {
   const allRows = await loadConversations();
-  const overview = deriveOverview(allRows);
-  const topProjects = topProjectsByCost(deriveFolders(allRows), 5);
+  // No sort intent -> scope-independent slice only; one `deriveFolders` pass
+  // feeds both the overview aggregate and the cost-ranked top Projects.
+  const { overview, topProjects } = buildListView(allRows);
   return <OverviewBand overview={overview} topProjects={topProjects} />;
 }

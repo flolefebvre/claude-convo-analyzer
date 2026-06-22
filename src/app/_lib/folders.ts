@@ -6,7 +6,7 @@
 // React-free + I/O-free so it unit-tests in the node vitest environment; the
 // page/sidebar are thin shells over these.
 
-import type { ConversationSummary } from "@/core/refresh";
+import type { ConversationSummary } from "@/core/read";
 
 /** One left-sidebar row: a distinct Project, summarized for display + linking. */
 export type FolderEntry = {
@@ -26,7 +26,7 @@ export type FolderEntry = {
   /** Summed total token count across the Project's conversations. */
   tokensTotal: number;
   /** True when ANY conversation in the Project has unpriced model usage, so the
-   *  UI can mark the Project's cost as a lower bound (mirrors `grandTotal`). */
+   *  UI can mark the Project's cost as a lower bound. */
   unpriced: boolean;
   /** Latest activity across the Project's conversations, as an ISO string
    *  (max of `endedAt`, falling back to `startedAt`). `""` if none is known. */
@@ -84,21 +84,6 @@ function latestActivity(rows: ConversationSummary[]): string {
     if (when > latest) latest = when;
   }
   return latest;
-}
-
-/**
- * Scope conversations to a single Project by its `?folder=` key, WITHOUT
- * sorting — input order is preserved so callers can sort afterward (scope
- * composes with sort). Returns all rows when `folder` is `undefined`/empty (no
- * scope), the rows whose `project.folder === folder` for a known key, and an
- * empty array for a non-empty but unknown/stale key.
- */
-export function filterByFolder(
-  summaries: ConversationSummary[],
-  folder: string | undefined,
-): ConversationSummary[] {
-  if (!folder) return summaries;
-  return summaries.filter((s) => s.project.folder === folder);
 }
 
 /**
