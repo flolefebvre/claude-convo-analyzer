@@ -9,6 +9,17 @@ and sub-agent.
 and writes a local SQLite file (`./data/analyzer.db`). Nothing is ever sent
 anywhere.
 
+## Screenshots
+
+The conversation list — total cost, tokens, and a per-folder breakdown across
+every project, sortable by any column:
+
+![Conversation list](docs/images/main-view.png)
+
+Expand any row for the per-model, per-skill, and per-sub-agent cost breakdown:
+
+![Conversation detail](docs/images/conversation-detail.png)
+
 ## Requirements
 
 - [Node.js](https://nodejs.org) 20 or newer
@@ -62,6 +73,14 @@ pnpm build    # next build
 
 See [`docs/agents/development.md`](docs/agents/development.md) for the testing
 approach and fixtures.
+
+## Was this made with AI?
+
+Yes.
+
+## How to contribute
+
+Found a bug or have an idea? Open an issue.
 
 ## License
 
