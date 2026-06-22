@@ -9,6 +9,11 @@ and sub-agent.
 and writes a local SQLite file (`./data/analyzer.db`). Nothing is ever sent
 anywhere.
 
+> **About the cost figure:** the cost shown is always *"what these tokens would
+> cost through the public API"*. If you're on a Pro or Max subscription you
+> don't actually pay per token — so treat the number as the equivalent API
+> value of your usage, not a bill.
+
 ## Screenshots
 
 The conversation list — total cost, tokens, and a per-folder breakdown across
