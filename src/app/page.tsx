@@ -258,9 +258,6 @@ function FolderBreadcrumb({
       <span className="font-medium" title={folder.path}>
         {folder.label}
       </span>
-      <span className="text-muted-foreground" title={folder.path}>
-        {folder.path}
-      </span>
     </nav>
   );
 }
