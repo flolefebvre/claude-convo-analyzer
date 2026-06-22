@@ -97,15 +97,13 @@ export function ConversationRow({
           </button>
         </TableCell>
         {/* When scoped to a single Project the Folder column is hidden (the page
-            shows the path once as a breadcrumb). When unscoped, a two-line cell:
-            the friendly basename prominent, the full Project path muted beneath. */}
+            shows the path once as a breadcrumb). When unscoped, show the friendly
+            basename; the full Project path is available on hover via the cell's
+            title (kept off-screen so long paths don't break the table — #14). */}
         {!scoped && (
-          <TableCell title={row.project.path} className="align-top">
-            <span className="block font-medium">
+          <TableCell title={row.project.path}>
+            <span className="font-medium">
               {friendlyFolderName(row.project.path)}
-            </span>
-            <span className="block text-xs text-muted-foreground">
-              {row.project.path}
             </span>
           </TableCell>
         )}
