@@ -5,6 +5,8 @@ import { Suspense } from "react";
 import "./globals.css";
 import { FolderSidebar } from "@/app/_components/folder-sidebar";
 import { RefreshButton } from "@/app/_components/refresh-button";
+import { ThemeProvider } from "@/app/_components/theme-provider";
+import { ThemeToggle } from "@/app/_components/theme-toggle";
 import { loadConversations } from "@/app/_lib/conversations";
 import { deriveFolders } from "@/app/_lib/folders";
 
@@ -40,44 +42,58 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      // The ThemeProvider's blocking script sets the `.dark` class on <html>
+      // before hydration (no theme flash); suppress the resulting class mismatch
+      // warning (ADR-0004 sanctions this deliberate client-JS exception).
+      suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <main className="mx-auto w-full max-w-7xl px-6 py-10">
-          <header className="mb-6 flex items-center justify-between gap-4">
-            <div>
-              <h1 className="text-2xl font-semibold tracking-tight">
-                Claude Conversation Analyzer
-              </h1>
-              <p className="text-sm text-muted-foreground">
-                Every conversation from your local Claude Code logs, with token
-                and cost rollups.
-              </p>
-            </div>
-            {/* The Refresh control: a client component calling the
-                refreshConversations server action; the layout stays a server component. */}
-            <div data-slot="refresh-action">
-              <RefreshButton />
-            </div>
-          </header>
+        {/* The theme provider is a client boundary wrapping the otherwise-server
+            tree: the page/table stay server components and PPR is unaffected. */}
+        <ThemeProvider>
+          <main className="mx-auto w-full max-w-7xl px-6 py-10">
+            <header className="mb-6 flex items-center justify-between gap-4">
+              <div>
+                <h1 className="text-2xl font-semibold tracking-tight">
+                  Claude Conversation Analyzer
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  Every conversation from your local Claude Code logs, with token
+                  and cost rollups.
+                </p>
+              </div>
+              {/* Header controls: the Light/Dark/Auto theme toggle and the
+                  Refresh control. Both are client components; the layout stays a
+                  server component. */}
+              <div className="flex items-center gap-3">
+                <ThemeToggle />
+                <div data-slot="refresh-action">
+                  <RefreshButton />
+                </div>
+              </div>
+            </header>
 
-          <div className="flex flex-col gap-6 md:flex-row md:items-start">
-            <aside className="w-full shrink-0 md:w-64">
-              {/* The sidebar reads the live URL (useSearchParams) for its active
-                  highlight, and its folder list is fetched at request time — both
-                  reasons to keep it inside a Suspense boundary so the shell can
-                  prerender (Next local docs: use-search-params "Prerendering"). */}
-              <Suspense
-                fallback={
-                  <p className="text-sm text-muted-foreground">Loading folders…</p>
-                }
-              >
-                <Sidebar />
-              </Suspense>
-            </aside>
-            <div className="min-w-0 flex-1">{children}</div>
-          </div>
-        </main>
+            <div className="flex flex-col gap-6 md:flex-row md:items-start">
+              <aside className="w-full shrink-0 md:w-64">
+                {/* The sidebar reads the live URL (useSearchParams) for its active
+                    highlight, and its folder list is fetched at request time — both
+                    reasons to keep it inside a Suspense boundary so the shell can
+                    prerender (Next local docs: use-search-params "Prerendering"). */}
+                <Suspense
+                  fallback={
+                    <p className="text-sm text-muted-foreground">
+                      Loading folders…
+                    </p>
+                  }
+                >
+                  <Sidebar />
+                </Suspense>
+              </aside>
+              <div className="min-w-0 flex-1">{children}</div>
+            </div>
+          </main>
+        </ThemeProvider>
       </body>
     </html>
   );
