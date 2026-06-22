@@ -15,6 +15,7 @@
 
 import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
+import { performance } from "node:perf_hooks";
 import {
   createPrismaClient,
   DEFAULT_DB_PATH,
@@ -95,7 +96,11 @@ type DiscoveredWithKey = {
  * (GOTCHA 3) — the parent aggregate is a cross-check only.
  */
 export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary> {
-  const start = Date.now();
+  // Monotonic clock for the elapsed measure: `Date.now()` can jump BACKWARD on a
+  // wall-clock adjustment (NTP, or WSL2 resuming from sleep), which produced a
+  // nonsensical NEGATIVE durationMs in the refresh digest. `performance.now()`
+  // never goes back.
+  const start = performance.now();
   const logsRoot = opts.logsRoot ?? DEFAULT_LOGS_ROOT;
   const dbPath = opts.dbPath ?? DEFAULT_DB_PATH;
   const prisma = createPrismaClient(dbPath);
@@ -185,7 +190,7 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     conversationsSkipped,
     conversationsDeleted,
     malformedLinesSkipped,
-    durationMs: Date.now() - start,
+    durationMs: Math.round(performance.now() - start),
   };
 }
 
