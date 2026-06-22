@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Claude Conversation Analyzer mark: four ascending clay cost bars on the
+       app's charcoal neutral. Mirrors the signature "cost is a clay bar" visual
+       (CostBar). Colors are the exact theme tokens: --cost (clay) over the
+       --foreground charcoal; the media query lifts the clay in dark mode the
+       same way the .dark `--cost` token does. -->
+  <style>
+    .bar { fill: #c66846; }
+    @media (prefers-color-scheme: dark) {
+      .bar { fill: #eb8656; }
+    }
+  </style>
+  <rect width="32" height="32" rx="7" fill="#0a0a0a" />
+  <rect class="bar" x="5"  y="16.5" width="4" height="8"  rx="2" />
+  <rect class="bar" x="11" y="12.5" width="4" height="12" rx="2" />
+  <rect class="bar" x="17" y="9.5"  width="4" height="15" rx="2" />
+  <rect class="bar" x="23" y="6.5"  width="4" height="18" rx="2" />
+</svg>

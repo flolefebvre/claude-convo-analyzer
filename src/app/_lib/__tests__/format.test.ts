@@ -3,8 +3,11 @@ import { describe, expect, it } from "vitest";
 import type { Tokens } from "@/core/cost";
 
 import {
+  formatCompactTokens,
   formatCost,
   formatDate,
+  formatDateRange,
+  formatDuration,
   formatGrandTotalCost,
   formatTokens,
   grandTotal,
@@ -27,6 +30,83 @@ function tokens(partial: Partial<Tokens>): Tokens {
 describe("formatTokens", () => {
   it("formats an integer with thousands separators", () => {
     expect(formatTokens(1_234_567)).toBe("1,234,567");
+  });
+});
+
+describe("formatCompactTokens", () => {
+  it("leaves counts under 1,000 as a plain integer", () => {
+    expect(formatCompactTokens(0)).toBe("0");
+    expect(formatCompactTokens(999)).toBe("999");
+  });
+
+  it("abbreviates thousands / millions / billions to one decimal", () => {
+    expect(formatCompactTokens(1_500)).toBe("1.5K");
+    expect(formatCompactTokens(2_300_000)).toBe("2.3M");
+    expect(formatCompactTokens(1_260_000_000)).toBe("1.3B");
+  });
+
+  it("drops a trailing .0 so round magnitudes stay clean", () => {
+    expect(formatCompactTokens(2_000)).toBe("2K");
+    expect(formatCompactTokens(5_000_000)).toBe("5M");
+  });
+});
+
+describe("formatDateRange", () => {
+  it("returns an empty string when both endpoints are empty", () => {
+    expect(formatDateRange("", "")).toBe("");
+  });
+
+  it("shows a single date when the endpoints fall on the same UTC day", () => {
+    const at = "2026-06-22T08:00:00.000Z";
+    expect(formatDateRange(at, "2026-06-22T20:00:00.000Z")).toBe("Jun 22 2026");
+    expect(formatDateRange("", at)).toBe("Jun 22 2026");
+  });
+
+  it("omits the repeated year within a same-year range", () => {
+    expect(
+      formatDateRange("2026-06-02T00:00:00.000Z", "2026-06-22T00:00:00.000Z"),
+    ).toBe("Jun 2 – Jun 22 2026");
+  });
+
+  it("shows both years when the range spans a year boundary", () => {
+    expect(
+      formatDateRange("2025-12-30T00:00:00.000Z", "2026-06-22T00:00:00.000Z"),
+    ).toBe("Dec 30 2025 – Jun 22 2026");
+  });
+});
+
+describe("formatDuration", () => {
+  it("returns empty string when either endpoint is missing or unparseable", () => {
+    expect(formatDuration("", "2026-06-22T10:00:00Z")).toBe("");
+    expect(formatDuration("2026-06-22T10:00:00Z", "")).toBe("");
+    expect(formatDuration("nope", "2026-06-22T10:00:00Z")).toBe("");
+  });
+
+  it("renders sub-minute spans in seconds", () => {
+    expect(formatDuration("2026-06-22T10:00:00Z", "2026-06-22T10:00:30Z")).toBe(
+      "30s",
+    );
+  });
+
+  it("renders sub-hour spans in whole minutes", () => {
+    expect(formatDuration("2026-06-22T10:00:00Z", "2026-06-22T10:45:20Z")).toBe(
+      "45m",
+    );
+  });
+
+  it("renders multi-hour spans as hours and minutes, dropping a zero minute", () => {
+    expect(formatDuration("2026-06-22T10:00:00Z", "2026-06-22T11:20:00Z")).toBe(
+      "1h 20m",
+    );
+    expect(formatDuration("2026-06-22T10:00:00Z", "2026-06-22T12:00:00Z")).toBe(
+      "2h",
+    );
+  });
+
+  it("treats a non-positive span as zero seconds", () => {
+    expect(formatDuration("2026-06-22T10:00:05Z", "2026-06-22T10:00:00Z")).toBe(
+      "0s",
+    );
   });
 });
 

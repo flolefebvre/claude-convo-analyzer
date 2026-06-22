@@ -46,3 +46,7 @@ next-env.d.ts
 
 # generated Prisma client (commit schema + migrations only)
 /src/core/prisma/generated/
+
+# local design-iteration screenshots (not source; folder tracked, shots ignored)
+/design/screenshots/*
+!/design/screenshots/.gitkeep

@@ -16,11 +16,15 @@ function summary(over: {
   path?: string;
   startedAt?: string;
   endedAt?: string;
+  costUsd?: number;
+  tokensTotal?: number;
+  unpriced?: boolean;
 }): ConversationSummary {
   const path = over.path ?? "/Users/me/dev/demo";
   // Dash-encode the path the way the core does, unless an explicit folder key
   // is supplied (so tests can force a folder identity independent of path).
   const folder = over.folder ?? path.replace(/\//g, "-");
+  const total = over.tokensTotal ?? 0;
   return {
     id: over.id,
     title: `t-${over.id}`,
@@ -28,9 +32,9 @@ function summary(over: {
     startedAt: over.startedAt ?? "2026-01-01T00:00:00.000Z",
     endedAt: over.endedAt ?? "2026-01-01T01:00:00.000Z",
     models: { dominant: "opus", distinctCount: 1 },
-    tokens: { input: 0, output: 0, cacheWrite: 0, cacheRead: 0, total: 0 },
-    costUsd: 0,
-    unpriced: false,
+    tokens: { input: total, output: 0, cacheWrite: 0, cacheRead: 0, total },
+    costUsd: over.costUsd ?? 0,
+    unpriced: over.unpriced ?? false,
     subAgentCount: 0,
     continuedFromId: null,
   };
@@ -164,6 +168,30 @@ describe("deriveFolders", () => {
     expect(ent.f1.label).not.toBe(ent.f2.label);
     expect(ent.f1.label).toContain("f1");
     expect(ent.f2.label).toContain("f2");
+  });
+
+  it("sums costUsd and total tokens across each Project's conversations", () => {
+    const rows = [
+      summary({ id: "a", folder: "fA", costUsd: 10, tokensTotal: 100 }),
+      summary({ id: "b", folder: "fA", costUsd: 5, tokensTotal: 50 }),
+      summary({ id: "c", folder: "fB", costUsd: 2, tokensTotal: 20 }),
+    ];
+    const ent = byKey(rows);
+    expect(ent.fA.costUsd).toBeCloseTo(15);
+    expect(ent.fA.tokensTotal).toBe(150);
+    expect(ent.fB.costUsd).toBeCloseTo(2);
+    expect(ent.fB.tokensTotal).toBe(20);
+  });
+
+  it("flags a Project as unpriced when ANY of its conversations is unpriced", () => {
+    const rows = [
+      summary({ id: "a", folder: "fA", costUsd: 10, unpriced: false }),
+      summary({ id: "b", folder: "fA", costUsd: 0, unpriced: true }),
+      summary({ id: "c", folder: "fB", costUsd: 3, unpriced: false }),
+    ];
+    const ent = byKey(rows);
+    expect(ent.fA.unpriced).toBe(true);
+    expect(ent.fB.unpriced).toBe(false);
   });
 });
 

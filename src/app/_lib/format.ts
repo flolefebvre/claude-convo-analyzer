@@ -14,6 +14,30 @@ export function formatTokens(n: number): string {
 }
 
 /**
+ * Compact token count for the overview stat cards, where a full thousands-
+ * separated number would dominate the card. Abbreviates with a K/M/B suffix at
+ * one decimal place, dropping a trailing ".0" so round magnitudes stay clean:
+ *   999 -> "999", 1_500 -> "1.5K", 2_000 -> "2K", 1_260_000_000 -> "1.3B".
+ * Below 1,000 the plain integer is returned (no suffix).
+ */
+export function formatCompactTokens(n: number): string {
+  const abs = Math.abs(n);
+  const units: { limit: number; suffix: string }[] = [
+    { limit: 1e9, suffix: "B" },
+    { limit: 1e6, suffix: "M" },
+    { limit: 1e3, suffix: "K" },
+  ];
+  for (const { limit, suffix } of units) {
+    if (abs >= limit) {
+      const scaled = n / limit;
+      // One decimal, then strip a trailing ".0" (e.g. "2.0K" -> "2K").
+      return `${scaled.toFixed(1).replace(/\.0$/, "")}${suffix}`;
+    }
+  }
+  return Math.round(n).toString();
+}
+
+/**
  * USD with adaptive precision so small costs stay legible.
  *
  * Rule:
@@ -66,6 +90,75 @@ export function formatDate(
   if (Number.isNaN(date.getTime())) return { label: "—", absolute: "" };
 
   return { label: relativeLabel(date, now), absolute: absoluteLabel(date) };
+}
+
+/**
+ * Compact activity-range label for the overview band header, formatted in UTC
+ * so it is deterministic regardless of host timezone. Endpoints are ISO strings
+ * (or `""` for unknown):
+ *   - both empty                 -> ""
+ *   - same UTC day / one empty   -> a single date  ("Jun 22 2026")
+ *   - same year                  -> year shown once ("Jun 2 – Jun 22 2026")
+ *   - spans years                -> both years      ("Dec 30 2025 – Jun 22 2026")
+ */
+export function formatDateRange(earliest: string, latest: string): string {
+  const start = parseUtc(earliest);
+  const end = parseUtc(latest);
+  if (!start && !end) return "";
+  // Tolerate a missing endpoint: collapse to whichever date we know.
+  if (!start || !end) return dayWithYear((start ?? end) as Date);
+
+  const sameDay =
+    start.getUTCFullYear() === end.getUTCFullYear() &&
+    start.getUTCMonth() === end.getUTCMonth() &&
+    start.getUTCDate() === end.getUTCDate();
+  if (sameDay) return dayWithYear(end);
+
+  const sameYear = start.getUTCFullYear() === end.getUTCFullYear();
+  // Within one year the start omits the (repeated) year; the end always carries it.
+  const startLabel = sameYear ? dayNoYear(start) : dayWithYear(start);
+  return `${startLabel} – ${dayWithYear(end)}`;
+}
+
+/**
+ * Elapsed wall-clock span between two ISO timestamps, for the detail panel's
+ * summary line. Returns "" if either endpoint is missing/unparseable; otherwise
+ * the coarsest readable form, clamping a negative span to zero:
+ *   - < 1 min  -> "30s"
+ *   - < 1 hour -> "45m" (whole minutes)
+ *   - >= 1 hour-> "1h 20m", dropping a trailing zero minute ("2h")
+ */
+export function formatDuration(startedAt: string, endedAt: string): string {
+  const start = parseUtc(startedAt);
+  const end = parseUtc(endedAt);
+  if (!start || !end) return "";
+
+  const seconds = Math.max(0, Math.floor((end.getTime() - start.getTime()) / 1000));
+  if (seconds < 60) return `${seconds}s`;
+
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+
+  const hours = Math.floor(minutes / 60);
+  const remMinutes = minutes % 60;
+  return remMinutes === 0 ? `${hours}h` : `${hours}h ${remMinutes}m`;
+}
+
+/** Parse an ISO string to a Date, or null for empty/unparseable input. */
+function parseUtc(iso: string): Date | null {
+  if (!iso) return null;
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/** "Jun 22" — month + day, UTC. */
+function dayNoYear(date: Date): string {
+  return `${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}`;
+}
+
+/** "Jun 22 2026" — month + day + year, UTC. */
+function dayWithYear(date: Date): string {
+  return `${dayNoYear(date)} ${date.getUTCFullYear()}`;
 }
 
 const MONTHS = [

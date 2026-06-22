@@ -54,9 +54,12 @@ export function SidebarLink({
       title={title}
       aria-current={active ? "true" : undefined}
       className={cn(
-        "flex items-center justify-between gap-2 rounded-md px-3 py-2 text-sm transition-colors",
+        // A block (not inline-flex) so each entry can stack its label/cost over a
+        // cost bar. The active scope gets a faint clay wash + a clay left marker
+        // (the `before` bar) — the signature accent, used sparingly.
+        "relative block rounded-md px-3 py-2 text-sm transition-colors",
         active
-          ? "bg-muted font-medium text-foreground"
+          ? "bg-cost-muted text-foreground before:absolute before:top-1/2 before:left-0 before:h-7 before:w-[3px] before:-translate-y-1/2 before:rounded-r before:bg-cost"
           : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
       )}
     >
