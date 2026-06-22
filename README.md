@@ -30,8 +30,8 @@ Expand any row for the per-model, per-skill, and per-sub-agent cost breakdown:
 ## Getting started
 
 ```bash
-git clone https://github.com/flolefebvre/claude-conv-analyzer.git
-cd claude-conv-analyzer
+git clone https://github.com/flolefebvre/claude-convo-analyzer.git
+cd claude-convo-analyzer
 pnpm install      # also generates the Prisma client (postinstall)
 pnpm build
 pnpm start

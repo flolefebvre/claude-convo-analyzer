@@ -1,12 +1,12 @@
 {
-  "name": "claude-conv-analyzer",
+  "name": "claude-convo-analyzer",
   "version": "0.1.0",
   "private": true,
   "description": "A local-only web app that analyzes your Claude Code conversation logs for per-conversation token usage and cost.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/flolefebvre/claude-conv-analyzer.git"
+    "url": "git+https://github.com/flolefebvre/claude-convo-analyzer.git"
   },
   "scripts": {
     "dev": "next dev",
