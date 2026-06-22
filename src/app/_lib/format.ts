@@ -6,8 +6,6 @@
 // boundary). Everything here takes plain data and returns plain strings/objects
 // so it can be unit-tested in the node vitest environment.
 
-import type { Tokens } from "@/core/cost";
-
 /** Integer token count rendered with locale thousands separators. */
 export function formatTokens(n: number): string {
   return Math.round(n).toLocaleString("en-US");
@@ -214,46 +212,3 @@ function absoluteLabel(date: Date): string {
   }).format(date);
 }
 
-/** The minimal row shape {@link grandTotal} needs — a structural subset of
- * the core `ConversationSummary`, so callers can pass full summaries. */
-export type GrandTotalRow = {
-  tokens: Tokens;
-  costUsd: number;
-  unpriced: boolean;
-};
-
-/** Aggregate of a set of conversation rows for the table's footer. */
-export type GrandTotal = {
-  tokens: Tokens;
-  costUsd: number;
-  hasUnpriced: boolean;
-};
-
-/**
- * Sum tokens by bucket and costUsd across rows, flagging `hasUnpriced` if ANY
- * row is unpriced (so the UI can mark the total as a lower bound). Pure: no
- * mutation of inputs.
- */
-export function grandTotal(rows: readonly GrandTotalRow[]): GrandTotal {
-  const tokens: Tokens = {
-    input: 0,
-    output: 0,
-    cacheWrite: 0,
-    cacheRead: 0,
-    total: 0,
-  };
-  let costUsd = 0;
-  let hasUnpriced = false;
-
-  for (const row of rows) {
-    tokens.input += row.tokens.input;
-    tokens.output += row.tokens.output;
-    tokens.cacheWrite += row.tokens.cacheWrite;
-    tokens.cacheRead += row.tokens.cacheRead;
-    tokens.total += row.tokens.total;
-    costUsd += row.costUsd;
-    if (row.unpriced) hasUnpriced = true;
-  }
-
-  return { tokens, costUsd, hasUnpriced };
-}

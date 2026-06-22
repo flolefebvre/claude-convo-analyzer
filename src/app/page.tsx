@@ -20,22 +20,14 @@ import { Suspense } from "react";
 import { ConversationRow } from "@/app/_components/conversation-row";
 import { loadConversations } from "@/app/_lib/conversations";
 import { footerLabelColSpan } from "@/app/_lib/columns";
-import {
-  type FolderEntry,
-  deriveFolders,
-  filterByFolder,
-} from "@/app/_lib/folders";
-import {
-  formatGrandTotalCost,
-  formatTokens,
-  grandTotal,
-} from "@/app/_lib/format";
+import { type FolderEntry } from "@/app/_lib/folders";
+import { formatGrandTotalCost, formatTokens } from "@/app/_lib/format";
+import { buildListView } from "@/app/_lib/list-view";
 import {
   type SortableField,
   type SortState,
   folderHref,
   resolveSort,
-  sortConversations,
   sortHref,
   sortIndicator,
 } from "@/app/_lib/sort";
@@ -88,35 +80,24 @@ async function ConversationTable({
   searchParams: Promise<PageSearchParams>;
 }) {
   const params = await searchParams;
+  // URL → resolved intent at the page edge (ADR-0004); the seam takes intent,
+  // never raw searchParams.
   const sort = resolveSort(params.sortBy, params.dir);
-  const folderParam = firstParam(params.folder);
-  // Pipeline order matters: fetch ALL rows once (deduped with the layout's
-  // sidebar read via React cache()), derive the folder set, THEN scope to the
-  // active folder, THEN sort. Filtering BEFORE sorting lets scope compose with
-  // sort. The APP is the source of truth for ordering (core's comparator only
-  // handles top-level scalars).
+  // The active scope, normalized: a non-empty key, or `undefined`/empty for
+  // "All folders". Threaded onto the header links so re-sorting keeps the scope.
+  const activeFolder = firstParam(params.folder) || undefined;
+  // Fetch ALL rows once (deduped with the layout's sidebar read via React
+  // cache()); the seam owns the order-dependent pipeline (filter BEFORE sort,
+  // one `deriveFolders` derive feeding the table breadcrumb + scope).
   const allRows = await loadConversations();
-  const folders = deriveFolders(allRows);
-  // The active scope, if any. A non-empty but unknown/stale key yields no rows
-  // (handled by the empty state below); `undefined`/empty means "All folders".
-  const activeFolder = folderParam ? folderParam : undefined;
-  const scopedRows = filterByFolder(allRows, activeFolder);
-  const rows = sortConversations(scopedRows, sort);
-  const isScoped = activeFolder !== undefined;
-  // The selected Project for the breadcrumb (its full path / label). Reuse the
-  // already-derived sidebar entries rather than re-deriving; a stale/unknown
-  // `?folder=` yields no entry (and no rows, so the empty state handles it).
-  const selectedFolder = activeFolder
-    ? folders.find((f) => f.folder === activeFolder)
-    : undefined;
+  const { rows, scoped: isScoped, selectedFolder, grandTotal: total } =
+    buildListView(allRows, { folder: activeFolder, sort });
 
   // Empty when there are genuinely no conversations OR when the active scope
   // matched nothing (unknown/stale `?folder=`, or a folder with zero rows).
   if (rows.length === 0) {
     return <EmptyState scoped={isScoped} sort={sort} />;
   }
-
-  const total = grandTotal(rows);
 
   return (
     <>

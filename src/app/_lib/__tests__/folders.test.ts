@@ -2,11 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ConversationSummary } from "@/core/refresh";
 
-import {
-  deriveFolders,
-  filterByFolder,
-  type FolderEntry,
-} from "@/app/_lib/folders";
+import { deriveFolders, type FolderEntry } from "@/app/_lib/folders";
 
 // Minimal ConversationSummary factory: each test states only the field(s) it
 // cares about (project folder/path and the two timestamps).
@@ -192,39 +188,5 @@ describe("deriveFolders", () => {
     const ent = byKey(rows);
     expect(ent.fA.unpriced).toBe(true);
     expect(ent.fB.unpriced).toBe(false);
-  });
-});
-
-describe("filterByFolder", () => {
-  const rows = [
-    summary({ id: "a", folder: "fA" }),
-    summary({ id: "b", folder: "fB" }),
-    summary({ id: "c", folder: "fA" }),
-  ];
-
-  it("returns all rows when no folder is given (undefined)", () => {
-    expect(filterByFolder(rows, undefined)).toEqual(rows);
-  });
-
-  it("returns all rows for an empty-string folder (no scope)", () => {
-    expect(filterByFolder(rows, "")).toEqual(rows);
-  });
-
-  it("returns only the matching Project's rows, preserving input order", () => {
-    const out = filterByFolder(rows, "fA");
-    expect(out.map((r) => r.id)).toEqual(["a", "c"]);
-  });
-
-  it("returns an empty array for a non-empty but unknown/stale key", () => {
-    expect(filterByFolder(rows, "fGhost")).toEqual([]);
-  });
-
-  it("does not sort — it preserves the caller's input order", () => {
-    const shuffled = [
-      summary({ id: "z", folder: "fA" }),
-      summary({ id: "m", folder: "fA" }),
-      summary({ id: "a", folder: "fA" }),
-    ];
-    expect(filterByFolder(shuffled, "fA").map((r) => r.id)).toEqual(["z", "m", "a"]);
   });
 });
