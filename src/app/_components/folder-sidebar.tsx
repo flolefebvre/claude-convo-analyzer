@@ -1,87 +1,57 @@
-// The left folder sidebar (issue #10). A SERVER component — no "use client",
-// no client JS, no onClick (ADR-0004): it renders plain <a> anchor links whose
-// hrefs carry the `?folder=` scope while preserving the active sort. State lives
-// entirely in the URL search params; navigation is server-rendered.
+// The left folder sidebar (issue #10). A SERVER component: it server-renders the
+// folder labels + counts (scope-independent — derived from ALL conversations),
+// so it lives in the root layout and persists across `?folder=`/sort navigations
+// without flashing (ADR-0004 amendment, PR #13).
+//
+// The active-entry HIGHLIGHT and the link HREFs are the client-driven pieces:
+// layouts cannot read `searchParams`, so each entry is a `<SidebarLink>`
+// ("use client") that reads the live URL via `useSearchParams` to decide active
+// state and to preserve the current sort in its href. No data filtering happens
+// on the client — that stays server-side from the URL.
 //
 // ADR-0002 boundary: this never imports core — it receives the already-derived
-// `FolderEntry[]` (from `deriveFolders`, app-zone) plus the active sort/scope as
-// plain props from the page server component.
+// `FolderEntry[]` (from `deriveFolders`, app-zone) as plain props from the layout.
 
+import { SidebarLink } from "@/app/_components/sidebar-link";
 import { type FolderEntry } from "@/app/_lib/folders";
-import { folderHref, type SortState } from "@/app/_lib/sort";
-import { cn } from "@/lib/utils-cn";
 
 /**
  * Render the folder navigation: an "All folders" entry that clears the scope,
  * then one entry per Project (newest-first, already sorted by `deriveFolders`).
- * The entry matching the active `?folder=` (or "All folders" when unscoped) is
- * highlighted. Every href preserves the active `sort` so folder composes with it.
+ * The active entry + sort-preserving hrefs are resolved client-side per entry
+ * (`SidebarLink`/`useSearchParams`); labels and counts are server-rendered here.
  */
 export function FolderSidebar({
   folders,
-  activeFolder,
-  sort,
   totalCount,
 }: {
   folders: FolderEntry[];
-  /** The active `?folder=` key, or `undefined` when unscoped ("All folders"). */
-  activeFolder: string | undefined;
-  sort: SortState;
   /** Total conversation count across all Projects (the "All folders" count). */
   totalCount: number;
 }) {
   return (
     <nav aria-label="Folders" className="flex flex-col gap-1">
-      <SidebarLink
-        href={folderHref(undefined, sort)}
-        label="All folders"
-        count={totalCount}
-        active={activeFolder === undefined}
-      />
+      <SidebarLink folder={null}>
+        <SidebarRow label="All folders" count={totalCount} />
+      </SidebarLink>
       {folders.map((entry) => (
-        <SidebarLink
-          key={entry.folder}
-          href={folderHref(entry.folder, sort)}
-          label={entry.label}
-          title={entry.path}
-          count={entry.count}
-          active={entry.folder === activeFolder}
-        />
+        <SidebarLink key={entry.folder} folder={entry.folder} title={entry.path}>
+          <SidebarRow label={entry.label} count={entry.count} />
+        </SidebarLink>
       ))}
     </nav>
   );
 }
 
-/** A single sidebar anchor: friendly label on the left, count badge on the right. */
-function SidebarLink({
-  href,
-  label,
-  title,
-  count,
-  active,
-}: {
-  href: string;
-  label: string;
-  title?: string;
-  count: number;
-  active: boolean;
-}) {
+/** The server-rendered contents of a sidebar entry: friendly label on the left,
+ *  count badge on the right. Passed as `children` to the client `SidebarLink`. */
+function SidebarRow({ label, count }: { label: string; count: number }) {
   return (
-    <a
-      href={href}
-      title={title}
-      aria-current={active ? "true" : undefined}
-      className={cn(
-        "flex items-center justify-between gap-2 rounded-md px-3 py-2 text-sm transition-colors",
-        active
-          ? "bg-muted font-medium text-foreground"
-          : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
-      )}
-    >
+    <>
       <span className="truncate">{label}</span>
       <span className="shrink-0 tabular-nums text-xs text-muted-foreground">
         {count}
       </span>
-    </a>
+    </>
   );
 }

@@ -1,23 +1,24 @@
 // Conversation list — the app's single page (issue #3). A React Server
-// Component: it reads the core read API (`listConversations`) at request time
-// and renders a sortable shadcn table with a grand-total footer. Sorting is
-// server-side via search-param links (no client JS); the pure sort/label logic
-// lives in `@/app/_lib/sort` and is unit-tested there.
+// Component: it reads the active scope + sort from `searchParams`, fetches the
+// rows via the cached app-zone reader, and renders a sortable shadcn table with
+// a grand-total footer. The persistent app shell (header + sidebar) lives in the
+// root layout (PR #13); the page renders ONLY the table region. Sorting and
+// scoping are server-side via search-param links (no front-end data filtering —
+// ADR-0004); the pure sort/label logic lives in `@/app/_lib/sort`.
 //
-// ADR-0002 boundary: core is imported ONLY here (a server component). The
-// shadcn Table/Button are client components but receive plain serializable
-// props/children — they never import core.
+// ADR-0002 boundary: the core read is reached through `loadConversations`
+// (app-zone), not a direct core import. The shadcn Table/Button + `next/link`
+// `<Link>` are client components but receive plain serializable props/children.
 //
 // `cacheComponents` (PPR) is on, so the request-time `searchParams` read is
 // wrapped in <Suspense>: the page shell prerenders, the data table streams in.
+// `loadConversations` defers the DB read out of prerendering (connection()).
 
-import { connection } from "next/server";
+import Link from "next/link";
 import { Suspense } from "react";
 
-import { listConversations } from "@/core/refresh";
 import { ConversationRow } from "@/app/_components/conversation-row";
-import { FolderSidebar } from "@/app/_components/folder-sidebar";
-import { RefreshButton } from "@/app/_components/refresh-button";
+import { loadConversations } from "@/app/_lib/conversations";
 import { footerLabelColSpan } from "@/app/_lib/columns";
 import {
   type FolderEntry,
@@ -65,35 +66,21 @@ export default function Page({
   searchParams: Promise<PageSearchParams>;
 }) {
   return (
-    <main className="mx-auto w-full max-w-7xl px-6 py-10">
-      <header className="mb-6 flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Claude Conversation Analyzer
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Every conversation from your local Claude Code logs, with token and
-            cost rollups.
-          </p>
-        </div>
-        {/* Slice 3: the Refresh control. A client component that calls the
-            refreshConversations server action; the page stays a server component. */}
-        <div data-slot="refresh-action">
-          <RefreshButton />
-        </div>
-      </header>
-
-      <Suspense fallback={<p className="text-sm text-muted-foreground">Loading conversations…</p>}>
-        <ConversationTable searchParams={searchParams} />
-      </Suspense>
-    </main>
+    <Suspense
+      fallback={
+        <p className="text-sm text-muted-foreground">Loading conversations…</p>
+      }
+    >
+      <ConversationTable searchParams={searchParams} />
+    </Suspense>
   );
 }
 
 /**
- * Reads the active sort from `searchParams` and the rows from the core, then
- * renders the table (or the empty state). Kept separate from {@link Page} so the
- * request-time data fetch sits inside the page's <Suspense> boundary (PPR).
+ * Reads the active sort + scope from `searchParams` and the rows from the cached
+ * app-zone reader, then renders the table (or the empty state). Kept separate
+ * from {@link Page} so the request-time data fetch sits inside the page's
+ * <Suspense> boundary (PPR).
  */
 async function ConversationTable({
   searchParams,
@@ -103,17 +90,12 @@ async function ConversationTable({
   const params = await searchParams;
   const sort = resolveSort(params.sortBy, params.dir);
   const folderParam = firstParam(params.folder);
-  // Exclude the synchronous better-sqlite3 query from prerendering: with Cache
-  // Components on, sync DB drivers otherwise complete at build time. connection()
-  // stops prerendering here so the read runs only on a real request (Next 16
-  // docs). Core itself is a top-level import — loading it opens no DB (see
-  // `import-side-effects.test.ts`); connection() is what defers the actual read.
-  await connection();
-  // Pipeline order matters: fetch ALL rows once, derive the sidebar's folder
-  // list from the unscoped set, THEN scope to the active folder, THEN sort.
-  // Filtering BEFORE sorting lets scope compose with sort. The APP is the source
-  // of truth for ordering (core's comparator only handles top-level scalars).
-  const allRows = await listConversations();
+  // Pipeline order matters: fetch ALL rows once (deduped with the layout's
+  // sidebar read via React cache()), derive the folder set, THEN scope to the
+  // active folder, THEN sort. Filtering BEFORE sorting lets scope compose with
+  // sort. The APP is the source of truth for ordering (core's comparator only
+  // handles top-level scalars).
+  const allRows = await loadConversations();
   const folders = deriveFolders(allRows);
   // The active scope, if any. A non-empty but unknown/stale key yields no rows
   // (handled by the empty state below); `undefined`/empty means "All folders".
@@ -131,36 +113,16 @@ async function ConversationTable({
   // Empty when there are genuinely no conversations OR when the active scope
   // matched nothing (unknown/stale `?folder=`, or a folder with zero rows).
   if (rows.length === 0) {
-    return (
-      <Layout sidebar={
-        <FolderSidebar
-          folders={folders}
-          activeFolder={activeFolder}
-          sort={sort}
-          totalCount={allRows.length}
-        />
-      }>
-        <EmptyState scoped={activeFolder !== undefined} sort={sort} />
-      </Layout>
-    );
+    return <EmptyState scoped={isScoped} sort={sort} />;
   }
 
   const total = grandTotal(rows);
 
   return (
-    <Layout sidebar={
-      <FolderSidebar
-        folders={folders}
-        activeFolder={activeFolder}
-        sort={sort}
-        totalCount={allRows.length}
-      />
-    }>
+    <>
       {/* When scoped, every row shares one Project: show its full path once as a
           breadcrumb (with a way back to all folders) instead of a Folder column. */}
-      {selectedFolder && (
-        <FolderBreadcrumb folder={selectedFolder} sort={sort} />
-      )}
+      {selectedFolder && <FolderBreadcrumb folder={selectedFolder} sort={sort} />}
 
       <div className="rounded-lg border">
         <Table>
@@ -233,23 +195,7 @@ async function ConversationTable({
           </TableFooter>
         </Table>
       </div>
-    </Layout>
-  );
-}
-
-/** Two-column shell: a left folder sidebar + the main table region. */
-function Layout({
-  sidebar,
-  children,
-}: {
-  sidebar: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex flex-col gap-6 md:flex-row md:items-start">
-      <aside className="w-full shrink-0 md:w-64">{sidebar}</aside>
-      <div className="min-w-0 flex-1">{children}</div>
-    </div>
+    </>
   );
 }
 
@@ -267,12 +213,12 @@ function EmptyState({ scoped, sort }: { scoped: boolean; sort: SortState }) {
           <p className="text-sm text-muted-foreground">
             No conversations in this folder.
           </p>
-          <a
+          <Link
             href={folderHref(undefined, sort)}
             className="mt-3 inline-block text-sm font-medium hover:underline"
           >
             Clear filter — show all folders
-          </a>
+          </Link>
         </>
       ) : (
         <p className="text-sm text-muted-foreground">
@@ -300,12 +246,12 @@ function FolderBreadcrumb({
       aria-label="Folder scope"
       className="mb-3 flex flex-wrap items-center gap-2 text-sm"
     >
-      <a
+      <Link
         href={folderHref(undefined, sort)}
         className="text-muted-foreground hover:underline"
       >
         All folders
-      </a>
+      </Link>
       <span aria-hidden className="text-muted-foreground">
         /
       </span>
@@ -343,7 +289,7 @@ function SortableHead({
       : "none";
   return (
     <TableHead className={className} aria-sort={ariaSort}>
-      <a
+      <Link
         href={sortHref(field, sort, folder)}
         className="inline-flex items-center gap-1 hover:underline"
       >
@@ -353,8 +299,7 @@ function SortableHead({
             {indicator}
           </span>
         )}
-      </a>
+      </Link>
     </TableHead>
   );
 }
-
