@@ -15,14 +15,14 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState, useTransition } from "react";
 
 import { getConversationDetail } from "@/app/actions";
-import { formatCost, formatTokens } from "@/app/_lib/format";
+import { formatCost, formatDate, formatTokens } from "@/app/_lib/format";
 import { detailSections } from "@/app/_lib/detail";
 import { modelLabel } from "@/app/_lib/sort";
 import { TableCell, TableRow } from "@/components/ui/table";
 import type { ConversationDetail, ConversationSummary } from "@/core/refresh";
 
 /** The number of list columns — the detail panel spans all of them. */
-const COLUMN_COUNT = 9;
+const COLUMN_COUNT = 6;
 
 type DetailState =
   | { status: "idle" }
@@ -36,6 +36,7 @@ export function ConversationRow({ row }: { row: ConversationSummary }) {
   const [detail, setDetail] = useState<DetailState>({ status: "idle" });
   const [, startTransition] = useTransition();
   const model = modelLabel(row.models);
+  const date = formatDate(row.startedAt);
 
   function toggle() {
     const next = !expanded;
@@ -62,6 +63,12 @@ export function ConversationRow({ row }: { row: ConversationSummary }) {
   return (
     <>
       <TableRow>
+        <TableCell
+          {...(date.absolute ? { title: date.absolute } : {})}
+          className="text-muted-foreground tabular-nums"
+        >
+          {date.label}
+        </TableCell>
         <TableCell title={row.project.path} className="text-muted-foreground">
           <button
             type="button"
@@ -94,18 +101,6 @@ export function ConversationRow({ row }: { row: ConversationSummary }) {
           </span>
         </TableCell>
         <TableCell className="text-right tabular-nums">
-          {formatTokens(row.tokens.input)}
-        </TableCell>
-        <TableCell className="text-right tabular-nums">
-          {formatTokens(row.tokens.output)}
-        </TableCell>
-        <TableCell className="text-right tabular-nums">
-          {formatTokens(row.tokens.cacheWrite)}
-        </TableCell>
-        <TableCell className="text-right tabular-nums">
-          {formatTokens(row.tokens.cacheRead)}
-        </TableCell>
-        <TableCell className="text-right tabular-nums">
           {formatTokens(row.tokens.total)}
         </TableCell>
         <TableCell className="text-right tabular-nums">
@@ -122,7 +117,7 @@ export function ConversationRow({ row }: { row: ConversationSummary }) {
       {expanded && (
         <TableRow>
           <TableCell colSpan={COLUMN_COUNT} className="bg-muted/30 p-0">
-            <DetailPanel state={detail} />
+            <DetailPanel state={detail} tokens={row.tokens} />
           </TableCell>
         </TableRow>
       )}
@@ -130,25 +125,64 @@ export function ConversationRow({ row }: { row: ConversationSummary }) {
   );
 }
 
-/** Render the loading / error / empty / loaded states of the detail panel. */
-function DetailPanel({ state }: { state: DetailState }) {
+/**
+ * Render the detail panel. The Token breakdown renders IMMEDIATELY from the row
+ * summary's `tokens` (no fetch); the lazily-fetched sections (Per-model /
+ * Sub-agents / Per-Skill) show their own loading / error / empty / loaded state.
+ */
+function DetailPanel({
+  state,
+  tokens,
+}: {
+  state: DetailState;
+  tokens: ConversationSummary["tokens"];
+}) {
+  return (
+    <div className="grid gap-6 px-4 py-4 md:grid-cols-3">
+      <Section title="Token breakdown">
+        <Breakdown
+          head={["Bucket", "Tokens"]}
+          rows={[
+            { key: "input", cells: ["Input", formatTokens(tokens.input)] },
+            { key: "output", cells: ["Output", formatTokens(tokens.output)] },
+            {
+              key: "cacheWrite",
+              cells: ["Cache-write", formatTokens(tokens.cacheWrite)],
+            },
+            {
+              key: "cacheRead",
+              cells: ["Cache-read", formatTokens(tokens.cacheRead)],
+            },
+          ]}
+        />
+      </Section>
+      <LazyDetailSections state={state} />
+    </div>
+  );
+}
+
+/** The detail sections fetched on first expand: loading / error / empty / loaded. */
+function LazyDetailSections({ state }: { state: DetailState }) {
   if (state.status === "loading" || state.status === "idle") {
     return (
-      <p className="px-4 py-3 text-sm text-muted-foreground" aria-live="polite">
+      <p
+        className="text-sm text-muted-foreground md:col-span-2"
+        aria-live="polite"
+      >
         Loading details…
       </p>
     );
   }
   if (state.status === "error") {
     return (
-      <p className="px-4 py-3 text-sm text-destructive" role="alert">
+      <p className="text-sm text-destructive md:col-span-2" role="alert">
         Could not load details. Try again.
       </p>
     );
   }
   if (state.status === "empty") {
     return (
-      <p className="px-4 py-3 text-sm text-muted-foreground">
+      <p className="text-sm text-muted-foreground md:col-span-2">
         No detail available for this conversation.
       </p>
     );
@@ -156,7 +190,7 @@ function DetailPanel({ state }: { state: DetailState }) {
 
   const sections = detailSections(state.detail);
   return (
-    <div className="grid gap-6 px-4 py-4 md:grid-cols-3">
+    <>
       <Section title="Per-model cost">
         {sections.perModel.isEmpty ? (
           <NoneNote>No model usage.</NoneNote>
@@ -220,7 +254,7 @@ function DetailPanel({ state }: { state: DetailState }) {
           />
         )}
       </Section>
-    </div>
+    </>
   );
 }
 

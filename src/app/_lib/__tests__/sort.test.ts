@@ -14,9 +14,9 @@ import {
 } from "@/app/_lib/sort";
 
 describe("resolveSort", () => {
-  it("defaults to cost desc when no params are given", () => {
+  it("defaults to date desc when no params are given", () => {
     expect(resolveSort(undefined, undefined)).toEqual(DEFAULT_SORT);
-    expect(DEFAULT_SORT).toEqual({ sortBy: "cost", dir: "desc" });
+    expect(DEFAULT_SORT).toEqual({ sortBy: "date", dir: "desc" });
   });
 
   it("uses valid sortBy + dir from params", () => {
@@ -24,17 +24,7 @@ describe("resolveSort", () => {
   });
 
   it("honors every sortable column", () => {
-    for (const field of [
-      "folder",
-      "title",
-      "model",
-      "input",
-      "output",
-      "cacheWrite",
-      "cacheRead",
-      "total",
-      "cost",
-    ]) {
+    for (const field of ["folder", "title", "model", "date", "total", "cost"]) {
       expect(resolveSort(field, "asc")).toEqual({ sortBy: field, dir: "asc" });
     }
   });
@@ -44,6 +34,12 @@ describe("resolveSort", () => {
     expect(resolveSort("tokens", "asc")).toEqual(DEFAULT_SORT);
     expect(resolveSort("costUsd", "asc")).toEqual(DEFAULT_SORT);
     expect(resolveSort("bogus", "asc")).toEqual(DEFAULT_SORT);
+  });
+
+  it("rejects the per-token columns, which are no longer sortable", () => {
+    for (const field of ["input", "output", "cacheWrite", "cacheRead"]) {
+      expect(resolveSort(field, "asc")).toEqual(DEFAULT_SORT);
+    }
   });
 
   it("falls back to the field's default dir when dir is missing or invalid", () => {
@@ -72,12 +68,16 @@ describe("isSortableField", () => {
     expect(isSortableField("folder")).toBe(true);
     expect(isSortableField("title")).toBe(true);
     expect(isSortableField("model")).toBe(true);
-    expect(isSortableField("input")).toBe(true);
-    expect(isSortableField("output")).toBe(true);
-    expect(isSortableField("cacheWrite")).toBe(true);
-    expect(isSortableField("cacheRead")).toBe(true);
+    expect(isSortableField("date")).toBe(true);
     expect(isSortableField("total")).toBe(true);
     expect(isSortableField("cost")).toBe(true);
+  });
+
+  it("rejects the per-token columns (no longer sortable)", () => {
+    expect(isSortableField("input")).toBe(false);
+    expect(isSortableField("output")).toBe(false);
+    expect(isSortableField("cacheWrite")).toBe(false);
+    expect(isSortableField("cacheRead")).toBe(false);
   });
 
   it("rejects core field names and unknown keys", () => {
@@ -117,8 +117,8 @@ describe("toggleSort", () => {
   });
 
   it("starts an inactive numeric column at desc", () => {
-    expect(toggleSort("input", { sortBy: "title", dir: "asc" })).toEqual({
-      sortBy: "input",
+    expect(toggleSort("total", { sortBy: "title", dir: "asc" })).toEqual({
+      sortBy: "total",
       dir: "desc",
     });
   });
@@ -193,6 +193,7 @@ function summary(over: {
   title?: string | null;
   folder?: string;
   dominant?: string;
+  startedAt?: string;
   tokens?: Partial<ConversationSummary["tokens"]>;
   costUsd?: number;
 }): ConversationSummary {
@@ -200,7 +201,7 @@ function summary(over: {
     id: over.id,
     title: over.title === undefined ? `t-${over.id}` : over.title,
     project: { folder: over.folder ?? "f", path: `/p/${over.folder ?? "f"}` },
-    startedAt: "2026-01-01T00:00:00.000Z",
+    startedAt: over.startedAt ?? "2026-01-01T00:00:00.000Z",
     endedAt: "2026-01-01T01:00:00.000Z",
     models: { dominant: over.dominant ?? "opus", distinctCount: 1 },
     tokens: {
@@ -248,35 +249,48 @@ describe("sortConversations", () => {
     ]);
   });
 
-  it("sorts a token column numerically (not lexically) in both dirs", () => {
+  it("sorts the total-tokens column numerically (not lexically) in both dirs", () => {
     const rows = [
-      summary({ id: "a", tokens: { input: 9 } }),
-      summary({ id: "b", tokens: { input: 100 } }),
-      summary({ id: "c", tokens: { input: 11 } }),
+      summary({ id: "a", tokens: { total: 9 } }),
+      summary({ id: "b", tokens: { total: 100 } }),
+      summary({ id: "c", tokens: { total: 11 } }),
     ];
     // Lexical order would put 100 < 11 < 9; numeric must put 9 < 11 < 100.
-    expect(ids(sortConversations(rows, { sortBy: "input", dir: "asc" }))).toEqual([
+    expect(ids(sortConversations(rows, { sortBy: "total", dir: "asc" }))).toEqual([
       "a",
       "c",
       "b",
     ]);
-    expect(ids(sortConversations(rows, { sortBy: "input", dir: "desc" }))).toEqual([
+    expect(ids(sortConversations(rows, { sortBy: "total", dir: "desc" }))).toEqual([
       "b",
       "c",
       "a",
     ]);
   });
 
-  it("sorts each numeric token column by its own bucket", () => {
+  it("sorts date chronologically (by timestamp) in both dirs", () => {
     const rows = [
-      summary({ id: "a", tokens: { output: 1, cacheWrite: 3, cacheRead: 2, total: 1 } }),
-      summary({ id: "b", tokens: { output: 2, cacheWrite: 1, cacheRead: 3, total: 3 } }),
-      summary({ id: "c", tokens: { output: 3, cacheWrite: 2, cacheRead: 1, total: 2 } }),
+      summary({ id: "a", startedAt: "2026-03-01T00:00:00.000Z" }),
+      summary({ id: "b", startedAt: "2026-01-01T00:00:00.000Z" }),
+      summary({ id: "c", startedAt: "2026-02-01T00:00:00.000Z" }),
     ];
-    expect(ids(sortConversations(rows, { sortBy: "output", dir: "asc" }))).toEqual(["a", "b", "c"]);
-    expect(ids(sortConversations(rows, { sortBy: "cacheWrite", dir: "asc" }))).toEqual(["b", "c", "a"]);
-    expect(ids(sortConversations(rows, { sortBy: "cacheRead", dir: "asc" }))).toEqual(["c", "a", "b"]);
-    expect(ids(sortConversations(rows, { sortBy: "total", dir: "asc" }))).toEqual(["a", "c", "b"]);
+    // asc = oldest first.
+    expect(ids(sortConversations(rows, { sortBy: "date", dir: "asc" }))).toEqual(["b", "c", "a"]);
+    // desc = newest first.
+    expect(ids(sortConversations(rows, { sortBy: "date", dir: "desc" }))).toEqual(["a", "c", "b"]);
+  });
+
+  it("sorts rows with empty/invalid startedAt last in BOTH directions", () => {
+    const rows = [
+      summary({ id: "a", startedAt: "" }),
+      summary({ id: "b", startedAt: "not-a-date" }),
+      summary({ id: "c", startedAt: "2026-01-01T00:00:00.000Z" }),
+      summary({ id: "d", startedAt: "2026-02-01T00:00:00.000Z" }),
+    ];
+    // asc: dated rows oldest→newest, then the two undateable rows (id-tiebroken).
+    expect(ids(sortConversations(rows, { sortBy: "date", dir: "asc" }))).toEqual(["c", "d", "a", "b"]);
+    // desc: dated rows newest→oldest, undateable rows still LAST (not flipped first).
+    expect(ids(sortConversations(rows, { sortBy: "date", dir: "desc" }))).toEqual(["d", "c", "a", "b"]);
   });
 
   it("sorts folder as a case-insensitive string", () => {

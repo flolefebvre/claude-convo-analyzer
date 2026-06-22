@@ -117,6 +117,9 @@ async function ConversationTable({
       <Table>
         <TableHeader>
           <TableRow>
+            <SortableHead field="date" sort={sort}>
+              Date
+            </SortableHead>
             <SortableHead field="folder" sort={sort}>
               Folder
             </SortableHead>
@@ -125,18 +128,6 @@ async function ConversationTable({
             </SortableHead>
             <SortableHead field="model" sort={sort}>
               Model(s)
-            </SortableHead>
-            <SortableHead field="input" sort={sort} className="text-right">
-              Input
-            </SortableHead>
-            <SortableHead field="output" sort={sort} className="text-right">
-              Output
-            </SortableHead>
-            <SortableHead field="cacheWrite" sort={sort} className="text-right">
-              Cache-write
-            </SortableHead>
-            <SortableHead field="cacheRead" sort={sort} className="text-right">
-              Cache-read
             </SortableHead>
             <SortableHead field="total" sort={sort} className="text-right">
               Total
@@ -155,20 +146,8 @@ async function ConversationTable({
 
         <TableFooter>
           <TableRow>
-            <TableCell colSpan={3} className="font-medium">
+            <TableCell colSpan={4} className="font-medium">
               {rows.length} conversation{rows.length === 1 ? "" : "s"}
-            </TableCell>
-            <TableCell className="text-right tabular-nums">
-              {formatTokens(total.tokens.input)}
-            </TableCell>
-            <TableCell className="text-right tabular-nums">
-              {formatTokens(total.tokens.output)}
-            </TableCell>
-            <TableCell className="text-right tabular-nums">
-              {formatTokens(total.tokens.cacheWrite)}
-            </TableCell>
-            <TableCell className="text-right tabular-nums">
-              {formatTokens(total.tokens.cacheRead)}
             </TableCell>
             <TableCell className="text-right tabular-nums">
               {formatTokens(total.tokens.total)}
