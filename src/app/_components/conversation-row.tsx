@@ -158,7 +158,11 @@ function DetailPanel({
   tokens: ConversationSummary["tokens"];
 }) {
   return (
-    <div className="grid gap-6 px-4 py-4 md:grid-cols-3">
+    // flex-wrap (not a fixed 3-col grid) so each table claims the width it
+    // needs and wraps to the next line — a 4-column table like Sub-agents no
+    // longer gets squeezed into a third of the panel. overflow-x-auto is a
+    // last-resort safety net for viewports narrower than a single table.
+    <div className="flex flex-wrap gap-x-12 gap-y-6 overflow-x-auto px-4 py-4">
       <Section title="Token breakdown">
         <Breakdown
           head={["Bucket", "Tokens"]}
@@ -185,24 +189,21 @@ function DetailPanel({
 function LazyDetailSections({ state }: { state: DetailState }) {
   if (state.status === "loading" || state.status === "idle") {
     return (
-      <p
-        className="text-sm text-muted-foreground md:col-span-2"
-        aria-live="polite"
-      >
+      <p className="basis-full text-sm text-muted-foreground" aria-live="polite">
         Loading details…
       </p>
     );
   }
   if (state.status === "error") {
     return (
-      <p className="text-sm text-destructive md:col-span-2" role="alert">
+      <p className="basis-full text-sm text-destructive" role="alert">
         Could not load details. Try again.
       </p>
     );
   }
   if (state.status === "empty") {
     return (
-      <p className="text-sm text-muted-foreground md:col-span-2">
+      <p className="basis-full text-sm text-muted-foreground">
         No detail available for this conversation.
       </p>
     );
@@ -309,13 +310,19 @@ function Breakdown({
   rows: { key: string; cells: React.ReactNode[] }[];
 }) {
   return (
-    <table className="w-full text-sm">
+    // Natural width (no w-full): the table sizes to its content so nothing is
+    // clipped or squeezed. Non-first columns get left padding to separate the
+    // label from the numeric columns, and whitespace-nowrap keeps cells on one
+    // line. The panel's flex-wrap gives each table the room it needs.
+    <table className="text-sm whitespace-nowrap">
       <thead>
         <tr className="text-muted-foreground">
           {head.map((h, i) => (
             <th
               key={h}
-              className={i === 0 ? "text-left font-normal" : "text-right font-normal"}
+              className={
+                i === 0 ? "text-left font-normal" : "pl-8 text-right font-normal"
+              }
             >
               {h}
             </th>
@@ -331,7 +338,7 @@ function Breakdown({
                 className={
                   i === 0
                     ? "py-1 text-left"
-                    : "py-1 text-right tabular-nums"
+                    : "py-1 pl-8 text-right tabular-nums"
                 }
               >
                 {cell}
