@@ -15,14 +15,13 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState, useTransition } from "react";
 
 import { getConversationDetail } from "@/app/actions";
+import { columnCount } from "@/app/_lib/columns";
+import { friendlyFolderName } from "@/app/_lib/folders";
 import { formatCost, formatDate, formatTokens } from "@/app/_lib/format";
 import { detailSections } from "@/app/_lib/detail";
 import { modelLabel } from "@/app/_lib/sort";
 import { TableCell, TableRow } from "@/components/ui/table";
 import type { ConversationDetail, ConversationSummary } from "@/core/refresh";
-
-/** The number of list columns — the detail panel spans all of them. */
-const COLUMN_COUNT = 6;
 
 type DetailState =
   | { status: "idle" }
@@ -31,7 +30,18 @@ type DetailState =
   | { status: "empty" }
   | { status: "error" };
 
-export function ConversationRow({ row }: { row: ConversationSummary }) {
+export function ConversationRow({
+  row,
+  // `scoped` is true when the table is filtered to a single Project (an active
+  // `?folder=`). When scoped, every visible row shares that Project, so the
+  // Folder cell is redundant and hidden — the page shows the path once as a
+  // breadcrumb instead. The expand toggle therefore lives on the Date cell so
+  // rows stay expandable in BOTH states.
+  scoped = false,
+}: {
+  row: ConversationSummary;
+  scoped?: boolean;
+}) {
   const [expanded, setExpanded] = useState(false);
   const [detail, setDetail] = useState<DetailState>({ status: "idle" });
   const [, startTransition] = useTransition();
@@ -67,9 +77,8 @@ export function ConversationRow({ row }: { row: ConversationSummary }) {
           {...(date.absolute ? { title: date.absolute } : {})}
           className="text-muted-foreground tabular-nums"
         >
-          {date.label}
-        </TableCell>
-        <TableCell title={row.project.path} className="text-muted-foreground">
+          {/* Expand toggle lives here so it works whether or not the Folder
+              cell is rendered (it's hidden when scoped). */}
           <button
             type="button"
             onClick={toggle}
@@ -84,9 +93,22 @@ export function ConversationRow({ row }: { row: ConversationSummary }) {
             <span className="sr-only">
               {expanded ? "Collapse" : "Expand"} conversation details
             </span>
-            {row.project.folder}
+            {date.label}
           </button>
         </TableCell>
+        {/* When scoped to a single Project the Folder column is hidden (the page
+            shows the path once as a breadcrumb). When unscoped, a two-line cell:
+            the friendly basename prominent, the full Project path muted beneath. */}
+        {!scoped && (
+          <TableCell title={row.project.path} className="align-top">
+            <span className="block font-medium">
+              {friendlyFolderName(row.project.path)}
+            </span>
+            <span className="block text-xs text-muted-foreground">
+              {row.project.path}
+            </span>
+          </TableCell>
+        )}
         <TableCell className="max-w-xs truncate font-medium">
           {row.title ?? <span className="text-muted-foreground">{row.id}</span>}
         </TableCell>
@@ -116,7 +138,7 @@ export function ConversationRow({ row }: { row: ConversationSummary }) {
 
       {expanded && (
         <TableRow>
-          <TableCell colSpan={COLUMN_COUNT} className="bg-muted/30 p-0">
+          <TableCell colSpan={columnCount(scoped)} className="bg-muted/30 p-0">
             <DetailPanel state={detail} tokens={row.tokens} />
           </TableCell>
         </TableRow>

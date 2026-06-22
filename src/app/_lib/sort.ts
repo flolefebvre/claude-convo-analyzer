@@ -134,10 +134,41 @@ export function toggleSort(field: SortableField, current: SortState): SortState 
   return { sortBy: field, dir: defaultDirFor(field) };
 }
 
-/** Query-string href for a sortable header link (toggles via {@link toggleSort}). */
-export function sortHref(field: SortableField, current: SortState): string {
-  const next = toggleSort(field, current);
-  return `?sortBy=${next.sortBy}&dir=${next.dir}`;
+/**
+ * Build the page's query string from a sort state and an optional folder scope,
+ * so both axes compose: sort links keep the active folder and folder links keep
+ * the active sort. `folder` is omitted (cleared) when `undefined`/empty.
+ * `URLSearchParams` handles value encoding.
+ */
+function buildHref(sort: SortState, folder: string | undefined): string {
+  const params = new URLSearchParams({ sortBy: sort.sortBy, dir: sort.dir });
+  if (folder) params.set("folder", folder);
+  return `?${params.toString()}`;
+}
+
+/**
+ * Query-string href for a sortable header link (toggles via {@link toggleSort}).
+ * Threads the active `folder` scope through so re-sorting keeps the current
+ * folder selection.
+ */
+export function sortHref(
+  field: SortableField,
+  current: SortState,
+  folder?: string,
+): string {
+  return buildHref(toggleSort(field, current), folder);
+}
+
+/**
+ * Query-string href for a sidebar folder link: scopes to `folder` (or clears
+ * the scope, "All folders", when `undefined`/empty) while PRESERVING the active
+ * sort, so changing folder composes with the current sort.
+ */
+export function folderHref(
+  folder: string | undefined,
+  current: SortState,
+): string {
+  return buildHref(current, folder);
 }
 
 /** Active-sort arrow for a header, or "" when the field is not the active sort. */
