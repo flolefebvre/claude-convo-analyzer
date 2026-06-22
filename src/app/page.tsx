@@ -16,7 +16,9 @@ import { Suspense } from "react";
 
 import { listConversations } from "@/core/refresh";
 import { ConversationRow } from "@/app/_components/conversation-row";
+import { FolderSidebar } from "@/app/_components/folder-sidebar";
 import { RefreshButton } from "@/app/_components/refresh-button";
+import { deriveFolders, filterByFolder } from "@/app/_lib/folders";
 import {
   formatGrandTotalCost,
   formatTokens,
@@ -25,6 +27,7 @@ import {
 import {
   type SortableField,
   type SortState,
+  folderHref,
   resolveSort,
   sortConversations,
   sortHref,
@@ -43,7 +46,13 @@ import {
 type PageSearchParams = {
   sortBy?: string | string[];
   dir?: string | string[];
+  folder?: string | string[];
 };
+
+/** First value of a `searchParams` entry (Next gives string | string[]). */
+function firstParam(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
 
 export default function Page({
   searchParams,
@@ -88,85 +97,171 @@ async function ConversationTable({
 }) {
   const params = await searchParams;
   const sort = resolveSort(params.sortBy, params.dir);
+  const folderParam = firstParam(params.folder);
   // Exclude the synchronous better-sqlite3 query from prerendering: with Cache
   // Components on, sync DB drivers otherwise complete at build time. connection()
   // stops prerendering here so the read runs only on a real request (Next 16
   // docs). Core itself is a top-level import — loading it opens no DB (see
   // `import-side-effects.test.ts`); connection() is what defers the actual read.
   await connection();
-  // The APP is the source of truth for ordering (core's comparator only handles
-  // top-level scalar fields). Fetch all rows, then sort with the app-zone
-  // comparator so every column — including nested folder/model/token ones — is
-  // sortable. We don't pass sortBy/dir to core (its keys differ from ours).
-  const rows = sortConversations(await listConversations(), sort);
+  // Pipeline order matters: fetch ALL rows once, derive the sidebar's folder
+  // list from the unscoped set, THEN scope to the active folder, THEN sort.
+  // Filtering BEFORE sorting lets scope compose with sort. The APP is the source
+  // of truth for ordering (core's comparator only handles top-level scalars).
+  const allRows = await listConversations();
+  const folders = deriveFolders(allRows);
+  // The active scope, if any. A non-empty but unknown/stale key yields no rows
+  // (handled by the empty state below); `undefined`/empty means "All folders".
+  const activeFolder = folderParam ? folderParam : undefined;
+  const scoped = filterByFolder(allRows, activeFolder);
+  const rows = sortConversations(scoped, sort);
 
+  // Empty when there are genuinely no conversations OR when the active scope
+  // matched nothing (unknown/stale `?folder=`, or a folder with zero rows).
   if (rows.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed p-12 text-center">
-        <p className="text-sm text-muted-foreground">
-          No conversations yet. Click Refresh to scan your conversations.
-        </p>
-      </div>
+      <Layout sidebar={
+        <FolderSidebar
+          folders={folders}
+          activeFolder={activeFolder}
+          sort={sort}
+          totalCount={allRows.length}
+        />
+      }>
+        <EmptyState scoped={activeFolder !== undefined} sort={sort} />
+      </Layout>
     );
   }
 
   const total = grandTotal(rows);
 
   return (
-    <div className="rounded-lg border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <SortableHead field="date" sort={sort}>
-              Date
-            </SortableHead>
-            <SortableHead field="folder" sort={sort}>
-              Folder
-            </SortableHead>
-            <SortableHead field="title" sort={sort}>
-              Title
-            </SortableHead>
-            <SortableHead field="model" sort={sort}>
-              Model(s)
-            </SortableHead>
-            <SortableHead field="total" sort={sort} className="text-right">
-              Total
-            </SortableHead>
-            <SortableHead field="cost" sort={sort} className="text-right">
-              Cost
-            </SortableHead>
-          </TableRow>
-        </TableHeader>
+    <Layout sidebar={
+      <FolderSidebar
+        folders={folders}
+        activeFolder={activeFolder}
+        sort={sort}
+        totalCount={allRows.length}
+      />
+    }>
+      <div className="rounded-lg border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <SortableHead field="date" sort={sort} folder={activeFolder}>
+                Date
+              </SortableHead>
+              <SortableHead field="folder" sort={sort} folder={activeFolder}>
+                Folder
+              </SortableHead>
+              <SortableHead field="title" sort={sort} folder={activeFolder}>
+                Title
+              </SortableHead>
+              <SortableHead field="model" sort={sort} folder={activeFolder}>
+                Model(s)
+              </SortableHead>
+              <SortableHead
+                field="total"
+                sort={sort}
+                folder={activeFolder}
+                className="text-right"
+              >
+                Total
+              </SortableHead>
+              <SortableHead
+                field="cost"
+                sort={sort}
+                folder={activeFolder}
+                className="text-right"
+              >
+                Cost
+              </SortableHead>
+            </TableRow>
+          </TableHeader>
 
-        <TableBody>
-          {rows.map((row) => (
-            <ConversationRow key={row.id} row={row} />
-          ))}
-        </TableBody>
+          <TableBody>
+            {rows.map((row) => (
+              // `scoped` lets slice 3 hide the Folder column when a single
+              // Project is selected; presentation (two-line cell / breadcrumb)
+              // is slice 3's job — this only threads the flag through.
+              <ConversationRow
+                key={row.id}
+                row={row}
+                scoped={activeFolder !== undefined}
+              />
+            ))}
+          </TableBody>
 
-        <TableFooter>
-          <TableRow>
-            <TableCell colSpan={4} className="font-medium">
-              {rows.length} conversation{rows.length === 1 ? "" : "s"}
-            </TableCell>
-            <TableCell className="text-right tabular-nums">
-              {formatTokens(total.tokens.total)}
-            </TableCell>
-            <TableCell className="text-right font-medium tabular-nums">
-              {total.hasUnpriced ? (
-                <span
-                  title="Includes unpriced model usage — this total is a lower bound."
-                >
-                  {"~"}
-                  {formatGrandTotalCost(total.costUsd)}
-                </span>
-              ) : (
-                formatGrandTotalCost(total.costUsd)
-              )}
-            </TableCell>
-          </TableRow>
-        </TableFooter>
-      </Table>
+          <TableFooter>
+            <TableRow>
+              <TableCell colSpan={4} className="font-medium">
+                {rows.length} conversation{rows.length === 1 ? "" : "s"}
+              </TableCell>
+              <TableCell className="text-right tabular-nums">
+                {formatTokens(total.tokens.total)}
+              </TableCell>
+              <TableCell className="text-right font-medium tabular-nums">
+                {total.hasUnpriced ? (
+                  <span
+                    title="Includes unpriced model usage — this total is a lower bound."
+                  >
+                    {"~"}
+                    {formatGrandTotalCost(total.costUsd)}
+                  </span>
+                ) : (
+                  formatGrandTotalCost(total.costUsd)
+                )}
+              </TableCell>
+            </TableRow>
+          </TableFooter>
+        </Table>
+      </div>
+    </Layout>
+  );
+}
+
+/** Two-column shell: a left folder sidebar + the main table region. */
+function Layout({
+  sidebar,
+  children,
+}: {
+  sidebar: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-6 md:flex-row md:items-start">
+      <aside className="w-full shrink-0 md:w-64">{sidebar}</aside>
+      <div className="min-w-0 flex-1">{children}</div>
+    </div>
+  );
+}
+
+/**
+ * The table-region empty state. When scoped, the `?folder=` matched nothing
+ * (unknown/stale key or an empty Project) so we offer a clear-filter link back
+ * to "All folders" (preserving sort). When unscoped, there are simply no
+ * conversations yet.
+ */
+function EmptyState({ scoped, sort }: { scoped: boolean; sort: SortState }) {
+  return (
+    <div className="rounded-lg border border-dashed p-12 text-center">
+      {scoped ? (
+        <>
+          <p className="text-sm text-muted-foreground">
+            No conversations in this folder.
+          </p>
+          <a
+            href={folderHref(undefined, sort)}
+            className="mt-3 inline-block text-sm font-medium hover:underline"
+          >
+            Clear filter — show all folders
+          </a>
+        </>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          No conversations yet. Click Refresh to scan your conversations.
+        </p>
+      )}
     </div>
   );
 }
@@ -175,11 +270,14 @@ async function ConversationTable({
 function SortableHead({
   field,
   sort,
+  folder,
   className,
   children,
 }: {
   field: SortableField;
   sort: SortState;
+  /** The active `?folder=` scope, threaded so re-sorting keeps the folder. */
+  folder?: string;
   className?: string;
   children: React.ReactNode;
 }) {
@@ -193,7 +291,7 @@ function SortableHead({
   return (
     <TableHead className={className} aria-sort={ariaSort}>
       <a
-        href={sortHref(field, sort)}
+        href={sortHref(field, sort, folder)}
         className="inline-flex items-center gap-1 hover:underline"
       >
         {children}

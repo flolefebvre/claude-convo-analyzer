@@ -31,7 +31,18 @@ type DetailState =
   | { status: "empty" }
   | { status: "error" };
 
-export function ConversationRow({ row }: { row: ConversationSummary }) {
+export function ConversationRow({
+  row,
+  // SLICE 3 HANDOFF: `scoped` is true when the table is filtered to a single
+  // Project (an active `?folder=`). Slice 3 uses it to hide the Folder column
+  // and render the two-line cell when unscoped / breadcrumb when scoped. Slice 2
+  // only threads the flag; the current cell still renders the folder unchanged.
+  scoped = false,
+}: {
+  row: ConversationSummary;
+  scoped?: boolean;
+}) {
+  void scoped; // SLICE 3: consume this to drive the Folder-cell presentation.
   const [expanded, setExpanded] = useState(false);
   const [detail, setDetail] = useState<DetailState>({ status: "idle" });
   const [, startTransition] = useTransition();

@@ -4,6 +4,7 @@ import type { ConversationSummary } from "@/core/refresh";
 
 import {
   DEFAULT_SORT,
+  folderHref,
   isSortableField,
   modelLabel,
   resolveSort,
@@ -141,6 +142,44 @@ describe("sortHref", () => {
   it("encodes the flipped dir when re-clicking the active field", () => {
     expect(sortHref("cost", { sortBy: "cost", dir: "desc" })).toBe(
       "?sortBy=cost&dir=asc",
+    );
+  });
+
+  it("preserves the active folder scope so sort composes with folder", () => {
+    expect(
+      sortHref("title", { sortBy: "cost", dir: "desc" }, "-Users-me-dev-demo"),
+    ).toBe("?sortBy=title&dir=asc&folder=-Users-me-dev-demo");
+  });
+
+  it("omits the folder param when there is no active scope", () => {
+    expect(sortHref("title", { sortBy: "cost", dir: "desc" }, undefined)).toBe(
+      "?sortBy=title&dir=asc",
+    );
+  });
+
+  it("url-encodes a folder value with special characters", () => {
+    expect(sortHref("title", DEFAULT_SORT, "a b&c")).toBe(
+      "?sortBy=title&dir=asc&folder=a+b%26c",
+    );
+  });
+});
+
+describe("folderHref", () => {
+  it("sets the folder param while preserving the active sort", () => {
+    expect(folderHref("-Users-me-dev-demo", { sortBy: "cost", dir: "desc" })).toBe(
+      "?sortBy=cost&dir=desc&folder=-Users-me-dev-demo",
+    );
+  });
+
+  it("clears the folder param (All folders) but keeps the sort", () => {
+    expect(folderHref(undefined, { sortBy: "title", dir: "asc" })).toBe(
+      "?sortBy=title&dir=asc",
+    );
+  });
+
+  it("url-encodes a folder value with special characters", () => {
+    expect(folderHref("a b&c", DEFAULT_SORT)).toBe(
+      "?sortBy=date&dir=desc&folder=a+b%26c",
     );
   });
 });
