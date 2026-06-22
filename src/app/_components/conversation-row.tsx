@@ -26,7 +26,6 @@ import { friendlyFolderName } from "@/app/_lib/folders";
 import {
   formatCompactTokens,
   formatCost,
-  formatDate,
   formatDuration,
   formatTokens,
 } from "@/app/_lib/format";
@@ -43,6 +42,13 @@ type DetailState =
 
 export function ConversationRow({
   row,
+  // The Date cell's label/title, formatted ON THE SERVER against a single
+  // request-time `now` (see page.tsx). It MUST arrive as a plain prop: this is a
+  // client component, so computing a relative "Nm ago"/"just now" label here with
+  // `new Date()` would differ between the server render and client hydration and
+  // throw a React hydration mismatch (#418) — which, inside the Refresh
+  // transition, froze the button on "Scanning…" (issue #20).
+  date,
   // `scoped` is true when the table is filtered to a single Project (an active
   // `?folder=`). When scoped, every visible row shares that Project, so the
   // Folder cell is redundant and hidden — the page shows the path once as a
@@ -51,13 +57,13 @@ export function ConversationRow({
   scoped = false,
 }: {
   row: ConversationSummary;
+  date: { label: string; absolute: string };
   scoped?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [detail, setDetail] = useState<DetailState>({ status: "idle" });
   const [, startTransition] = useTransition();
   const model = modelLabel(row.models);
-  const date = formatDate(row.startedAt);
 
   function toggle() {
     const next = !expanded;

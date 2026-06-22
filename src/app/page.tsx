@@ -21,7 +21,7 @@ import { ConversationRow } from "@/app/_components/conversation-row";
 import { loadConversations } from "@/app/_lib/conversations";
 import { footerLabelColSpan } from "@/app/_lib/columns";
 import { type FolderEntry } from "@/app/_lib/folders";
-import { formatGrandTotalCost, formatTokens } from "@/app/_lib/format";
+import { formatDate, formatGrandTotalCost, formatTokens } from "@/app/_lib/format";
 import { buildListView } from "@/app/_lib/list-view";
 import {
   type SortableField,
@@ -93,6 +93,13 @@ async function ConversationTable({
   const { rows, scoped: isScoped, selectedFolder, grandTotal: total } =
     buildListView(allRows, { folder: activeFolder, sort });
 
+  // Format every row's relative Date label against ONE request-time `now`, here
+  // on the server, and hand each row the resulting strings as plain props. The
+  // row is a client component; computing the relative label inside it would use a
+  // different `new Date()` on the server vs. on hydration and throw a React
+  // hydration mismatch (#418) that froze the Refresh button (issue #20).
+  const now = new Date();
+
   // Empty when there are genuinely no conversations OR when the active scope
   // matched nothing (unknown/stale `?folder=`, or a folder with zero rows).
   if (rows.length === 0) {
@@ -148,7 +155,12 @@ async function ConversationTable({
               // `scoped` lets slice 3 hide the Folder column when a single
               // Project is selected; presentation (two-line cell / breadcrumb)
               // is slice 3's job — this only threads the flag through.
-              <ConversationRow key={row.id} row={row} scoped={isScoped} />
+              <ConversationRow
+                key={row.id}
+                row={row}
+                date={formatDate(row.startedAt, now)}
+                scoped={isScoped}
+              />
             ))}
           </TableBody>
 
