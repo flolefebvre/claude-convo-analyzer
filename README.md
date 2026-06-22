@@ -27,6 +27,9 @@ Expand any row for the per-model, per-skill, and per-sub-agent cost breakdown:
 - Some existing Claude Code usage — the app analyzes the logs Claude Code writes
   to `~/.claude/projects`.
 
+> **Platform support:** Tested on macOS and WSL. It has **not** been tested on
+> native Windows and may not work there.
+
 ## Getting started
 
 ```bash
