@@ -40,6 +40,87 @@ export function formatGrandTotalCost(usd: number): string {
   return `$${usd.toFixed(2)}`;
 }
 
+/**
+ * Render an ISO8601 timestamp for the conversation list's Date column,
+ * returning both a compact `label` and a full `absolute` string for hover.
+ *
+ * Pure: output depends ONLY on `iso` and `now` (production omits `now`, which
+ * defaults to the wall clock). All calendar reasoning ("same day", "same year")
+ * and the absolute string are computed in **UTC** so results are deterministic
+ * regardless of the host timezone — tests pass a fixed `now` and fixed ISO
+ * inputs and get stable output.
+ *
+ * Label rules (relative to `now`):
+ *   - null / empty / unparseable -> "—" (em dash), absolute ""
+ *   - same UTC calendar day  -> "just now" (< 1 min), "Nm ago" (< 60 min),
+ *                               else "Nh ago"
+ *   - same UTC calendar year -> "MMM d"        (e.g. "Jun 19")
+ *   - earlier year           -> "MMM d yyyy"   (e.g. "Mar 4 2025")
+ */
+export function formatDate(
+  iso: string | null,
+  now: Date = new Date(),
+): { label: string; absolute: string } {
+  if (!iso) return { label: "—", absolute: "" };
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return { label: "—", absolute: "" };
+
+  return { label: relativeLabel(date, now), absolute: absoluteLabel(date) };
+}
+
+const MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+
+function relativeLabel(date: Date, now: Date): string {
+  const sameYear = date.getUTCFullYear() === now.getUTCFullYear();
+  const sameDay =
+    sameYear &&
+    date.getUTCMonth() === now.getUTCMonth() &&
+    date.getUTCDate() === now.getUTCDate();
+
+  if (sameDay) {
+    const diffMinutes = Math.floor((now.getTime() - date.getTime()) / 60_000);
+    if (diffMinutes < 1) return "just now";
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+    return `${Math.floor(diffMinutes / 60)}h ago`;
+  }
+
+  const month = MONTHS[date.getUTCMonth()];
+  const day = date.getUTCDate();
+  if (sameYear) return `${month} ${day}`;
+  return `${month} ${day} ${date.getUTCFullYear()}`;
+}
+
+/**
+ * Deterministic absolute timestamp for the hover title, formatted in UTC via a
+ * fixed Intl options object (e.g. "Jun 19, 2026, 14:30 UTC"). UTC + explicit
+ * en-US locale keeps it independent of the host timezone/locale.
+ */
+function absoluteLabel(date: Date): string {
+  return new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "UTC",
+    timeZoneName: "short",
+  }).format(date);
+}
+
 /** The minimal row shape {@link grandTotal} needs — a structural subset of
  * the core `ConversationSummary`, so callers can pass full summaries. */
 export type GrandTotalRow = {
