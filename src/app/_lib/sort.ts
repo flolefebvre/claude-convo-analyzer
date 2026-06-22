@@ -35,6 +35,18 @@ type ColumnSpec = {
 };
 
 /**
+ * Parse an ISO8601 `startedAt` to epoch milliseconds for chronological
+ * comparison. Empty string (the core's "unknown" sentinel) or any value
+ * `Date.parse` cannot read yields `null`, so those rows sort LAST in both
+ * directions via the comparator's nulls-last rule.
+ */
+function startedAtEpoch(startedAt: string): number | null {
+  if (startedAt === "") return null;
+  const epoch = Date.parse(startedAt);
+  return Number.isNaN(epoch) ? null : epoch;
+}
+
+/**
  * Every sortable column, keyed by its URL `sortBy` value. These are app column
  * keys, deliberately NOT `keyof ConversationSummary` — the app sorts, so the
  * keys describe the table's columns, not the core's field names.
@@ -55,25 +67,10 @@ const COLUMNS = {
     defaultDir: "asc",
     value: (r) => r.models.dominant,
   },
-  input: {
+  date: {
     kind: "number",
     defaultDir: "desc",
-    value: (r) => r.tokens.input,
-  },
-  output: {
-    kind: "number",
-    defaultDir: "desc",
-    value: (r) => r.tokens.output,
-  },
-  cacheWrite: {
-    kind: "number",
-    defaultDir: "desc",
-    value: (r) => r.tokens.cacheWrite,
-  },
-  cacheRead: {
-    kind: "number",
-    defaultDir: "desc",
-    value: (r) => r.tokens.cacheRead,
+    value: (r) => startedAtEpoch(r.startedAt),
   },
   total: {
     kind: "number",
@@ -90,7 +87,7 @@ const COLUMNS = {
 export type SortableField = keyof typeof COLUMNS;
 
 /** Default when the URL carries no (valid) sort params. */
-export const DEFAULT_SORT: SortState = { sortBy: "cost", dir: "desc" };
+export const DEFAULT_SORT: SortState = { sortBy: "date", dir: "desc" };
 
 /** True when `field` is one of the table's sortable columns. */
 export function isSortableField(field: string): field is SortableField {
