@@ -1,36 +1,68 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Claude Conversation Analyzer
 
-## Getting Started
+A local-only web app that reads the Claude Code conversation logs stored on your
+machine, parses them deterministically into a SQLite database, and shows you
+per-conversation token usage and cost — broken down by project, model, skill,
+and sub-agent.
 
-First, run the development server:
+**Everything stays on your machine.** The app only reads `~/.claude/projects`
+and writes a local SQLite file (`./data/analyzer.db`). Nothing is ever sent
+anywhere.
+
+## Requirements
+
+- [Node.js](https://nodejs.org) 20 or newer
+- [pnpm](https://pnpm.io)
+- Some existing Claude Code usage — the app analyzes the logs Claude Code writes
+  to `~/.claude/projects`.
+
+## Getting started
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone https://github.com/prezbar/claude-conv-analyzer.git
+cd claude-conv-analyzer
+pnpm install      # also generates the Prisma client (postinstall)
+pnpm build
+pnpm start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Then open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+On first launch the SQLite database is created and migrated automatically — no
+manual database setup. Click **Refresh** in the UI to ingest your conversation
+logs; the parse is incremental, so subsequent refreshes only read what changed.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+For live development instead of a production build:
 
-## Learn More
+```bash
+pnpm dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+## How it works
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+The app discovers each **project** (a directory where you ran Claude Code) under
+`~/.claude/projects`, parses every session's `.jsonl` transcript, and stores a
+deterministic, deduplicated token ledger. Cost is computed in application code
+from a per-model, per-token-type price list — it's a hypothetical "what these
+tokens would list for on the public API today" figure, not your actual billing.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+The domain model and the reasoning behind it are documented in
+[`CONTEXT.md`](CONTEXT.md) and the ADRs under [`docs/adr/`](docs/adr).
 
-## Deploy on Vercel
+## Development
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+The validation gate — all four must pass:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+pnpm test     # vitest
+pnpm lint     # eslint
+pnpm fallow   # dead code, cycles, duplication, complexity, core boundary
+pnpm build    # next build
+```
+
+See [`docs/agents/development.md`](docs/agents/development.md) for the testing
+approach and fixtures.
+
+## License
+
+[MIT](LICENSE)

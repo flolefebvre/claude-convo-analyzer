@@ -18,7 +18,7 @@ model Project {
   id            Int            @id @default(autoincrement())
   /// Decoded absolute launch directory (the Project's cwd).
   path          String         @unique
-  /// On-disk folder name (e.g. `-Users-prezbar-Documents-dev-pvm2-0`).
+  /// On-disk folder name (e.g. `-Users-me-Documents-dev-pvm2-0`).
   folderName    String         @map("folder_name")
   conversations Conversation[]
 

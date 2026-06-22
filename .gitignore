@@ -50,3 +50,7 @@ next-env.d.ts
 # local design-iteration screenshots (not source; folder tracked, shots ignored)
 /design/screenshots/*
 !/design/screenshots/.gitkeep
+
+# local agent dev tooling (vendored skills are personal, not part of the app)
+/.claude/
+/skills-lock.json
