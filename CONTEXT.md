@@ -13,7 +13,7 @@ contains no implementation details. Architectural decisions live in
 ### Project
 A working directory in which Claude Code was used. On disk it is one folder
 under `~/.claude/projects/`, named after the directory path with `/` replaced
-by `-` (e.g. `-Users-prezbar-Documents-dev-pvm2-0` ⇒ `/Users/prezbar/Documents/dev/pvm2.0`).
+by `-` (e.g. `-Users-me-Documents-dev-pvm2-0` ⇒ `/Users/me/Documents/dev/pvm2.0`).
 A Project contains one or more Conversations. Referred to as the **Folder** in
 the UI. Project identity is **one project per on-disk folder** (the launch
 directory); a Conversation's exact project path is read from its records' `cwd`.

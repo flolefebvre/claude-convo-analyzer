@@ -21,7 +21,7 @@ deliberately did not model** (and where to find it if we ever want it).
 ```
 
 - **Folder name** is the project's absolute cwd with `/` replaced by `-`
-  (e.g. `-Users-prezbar-Documents-dev-pvm2-0` ⇒ `/Users/prezbar/Documents/dev/pvm2.0`).
+  (e.g. `-Users-me-Documents-dev-pvm2-0` ⇒ `/Users/me/Documents/dev/pvm2.0`).
   Note this is lossy/ambiguous in theory (a real `-` vs a `/`), but each
   `assistant`/`user` record also carries an exact `cwd` field, which is the
   authoritative source for the project path. Prefer `cwd` over decoding the
