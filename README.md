@@ -63,6 +63,26 @@ tokens would list for on the public API today" figure, not your actual billing.
 The domain model and the reasoning behind it are documented in
 [`CONTEXT.md`](CONTEXT.md) and the ADRs under [`docs/adr/`](docs/adr).
 
+## Roadmap
+
+Today the app answers *"where did the tokens and cost go?"*. The next steps push
+it toward *"what actually happened in these conversations, and how do I make them
+better?"*
+
+- **Usage stats by skill, tool, and sub-agent.** Go beyond cost to behaviour:
+  how often each skill fires, which tools get used the most, how sub-agents are
+  distributed across a run — so you can see your real usage patterns at a glance,
+  not just the bill.
+
+- **Deeper conversation analysis — surfacing friction.** When running fully
+  autonomous, different sub-agents often grind on the *same* underlying problem —
+  e.g. a missing piece of context like how to invoke a command. The goal is to
+  detect these recurring friction points automatically and make them visible, so
+  a single fix (a note in `CLAUDE.md`, a better tool description) can unblock
+  every future run instead of each agent rediscovering the wall.
+
+Have an idea or a friction pattern you'd like surfaced? Open an issue.
+
 ## Development
 
 The validation gate — all four must pass:
