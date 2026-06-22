@@ -120,6 +120,30 @@ export function formatDateRange(earliest: string, latest: string): string {
   return `${startLabel} – ${dayWithYear(end)}`;
 }
 
+/**
+ * Elapsed wall-clock span between two ISO timestamps, for the detail panel's
+ * summary line. Returns "" if either endpoint is missing/unparseable; otherwise
+ * the coarsest readable form, clamping a negative span to zero:
+ *   - < 1 min  -> "30s"
+ *   - < 1 hour -> "45m" (whole minutes)
+ *   - >= 1 hour-> "1h 20m", dropping a trailing zero minute ("2h")
+ */
+export function formatDuration(startedAt: string, endedAt: string): string {
+  const start = parseUtc(startedAt);
+  const end = parseUtc(endedAt);
+  if (!start || !end) return "";
+
+  const seconds = Math.max(0, Math.floor((end.getTime() - start.getTime()) / 1000));
+  if (seconds < 60) return `${seconds}s`;
+
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+
+  const hours = Math.floor(minutes / 60);
+  const remMinutes = minutes % 60;
+  return remMinutes === 0 ? `${hours}h` : `${hours}h ${remMinutes}m`;
+}
+
 /** Parse an ISO string to a Date, or null for empty/unparseable input. */
 function parseUtc(iso: string): Date | null {
   if (!iso) return null;

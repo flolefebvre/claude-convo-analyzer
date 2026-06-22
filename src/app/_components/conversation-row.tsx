@@ -15,10 +15,21 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState, useTransition } from "react";
 
 import { getConversationDetail } from "@/app/actions";
+import { CostBar } from "@/app/_components/cost-bar";
 import { columnCount } from "@/app/_lib/columns";
+import {
+  detailSections,
+  type SubAgentGroup,
+  type SubAgentSection,
+} from "@/app/_lib/detail";
 import { friendlyFolderName } from "@/app/_lib/folders";
-import { formatCost, formatDate, formatTokens } from "@/app/_lib/format";
-import { detailSections } from "@/app/_lib/detail";
+import {
+  formatCompactTokens,
+  formatCost,
+  formatDate,
+  formatDuration,
+  formatTokens,
+} from "@/app/_lib/format";
 import { modelLabel } from "@/app/_lib/sort";
 import { TableCell, TableRow } from "@/components/ui/table";
 import type { ConversationDetail, ConversationSummary } from "@/core/refresh";
@@ -83,7 +94,7 @@ export function ConversationRow({
             type="button"
             onClick={toggle}
             aria-expanded={expanded}
-            className="inline-flex items-center gap-1.5 text-left hover:underline"
+            className="inline-flex items-center gap-1.5 rounded-sm text-left outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
           >
             {expanded ? (
               <ChevronDown className="size-3.5 shrink-0" aria-hidden />
@@ -139,7 +150,7 @@ export function ConversationRow({
       {expanded && (
         <TableRow>
           <TableCell colSpan={columnCount(scoped)} className="bg-muted/30 p-0">
-            <DetailPanel state={detail} tokens={row.tokens} />
+            <DetailPanel state={detail} row={row} />
           </TableCell>
         </TableRow>
       )}
@@ -148,64 +159,122 @@ export function ConversationRow({
 }
 
 /**
- * Render the detail panel. The Token breakdown renders IMMEDIATELY from the row
- * summary's `tokens` (no fetch); the lazily-fetched sections (Per-model /
- * Sub-agents / Per-Skill) show their own loading / error / empty / loaded state.
+ * Render the detail panel — the analysis surface for one conversation. The
+ * summary strip and the token-composition bar render IMMEDIATELY from the row
+ * summary (no fetch); the lazily-fetched cost breakdowns (Model / Sub-agents /
+ * Skill) show their own loading / error / empty / loaded state to the right.
  */
 function DetailPanel({
   state,
-  tokens,
+  row,
 }: {
   state: DetailState;
-  tokens: ConversationSummary["tokens"];
+  row: ConversationSummary;
 }) {
+  const loaded = state.status === "loaded" ? state.detail : null;
   return (
-    // flex-wrap (not a fixed 3-col grid) so each table claims the width it
-    // needs and wraps to the next line — a 4-column table like Sub-agents no
-    // longer gets squeezed into a third of the panel. overflow-x-auto is a
-    // last-resort safety net for viewports narrower than a single table.
-    <div className="flex flex-wrap gap-x-12 gap-y-6 overflow-x-auto px-4 py-4">
-      <Section title="Token breakdown">
-        <Breakdown
-          head={["Bucket", "Tokens"]}
-          rows={[
-            { key: "input", cells: ["Input", formatTokens(tokens.input)] },
-            { key: "output", cells: ["Output", formatTokens(tokens.output)] },
-            {
-              key: "cacheWrite",
-              cells: ["Cache-write", formatTokens(tokens.cacheWrite)],
-            },
-            {
-              key: "cacheRead",
-              cells: ["Cache-read", formatTokens(tokens.cacheRead)],
-            },
-          ]}
-        />
-      </Section>
-      <LazyDetailSections state={state} />
+    <div className="space-y-6 px-6 py-5">
+      <SummaryStrip row={row} detail={loaded} />
+      <div className="grid gap-x-10 gap-y-6 lg:grid-cols-[16rem_1fr]">
+        <Section title="Token composition">
+          <TokenComposition tokens={row.tokens} />
+        </Section>
+        <div className="space-y-6">
+          <LazyBreakdowns state={state} />
+        </div>
+      </div>
     </div>
   );
 }
 
-/** The detail sections fetched on first expand: loading / error / empty / loaded. */
-function LazyDetailSections({ state }: { state: DetailState }) {
+/**
+ * The orienting headline: the conversation's cost (the payload, in the cost
+ * hue) followed by a quiet meta line of the facts you'd drill into. Most facts
+ * come straight from the row summary; the Skill count needs the fetched detail,
+ * so it joins once loaded.
+ */
+function SummaryStrip({
+  row,
+  detail,
+}: {
+  row: ConversationSummary;
+  detail: ConversationDetail | null;
+}) {
+  const duration = formatDuration(row.startedAt, row.endedAt);
+  const meta = [
+    `${formatCompactTokens(row.tokens.total)} tokens`,
+    `${row.models.distinctCount} model${row.models.distinctCount === 1 ? "" : "s"}`,
+    row.subAgentCount > 0
+      ? `${row.subAgentCount} sub-agent${row.subAgentCount === 1 ? "" : "s"}`
+      : null,
+    detail && detail.perSkill.length > 0
+      ? `${detail.perSkill.length} skill${detail.perSkill.length === 1 ? "" : "s"}`
+      : null,
+    duration || null,
+  ].filter(Boolean);
+
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+      <span className="text-2xl font-semibold tabular-nums text-cost">
+        {row.unpriced ? (
+          <span title="Cost excludes unpriced model usage — lower bound.">
+            ~{formatCost(row.costUsd)}
+          </span>
+        ) : (
+          formatCost(row.costUsd)
+        )}
+      </span>
+      <span className="text-sm text-muted-foreground">{meta.join(" · ")}</span>
+    </div>
+  );
+}
+
+/** The four token buckets as a compact share list — the count plus its percent
+ *  of the total, so the shape of usage (almost always cache-dominated) reads at
+ *  a glance. A bar would be near-monotone at 98% cache-read, so the percentages
+ *  carry the proportion instead. */
+function TokenComposition({ tokens }: { tokens: ConversationSummary["tokens"] }) {
+  const total = tokens.total || 1;
+  const buckets = [
+    { key: "input", label: "Input", value: tokens.input },
+    { key: "output", label: "Output", value: tokens.output },
+    { key: "cacheWrite", label: "Cache-write", value: tokens.cacheWrite },
+    { key: "cacheRead", label: "Cache-read", value: tokens.cacheRead },
+  ];
+  return (
+    <ul className="space-y-1.5 text-sm">
+      {buckets.map((b) => (
+        <li key={b.key} className="flex items-center gap-3">
+          <span className="text-muted-foreground">{b.label}</span>
+          <span className="ml-auto tabular-nums">{formatTokens(b.value)}</span>
+          <span className="w-10 text-right text-xs text-muted-foreground tabular-nums">
+            {Math.round((b.value / total) * 100)}%
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** The cost breakdowns fetched on first expand: loading / error / empty / loaded. */
+function LazyBreakdowns({ state }: { state: DetailState }) {
   if (state.status === "loading" || state.status === "idle") {
     return (
-      <p className="basis-full text-sm text-muted-foreground" aria-live="polite">
-        Loading details…
+      <p className="text-sm text-muted-foreground" aria-live="polite">
+        Loading breakdown…
       </p>
     );
   }
   if (state.status === "error") {
     return (
-      <p className="basis-full text-sm text-destructive" role="alert">
+      <p className="text-sm text-destructive" role="alert">
         Could not load details. Try again.
       </p>
     );
   }
   if (state.status === "empty") {
     return (
-      <p className="basis-full text-sm text-muted-foreground">
+      <p className="text-sm text-muted-foreground">
         No detail available for this conversation.
       </p>
     );
@@ -214,73 +283,174 @@ function LazyDetailSections({ state }: { state: DetailState }) {
   const sections = detailSections(state.detail);
   return (
     <>
-      <Section title="Per-model cost">
+      <Section title="Cost by model">
         {sections.perModel.isEmpty ? (
           <NoneNote>No model usage.</NoneNote>
         ) : (
-          <Breakdown
-            head={["Model", "Tokens", "Cost"]}
-            rows={sections.perModel.rows.map((m) => ({
-              key: m.model,
-              cells: [
-                m.model,
-                formatTokens(m.tokens.total),
-                m.unpriced ? (
-                  <span
-                    key="c"
-                    title="Excludes unpriced usage — lower bound."
-                  >
-                    ~{formatCost(m.costUsd)}
-                  </span>
-                ) : (
-                  formatCost(m.costUsd)
-                ),
-              ],
-            }))}
-          />
+          <CostList>
+            {sections.perModel.rows.map((m) => (
+              <CostRow
+                key={m.model}
+                label={m.model}
+                costUsd={m.costUsd}
+                max={sections.perModel.totalCost}
+                unpriced={m.unpriced}
+              />
+            ))}
+          </CostList>
         )}
       </Section>
 
-      <Section title="Sub-agents">
-        {sections.subAgents.isEmpty ? (
-          <NoneNote>No sub-agents.</NoneNote>
-        ) : (
-          <Breakdown
-            head={["Agent", "Model", "Tokens", "Cost"]}
-            rows={sections.subAgents.rows.map((s) => ({
-              key: s.agentId,
-              cells: [
-                s.label,
-                s.model || "—",
-                formatTokens(s.tokens.total),
-                formatCost(s.costUsd),
-              ],
-            }))}
-          />
-        )}
-      </Section>
-
-      <Section title="Per-Skill cost">
+      <Section title="Cost by skill">
         {sections.perSkill.isEmpty ? (
           <NoneNote>No Skill usage.</NoneNote>
         ) : (
-          <Breakdown
-            head={["Skill", "Tokens", "Cost"]}
-            rows={sections.perSkill.rows.map((s) => ({
-              key: s.skill,
-              cells: [
-                s.skill,
-                formatTokens(s.tokens.total),
-                formatCost(s.costUsd),
-              ],
-            }))}
-          />
+          <CostList>
+            {sections.perSkill.rows.map((s) => (
+              <CostRow
+                key={s.skill}
+                label={s.skill}
+                costUsd={s.costUsd}
+                max={sections.perSkill.totalCost}
+              />
+            ))}
+          </CostList>
+        )}
+      </Section>
+
+      <Section title="Cost by sub-agent">
+        {sections.subAgents.isEmpty ? (
+          <NoneNote>No sub-agents.</NoneNote>
+        ) : (
+          <SubAgentBreakdown section={sections.subAgents} />
         )}
       </Section>
     </>
   );
 }
 
+/** The width of the leading label column, shared so every bar starts aligned. */
+const LABEL_W = "w-40";
+
+/** A ranked cost list: each row pairs a share-of-total bar with its label and
+ *  cost, mirroring the overview band's "top projects by cost" language. */
+function CostList({ children }: { children: React.ReactNode }) {
+  return <ul className="flex flex-col gap-2">{children}</ul>;
+}
+
+function CostRow({
+  label,
+  costUsd,
+  max,
+  unpriced = false,
+}: {
+  label: string;
+  costUsd: number;
+  /** The breakdown's TOTAL cost → each bar reads as a share of the whole. */
+  max: number;
+  unpriced?: boolean;
+}) {
+  return (
+    <li className="flex items-center gap-3 text-sm">
+      <span className={`${LABEL_W} shrink-0 truncate`} title={label}>
+        {label}
+      </span>
+      <CostBar value={costUsd} max={max} className="min-w-0 flex-1" />
+      <span className="w-20 shrink-0 text-right tabular-nums text-muted-foreground">
+        {unpriced ? "~" : ""}
+        {formatCost(costUsd)}
+      </span>
+    </li>
+  );
+}
+
+/** Sub-agents grouped by type: each group is a ranked cost bar that expands to
+ *  reveal its individual agents. Owns the per-group open/closed state. */
+function SubAgentBreakdown({ section }: { section: SubAgentSection }) {
+  const [open, setOpen] = useState<Record<string, boolean>>({});
+  return (
+    <CostList>
+      {section.groups.map((g) => (
+        <SubAgentGroupRow
+          key={g.label}
+          group={g}
+          max={section.totalCost}
+          open={!!open[g.label]}
+          onToggle={() =>
+            setOpen((prev) => ({ ...prev, [g.label]: !prev[g.label] }))
+          }
+        />
+      ))}
+    </CostList>
+  );
+}
+
+function SubAgentGroupRow({
+  group,
+  max,
+  open,
+  onToggle,
+}: {
+  group: SubAgentGroup;
+  max: number;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <li>
+      <div className="flex items-center gap-3 text-sm">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={open}
+          className={`${LABEL_W} flex shrink-0 items-center gap-1.5 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50`}
+        >
+          {open ? (
+            <ChevronDown className="size-3 shrink-0" aria-hidden />
+          ) : (
+            <ChevronRight className="size-3 shrink-0" aria-hidden />
+          )}
+          <span className="truncate hover:underline" title={group.label}>
+            {group.label}
+          </span>
+          {group.count > 1 && (
+            <span className="shrink-0 rounded bg-muted px-1 text-xs text-muted-foreground tabular-nums">
+              ×{group.count}
+            </span>
+          )}
+          <span className="sr-only">
+            {open ? "Collapse" : "Expand"} {group.label} agents
+          </span>
+        </button>
+        <CostBar value={group.costUsd} max={max} className="min-w-0 flex-1" />
+        <span className="w-20 shrink-0 text-right tabular-nums text-muted-foreground">
+          {formatCost(group.costUsd)}
+        </span>
+      </div>
+      {open && group.count > 1 && (
+        <ul className="mt-1.5 ml-[1.125rem] flex flex-col gap-1 border-l border-border/60 pl-3">
+          {group.agents.map((a) => (
+            <li
+              key={a.agentId}
+              className="flex items-center justify-between gap-4 text-xs text-muted-foreground"
+            >
+              <span className="truncate" title={a.model || undefined}>
+                {a.model || "—"}
+              </span>
+              <span className="flex shrink-0 gap-4 tabular-nums">
+                <span>{formatTokens(a.tokens.total)}</span>
+                <span className="w-16 text-right">{formatCost(a.costUsd)}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}
+
+/** A section: a quiet uppercase label (the panel's only uppercase element) over
+ *  its content — the same label treatment as the overview stat cards. */
 function Section({
   title,
   children,
@@ -290,7 +460,7 @@ function Section({
 }) {
   return (
     <div>
-      <h3 className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+      <h3 className="mb-3 text-xs font-medium tracking-wide text-muted-foreground uppercase">
         {title}
       </h3>
       {children}
@@ -300,55 +470,4 @@ function Section({
 
 function NoneNote({ children }: { children: React.ReactNode }) {
   return <p className="text-sm text-muted-foreground">{children}</p>;
-}
-
-/** A small breakdown table: a header row plus one row per entry. The first
- *  column reads left; the remaining (numeric) columns are right-aligned. */
-function Breakdown({
-  head,
-  rows,
-}: {
-  head: string[];
-  rows: { key: string; cells: React.ReactNode[] }[];
-}) {
-  return (
-    // Natural width (no w-full): the table sizes to its content so nothing is
-    // clipped or squeezed. Non-first columns get left padding to separate the
-    // label from the numeric columns, and whitespace-nowrap keeps cells on one
-    // line. The panel's flex-wrap gives each table the room it needs.
-    <table className="text-sm whitespace-nowrap">
-      <thead>
-        <tr className="text-muted-foreground">
-          {head.map((h, i) => (
-            <th
-              key={h}
-              className={
-                i === 0 ? "text-left font-normal" : "pl-8 text-right font-normal"
-              }
-            >
-              {h}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((r) => (
-          <tr key={r.key} className="border-t border-border/50">
-            {r.cells.map((cell, i) => (
-              <td
-                key={i}
-                className={
-                  i === 0
-                    ? "py-1 text-left"
-                    : "py-1 pl-8 text-right tabular-nums"
-                }
-              >
-                {cell}
-              </td>
-            ))}
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
 }

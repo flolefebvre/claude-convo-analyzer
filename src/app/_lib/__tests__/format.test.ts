@@ -7,6 +7,7 @@ import {
   formatCost,
   formatDate,
   formatDateRange,
+  formatDuration,
   formatGrandTotalCost,
   formatTokens,
   grandTotal,
@@ -71,6 +72,41 @@ describe("formatDateRange", () => {
     expect(
       formatDateRange("2025-12-30T00:00:00.000Z", "2026-06-22T00:00:00.000Z"),
     ).toBe("Dec 30 2025 – Jun 22 2026");
+  });
+});
+
+describe("formatDuration", () => {
+  it("returns empty string when either endpoint is missing or unparseable", () => {
+    expect(formatDuration("", "2026-06-22T10:00:00Z")).toBe("");
+    expect(formatDuration("2026-06-22T10:00:00Z", "")).toBe("");
+    expect(formatDuration("nope", "2026-06-22T10:00:00Z")).toBe("");
+  });
+
+  it("renders sub-minute spans in seconds", () => {
+    expect(formatDuration("2026-06-22T10:00:00Z", "2026-06-22T10:00:30Z")).toBe(
+      "30s",
+    );
+  });
+
+  it("renders sub-hour spans in whole minutes", () => {
+    expect(formatDuration("2026-06-22T10:00:00Z", "2026-06-22T10:45:20Z")).toBe(
+      "45m",
+    );
+  });
+
+  it("renders multi-hour spans as hours and minutes, dropping a zero minute", () => {
+    expect(formatDuration("2026-06-22T10:00:00Z", "2026-06-22T11:20:00Z")).toBe(
+      "1h 20m",
+    );
+    expect(formatDuration("2026-06-22T10:00:00Z", "2026-06-22T12:00:00Z")).toBe(
+      "2h",
+    );
+  });
+
+  it("treats a non-positive span as zero seconds", () => {
+    expect(formatDuration("2026-06-22T10:00:05Z", "2026-06-22T10:00:00Z")).toBe(
+      "0s",
+    );
   });
 });
 
