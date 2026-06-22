@@ -60,7 +60,9 @@ export function OverviewBand({
         </StatCard>
       </div>
 
-      {topProjects.length > 0 && <TopProjects projects={topProjects} />}
+      {topProjects.length > 0 && (
+        <TopProjects projects={topProjects} totalCost={overview.totalCost} />
+      )}
     </section>
   );
 }
@@ -88,12 +90,19 @@ function StatCard({
 }
 
 /**
- * The cost-ranked Project strip: each row pairs a cost bar (scaled to the
- * top Project) with its label and cost, so relative spend reads at a glance.
+ * The cost-ranked Project strip: each row pairs a cost bar (scaled to TOTAL
+ * spend → its share of the whole) with its label and cost, so relative spend
+ * reads at a glance — the same share-of-total scaling as the sidebar and the
+ * conversation detail panel.
  */
-function TopProjects({ projects }: { projects: FolderEntry[] }) {
-  // The leading (highest) Project sets the bar scale — it is already cost-desc.
-  const max = projects[0]?.costUsd ?? 0;
+function TopProjects({
+  projects,
+  totalCost,
+}: {
+  projects: FolderEntry[];
+  /** Total spend across ALL Projects — the share-of-total denominator. */
+  totalCost: number;
+}) {
   return (
     <div className="rounded-xl border bg-card p-5">
       <p className="mb-3 text-xs font-medium tracking-wide text-muted-foreground uppercase">
@@ -105,7 +114,7 @@ function TopProjects({ projects }: { projects: FolderEntry[] }) {
             <span className="w-40 shrink-0 truncate" title={p.path}>
               {p.label}
             </span>
-            <CostBar value={p.costUsd} max={max} className="min-w-0 flex-1" />
+            <CostBar value={p.costUsd} max={totalCost} className="min-w-0 flex-1" />
             <span className="w-20 shrink-0 text-right tabular-nums text-muted-foreground">
               {p.unpriced ? "~" : ""}
               {formatGrandTotalCost(p.costUsd)}
