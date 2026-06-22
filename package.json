@@ -6,7 +6,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/prezbar/claude-conv-analyzer.git"
+    "url": "git+https://github.com/flolefebvre/claude-conv-analyzer.git"
   },
   "scripts": {
     "dev": "next dev",

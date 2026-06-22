@@ -19,7 +19,7 @@ anywhere.
 ## Getting started
 
 ```bash
-git clone https://github.com/prezbar/claude-conv-analyzer.git
+git clone https://github.com/flolefebvre/claude-conv-analyzer.git
 cd claude-conv-analyzer
 pnpm install      # also generates the Prisma client (postinstall)
 pnpm build
