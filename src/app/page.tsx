@@ -18,7 +18,12 @@ import { listConversations } from "@/core/refresh";
 import { ConversationRow } from "@/app/_components/conversation-row";
 import { FolderSidebar } from "@/app/_components/folder-sidebar";
 import { RefreshButton } from "@/app/_components/refresh-button";
-import { deriveFolders, filterByFolder } from "@/app/_lib/folders";
+import { footerLabelColSpan } from "@/app/_lib/columns";
+import {
+  type FolderEntry,
+  deriveFolders,
+  filterByFolder,
+} from "@/app/_lib/folders";
 import {
   formatGrandTotalCost,
   formatTokens,
@@ -113,8 +118,15 @@ async function ConversationTable({
   // The active scope, if any. A non-empty but unknown/stale key yields no rows
   // (handled by the empty state below); `undefined`/empty means "All folders".
   const activeFolder = folderParam ? folderParam : undefined;
-  const scoped = filterByFolder(allRows, activeFolder);
-  const rows = sortConversations(scoped, sort);
+  const scopedRows = filterByFolder(allRows, activeFolder);
+  const rows = sortConversations(scopedRows, sort);
+  const isScoped = activeFolder !== undefined;
+  // The selected Project for the breadcrumb (its full path / label). Reuse the
+  // already-derived sidebar entries rather than re-deriving; a stale/unknown
+  // `?folder=` yields no entry (and no rows, so the empty state handles it).
+  const selectedFolder = activeFolder
+    ? folders.find((f) => f.folder === activeFolder)
+    : undefined;
 
   // Empty when there are genuinely no conversations OR when the active scope
   // matched nothing (unknown/stale `?folder=`, or a folder with zero rows).
@@ -144,6 +156,12 @@ async function ConversationTable({
         totalCount={allRows.length}
       />
     }>
+      {/* When scoped, every row shares one Project: show its full path once as a
+          breadcrumb (with a way back to all folders) instead of a Folder column. */}
+      {selectedFolder && (
+        <FolderBreadcrumb folder={selectedFolder} sort={sort} />
+      )}
+
       <div className="rounded-lg border">
         <Table>
           <TableHeader>
@@ -151,9 +169,12 @@ async function ConversationTable({
               <SortableHead field="date" sort={sort} folder={activeFolder}>
                 Date
               </SortableHead>
-              <SortableHead field="folder" sort={sort} folder={activeFolder}>
-                Folder
-              </SortableHead>
+              {/* The Folder column is hidden when scoped (redundant — see breadcrumb). */}
+              {!isScoped && (
+                <SortableHead field="folder" sort={sort} folder={activeFolder}>
+                  Folder
+                </SortableHead>
+              )}
               <SortableHead field="title" sort={sort} folder={activeFolder}>
                 Title
               </SortableHead>
@@ -184,17 +205,13 @@ async function ConversationTable({
               // `scoped` lets slice 3 hide the Folder column when a single
               // Project is selected; presentation (two-line cell / breadcrumb)
               // is slice 3's job — this only threads the flag through.
-              <ConversationRow
-                key={row.id}
-                row={row}
-                scoped={activeFolder !== undefined}
-              />
+              <ConversationRow key={row.id} row={row} scoped={isScoped} />
             ))}
           </TableBody>
 
           <TableFooter>
             <TableRow>
-              <TableCell colSpan={4} className="font-medium">
+              <TableCell colSpan={footerLabelColSpan(isScoped)} className="font-medium">
                 {rows.length} conversation{rows.length === 1 ? "" : "s"}
               </TableCell>
               <TableCell className="text-right tabular-nums">
@@ -263,6 +280,42 @@ function EmptyState({ scoped, sort }: { scoped: boolean; sort: SortState }) {
         </p>
       )}
     </div>
+  );
+}
+
+/**
+ * The scope breadcrumb shown above the table when a single Project is selected.
+ * Shows the Project's full path once (replacing the now-hidden Folder column)
+ * with a link back to "All folders" that preserves the active sort.
+ */
+function FolderBreadcrumb({
+  folder,
+  sort,
+}: {
+  folder: FolderEntry;
+  sort: SortState;
+}) {
+  return (
+    <nav
+      aria-label="Folder scope"
+      className="mb-3 flex flex-wrap items-center gap-2 text-sm"
+    >
+      <a
+        href={folderHref(undefined, sort)}
+        className="text-muted-foreground hover:underline"
+      >
+        All folders
+      </a>
+      <span aria-hidden className="text-muted-foreground">
+        /
+      </span>
+      <span className="font-medium" title={folder.path}>
+        {folder.label}
+      </span>
+      <span className="text-muted-foreground" title={folder.path}>
+        {folder.path}
+      </span>
+    </nav>
   );
 }
 

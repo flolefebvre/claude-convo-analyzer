@@ -37,7 +37,7 @@ export function deriveFolders(summaries: ConversationSummary[]): FolderEntry[] {
     const { project } = rows[0];
     return {
       folder: project.folder,
-      label: basename(project.path),
+      label: friendlyFolderName(project.path),
       path: project.path,
       count: rows.length,
       latestActivity: latestActivity(rows),
@@ -90,8 +90,12 @@ export function filterByFolder(
   return summaries.filter((s) => s.project.folder === folder);
 }
 
-/** Last non-empty `/`-separated segment of a path; "" if the path has none. */
-function basename(path: string): string {
+/**
+ * The friendly name for a Project path: its last non-empty `/`-separated
+ * segment (basename), or "" if the path has none. Used for the sidebar labels
+ * and the table's two-line Folder cell so both stay consistent.
+ */
+export function friendlyFolderName(path: string): string {
   return pathSegments(path).at(-1) ?? "";
 }
 
