@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import type { ConversationDetail } from "@/core/read";
 
-import { detailSections, subAgentLabel } from "@/app/_lib/detail";
+import { formatCost } from "@/app/_lib/format";
+import {
+  detailSections,
+  subAgentLabel,
+  tokenComposition,
+} from "@/app/_lib/detail";
 
 describe("subAgentLabel", () => {
   it("returns the agent type when present", () => {
@@ -39,6 +44,55 @@ function detail(partial: Partial<ConversationDetail> = {}): ConversationDetail {
     ...partial,
   };
 }
+
+describe("tokenComposition", () => {
+  const tokens = {
+    input: 12_300,
+    output: 44_100,
+    cacheWrite: 1_200_000,
+    cacheRead: 1_400_000,
+    total: 2_856_400,
+  };
+  const costByType = {
+    input: 0.004,
+    output: 1.1,
+    cacheWrite: 0.32,
+    cacheRead: 0.3,
+  };
+
+  it("pairs each of the four buckets, in display order, with its dollar cost", () => {
+    const buckets = tokenComposition(tokens, costByType);
+    expect(buckets.map((b) => b.label)).toEqual([
+      "Input",
+      "Output",
+      "Cache-write",
+      "Cache-read",
+    ]);
+    // The dollar figure is the payload — sourced per-bucket from costByType.
+    expect(buckets.map((b) => formatCost(b.costUsd))).toEqual([
+      "$0.0040",
+      "$1.10",
+      "$0.32",
+      "$0.30",
+    ]);
+  });
+
+  it("carries the muted secondary token count and its percent of the total", () => {
+    const buckets = tokenComposition(tokens, costByType);
+    const cacheRead = buckets.find((b) => b.key === "cacheRead")!;
+    expect(cacheRead.tokens).toBe(1_400_000);
+    expect(cacheRead.percent).toBe(49); // 1.4M / 2.86M
+  });
+
+  it("renders an empty conversation without dividing by zero (0% buckets)", () => {
+    const empty = { input: 0, output: 0, cacheWrite: 0, cacheRead: 0, total: 0 };
+    const zero = { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 };
+    const buckets = tokenComposition(empty, zero);
+    expect(buckets).toHaveLength(4);
+    expect(buckets.every((b) => b.percent === 0)).toBe(true);
+    expect(buckets.every((b) => formatCost(b.costUsd) === "$0.00")).toBe(true);
+  });
+});
 
 describe("detailSections", () => {
   it("ranks per-model rows by cost (desc) and totals the cost for share bars", () => {

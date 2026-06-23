@@ -19,6 +19,7 @@ import { CostBar } from "@/app/_components/cost-bar";
 import { columnCount } from "@/app/_lib/columns";
 import {
   detailSections,
+  tokenComposition,
   type SubAgentGroup,
   type SubAgentSection,
 } from "@/app/_lib/detail";
@@ -183,7 +184,11 @@ function DetailPanel({
       <SummaryStrip row={row} detail={loaded} />
       <div className="grid gap-x-10 gap-y-6 lg:grid-cols-[16rem_1fr]">
         <Section title="Token composition">
-          <TokenComposition tokens={row.tokens} />
+          <TokenComposition
+            tokens={row.tokens}
+            costByType={row.costByType}
+            unpriced={row.unpriced}
+          />
         </Section>
         <div className="space-y-6">
           <LazyBreakdowns state={state} />
@@ -235,26 +240,42 @@ function SummaryStrip({
   );
 }
 
-/** The four token buckets as a compact share list — the count plus its percent
- *  of the total, so the shape of usage (almost always cache-dominated) reads at
- *  a glance. A bar would be near-monotone at 98% cache-read, so the percentages
- *  carry the proportion instead. */
-function TokenComposition({ tokens }: { tokens: ConversationSummary["tokens"] }) {
-  const total = tokens.total || 1;
-  const buckets = [
-    { key: "input", label: "Input", value: tokens.input },
-    { key: "output", label: "Output", value: tokens.output },
-    { key: "cacheWrite", label: "Cache-write", value: tokens.cacheWrite },
-    { key: "cacheRead", label: "Cache-read", value: tokens.cacheRead },
-  ];
+/** The four token buckets, each led by its DOLLAR cost — the payload, in
+ *  full-weight foreground so the eye lands on spend first (matching the row
+ *  total and the panel headline). The token count and its percent of the total
+ *  are the demoted secondary facts (muted), so the shape of usage (almost always
+ *  cache-dominated) still reads at a glance. When the conversation includes
+ *  unpriced model usage every bucket's dollars are a lower bound: prefix `~` and
+ *  reuse the same tooltip the row's total cost carries. */
+function TokenComposition({
+  tokens,
+  costByType,
+  unpriced,
+}: {
+  tokens: ConversationSummary["tokens"];
+  costByType: ConversationSummary["costByType"];
+  unpriced: boolean;
+}) {
+  const buckets = tokenComposition(tokens, costByType);
   return (
     <ul className="space-y-1.5 text-sm">
       {buckets.map((b) => (
         <li key={b.key} className="flex items-center gap-3">
           <span className="text-muted-foreground">{b.label}</span>
-          <span className="ml-auto tabular-nums">{formatTokens(b.value)}</span>
-          <span className="w-10 text-right text-xs text-muted-foreground tabular-nums">
-            {Math.round((b.value / total) * 100)}%
+          <span className="ml-auto w-16 text-right font-medium tabular-nums">
+            {unpriced ? (
+              <span title="Cost excludes unpriced model usage — lower bound.">
+                ~{formatCost(b.costUsd)}
+              </span>
+            ) : (
+              formatCost(b.costUsd)
+            )}
+          </span>
+          <span className="w-12 text-right text-xs text-muted-foreground tabular-nums">
+            {formatCompactTokens(b.tokens)}
+          </span>
+          <span className="w-9 text-right text-xs text-muted-foreground tabular-nums">
+            {b.percent}%
           </span>
         </li>
       ))}

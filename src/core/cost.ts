@@ -43,6 +43,23 @@ export type CostResult = {
 };
 
 /**
+ * The per-bucket dollar split of a price computation (ADR-0003). One USD figure
+ * per token type; the four buckets sum exactly to the `usd` total. `cacheWrite`
+ * combines the 5m and 1h ephemeral tiers, EACH priced at its own rate then
+ * summed into this single bucket (ADR-0001 finding #3). An unpriced model
+ * contributes `0` to every bucket.
+ */
+export type CostByType = {
+  input: number;
+  output: number;
+  cacheWrite: number;
+  cacheRead: number;
+};
+
+/** A `CostResult` plus its per-bucket dollar split (the four buckets sum to `usd`). */
+export type SplitCostResult = CostResult & { byType: CostByType };
+
+/**
  * Resolve a raw model string to a canonical price-table key. Pure; reused by
  * every pricing path so alias/synthetic/unknown handling stays in one place.
  *
@@ -71,18 +88,39 @@ export function resolveModel(model: string): {
  * cost the `message` table's per-tier columns exactly.
  */
 export function priceTokenSplit(split: TokenSplit, model: string): CostResult {
+  const { usd, unpriced, approximate } = priceSplitByType(split, model);
+  return { usd, unpriced, approximate };
+}
+
+/**
+ * Same precise pricing as `priceTokenSplit`, but ALSO surfaces the per-bucket
+ * dollar split (`CostByType`). The two cache-write tiers are each priced at
+ * their own rate, then summed into the single `cacheWrite` bucket; the four
+ * buckets sum exactly to `usd`. An unpriced model yields `$0` for every bucket
+ * and the `usd` total, while still setting `unpriced` (ADR-0003).
+ */
+export function priceSplitByType(
+  split: TokenSplit,
+  model: string,
+): SplitCostResult {
   const { key, approximate, unpriced } = resolveModel(model);
   if (key === null) {
-    return { usd: 0, unpriced: true, approximate: false };
+    return {
+      usd: 0,
+      unpriced: true,
+      approximate: false,
+      byType: { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 },
+    };
   }
   const p = PRICES[key];
-  const usd =
-    split.input * p.input +
-    split.output * p.output +
-    split.cacheWrite5m * p.cacheWrite5m +
-    split.cacheWrite1h * p.cacheWrite1h +
-    split.cacheRead * p.cacheRead;
-  return { usd, unpriced, approximate };
+  const byType: CostByType = {
+    input: split.input * p.input,
+    output: split.output * p.output,
+    cacheWrite: split.cacheWrite5m * p.cacheWrite5m + split.cacheWrite1h * p.cacheWrite1h,
+    cacheRead: split.cacheRead * p.cacheRead,
+  };
+  const usd = byType.input + byType.output + byType.cacheWrite + byType.cacheRead;
+  return { usd, unpriced, approximate, byType };
 }
 
 /**

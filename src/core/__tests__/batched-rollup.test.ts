@@ -48,6 +48,7 @@ describe("batched list rollup == per-conversation detail rollup", () => {
       models: detail.models,
       tokens: detail.tokens,
       costUsd: detail.costUsd,
+      costByType: detail.costByType,
       unpriced: detail.unpriced,
       subAgentCount: detail.subAgentCount,
       continuedFromId: detail.continuedFromId,
@@ -95,5 +96,31 @@ describe("batched list rollup == per-conversation detail rollup", () => {
     expect(sa?.agentType).toBe("Explore");
     expect(sa?.tokens.output).toBe(130);
     expect(sa?.costUsd).toBeGreaterThan(0);
+  });
+
+  it("carries a per-bucket costByType that sums exactly to costUsd across models", async () => {
+    await refresh({ logsRoot: FIXTURES_ROOT, dbPath });
+
+    const list = await listConversations({ dbPath });
+    const summary = list.find((c) => c.id === "sess-mix");
+    expect(summary).toBeDefined();
+    if (!summary) return;
+
+    // sess-mix spans opus (main), haiku (sub), and <synthetic> (unpriced) — each
+    // bucket is accumulated across every model at its OWN per-tier rate.
+    const { input, output, cacheWrite, cacheRead } = summary.costByType;
+    expect(input + output + cacheWrite + cacheRead).toBeCloseTo(
+      summary.costUsd,
+      12,
+    );
+    // Real priced usage → real per-bucket cost (opus input/output drive these).
+    expect(input).toBeGreaterThan(0);
+    expect(output).toBeGreaterThan(0);
+
+    // The detail path (ConversationDetail extends ConversationSummary) carries it too.
+    const detail = await getConversation("sess-mix", { dbPath });
+    expect(detail).not.toBeNull();
+    if (!detail) return;
+    expect(detail.costByType).toEqual(summary.costByType);
   });
 });

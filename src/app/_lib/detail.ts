@@ -5,7 +5,7 @@
 // shaping/labeling logic lives here so it is unit-tested in the node vitest
 // environment; the client expansion component is a thin renderer over these.
 
-import type { Tokens } from "@/core/cost";
+import type { CostByType, Tokens } from "@/core/cost";
 import type { ConversationDetail } from "@/core/read";
 
 /**
@@ -54,6 +54,50 @@ export type SubAgentSection = {
   isEmpty: boolean;
   totalCost: number;
 };
+
+/**
+ * One Token-composition bucket, render-ready: its label, the bucket's dollar
+ * `costUsd` (the prominent figure — the renderer formats it with `formatCost`),
+ * and the muted secondary `tokens` count plus its `percent` of the total. The
+ * four buckets always appear in display order (input → output → cache-write →
+ * cache-read), so a $0/empty bucket still renders for column alignment.
+ */
+export type CompositionBucket = {
+  key: keyof CostByType;
+  label: string;
+  costUsd: number;
+  tokens: number;
+  percent: number;
+};
+
+const BUCKETS: { key: keyof CostByType; label: string; token: keyof Tokens }[] = [
+  { key: "input", label: "Input", token: "input" },
+  { key: "output", label: "Output", token: "output" },
+  { key: "cacheWrite", label: "Cache-write", token: "cacheWrite" },
+  { key: "cacheRead", label: "Cache-read", token: "cacheRead" },
+];
+
+/**
+ * Pair each of the four token buckets with its dollar cost for the Token-
+ * composition section. The dollar is the payload (rendered prominent); `tokens`
+ * and `percent` are the demoted secondary facts. `percent` is the bucket's share
+ * of `tokens.total` (0 when the conversation has no tokens, avoiding a divide by
+ * zero). Unpriced handling (`~` prefix + lower-bound tooltip) stays in the
+ * renderer, driven by the row's existing `unpriced` flag.
+ */
+export function tokenComposition(
+  tokens: Tokens,
+  costByType: CostByType,
+): CompositionBucket[] {
+  const total = tokens.total || 1;
+  return BUCKETS.map(({ key, label, token }) => ({
+    key,
+    label,
+    costUsd: costByType[key],
+    tokens: tokens[token],
+    percent: Math.round((tokens[token] / total) * 100),
+  }));
+}
 
 const byCostDesc = (a: { costUsd: number }, b: { costUsd: number }): number =>
   b.costUsd - a.costUsd;
