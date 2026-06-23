@@ -7,7 +7,12 @@
 // messages of ALL agents in the conversation — so sub-agent tokens roll up
 // automatically, counted ONCE (the parent Agent aggregate is never summed in).
 
-import { priceTokenSplit, resolveModel, type Tokens } from "@/core/cost";
+import {
+  type CostByType,
+  priceSplitByType,
+  resolveModel,
+  type Tokens,
+} from "@/core/cost";
 import { createPrismaClient, DEFAULT_DB_PATH } from "@/core/db";
 import type { PrismaClient } from "@/core/prisma/generated/client";
 
@@ -20,6 +25,12 @@ export type ConversationSummary = {
   models: { dominant: string; distinctCount: number };
   tokens: Tokens;
   costUsd: number;
+  /**
+   * Per-bucket dollar split of `costUsd` (ADR-0003), accumulated across every
+   * model at its own per-tier rate. The four buckets sum exactly to `costUsd`;
+   * unpriced models contribute `$0` to their buckets.
+   */
+  costByType: CostByType;
   unpriced: boolean;
   subAgentCount: number;
   continuedFromId: string | null;
@@ -322,6 +333,8 @@ type PricedGroup = {
   model: string;
   tokens: Tokens;
   costUsd: number;
+  /** Per-bucket dollar split of `costUsd` (buckets sum to `costUsd`). */
+  costByType: CostByType;
   unpriced: boolean;
 };
 
@@ -341,11 +354,17 @@ function priceModelRow(row: ModelSumRow): PricedGroup {
     cacheRead: cr,
     total: input + output + cacheWrite + cr,
   };
-  const cost = priceTokenSplit(
+  const cost = priceSplitByType(
     { input, output, cacheWrite5m: cw5m, cacheWrite1h: cw1h, cacheRead: cr },
     model,
   );
-  return { model, tokens, costUsd: cost.usd, unpriced: resolveModel(model).unpriced };
+  return {
+    model,
+    tokens,
+    costUsd: cost.usd,
+    costByType: cost.byType,
+    unpriced: resolveModel(model).unpriced,
+  };
 }
 
 /**
@@ -372,6 +391,7 @@ function pricedRollup(rows: ModelSumRow[]): PricedGroup[] {
     }
     addTokens(existing.tokens, priced.tokens);
     existing.costUsd += priced.costUsd;
+    addCostByType(existing.costByType, priced.costByType);
     existing.unpriced = existing.unpriced || priced.unpriced;
   }
   return order.map((m) => byModel.get(m) as PricedGroup);
@@ -406,6 +426,14 @@ const TOKEN_SUM = {
   cacheCreation1hTokens: true,
   cacheReadTokens: true,
 } as const;
+
+/** Add `b` into `a` (mutates `a`) — per-bucket dollar accumulation. */
+function addCostByType(a: CostByType, b: CostByType): void {
+  a.input += b.input;
+  a.output += b.output;
+  a.cacheWrite += b.cacheWrite;
+  a.cacheRead += b.cacheRead;
+}
 
 /** Add `b` into `a` (mutates `a`) and refresh its `total`. */
 function addTokens(a: Tokens, b: Tokens): void {
@@ -478,6 +506,7 @@ function assembleSummary(
   },
 ): ConversationSummary {
   const totals: Tokens = { input: 0, output: 0, cacheWrite: 0, cacheRead: 0, total: 0 };
+  const costByType: CostByType = { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 };
   let costUsd = 0;
   let unpriced = false;
   let dominant = "";
@@ -486,6 +515,7 @@ function assembleSummary(
   for (const g of parts.groups) {
     addTokens(totals, g.tokens);
     costUsd += g.costUsd;
+    addCostByType(costByType, g.costByType);
     if (g.unpriced) unpriced = true;
     if (g.tokens.output > dominantOutput) {
       dominant = g.model;
@@ -502,6 +532,7 @@ function assembleSummary(
     models: { dominant, distinctCount: parts.groups.length },
     tokens: totals,
     costUsd,
+    costByType,
     unpriced,
     subAgentCount: parts.subAgentCount,
     continuedFromId: parts.continuedFromId,

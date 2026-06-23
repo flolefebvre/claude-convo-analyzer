@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   computeCost,
+  type CostByType,
+  priceSplitByType,
   priceTokenSplit,
   resolveModel,
   type TokenSplit,
@@ -154,6 +156,88 @@ describe("Tokens.total is the sum of all token buckets", () => {
     const result = computeCost(t, "claude-opus-4-8");
     expect(result.usd).toBeCloseTo(expected, 12);
     expect(result.unpriced).toBe(false);
+  });
+});
+
+describe("priceSplitByType — per-bucket cost split summing to the total", () => {
+  it("splits each bucket at its own opus-4-8 rate, summing to usd", () => {
+    // 100 input @ $5, 200 output @ $25, 300 cw5m @ $6.25, 50 cw1h @ $10,
+    // 400 cacheRead @ $0.50 — all /MTok.
+    const perMTok = 1_000_000;
+    const result = priceSplitByType(
+      split({
+        input: 100,
+        output: 200,
+        cacheWrite5m: 300,
+        cacheWrite1h: 50,
+        cacheRead: 400,
+      }),
+      "claude-opus-4-8",
+    );
+    const expected: CostByType = {
+      input: (100 * 5) / perMTok,
+      output: (200 * 25) / perMTok,
+      // cacheWrite combines 5m (1.25x) + 1h (2x), each at its own rate.
+      cacheWrite: (300 * 6.25 + 50 * 10) / perMTok,
+      cacheRead: (400 * 0.5) / perMTok,
+    };
+    expect(result.byType.input).toBeCloseTo(expected.input, 12);
+    expect(result.byType.output).toBeCloseTo(expected.output, 12);
+    expect(result.byType.cacheWrite).toBeCloseTo(expected.cacheWrite, 12);
+    expect(result.byType.cacheRead).toBeCloseTo(expected.cacheRead, 12);
+    // The four buckets sum exactly to the total usd.
+    const summed =
+      result.byType.input +
+      result.byType.output +
+      result.byType.cacheWrite +
+      result.byType.cacheRead;
+    expect(summed).toBeCloseTo(result.usd, 12);
+    expect(result.usd).toBe(priceTokenSplit(
+      split({
+        input: 100,
+        output: 200,
+        cacheWrite5m: 300,
+        cacheWrite1h: 50,
+        cacheRead: 400,
+      }),
+      "claude-opus-4-8",
+    ).usd);
+    expect(result.unpriced).toBe(false);
+    expect(result.approximate).toBe(false);
+  });
+
+  it("a zero bucket is exactly 0", () => {
+    const result = priceSplitByType(
+      split({ input: 1_000_000 }),
+      "claude-opus-4-8",
+    );
+    expect(result.byType.input).toBe(5);
+    expect(result.byType.output).toBe(0);
+    expect(result.byType.cacheWrite).toBe(0);
+    expect(result.byType.cacheRead).toBe(0);
+  });
+
+  it("unpriced model contributes $0 to every bucket and flags unpriced", () => {
+    const result = priceSplitByType(
+      split({ input: 1_000_000, output: 1_000_000, cacheWrite5m: 5, cacheRead: 5 }),
+      "<synthetic>",
+    );
+    expect(result.byType).toEqual({
+      input: 0,
+      output: 0,
+      cacheWrite: 0,
+      cacheRead: 0,
+    });
+    expect(result.usd).toBe(0);
+    expect(result.unpriced).toBe(true);
+    expect(result.approximate).toBe(false);
+  });
+
+  it("a bare alias prices at family-latest and flags approximate", () => {
+    const result = priceSplitByType(split({ input: 1_000_000 }), "opus");
+    expect(result.byType.input).toBe(5);
+    expect(result.unpriced).toBe(false);
+    expect(result.approximate).toBe(true);
   });
 });
 
