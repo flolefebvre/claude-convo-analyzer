@@ -47,6 +47,16 @@ describe("computeCost — known resolved models", () => {
     expect(result).toEqual({ usd: 18, unpriced: false, approximate: false });
   });
 
+  it("prices claude-sonnet-5 at its own rates ($3/$15 per MTok)", () => {
+    // 1M input @ $3 + 1M output @ $15 = $18 (standard list rate, not the
+    // $2/$10 introductory rate — see ADR-0003 in pricing.ts).
+    const result = computeCost(
+      tokens({ input: 1_000_000, output: 1_000_000 }),
+      "claude-sonnet-5",
+    );
+    expect(result).toEqual({ usd: 18, unpriced: false, approximate: false });
+  });
+
   it("prices claude-haiku-4-5-20251001 cache reads at $0.10/MTok (0.1x input)", () => {
     const result = computeCost(
       tokens({ cacheRead: 1_000_000 }),
@@ -109,7 +119,7 @@ describe("computeCost — bare aliases price at family-latest, flagged approxima
     expect(alias.approximate).toBe(true);
   });
 
-  it("prices `sonnet` at claude-sonnet-4-6 rates, approximate", () => {
+  it("prices `sonnet` at claude-sonnet-5 (family-latest) rates, approximate", () => {
     const result = computeCost(tokens({ input: 1_000_000 }), "sonnet");
     expect(result).toEqual({ usd: 3, unpriced: false, approximate: true });
   });

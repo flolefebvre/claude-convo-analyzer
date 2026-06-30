@@ -9,16 +9,20 @@
 // UNITS: every rate below is USD per *single* token (USD/MTok ÷ 1_000_000).
 // Storing per-token keeps computeCost a plain multiply with no scaling factor.
 //
-// SOURCE & DATE: Anthropic list prices as of 2026-06-21.
+// SOURCE & DATE: Anthropic list prices as of 2026-06-30.
 //   - Base input/output USD/MTok: claude-api skill model table (cached 2026-06-04):
 //       opus-4-8  $5 / $25,  sonnet-4-6 $3 / $15,  opus-4-7 $5 / $25,  haiku-4-5 $1 / $5.
+//   - sonnet-5 $3 / $15 added (claude-api skill model table, cached 2026-06-24).
+//       Anthropic also lists an introductory rate of $2 / $10 through 2026-08-31;
+//       per ADR-0003 ("not blended/discounted rates") we price at the standard
+//       $3 / $15 list rate, not the temporary intro discount.
 //   - Cache-tier multipliers vs base input (platform.claude.com prompt-caching docs):
 //       cache write 5m = 1.25x base input,  cache write 1h = 2x base input,
 //       cache read = 0.1x base input.
 //   Cache tiers are kept DISTINCT here (not derived by a shared multiplier at call
 //   time) so a model with atypical cache pricing stays correct — ADR-0003.
 //
-// PRICE TABLE VERSION: 2026-06-21.1
+// PRICE TABLE VERSION: 2026-06-30.1
 
 const PER_MTOK = 1_000_000;
 
@@ -49,6 +53,7 @@ function priceRow(inputPerMTok: number, outputPerMTok: number): ModelPrices {
  */
 export const PRICES: Record<string, ModelPrices> = {
   "claude-opus-4-8": priceRow(5, 25),
+  "claude-sonnet-5": priceRow(3, 15),
   "claude-sonnet-4-6": priceRow(3, 15),
   "claude-opus-4-7": priceRow(5, 25),
   "claude-haiku-4-5-20251001": priceRow(1, 5),
@@ -61,6 +66,6 @@ export const PRICES: Record<string, ModelPrices> = {
  */
 export const ALIAS_TO_LATEST: Record<string, string> = {
   opus: "claude-opus-4-8",
-  sonnet: "claude-sonnet-4-6",
+  sonnet: "claude-sonnet-5",
   haiku: "claude-haiku-4-5-20251001",
 };
