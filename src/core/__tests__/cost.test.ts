@@ -64,6 +64,23 @@ describe("computeCost — known resolved models", () => {
     );
     expect(result).toEqual({ usd: 0.1, unpriced: false, approximate: false });
   });
+
+  it("prices claude-fable-5 at $10/$50 per MTok (above Opus tier)", () => {
+    // 1M input @ $10 + 1M output @ $50 = $60.
+    const result = computeCost(
+      tokens({ input: 1_000_000, output: 1_000_000 }),
+      "claude-fable-5",
+    );
+    expect(result).toEqual({ usd: 60, unpriced: false, approximate: false });
+  });
+
+  it("prices claude-opus-4-6 at Opus-tier rates ($5/$25 per MTok)", () => {
+    const result = computeCost(
+      tokens({ input: 1_000_000, output: 1_000_000 }),
+      "claude-opus-4-6",
+    );
+    expect(result).toEqual({ usd: 30, unpriced: false, approximate: false });
+  });
 });
 
 function split(partial: Partial<TokenSplit>): TokenSplit {
