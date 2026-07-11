@@ -26,6 +26,7 @@ import {
   formatTokens,
 } from "@/app/_lib/format";
 import { modelLabel } from "@/app/_lib/sort";
+import { agentHref } from "@/app/_lib/transcript-url";
 import { TableCell, TableRow } from "@/components/ui/table";
 import type { ConversationDetail, ConversationSummary } from "@/core/read";
 
@@ -93,8 +94,19 @@ export function ConversationRow({
             </span>
           </TableCell>
         )}
+        {/* The title deep-links into the Transcript view for this conversation
+            (`/conversation/<sessionId>`; `row.id` IS the stable sessionId). Bare
+            path → the main/root agent. Only the title is a link — the row's
+            `?expanded=` toggle (on the Date cell) and sorting are untouched. */}
         <TableCell className="max-w-xs truncate font-medium">
-          {row.title ?? <span className="text-muted-foreground">{row.id}</span>}
+          <Link
+            href={agentHref(row.id)}
+            className="rounded-sm outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+          >
+            {row.title ?? (
+              <span className="text-muted-foreground">{row.id}</span>
+            )}
+          </Link>
         </TableCell>
         <TableCell>
           <span className="inline-flex items-center gap-1">
@@ -163,7 +175,9 @@ function DetailPanel({
               No detail available for this conversation.
             </p>
           ) : (
-            <Breakdowns detail={detail} />
+            // `row.id` is the stable sessionId — threaded so the sub-agent
+            // breakdown can deep-link each agent into its transcript.
+            <Breakdowns detail={detail} sessionId={row.id} />
           )}
         </div>
       </div>
@@ -256,7 +270,13 @@ function TokenComposition({
 }
 
 /** The cost breakdowns from the server-fetched detail: Model / Skill / Sub-agent. */
-function Breakdowns({ detail }: { detail: ConversationDetail }) {
+function Breakdowns({
+  detail,
+  sessionId,
+}: {
+  detail: ConversationDetail;
+  sessionId: string;
+}) {
   const sections = detailSections(detail);
   return (
     <>
@@ -299,7 +319,10 @@ function Breakdowns({ detail }: { detail: ConversationDetail }) {
         {sections.subAgents.isEmpty ? (
           <NoneNote>No sub-agents.</NoneNote>
         ) : (
-          <SubAgentBreakdown section={sections.subAgents} />
+          <SubAgentBreakdown
+            section={sections.subAgents}
+            sessionId={sessionId}
+          />
         )}
       </Section>
     </>
