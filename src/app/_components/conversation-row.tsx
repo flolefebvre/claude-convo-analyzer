@@ -1,28 +1,23 @@
-"use client";
-
-// The expandable conversation row (slice 4). A client component because it owns
-// the per-row expand/collapse state and lazily fetches detail. Per ADR-0002 it
-// does NOT import core: it receives the row's `ConversationSummary` as plain
-// props (the type import is erased) and, on first expand, calls the
-// `getConversationDetail` server action — which is the only place core is touched.
+// The expandable conversation row. A SERVER component: whether a row is
+// expanded is URL view state (`?expanded=<id>`), same as sort and folder scope,
+// so the page resolves it from `searchParams`, fetches the panel's detail
+// server-side, and hands both down as plain props. The expand toggle is a
+// `<Link>` to `expandHref(...)` — the same href-composition pattern as the
+// sortable headers and folder links — with `scroll={false}` so toggling a row
+// deep in the table never jumps the viewport. Expanded views are therefore
+// shareable and survive a reload.
 //
-// The first cell is a toggle button (click + keyboard, with `aria-expanded`);
-// the shadcn TableRow's `has-aria-expanded:bg-muted/50` highlights an open row.
-// On expand we show a brief loading state, then a detail panel rendered in a
-// second, full-width TableRow; an unknown id / error shows a graceful note.
+// ADR-0002 boundary: no client file touches core. The only client leaf left in
+// the panel is `SubAgentBreakdown` (ephemeral per-group open/closed state),
+// which receives plain serializable props.
 
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { useState, useTransition } from "react";
+import Link from "next/link";
 
-import { getConversationDetail } from "@/app/actions";
-import { CostBar } from "@/app/_components/cost-bar";
+import { CostList, CostRow } from "@/app/_components/cost-list";
+import { SubAgentBreakdown } from "@/app/_components/sub-agent-breakdown";
 import { columnCount } from "@/app/_lib/columns";
-import {
-  detailSections,
-  tokenComposition,
-  type SubAgentGroup,
-  type SubAgentSection,
-} from "@/app/_lib/detail";
+import { detailSections, tokenComposition } from "@/app/_lib/detail";
 import { friendlyFolderName } from "@/app/_lib/folders";
 import {
   formatCompactTokens,
@@ -34,21 +29,10 @@ import { modelLabel } from "@/app/_lib/sort";
 import { TableCell, TableRow } from "@/components/ui/table";
 import type { ConversationDetail, ConversationSummary } from "@/core/read";
 
-type DetailState =
-  | { status: "idle" }
-  | { status: "loading" }
-  | { status: "loaded"; detail: ConversationDetail }
-  | { status: "empty" }
-  | { status: "error" };
-
 export function ConversationRow({
   row,
-  // The Date cell's label/title, formatted ON THE SERVER against a single
-  // request-time `now` (see page.tsx). It MUST arrive as a plain prop: this is a
-  // client component, so computing a relative "Nm ago"/"just now" label here with
-  // `new Date()` would differ between the server render and client hydration and
-  // throw a React hydration mismatch (#418) — which, inside the Refresh
-  // transition, froze the button on "Scanning…" (issue #20).
+  // The Date cell's label/title, formatted by the page against a single
+  // request-time `now` so every row's relative label agrees (see page.tsx).
   date,
   // `scoped` is true when the table is filtered to a single Project (an active
   // `?folder=`). When scoped, every visible row shares that Project, so the
@@ -56,37 +40,21 @@ export function ConversationRow({
   // breadcrumb instead. The expand toggle therefore lives on the Date cell so
   // rows stay expandable in BOTH states.
   scoped = false,
+  // True when this row is the URL's `?expanded=` target; `detail` is that
+  // row's server-fetched panel data (`null` when collapsed or unknown id).
+  expanded = false,
+  detail = null,
+  // The row's expand/collapse toggle target (built by the page via expandHref).
+  toggleHref,
 }: {
   row: ConversationSummary;
   date: { label: string; absolute: string };
   scoped?: boolean;
+  expanded?: boolean;
+  detail?: ConversationDetail | null;
+  toggleHref: string;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const [detail, setDetail] = useState<DetailState>({ status: "idle" });
-  const [, startTransition] = useTransition();
   const model = modelLabel(row.models);
-
-  function toggle() {
-    const next = !expanded;
-    setExpanded(next);
-    // Lazy fetch: only on the FIRST expand (issue #3: "Expanding a row calls
-    // getConversation()"). Re-expanding a row we already loaded reuses it.
-    if (next && detail.status === "idle") {
-      setDetail({ status: "loading" });
-      startTransition(async () => {
-        try {
-          const result = await getConversationDetail(row.id);
-          setDetail(
-            result === null
-              ? { status: "empty" }
-              : { status: "loaded", detail: result },
-          );
-        } catch {
-          setDetail({ status: "error" });
-        }
-      });
-    }
-  }
 
   return (
     <>
@@ -97,9 +65,9 @@ export function ConversationRow({
         >
           {/* Expand toggle lives here so it works whether or not the Folder
               cell is rendered (it's hidden when scoped). */}
-          <button
-            type="button"
-            onClick={toggle}
+          <Link
+            href={toggleHref}
+            scroll={false}
             aria-expanded={expanded}
             className="inline-flex items-center gap-1.5 rounded-sm text-left outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
           >
@@ -112,7 +80,7 @@ export function ConversationRow({
               {expanded ? "Collapse" : "Expand"} conversation details
             </span>
             {date.label}
-          </button>
+          </Link>
         </TableCell>
         {/* When scoped to a single Project the Folder column is hidden (the page
             shows the path once as a breadcrumb). When unscoped, show the friendly
@@ -157,7 +125,7 @@ export function ConversationRow({
       {expanded && (
         <TableRow>
           <TableCell colSpan={columnCount(scoped)} className="bg-muted/30 p-0">
-            <DetailPanel state={detail} row={row} />
+            <DetailPanel detail={detail} row={row} />
           </TableCell>
         </TableRow>
       )}
@@ -167,21 +135,20 @@ export function ConversationRow({
 
 /**
  * Render the detail panel — the analysis surface for one conversation. The
- * summary strip and the token-composition bar render IMMEDIATELY from the row
- * summary (no fetch); the lazily-fetched cost breakdowns (Model / Sub-agents /
- * Skill) show their own loading / error / empty / loaded state to the right.
+ * summary strip and the token-composition bar come straight from the row
+ * summary; the cost breakdowns (Model / Skill / Sub-agents) come from the
+ * server-fetched detail, with a graceful note when the id is unknown.
  */
 function DetailPanel({
-  state,
+  detail,
   row,
 }: {
-  state: DetailState;
+  detail: ConversationDetail | null;
   row: ConversationSummary;
 }) {
-  const loaded = state.status === "loaded" ? state.detail : null;
   return (
     <div className="space-y-6 px-6 py-5">
-      <SummaryStrip row={row} detail={loaded} />
+      <SummaryStrip row={row} detail={detail} />
       <div className="grid gap-x-10 gap-y-6 lg:grid-cols-[16rem_1fr]">
         <Section title="Token composition">
           <TokenComposition
@@ -191,7 +158,13 @@ function DetailPanel({
           />
         </Section>
         <div className="space-y-6">
-          <LazyBreakdowns state={state} />
+          {detail === null ? (
+            <p className="text-sm text-muted-foreground">
+              No detail available for this conversation.
+            </p>
+          ) : (
+            <Breakdowns detail={detail} />
+          )}
         </div>
       </div>
     </div>
@@ -201,8 +174,7 @@ function DetailPanel({
 /**
  * The orienting headline: the conversation's cost (the payload, in the cost
  * hue) followed by a quiet meta line of the facts you'd drill into. Most facts
- * come straight from the row summary; the Skill count needs the fetched detail,
- * so it joins once loaded.
+ * come straight from the row summary; the Skill count needs the fetched detail.
  */
 function SummaryStrip({
   row,
@@ -283,31 +255,9 @@ function TokenComposition({
   );
 }
 
-/** The cost breakdowns fetched on first expand: loading / error / empty / loaded. */
-function LazyBreakdowns({ state }: { state: DetailState }) {
-  if (state.status === "loading" || state.status === "idle") {
-    return (
-      <p className="text-sm text-muted-foreground" aria-live="polite">
-        Loading breakdown…
-      </p>
-    );
-  }
-  if (state.status === "error") {
-    return (
-      <p className="text-sm text-destructive" role="alert">
-        Could not load details. Try again.
-      </p>
-    );
-  }
-  if (state.status === "empty") {
-    return (
-      <p className="text-sm text-muted-foreground">
-        No detail available for this conversation.
-      </p>
-    );
-  }
-
-  const sections = detailSections(state.detail);
+/** The cost breakdowns from the server-fetched detail: Model / Skill / Sub-agent. */
+function Breakdowns({ detail }: { detail: ConversationDetail }) {
+  const sections = detailSections(detail);
   return (
     <>
       <Section title="Cost by model">
@@ -353,126 +303,6 @@ function LazyBreakdowns({ state }: { state: DetailState }) {
         )}
       </Section>
     </>
-  );
-}
-
-/** The width of the leading label column, shared so every bar starts aligned. */
-const LABEL_W = "w-40";
-
-/** A ranked cost list: each row pairs a share-of-total bar with its label and
- *  cost, mirroring the overview band's "top projects by cost" language. */
-function CostList({ children }: { children: React.ReactNode }) {
-  return <ul className="flex flex-col gap-2">{children}</ul>;
-}
-
-function CostRow({
-  label,
-  costUsd,
-  max,
-  unpriced = false,
-}: {
-  label: string;
-  costUsd: number;
-  /** The breakdown's TOTAL cost → each bar reads as a share of the whole. */
-  max: number;
-  unpriced?: boolean;
-}) {
-  return (
-    <li className="flex items-center gap-3 text-sm">
-      <span className={`${LABEL_W} shrink-0 truncate`} title={label}>
-        {label}
-      </span>
-      <CostBar value={costUsd} max={max} className="min-w-0 flex-1" />
-      <span className="w-20 shrink-0 text-right tabular-nums text-muted-foreground">
-        {unpriced ? "~" : ""}
-        {formatCost(costUsd)}
-      </span>
-    </li>
-  );
-}
-
-/** Sub-agents grouped by type: each group is a ranked cost bar that expands to
- *  reveal its individual agents. Owns the per-group open/closed state. */
-function SubAgentBreakdown({ section }: { section: SubAgentSection }) {
-  const [open, setOpen] = useState<Record<string, boolean>>({});
-  return (
-    <CostList>
-      {section.groups.map((g) => (
-        <SubAgentGroupRow
-          key={g.label}
-          group={g}
-          max={section.totalCost}
-          open={!!open[g.label]}
-          onToggle={() =>
-            setOpen((prev) => ({ ...prev, [g.label]: !prev[g.label] }))
-          }
-        />
-      ))}
-    </CostList>
-  );
-}
-
-function SubAgentGroupRow({
-  group,
-  max,
-  open,
-  onToggle,
-}: {
-  group: SubAgentGroup;
-  max: number;
-  open: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <li>
-      <div className="flex items-center gap-3 text-sm">
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={open}
-          className={`${LABEL_W} flex shrink-0 items-center gap-1.5 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50`}
-        >
-          {open ? (
-            <ChevronDown className="size-3 shrink-0" aria-hidden />
-          ) : (
-            <ChevronRight className="size-3 shrink-0" aria-hidden />
-          )}
-          <span className="truncate hover:underline" title={group.label}>
-            {group.label}
-          </span>
-          {group.count > 1 && (
-            <span className="shrink-0 rounded bg-muted px-1 text-xs text-muted-foreground tabular-nums">
-              ×{group.count}
-            </span>
-          )}
-          <span className="sr-only">
-            {open ? "Collapse" : "Expand"} {group.label} agents
-          </span>
-        </button>
-        <CostBar value={group.costUsd} max={max} className="min-w-0 flex-1" />
-        <span className="w-20 shrink-0 text-right tabular-nums text-muted-foreground">
-          {formatCost(group.costUsd)}
-        </span>
-      </div>
-      {open && group.count > 1 && (
-        <ul className="mt-1.5 ml-[1.125rem] flex flex-col gap-1 border-l border-border/60 pl-3">
-          {group.agents.map((a) => (
-            <li
-              key={a.agentId}
-              className="flex items-center justify-between gap-4 text-xs text-muted-foreground"
-            >
-              <span className="truncate" title={a.model || undefined}>
-                {a.model || "—"}
-              </span>
-              <span className="flex shrink-0 gap-4 tabular-nums">
-                <span>{formatTokens(a.tokens.total)}</span>
-                <span className="w-16 text-right">{formatCost(a.costUsd)}</span>
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </li>
   );
 }
 

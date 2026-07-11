@@ -10,10 +10,10 @@
 // The component re-renders on client-side `<Link>` navigation, so both track the
 // live params without a full reload.
 //
-// ADR-0002 / ADR-0004 boundary: this imports NO core values — the friendly
-// label + count come in as server-rendered `children`, and the `_lib/sort`
-// helpers are pure (their `ConversationSummary` import is type-only). Data
-// filtering stays server-side from the URL (ADR-0004 amendment).
+// ADR-0002 boundary: this imports NO core values — the friendly label + count
+// come in as server-rendered `children`, and the `_lib/sort` helpers are pure
+// (their `ConversationSummary` import is type-only). Data filtering stays
+// server-side from the URL.
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";

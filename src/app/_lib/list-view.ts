@@ -17,7 +17,7 @@
 // vitest environment, exactly like its sibling `_lib` modules. The only core
 // touch is type-only imports, erased at compile time (ADR-0002). URL→intent
 // parsing stays at the page edge — this takes already-resolved `{ folder, sort }`
-// intent, never raw searchParams (ADR-0004).
+// intent, never raw searchParams.
 
 import type { Tokens } from "@/core/cost";
 import type { ConversationSummary } from "@/core/read";
