@@ -6,6 +6,7 @@ import {
   RESULT_TRUNCATE_CHARS,
   agentLineage,
   classifyToolCall,
+  findSpawnedNode,
   parseSlashCommand,
   toolCallSnippet,
   truncationNote,
@@ -224,5 +225,59 @@ describe("agentLineage", () => {
 
   it("returns an empty chain for an unknown id", () => {
     expect(agentLineage(tree, "nope")).toEqual([]);
+  });
+});
+
+describe("findSpawnedNode", () => {
+  function node(
+    id: string,
+    spawn: { toolUseId?: string | null; messageId?: number | null },
+    children: TranscriptAgentNode[] = [],
+  ): TranscriptAgentNode {
+    return {
+      id,
+      agentType: "Explore",
+      resolvedModel: null,
+      costUsd: 0,
+      tokens: { input: 0, output: 0, cacheWrite: 0, cacheRead: 0, total: 0 },
+      unpriced: false,
+      hasError: false,
+      metaCount: 0,
+      spawnedByMessageId: spawn.messageId ?? null,
+      spawnedByToolUseId: spawn.toolUseId ?? null,
+      children,
+    };
+  }
+
+  const tree = node("root", {}, [
+    node("a1", { toolUseId: "tu_a", messageId: 10 }),
+    node("a2", { toolUseId: "tu_b", messageId: 20 }, [
+      node("a3", { toolUseId: "tu_c", messageId: 30 }),
+    ]),
+  ]);
+
+  it("correlates by tool_use id, even for a deeply nested node", () => {
+    expect(findSpawnedNode(tree, { toolUseId: "tu_c", messageId: 999 })?.id).toBe(
+      "a3",
+    );
+  });
+
+  it("prefers the tool_use id when a message spawned several agents", () => {
+    // Two agents share message 40; only the tool_use id disambiguates.
+    const t = node("root", {}, [
+      node("x1", { toolUseId: "tu_x", messageId: 40 }),
+      node("x2", { toolUseId: "tu_y", messageId: 40 }),
+    ]);
+    expect(findSpawnedNode(t, { toolUseId: "tu_y", messageId: 40 })?.id).toBe("x2");
+  });
+
+  it("falls back to the message id when the call has no tool_use id", () => {
+    expect(findSpawnedNode(tree, { toolUseId: null, messageId: 20 })?.id).toBe(
+      "a2",
+    );
+  });
+
+  it("returns null when nothing correlates", () => {
+    expect(findSpawnedNode(tree, { toolUseId: "tu_missing", messageId: 777 })).toBeNull();
   });
 });

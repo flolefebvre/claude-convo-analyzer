@@ -76,6 +76,9 @@
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
+  /* Faint red tint for error tool-result blocks and the "API error" badge in the
+     transcript view (mirrors the prototype). */
+  --destructive-muted: oklch(0.577 0.245 27.325 / 10%);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
@@ -119,6 +122,7 @@
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
+  --destructive-muted: oklch(0.704 0.191 22.216 / 14%);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
@@ -154,5 +158,394 @@
   }
   html {
     @apply font-sans;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Transcript view (`/conversation/<id>`). Ported from
+   `docs/prototypes/transcript-view.html`, scoped under `.tview` so the
+   prototype's compact class vocabulary (`.tree`, `.node`, `.turn-body`,
+   `details.call`, …) does not leak into the rest of the app. Colours come from
+   the shared semantic tokens above, so both themes (`.dark`) read correctly
+   without any per-rule media query. Layout/disclosure rules that Tailwind
+   utilities cannot express cleanly (depth-based indent via `--depth`,
+   `details[open]` chevron rotation, sticky blurred header) live here as real
+   CSS. --------------------------------------------------------------------- */
+.tview {
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, monospace;
+  --radius-node: calc(var(--radius) * 0.6);
+  display: flex;
+  height: 100vh;
+  font-size: 14px;
+  line-height: 1.55;
+}
+.tview .num { font-variant-numeric: tabular-nums; }
+.tview .cost {
+  color: var(--cost);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+.tview .microlabel {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+/* ---- Agent-tree sidebar ---- */
+.tview .tree {
+  width: 280px;
+  flex-shrink: 0;
+  background: var(--sidebar);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.tview .tree-header { padding: 16px 16px 12px; border-bottom: 1px solid var(--border); }
+.tview .back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  text-decoration: none;
+  margin-bottom: 10px;
+}
+.tview .back-link:hover { color: var(--foreground); }
+.tview .conv-title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-wrap: balance;
+  margin: 0 0 6px;
+}
+.tview .conv-meta {
+  font-size: 11.5px;
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tview .tree-caption { padding: 14px 16px 6px; }
+.tview .tree-nodes { padding: 0 8px 16px; display: flex; flex-direction: column; gap: 1px; }
+.tview .node {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 5px 8px 5px calc(8px + var(--depth, 0) * 16px);
+  border-radius: var(--radius-node);
+  color: var(--foreground);
+  text-decoration: none;
+}
+.tview .node:hover { background: var(--sidebar-accent); }
+.tview .node[aria-current="true"] { background: var(--sidebar-accent); font-weight: 600; }
+.tview .node-glyph {
+  color: var(--muted-foreground);
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+  font-size: 11px;
+}
+.tview .node[aria-current="true"] .node-glyph { color: var(--agent); }
+.tview .node-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.tview .node-sub { color: var(--muted-foreground); font-weight: 400; }
+.tview .node-err {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--destructive);
+  flex-shrink: 0;
+}
+.tview .tree-total {
+  margin-top: auto;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.tview .tree-total .cost { font-size: 13px; font-weight: 600; }
+
+/* ---- Transcript pane ---- */
+.tview .pane { flex: 1; overflow-y: auto; }
+.tview .pane-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: color-mix(in oklch, var(--background) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 32px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.tview .crumb {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+  flex: 1;
+  min-width: 0;
+}
+.tview .crumb a { color: var(--muted-foreground); text-decoration: none; }
+.tview .crumb a:hover { color: var(--foreground); text-decoration: underline; }
+.tview .crumb .sep { color: var(--muted-foreground); }
+.tview .crumb .here { font-weight: 600; }
+.tview .pane-header .stats {
+  display: flex;
+  gap: 14px;
+  align-items: baseline;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.tview .pane-header .cost { font-size: 13px; font-weight: 600; }
+
+.tview .transcript {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 28px 32px 80px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+/* ---- Prompt (human) ---- */
+.tview .prompt {
+  border-left: 3px solid var(--foreground);
+  background: var(--muted);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  padding: 10px 16px 12px;
+}
+.tview .prompt-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 4px;
+}
+.tview .prompt-body { white-space: pre-wrap; word-break: break-word; }
+.tview .slash {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+.tview .slash-cmd {
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1px 7px;
+  font-weight: 600;
+}
+.tview .slash-args { color: var(--muted-foreground); }
+
+/* ---- Assistant turn ---- */
+.tview .turn-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+.tview .turn-head .model {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--muted-foreground);
+}
+.tview .turn-head .spacer { flex: 1; }
+.tview .turn-cost { background: var(--cost-muted); border-radius: 999px; padding: 1px 9px; }
+.tview .badge-err {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--destructive);
+  background: var(--destructive-muted);
+  border-radius: 999px;
+  padding: 2px 9px;
+}
+.tview .turn-body { overflow-wrap: break-word; }
+.tview .turn-body > :first-child { margin-top: 0; }
+.tview .turn-body > :last-child { margin-bottom: 0; }
+.tview .turn-body p { margin: 0 0 10px; }
+.tview .turn-body ul, .tview .turn-body ol { margin: 0 0 10px; padding-left: 22px; }
+.tview .turn-body li { margin: 2px 0; }
+.tview .turn-body code {
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-size: 12.5px;
+  font-family: var(--font-mono);
+}
+.tview .turn-body pre {
+  background: var(--muted);
+  border-radius: 6px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  margin: 0 0 10px;
+}
+.tview .turn-body pre code { background: none; border: none; padding: 0; }
+.tview .turn-body h1, .tview .turn-body h2, .tview .turn-body h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 14px 0 6px;
+}
+.tview .turn-body blockquote {
+  margin: 0 0 10px;
+  padding-left: 12px;
+  border-left: 3px solid var(--border);
+  color: var(--muted-foreground);
+}
+.tview .turn-body a { color: var(--agent); text-decoration: underline; }
+.tview .turn-body table { border-collapse: collapse; margin: 0 0 10px; font-size: 13px; }
+.tview .turn-body th, .tview .turn-body td {
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+  text-align: left;
+}
+.tview .api-error-note {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-style: italic;
+}
+
+/* ---- Tool calls ---- */
+.tview .calls { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
+.tview details.call {
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * 0.8);
+  background: var(--card);
+  overflow: hidden;
+}
+.tview details.call summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+.tview details.call summary::-webkit-details-marker { display: none; }
+.tview details.call summary:hover { background: var(--muted); }
+.tview .chev {
+  color: var(--muted-foreground);
+  font-size: 10px;
+  transition: transform 0.15s;
+  flex-shrink: 0;
+  width: 10px;
+}
+.tview details[open] .chev { transform: rotate(90deg); }
+.tview .kind {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  border-radius: 5px;
+  padding: 2px 7px;
+  flex-shrink: 0;
+}
+.tview .kind-tool { background: var(--muted); color: var(--muted-foreground); }
+.tview .kind-skill { background: var(--skill-muted); color: var(--skill); }
+.tview .kind-agent { background: var(--agent-muted); color: var(--agent); }
+.tview .call-name { font-weight: 600; font-size: 13px; flex-shrink: 0; }
+.tview .call-snippet {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+.tview .call-meta { font-size: 11.5px; color: var(--muted-foreground); flex-shrink: 0; }
+.tview .call-err { color: var(--destructive); font-weight: 600; font-size: 11.5px; flex-shrink: 0; }
+.tview .call-body {
+  border-top: 1px solid var(--border);
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.tview .io-block .microlabel { display: block; margin-bottom: 4px; }
+.tview .io-block pre {
+  margin: 0;
+  background: var(--muted);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre;
+  font-family: var(--font-mono);
+}
+.tview .io-block pre.err { background: var(--destructive-muted); color: var(--destructive); }
+.tview .trunc {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--muted-foreground);
+}
+.tview .open-agent {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--agent);
+  background: var(--agent-muted);
+  border-radius: 6px;
+  padding: 5px 11px;
+  align-self: flex-start;
+  text-decoration: none;
+}
+.tview .open-agent:hover { filter: brightness(1.08); }
+
+/* ---- Meta divider ---- */
+.tview .meta-hidden {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted-foreground);
+  font-size: 11.5px;
+}
+.tview .meta-hidden::before, .tview .meta-hidden::after {
+  content: "";
+  flex: 1;
+  border-top: 1px dashed var(--border);
+}
+
+/* ---- Empty / not-found state ---- */
+.tview-empty {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px;
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  .tview { flex-direction: column; height: auto; }
+  .tview .tree {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .tview .tree-total { margin-top: 0; }
+  .tview .pane-header, .tview .transcript {
+    padding-left: 16px;
+    padding-right: 16px;
   }
 }

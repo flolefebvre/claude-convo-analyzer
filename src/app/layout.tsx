@@ -1,15 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { Suspense } from "react";
 
 import "./globals.css";
-import { FolderSidebar } from "@/app/_components/folder-sidebar";
-import { OverviewBand } from "@/app/_components/overview-band";
-import { RefreshButton } from "@/app/_components/refresh-button";
 import { ThemeProvider } from "@/app/_components/theme-provider";
-import { ThemeToggle } from "@/app/_components/theme-toggle";
-import { loadConversations } from "@/app/_lib/conversations";
-import { buildListView } from "@/app/_lib/list-view";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -26,15 +19,12 @@ export const metadata: Metadata = {
   description: "Browse and cost your local Claude Code conversations.",
 };
 
-// The persistent app shell (PR #13). The header + two-column sidebar/main grid
-// live HERE in the layout, which does NOT re-render on navigation, so changing
-// `?folder=`/sort no longer reloads/flashes the sidebar.
-// The page renders only the table region as `{children}`.
-//
-// The sidebar's folder list is scope-independent (derived from ALL
-// conversations), so the layout can build it without reading `searchParams`
-// (which layouts cannot do anyway). Both this and the page call
-// `loadConversations()`, but React `cache()` dedupes it to one read per request.
+// The ROOT layout: the global document shell only — <html>/<body>, the web
+// fonts, and the theme-provider client boundary. The persistent app *chrome*
+// (header + folder sidebar + overview band) lives in the `(list)` route group's
+// layout, NOT here, so a full-bleed route like `/conversation/<id>` — which
+// brings its OWN agent-tree sidebar — is not wrapped in the list chrome. Route
+// groups (`(list)`) don't affect the URL, so the list page stays at `/`.
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -51,97 +41,9 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         {/* The theme provider is a client boundary wrapping the otherwise-server
-            tree: the page/table stay server components and PPR is unaffected. */}
-        <ThemeProvider>
-          <main className="mx-auto w-full max-w-7xl px-6 py-10">
-            <header className="mb-6 flex items-center justify-between gap-4">
-              <div>
-                <h1 className="text-2xl font-semibold tracking-tight">
-                  Claude Conversation Analyzer
-                </h1>
-                <p className="text-sm text-muted-foreground">
-                  Every conversation from your local Claude Code logs, with token
-                  and cost rollups.
-                </p>
-              </div>
-              {/* Header controls: the Light/Dark/Auto theme toggle and the
-                  Refresh control. Both are client components; the layout stays a
-                  server component. */}
-              <div className="flex items-center gap-3">
-                <ThemeToggle />
-                <div data-slot="refresh-action">
-                  <RefreshButton />
-                </div>
-              </div>
-            </header>
-
-            {/* The analysis surface, full-width above the split. Global (scope-
-                independent), like the sidebar, so it can live in the layout —
-                which cannot read `searchParams` — and persists across navigation
-                without flashing. Its own Suspense boundary defers the request-
-                time read out of prerendering (PPR). */}
-            <Suspense fallback={null}>
-              <Overview />
-            </Suspense>
-
-            <div className="flex flex-col gap-6 md:flex-row md:items-start">
-              <aside className="w-full shrink-0 md:w-64">
-                {/* The sidebar reads the live URL (useSearchParams) for its active
-                    highlight, and its folder list is fetched at request time — both
-                    reasons to keep it inside a Suspense boundary so the shell can
-                    prerender (Next local docs: use-search-params "Prerendering"). */}
-                <Suspense
-                  fallback={
-                    <p className="text-sm text-muted-foreground">
-                      Loading folders…
-                    </p>
-                  }
-                >
-                  <Sidebar />
-                </Suspense>
-              </aside>
-              <div className="min-w-0 flex-1">{children}</div>
-            </div>
-          </main>
-        </ThemeProvider>
+            tree: pages stay server components and PPR is unaffected. */}
+        <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>
   );
-}
-
-/**
- * The sidebar's data: derive the scope-independent folder list from ALL
- * conversations. Split out so the request-time read sits inside the layout's
- * <Suspense> boundary (the read is deferred out of prerendering via
- * `loadConversations`/`connection()`).
- */
-async function Sidebar() {
-  const allRows = await loadConversations();
-  // No sort intent -> the scope-independent slice only (folder list + totals);
-  // the table slice is skipped. The "All folders" anchor totals are summed from
-  // the already-derived per-folder entries (no extra core touch).
-  const { folders, totals } = buildListView(allRows);
-  return (
-    <FolderSidebar
-      folders={folders}
-      totalCount={totals.count}
-      totalCost={totals.costUsd}
-      totalUnpriced={totals.unpriced}
-    />
-  );
-}
-
-/**
- * The overview band's data: the headline aggregate plus the cost-ranked top
- * Projects, both derived from ALL conversations (scope-independent). Split out
- * so the request-time read sits inside its own <Suspense> boundary. The
- * `loadConversations()` read is deduped with the sidebar/page via React
- * `cache()`, so the band adds no extra DB work.
- */
-async function Overview() {
-  const allRows = await loadConversations();
-  // No sort intent -> scope-independent slice only; one `deriveFolders` pass
-  // feeds both the overview aggregate and the cost-ranked top Projects.
-  const { overview, topProjects } = buildListView(allRows);
-  return <OverviewBand overview={overview} topProjects={topProjects} />;
 }

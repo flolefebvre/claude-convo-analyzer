@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  formatClock,
   formatCompactTokens,
   formatCost,
   formatDate,
@@ -9,6 +10,18 @@ import {
   formatGrandTotalCost,
   formatTokens,
 } from "@/app/_lib/format";
+
+describe("formatClock", () => {
+  it("renders a zero-padded UTC HH:MM", () => {
+    expect(formatClock("2026-06-19T09:04:00Z")).toBe("09:04");
+    expect(formatClock("2026-06-19T14:30:00Z")).toBe("14:30");
+  });
+
+  it("returns '' for a missing or unparseable timestamp", () => {
+    expect(formatClock(null)).toBe("");
+    expect(formatClock("not-a-date")).toBe("");
+  });
+});
 
 describe("formatTokens", () => {
   it("formats an integer with thousands separators", () => {

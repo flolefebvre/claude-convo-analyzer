@@ -1,0 +1,89 @@
+import Link from "next/link";
+import { Fragment } from "react";
+
+import { subAgentLabel } from "@/app/_lib/detail";
+import { formatCost } from "@/app/_lib/format";
+import { agentLineage } from "@/app/_lib/transcript";
+import { agentHref } from "@/app/_lib/transcript-url";
+import type { TranscriptView } from "@/core/read";
+
+import { TranscriptMessageRow } from "./transcript-message";
+
+/**
+ * The right pane: the selected agent's transcript, topped by a sticky header
+ * with the lineage breadcrumb (root → selected; ancestors are links) and the
+ * turn/tool/model/cost stats. Below it, the agent's messages render in order,
+ * with a trailing "N meta records hidden" divider when the reader dropped meta
+ * rows for this agent.
+ */
+export function TranscriptPane({ view }: { view: TranscriptView }) {
+  const lineage = agentLineage(view.tree, view.selectedAgentId);
+  const selected = lineage[lineage.length - 1] ?? view.tree;
+
+  const turnCount = view.messages.filter((m) => m.role === "assistant").length;
+  const toolCount = view.messages.reduce(
+    (sum, m) => sum + m.toolCalls.length,
+    0,
+  );
+
+  return (
+    <main className="pane">
+      <div className="pane-header">
+        <nav className="crumb" aria-label="Agent lineage">
+          {lineage.map((node, i) => {
+            const isLast = i === lineage.length - 1;
+            const label = subAgentLabel({ agentType: node.agentType ?? "" });
+            return (
+              <Fragment key={node.id}>
+                {isLast ? (
+                  <span className="here">{label}</span>
+                ) : (
+                  <>
+                    <Link
+                      href={agentHref(view.sessionId, i === 0 ? undefined : node.id)}
+                    >
+                      {label}
+                    </Link>
+                    <span className="sep" aria-hidden>
+                      /
+                    </span>
+                  </>
+                )}
+              </Fragment>
+            );
+          })}
+        </nav>
+        <div className="stats">
+          <span className="num">
+            {turnCount} turn{turnCount === 1 ? "" : "s"}
+          </span>
+          <span className="num">
+            {toolCount} tool call{toolCount === 1 ? "" : "s"}
+          </span>
+          {selected.resolvedModel && (
+            <span className="model">{selected.resolvedModel}</span>
+          )}
+          <span className="cost num turn-cost">
+            {formatCost(selected.costUsd)}
+          </span>
+        </div>
+      </div>
+
+      <div className="transcript">
+        {view.messages.map((message) => (
+          <TranscriptMessageRow
+            key={message.id}
+            message={message}
+            view={view}
+          />
+        ))}
+        {view.metaHiddenCount > 0 && (
+          <div className="meta-hidden">
+            {view.metaHiddenCount} meta record
+            {view.metaHiddenCount === 1 ? "" : "s"} hidden
+          </div>
+        )}
+      </div>
+    </main>
+  );
+}

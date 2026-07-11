@@ -157,6 +157,48 @@ export function parseSlashCommand(text: string | null): ParsedPrompt {
 }
 
 /**
+ * Correlate an Agent tool call to the sub-agent node it spawned, for the
+ * "Open transcript →" deep-link and the exact spawned cost. Walks the whole
+ * `tree` for the node whose `spawnedByToolUseId` matches the call's `toolUseId`
+ * (the reliable key); failing that, falls back to `spawnedByMessageId` matching
+ * the assistant turn's message id. Returns `null` when nothing correlates (e.g.
+ * a spawn whose sub-agent transcript was not captured).
+ */
+export function findSpawnedNode(
+  tree: TranscriptAgentNode,
+  call: { toolUseId: string | null; messageId: number },
+): TranscriptAgentNode | null {
+  // Pre-order search of the descendants (the root itself is never a spawn).
+  const find = (
+    match: (node: TranscriptAgentNode) => boolean,
+  ): TranscriptAgentNode | null => {
+    const walk = (node: TranscriptAgentNode): TranscriptAgentNode | null => {
+      if (match(node)) return node;
+      for (const child of node.children) {
+        const found = walk(child);
+        if (found) return found;
+      }
+      return null;
+    };
+    for (const child of tree.children) {
+      const found = walk(child);
+      if (found) return found;
+    }
+    return null;
+  };
+
+  // The tool_use id is the precise correlation (a single turn may spawn several
+  // agents, so the message id alone is ambiguous); only fall back to it when the
+  // tool call has no recorded tool_use id.
+  const byToolUse =
+    call.toolUseId !== null
+      ? find((node) => node.spawnedByToolUseId === call.toolUseId)
+      : null;
+  if (byToolUse) return byToolUse;
+  return find((node) => node.spawnedByMessageId === call.messageId);
+}
+
+/**
  * The ancestor chain (root → selected) for `selectedId` within the agent `tree`,
  * for the transcript pane's breadcrumb. Returns the path inclusive of both ends,
  * or `[]` when the id is not in the tree.
