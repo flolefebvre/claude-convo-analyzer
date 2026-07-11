@@ -254,6 +254,7 @@ function messageData(
     messageId: m.messageId,
     uuid: m.uuid,
     role: m.role,
+    kind: m.kind,
     text: m.text,
     inputTokens: m.inputTokens,
     outputTokens: m.outputTokens,

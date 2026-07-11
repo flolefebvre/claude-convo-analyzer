@@ -62,6 +62,17 @@ export type ParsedAgentSpawn = {
   totalTokens: number | null;
 };
 
+/**
+ * Classification of a `user` record for the transcript view (finding: only
+ * genuine human prompts render as user messages). `null` on assistant rows —
+ * they carry no meaningful kind.
+ *   - `prompt`      — a genuine human prompt.
+ *   - `tool-result` — a tool_result carrier (the `extractToolResult` path).
+ *   - `meta`        — a machine-injected record (`isMeta: true`): skill
+ *     instructions, command output, system reminders.
+ */
+export type MessageKind = "prompt" | "tool-result" | "meta";
+
 /** A normalized message destined for one `message` row. */
 export type ParsedMessage = {
   /** Dedup key: assistant `message.id` (== requestId); user records use `uuid`. */
@@ -69,6 +80,8 @@ export type ParsedMessage = {
   uuid: string | null;
   parentUuid: string | null;
   role: "user" | "assistant";
+  /** User-record classification (see {@link MessageKind}); null for assistant. */
+  kind: MessageKind | null;
   text: string | null;
   /** `tool_use` blocks in this assistant turn (empty for user messages). */
   toolUses: ParsedToolUse[];
@@ -357,12 +370,19 @@ export function parseSessionLines(lines: Iterable<string>): ParsedSession {
 
     if (type === "user") {
       const toolResult = extractToolResult(record, message.content);
+      // Classify the user record for the transcript: a tool_result carrier, an
+      // isMeta machine-injected record, or a genuine human prompt.
+      let kind: MessageKind;
       if (toolResult !== null) {
+        kind = "tool-result";
         toolResults.set(toolResult.toolUseId, toolResult);
         const spawn = extractAgentSpawn(record, toolResult.toolUseId);
         if (spawn !== null) agentSpawns.set(spawn.agentId, spawn);
+      } else if (record.isMeta === true) {
+        kind = "meta";
       } else {
-        // A genuine user prompt (no tool_result) seeds the title fallback.
+        kind = "prompt";
+        // A genuine user prompt (not meta, no tool_result) seeds the title fallback.
         firstUserText ??= text;
       }
       messages.push({
@@ -370,6 +390,7 @@ export function parseSessionLines(lines: Iterable<string>): ParsedSession {
         uuid: asString(record.uuid),
         parentUuid: asString(record.parentUuid),
         role: "user",
+        kind,
         text,
         toolUses: [],
         inputTokens: null,
@@ -403,6 +424,7 @@ export function parseSessionLines(lines: Iterable<string>): ParsedSession {
       uuid: asString(record.uuid),
       parentUuid: asString(record.parentUuid),
       role: "assistant",
+      kind: null,
       text,
       toolUses: extractToolUseBlocks(message.content),
       ...usage,
