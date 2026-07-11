@@ -292,8 +292,10 @@ function asString(v: unknown): string | null {
 
 /**
  * Parse the lines of one session file into a `ParsedSession`. Assistant turns are
- * deduplicated by `message.id` (finding #4) — the FIRST record for a given id
- * wins (it carries the usage, repeated identically across content-block records).
+ * split by Claude Code across several JSONL lines sharing one `message.id` — one
+ * per content block (finding #4) — so records with a repeated id are MERGED into
+ * a single message (text concatenated, all tool_use blocks collected) with the
+ * usage, repeated identically across those records, counted once.
  */
 export function parseSessionLines(lines: Iterable<string>): ParsedSession {
   const messages: ParsedMessage[] = [];
@@ -301,7 +303,9 @@ export function parseSessionLines(lines: Iterable<string>): ParsedSession {
   const prLinks: ParsedPrLink[] = [];
   const turnDurations: ParsedTurnDuration[] = [];
   const agentSpawns = new Map<string, ParsedAgentSpawn>();
-  const seenAssistantIds = new Set<string>();
+  // Assistant turns already emitted, keyed by message.id, so later content-block
+  // records for the same turn merge into the existing message (see below).
+  const assistantById = new Map<string, ParsedMessage>();
   let malformedLines = 0;
 
   let cwd: string | null = null;
@@ -411,22 +415,36 @@ export function parseSessionLines(lines: Iterable<string>): ParsedSession {
       continue;
     }
 
-    // assistant — dedup by message.id (finding #4).
+    // assistant — records sharing a message.id are ONE turn that Claude Code
+    // split across content-block lines (a `thinking` line, a `text` line, then
+    // a `tool_use` line, …), each repeating the identical `usage` (finding #4).
+    // MERGE them: append every line's text + tool_use blocks onto the turn
+    // already built, and take usage/model/timestamp from the first line only
+    // (never summed). Keeping just the first line would drop the body and tool
+    // calls of a thinking-first turn, surfacing as empty assistant rows.
     const messageId = asString(message.id) ?? asString(record.requestId);
+    const blockToolUses = extractToolUseBlocks(message.content);
+
     if (messageId !== null) {
-      if (seenAssistantIds.has(messageId)) continue;
-      seenAssistantIds.add(messageId);
+      const existing = assistantById.get(messageId);
+      if (existing !== undefined) {
+        if (text !== null) {
+          existing.text = existing.text === null ? text : `${existing.text}\n${text}`;
+        }
+        existing.toolUses.push(...blockToolUses);
+        continue;
+      }
     }
 
     const usage = parseUsage(message.usage as RawUsage | undefined);
-    messages.push({
+    const parsed: ParsedMessage = {
       messageId,
       uuid: asString(record.uuid),
       parentUuid: asString(record.parentUuid),
       role: "assistant",
       kind: null,
       text,
-      toolUses: extractToolUseBlocks(message.content),
+      toolUses: blockToolUses,
       ...usage,
       model: asString(message.model),
       attributionSkill: asString(record.attributionSkill),
@@ -437,7 +455,9 @@ export function parseSessionLines(lines: Iterable<string>): ParsedSession {
       isApiError: record.isApiErrorMessage === true,
       apiErrorMessage: asString(record.apiErrorStatus),
       timestamp: toEpochMs(record.timestamp),
-    });
+    };
+    messages.push(parsed);
+    if (messageId !== null) assistantById.set(messageId, parsed);
   }
 
   // Title precedence (finding #7): custom > ai > first user prompt > null.

@@ -1,0 +1,14 @@
+-- The parser now MERGES the several JSONL records that make up one assistant
+-- turn (Claude Code splits a turn across one line per content block — a
+-- `thinking` line, a `text` line, a `tool_use` line, …, all sharing one
+-- `message.id`). The previous keep-first dedup dropped the body and tool calls
+-- of any thinking-first turn, which surfaced as empty "assistant" rows in the
+-- transcript view. Existing rows were parsed under the old logic.
+--
+-- Force a full re-parse of EVERY conversation on the next refresh so those rows
+-- are rebuilt with the merged text + tool calls. `refresh()` skips a
+-- conversation whose stored `source_mtime`/`source_size` still match the file;
+-- setting the stored mtime to a sentinel it can never equal invalidates that
+-- skip. (There is no parse-version field; this mirrors the re-parse mechanism
+-- of the `message_kind` migration.)
+UPDATE "conversation" SET "source_mtime" = -1;
