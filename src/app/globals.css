@@ -267,6 +267,40 @@
   background: var(--destructive);
   flex-shrink: 0;
 }
+/* Per-node navigation feedback (see tree-node-link.tsx). The hint is a
+   fixed-size, always-rendered slot so toggling it never shifts the row. It
+   starts invisible and only animates in after a short delay, so a fast
+   (prefetched/production) transition shows no flash; a slow one pulses. */
+.tview .node-hint {
+  width: 6px;
+  height: 6px;
+  margin-left: 2px;
+  border-radius: 50%;
+  background: var(--agent);
+  flex-shrink: 0;
+  opacity: 0;
+  visibility: hidden;
+}
+.tview .node-hint.is-pending {
+  visibility: visible;
+  animation-name: node-hint-in, node-hint-pulse;
+  animation-duration: 200ms, 1s;
+  animation-delay: 120ms, 120ms;
+  animation-timing-function: ease, ease-in-out;
+  animation-iteration-count: 1, infinite;
+  animation-fill-mode: forwards, none;
+}
+/* Highlight the clicked node the instant navigation starts — before the server
+   re-render moves `aria-current` — so selection feels immediate. */
+.tview .node:has(.node-hint.is-pending) {
+  background: var(--sidebar-accent);
+}
+@keyframes node-hint-in {
+  to { opacity: 1; }
+}
+@keyframes node-hint-pulse {
+  50% { opacity: 0.3; }
+}
 .tview .tree-total {
   margin-top: auto;
   padding: 12px 16px;

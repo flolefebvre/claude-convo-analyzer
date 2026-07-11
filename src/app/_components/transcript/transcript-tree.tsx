@@ -1,10 +1,11 @@
 import Link from "next/link";
-import type { CSSProperties } from "react";
 
 import { subAgentLabel } from "@/app/_lib/detail";
 import { formatCost } from "@/app/_lib/format";
 import { agentHref } from "@/app/_lib/transcript-url";
 import type { TranscriptAgentNode, TranscriptView } from "@/core/read";
+
+import { TreeNodeLink } from "./tree-node-link";
 
 /**
  * The always-visible left pane: the conversation header (title + back-link to
@@ -55,12 +56,7 @@ function TreeNode({
   const href = agentHref(view.sessionId, depth === 0 ? undefined : node.id);
   return (
     <>
-      <Link
-        className="node"
-        href={href}
-        aria-current={isCurrent ? "true" : undefined}
-        style={{ "--depth": depth } as CSSProperties}
-      >
+      <TreeNodeLink href={href} isCurrent={isCurrent} depth={depth}>
         <span className="node-glyph" aria-hidden>
           {depth === 0 ? "◆" : "◇"}
         </span>
@@ -74,7 +70,7 @@ function TreeNode({
           />
         )}
         <span className="cost num">{formatCost(node.costUsd)}</span>
-      </Link>
+      </TreeNodeLink>
       {node.children.map((child) => (
         <TreeNode key={child.id} node={child} depth={depth + 1} view={view} />
       ))}

@@ -125,3 +125,20 @@ export function getPrismaClient(): PrismaClient {
   globalForPrisma.__ccaPrisma ??= createPrismaClient(DEFAULT_DB_PATH);
   return globalForPrisma.__ccaPrisma;
 }
+
+/**
+ * Resolve the client a read should use. The default database goes through the
+ * process-wide {@link getPrismaClient} singleton — reused across requests, so a
+ * navigation never re-opens the sqlite file or re-checks migrations — and MUST
+ * NOT be disconnected (`owned: false`). An explicit non-default `dbPath` (tests,
+ * isolated DBs) gets a throwaway client the caller disconnects (`owned: true`).
+ */
+export function readClient(dbPath?: string): {
+  prisma: PrismaClient;
+  owned: boolean;
+} {
+  if (dbPath === undefined || dbPath === DEFAULT_DB_PATH) {
+    return { prisma: getPrismaClient(), owned: false };
+  }
+  return { prisma: createPrismaClient(dbPath), owned: true };
+}

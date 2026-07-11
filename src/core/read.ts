@@ -13,7 +13,7 @@ import {
   resolveModel,
   type Tokens,
 } from "@/core/cost";
-import { createPrismaClient, DEFAULT_DB_PATH } from "@/core/db";
+import { readClient } from "@/core/db";
 import type { PrismaClient } from "@/core/prisma/generated/client";
 
 export type ConversationSummary = {
@@ -156,7 +156,7 @@ type ListOptions = {
 export async function listConversations(
   opts: ListOptions = {},
 ): Promise<ConversationSummary[]> {
-  const prisma = createPrismaClient(opts.dbPath ?? DEFAULT_DB_PATH);
+  const { prisma, owned } = readClient(opts.dbPath);
   try {
     // O(1) queries regardless of conversation count (no per-conversation loop):
     // one findMany + three batched groupBys + one continued-from resolve. All
@@ -227,7 +227,9 @@ export async function listConversations(
     }
     return summaries;
   } finally {
-    await prisma.$disconnect();
+    // Only a caller-owned (non-default) client is disconnected; the shared
+    // default singleton stays open for the next request.
+    if (owned) await prisma.$disconnect();
   }
 }
 
@@ -269,7 +271,7 @@ export async function getConversation(
   id: string,
   opts: DetailOptions = {},
 ): Promise<ConversationDetail | null> {
-  const prisma = createPrismaClient(opts.dbPath ?? DEFAULT_DB_PATH);
+  const { prisma, owned } = readClient(opts.dbPath);
   try {
     const convo = await prisma.conversation.findUnique({
       where: { sessionId: id },
@@ -290,7 +292,9 @@ export async function getConversation(
 
     return { ...summary, perModel, subAgents, perSkill };
   } finally {
-    await prisma.$disconnect();
+    // Only a caller-owned (non-default) client is disconnected; the shared
+    // default singleton stays open for the next request.
+    if (owned) await prisma.$disconnect();
   }
 }
 
@@ -452,7 +456,7 @@ export async function getTranscript(
   id: string,
   opts: TranscriptOptions = {},
 ): Promise<TranscriptView | null> {
-  const prisma = createPrismaClient(opts.dbPath ?? DEFAULT_DB_PATH);
+  const { prisma, owned } = readClient(opts.dbPath);
   try {
     const convo = await prisma.conversation.findUnique({
       where: { sessionId: id },
@@ -531,7 +535,9 @@ export async function getTranscript(
         selected === undefined ? 0 : (metaByAgent.get(selected.id) ?? 0),
     };
   } finally {
-    await prisma.$disconnect();
+    // Only a caller-owned (non-default) client is disconnected; the shared
+    // default singleton stays open for the next request.
+    if (owned) await prisma.$disconnect();
   }
 }
 
