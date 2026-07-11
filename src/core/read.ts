@@ -56,6 +56,91 @@ export type ConversationDetail = ConversationSummary & {
   perSkill: { skill: string; tokens: Tokens; costUsd: number }[];
 };
 
+/** One `tool_use` block on an assistant turn (raw fields; the app classifies kind). */
+export type TranscriptToolCall = {
+  /** `tool_use` block id — correlates to a spawned agent's `spawnedByToolUseId`. */
+  toolUseId: string | null;
+  /** Tool name (`Bash`, `Skill`, `Agent`, …). */
+  name: string;
+  /** Full tool input, serialized JSON (the app extracts snippets). */
+  inputJson: string;
+  /** Stored tool result, truncated to ≤10k chars (NULL until paired). */
+  resultText: string | null;
+  resultTruncated: boolean;
+  /** Full (untruncated) result length — a token-cost proxy. */
+  resultCharSize: number | null;
+  isError: boolean;
+};
+
+/** One rendered message of a single agent's transcript. */
+export type TranscriptMessage = {
+  /** `message` row id — stable per message; a spawn's `spawnedByMessageId` points here. */
+  id: number;
+  /** `user` | `assistant`. */
+  role: string;
+  /** `prompt` on rendered user rows (tool-result/meta are filtered out); null on assistant. */
+  kind: string | null;
+  text: string | null;
+  model: string | null;
+  /** Merged per-turn token split; null on user prompts (they have no usage). */
+  tokens: Tokens | null;
+  /** Exact per-tier cost of this turn ($0 on user prompts and unpriced models). */
+  costUsd: number;
+  unpriced: boolean;
+  isApiError: boolean;
+  apiErrorMessage: string | null;
+  /** Record timestamp as an ISO string (null when absent). */
+  timestamp: string | null;
+  /** `tool_use` blocks on this (assistant) turn, in stored order. */
+  toolCalls: TranscriptToolCall[];
+};
+
+/** One node of the agent tree — an agent plus its own-transcript cost and lineage. */
+export type TranscriptAgentNode = {
+  /** Stable `?agent=` URL key: `externalAgentId ?? String(id)` (matches the cost panel). */
+  id: string;
+  /** Raw `agent_type` — null/empty on the main thread (the app maps empty → "main"). */
+  agentType: string | null;
+  /** Concrete model the agent ran on (label source; may be null). */
+  resolvedModel: string | null;
+  /** Own-transcript cost — THIS agent's own messages only, priced per-tier (not rolled up). */
+  costUsd: number;
+  /** Own-transcript tokens (this agent's messages only). */
+  tokens: Tokens;
+  unpriced: boolean;
+  /** True when any of this agent's turns recorded an API error (the error dot). */
+  hasError: boolean;
+  /** Count of this agent's hidden `meta` user records (for the "N meta hidden" marker). */
+  metaCount: number;
+  /** Parent-transcript `TranscriptMessage.id` whose Agent tool call spawned this node; null for main. */
+  spawnedByMessageId: number | null;
+  /** The spawning Agent tool_use id (matches a parent `TranscriptToolCall.toolUseId`); null when unavailable. */
+  spawnedByToolUseId: string | null;
+  /** Sub-agents, nested by lineage and ordered by spawn time. */
+  children: TranscriptAgentNode[];
+};
+
+/**
+ * The whole Transcript view for one session: the agent tree (both panes' left
+ * side) plus ONE selected agent's rendered transcript (the right pane). All
+ * fields are plain/serializable (ISO strings, numbers).
+ */
+export type TranscriptView = {
+  sessionId: string;
+  title: string | null;
+  /** The root/main agent, with sub-agents nested under it by lineage. */
+  tree: TranscriptAgentNode;
+  /** Conversation grand total — sum of every agent's own cost (counted once). */
+  totalCostUsd: number;
+  totalTokens: Tokens;
+  /** The resolved selected-agent key actually rendered in `messages`. */
+  selectedAgentId: string;
+  /** The selected agent's transcript, in timestamp/id order. */
+  messages: TranscriptMessage[];
+  /** Meta user records hidden from `messages` for the selected agent. */
+  metaHiddenCount: number;
+};
+
 type ListOptions = {
   sortBy?: keyof ConversationSummary;
   dir?: "asc" | "desc";
@@ -265,16 +350,49 @@ async function subAgentBreakdown(
     select: { id: true, externalAgentId: true, agentType: true, resolvedModel: true },
   });
 
-  // One batched per-(agent, model) groupBy for ALL sub-agents (was N+1) — then
-  // bucket by agentId and fold each bucket through `pricedRollup`.
-  const grouped =
-    subs.length === 0
-      ? []
-      : await prisma.message.groupBy({
-          by: ["agentId", "model"],
-          where: { agentId: { in: subs.map((s) => s.id) }, model: { not: null } },
-          _sum: TOKEN_SUM,
-        });
+  const costs = await ownCostByAgent(
+    prisma,
+    subs.map((s) => s.id),
+  );
+  return subs.map((sub) => {
+    const c = costs.get(sub.id) ?? { tokens: emptyTokens(), costUsd: 0 };
+    return {
+      agentId: sub.externalAgentId ?? String(sub.id),
+      agentType: sub.agentType ?? "",
+      model: sub.resolvedModel ?? "",
+      tokens: c.tokens,
+      costUsd: c.costUsd,
+    };
+  });
+}
+
+/** A zeroed `Tokens` accumulator. */
+function emptyTokens(): Tokens {
+  return { input: 0, output: 0, cacheWrite: 0, cacheRead: 0, total: 0 };
+}
+
+/** One agent's own-transcript cost — its own messages only, priced per-tier. */
+type OwnCost = { tokens: Tokens; costUsd: number; unpriced: boolean };
+
+/**
+ * Own-transcript cost for each agent in `agentIds` (its OWN messages only, NOT
+ * rolled up with children). One batched per-(agent, model) groupBy for ALL
+ * agents (never N+1), folded through the shared `pricedRollup`. This is the
+ * single source of the per-agent own-cost used by both the sub-agent breakdown
+ * (detail panel) and the Transcript agent tree, so their numbers match exactly.
+ */
+async function ownCostByAgent(
+  prisma: PrismaClient,
+  agentIds: number[],
+): Promise<Map<number, OwnCost>> {
+  const out = new Map<number, OwnCost>();
+  if (agentIds.length === 0) return out;
+
+  const grouped = await prisma.message.groupBy({
+    by: ["agentId", "model"],
+    where: { agentId: { in: agentIds }, model: { not: null } },
+    _sum: TOKEN_SUM,
+  });
 
   const rowsByAgent = new Map<number, ModelSumRow[]>();
   for (const g of grouped) {
@@ -286,22 +404,455 @@ async function subAgentBreakdown(
     rows.push(toModelSumRow(g));
   }
 
-  return subs.map((sub) => {
-    const groups = pricedRollup(rowsByAgent.get(sub.id) ?? []);
-    const tokens: Tokens = { input: 0, output: 0, cacheWrite: 0, cacheRead: 0, total: 0 };
+  for (const id of agentIds) {
+    const groups = pricedRollup(rowsByAgent.get(id) ?? []);
+    const tokens = emptyTokens();
     let costUsd = 0;
+    let unpriced = false;
     for (const g of groups) {
       addTokens(tokens, g.tokens);
       costUsd += g.costUsd;
+      if (g.unpriced) unpriced = true;
     }
+    out.set(id, { tokens, costUsd, unpriced });
+  }
+  return out;
+}
+
+type TranscriptOptions = {
+  dbPath?: string;
+  /** Selected agent (the `?agent=` key: `externalAgentId ?? String(id)`); defaults to main. */
+  agentId?: string;
+};
+
+/** An agent row as read for the tree. */
+type AgentRow = {
+  id: number;
+  parentAgentId: number | null;
+  externalAgentId: string | null;
+  spawnedByMessageId: number | null;
+  agentType: string | null;
+  resolvedModel: string | null;
+};
+
+/** The `?agent=` key for an agent row — matches `subAgentBreakdown`'s `agentId`. */
+function agentKey(a: { externalAgentId: string | null; id: number }): string {
+  return a.externalAgentId ?? String(a.id);
+}
+
+/**
+ * Transcript read API (ADR-0001, ADR-0002): the full {@link TranscriptView} for
+ * one session id, or `null` for an unknown id. Feeds BOTH panes of the Transcript
+ * view — the whole-conversation agent tree (lineage-nested, own-cost per node,
+ * API-error dot) and ONE selected agent's rendered transcript (prompts +
+ * assistant turns with per-turn cost + nested tool calls). All queries are
+ * batched (groupBy/findMany), never per-agent N+1. Serializable plain shape only.
+ */
+export async function getTranscript(
+  id: string,
+  opts: TranscriptOptions = {},
+): Promise<TranscriptView | null> {
+  const prisma = createPrismaClient(opts.dbPath ?? DEFAULT_DB_PATH);
+  try {
+    const convo = await prisma.conversation.findUnique({
+      where: { sessionId: id },
+      select: { id: true, sessionId: true, title: true },
+    });
+    if (convo === null) return null;
+
+    const agents: AgentRow[] = await prisma.agent.findMany({
+      where: { conversationId: convo.id },
+      select: {
+        id: true,
+        parentAgentId: true,
+        externalAgentId: true,
+        spawnedByMessageId: true,
+        agentType: true,
+        resolvedModel: true,
+      },
+    });
+    const agentIds = agents.map((a) => a.id);
+
+    // Batched per-agent aggregates (no N+1): own cost, error dot, meta count,
+    // and first-message timestamp for stable spawn-time sibling ordering.
+    const [ownCost, errorAgentIds, metaByAgent, firstTsByAgent] =
+      await Promise.all([
+        ownCostByAgent(prisma, agentIds),
+        errorAgentIdSet(prisma, convo.id),
+        metaCountByAgent(prisma, convo.id),
+        firstMessageTsByAgent(prisma, convo.id),
+      ]);
+
+    const spawnToolUseByAgent = await resolveSpawnToolUseIds(
+      prisma,
+      agents,
+      firstTsByAgent,
+    );
+
+    const tree = buildAgentTree(agents, {
+      ownCost,
+      errorAgentIds,
+      metaByAgent,
+      firstTsByAgent,
+      spawnToolUseByAgent,
+    });
+
+    // Grand total = sum of every agent's OWN cost (each counted once).
+    const totalTokens = emptyTokens();
+    let totalCostUsd = 0;
+    for (const a of agents) {
+      const oc = ownCost.get(a.id);
+      if (oc === undefined) continue;
+      addTokens(totalTokens, oc.tokens);
+      totalCostUsd += oc.costUsd;
+    }
+
+    // Resolve the selected agent (the `?agent=` key), defaulting to main.
+    const mainAgent = agents.find((a) => a.parentAgentId === null) ?? agents[0];
+    const selected =
+      (opts.agentId === undefined
+        ? undefined
+        : agents.find((a) => agentKey(a) === opts.agentId)) ?? mainAgent;
+
+    const messages =
+      selected === undefined
+        ? []
+        : await readAgentTranscript(prisma, selected.id);
+
     return {
-      agentId: sub.externalAgentId ?? String(sub.id),
-      agentType: sub.agentType ?? "",
-      model: sub.resolvedModel ?? "",
-      tokens,
-      costUsd,
+      sessionId: convo.sessionId,
+      title: convo.title,
+      tree,
+      totalCostUsd,
+      totalTokens,
+      selectedAgentId: selected === undefined ? "" : agentKey(selected),
+      messages,
+      metaHiddenCount:
+        selected === undefined ? 0 : (metaByAgent.get(selected.id) ?? 0),
+    };
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+/** Agent ids that recorded at least one API-error turn (the error dot). */
+async function errorAgentIdSet(
+  prisma: PrismaClient,
+  conversationId: number,
+): Promise<Set<number>> {
+  const rows = await prisma.message.groupBy({
+    by: ["agentId"],
+    where: { conversationId, isApiError: true },
+    _count: { _all: true },
+  });
+  return new Set(rows.map((r) => r.agentId));
+}
+
+/** Per-agent count of hidden `meta` user records (for the "N meta hidden" marker). */
+async function metaCountByAgent(
+  prisma: PrismaClient,
+  conversationId: number,
+): Promise<Map<number, number>> {
+  const rows = await prisma.message.groupBy({
+    by: ["agentId"],
+    where: { conversationId, role: "user", kind: "meta" },
+    _count: { _all: true },
+  });
+  const out = new Map<number, number>();
+  for (const r of rows) out.set(r.agentId, r._count._all);
+  return out;
+}
+
+/** Per-agent first-message timestamp (epoch ms) — the spawn-time sort key. */
+async function firstMessageTsByAgent(
+  prisma: PrismaClient,
+  conversationId: number,
+): Promise<Map<number, number>> {
+  const rows = await prisma.message.groupBy({
+    by: ["agentId"],
+    where: { conversationId },
+    _min: { timestamp: true },
+  });
+  const out = new Map<number, number>();
+  for (const r of rows) {
+    const ts = r._min.timestamp;
+    if (ts !== null) out.set(r.agentId, Number(ts));
+  }
+  return out;
+}
+
+/**
+ * Correlate each spawned sub-agent to the exact `Agent` tool_use that launched
+ * it. The `agent` row stores `spawnedByMessageId` (the parent turn) but NOT the
+ * tool_use id, so we read the parent turns' `Agent` tool calls and zip them to
+ * the children sharing that message — ordered by spawn time — recovering each
+ * child's `spawnedByToolUseId` (exact for the common one-spawn-per-turn case).
+ */
+async function resolveSpawnToolUseIds(
+  prisma: PrismaClient,
+  agents: AgentRow[],
+  firstTsByAgent: Map<number, number>,
+): Promise<Map<number, string | null>> {
+  const out = new Map<number, string | null>();
+  const spawnMsgIds = [
+    ...new Set(
+      agents
+        .map((a) => a.spawnedByMessageId)
+        .filter((x): x is number => x !== null),
+    ),
+  ];
+  if (spawnMsgIds.length === 0) return out;
+
+  const calls = await prisma.toolCall.findMany({
+    where: { messageId: { in: spawnMsgIds }, name: "Agent" },
+    select: { messageId: true, toolUseId: true },
+    orderBy: { id: "asc" },
+  });
+  const callsByMsg = new Map<number, (string | null)[]>();
+  for (const c of calls) {
+    let arr = callsByMsg.get(c.messageId);
+    if (arr === undefined) {
+      arr = [];
+      callsByMsg.set(c.messageId, arr);
+    }
+    arr.push(c.toolUseId);
+  }
+
+  const kidsByMsg = new Map<number, AgentRow[]>();
+  for (const a of agents) {
+    if (a.spawnedByMessageId === null) continue;
+    let arr = kidsByMsg.get(a.spawnedByMessageId);
+    if (arr === undefined) {
+      arr = [];
+      kidsByMsg.set(a.spawnedByMessageId, arr);
+    }
+    arr.push(a);
+  }
+  const ts = (aid: number) => firstTsByAgent.get(aid) ?? Number.MAX_SAFE_INTEGER;
+  for (const [msgId, kids] of kidsByMsg) {
+    const ordered = [...kids].sort((x, y) => ts(x.id) - ts(y.id) || x.id - y.id);
+    const msgCalls = callsByMsg.get(msgId) ?? [];
+    ordered.forEach((kid, i) => out.set(kid.id, msgCalls[i] ?? null));
+  }
+  return out;
+}
+
+/** Assemble the lineage-nested agent tree (siblings ordered by spawn time). */
+function buildAgentTree(
+  agents: AgentRow[],
+  ctx: {
+    ownCost: Map<number, OwnCost>;
+    errorAgentIds: Set<number>;
+    metaByAgent: Map<number, number>;
+    firstTsByAgent: Map<number, number>;
+    spawnToolUseByAgent: Map<number, string | null>;
+  },
+): TranscriptAgentNode {
+  const nodeById = new Map<number, TranscriptAgentNode>();
+  for (const a of agents) {
+    const oc = ctx.ownCost.get(a.id) ?? {
+      tokens: emptyTokens(),
+      costUsd: 0,
+      unpriced: false,
+    };
+    nodeById.set(a.id, {
+      id: agentKey(a),
+      agentType: a.agentType,
+      resolvedModel: a.resolvedModel,
+      costUsd: oc.costUsd,
+      tokens: oc.tokens,
+      unpriced: oc.unpriced,
+      hasError: ctx.errorAgentIds.has(a.id),
+      metaCount: ctx.metaByAgent.get(a.id) ?? 0,
+      spawnedByMessageId: a.spawnedByMessageId,
+      spawnedByToolUseId: ctx.spawnToolUseByAgent.get(a.id) ?? null,
+      children: [],
+    });
+  }
+
+  const main = agents.find((a) => a.parentAgentId === null) ?? agents[0];
+  const mainId = main?.id;
+
+  // Attach children in spawn-time order (stable tiebreak by id).
+  const ts = (aid: number) =>
+    ctx.firstTsByAgent.get(aid) ?? Number.MAX_SAFE_INTEGER;
+  const ordered = [...agents].sort(
+    (x, y) => ts(x.id) - ts(y.id) || x.id - y.id,
+  );
+  for (const a of ordered) {
+    if (a.id === mainId) continue;
+    const node = nodeById.get(a.id);
+    if (node === undefined) continue;
+    const parent =
+      a.parentAgentId !== null ? nodeById.get(a.parentAgentId) : undefined;
+    // Dangling/null parent (defensive) → nest under main.
+    (parent ?? (mainId === undefined ? undefined : nodeById.get(mainId)))
+      ?.children.push(node);
+  }
+
+  return mainId === undefined
+    ? emptyMainNode()
+    : (nodeById.get(mainId) as TranscriptAgentNode);
+}
+
+/** Degenerate main node for a conversation with no agent rows (should not occur). */
+function emptyMainNode(): TranscriptAgentNode {
+  return {
+    id: "main",
+    agentType: null,
+    resolvedModel: null,
+    costUsd: 0,
+    tokens: emptyTokens(),
+    unpriced: false,
+    hasError: false,
+    metaCount: 0,
+    spawnedByMessageId: null,
+    spawnedByToolUseId: null,
+    children: [],
+  };
+}
+
+/**
+ * Read one agent's rendered transcript: assistant turns + user rows WHERE
+ * `kind = 'prompt'` (tool-result & meta excluded), in timestamp/id order, each
+ * assistant turn carrying its per-turn cost and nested tool calls.
+ */
+async function readAgentTranscript(
+  prisma: PrismaClient,
+  agentId: number,
+): Promise<TranscriptMessage[]> {
+  const rows = await prisma.message.findMany({
+    where: {
+      agentId,
+      OR: [{ role: "assistant" }, { role: "user", kind: "prompt" }],
+    },
+    orderBy: [{ timestamp: "asc" }, { id: "asc" }],
+    select: {
+      id: true,
+      role: true,
+      kind: true,
+      text: true,
+      model: true,
+      inputTokens: true,
+      outputTokens: true,
+      cacheCreation5mTokens: true,
+      cacheCreation1hTokens: true,
+      cacheReadTokens: true,
+      isApiError: true,
+      apiErrorMessage: true,
+      timestamp: true,
+    },
+  });
+
+  const toolCallsByMsg = await toolCallsByMessage(
+    prisma,
+    rows.map((r) => r.id),
+  );
+
+  return rows.map((r) => {
+    const turn = priceTurn(r);
+    return {
+      id: r.id,
+      role: r.role,
+      kind: r.kind,
+      text: r.text,
+      model: r.model,
+      tokens: turn.tokens,
+      costUsd: turn.costUsd,
+      unpriced: turn.unpriced,
+      isApiError: r.isApiError,
+      apiErrorMessage: r.apiErrorMessage,
+      timestamp: r.timestamp === null ? null : new Date(Number(r.timestamp)).toISOString(),
+      toolCalls: toolCallsByMsg.get(r.id) ?? [],
     };
   });
+}
+
+/** One assistant turn's row shape for per-turn pricing. */
+type TurnRow = {
+  role: string;
+  model: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  cacheCreation5mTokens: number | null;
+  cacheCreation1hTokens: number | null;
+  cacheReadTokens: number | null;
+};
+
+/**
+ * Price ONE turn exactly (per-tier, matching the rollups). User prompts carry no
+ * usage → `tokens: null`, `costUsd: 0`. Assistant turns always report `tokens`;
+ * an assistant turn with no resolved model is `unpriced` at `$0`.
+ */
+function priceTurn(row: TurnRow): {
+  tokens: Tokens | null;
+  costUsd: number;
+  unpriced: boolean;
+} {
+  if (row.role !== "assistant") {
+    return { tokens: null, costUsd: 0, unpriced: false };
+  }
+  const input = row.inputTokens ?? 0;
+  const output = row.outputTokens ?? 0;
+  const cw5m = row.cacheCreation5mTokens ?? 0;
+  const cw1h = row.cacheCreation1hTokens ?? 0;
+  const cr = row.cacheReadTokens ?? 0;
+  const cacheWrite = cw5m + cw1h;
+  const tokens: Tokens = {
+    input,
+    output,
+    cacheWrite,
+    cacheRead: cr,
+    total: input + output + cacheWrite + cr,
+  };
+  if (row.model === null) {
+    return { tokens, costUsd: 0, unpriced: true };
+  }
+  const cost = priceSplitByType(
+    { input, output, cacheWrite5m: cw5m, cacheWrite1h: cw1h, cacheRead: cr },
+    row.model,
+  );
+  return { tokens, costUsd: cost.usd, unpriced: cost.unpriced };
+}
+
+/** Batched `tool_call` rows for the given message ids, grouped by message id. */
+async function toolCallsByMessage(
+  prisma: PrismaClient,
+  messageIds: number[],
+): Promise<Map<number, TranscriptToolCall[]>> {
+  const out = new Map<number, TranscriptToolCall[]>();
+  if (messageIds.length === 0) return out;
+  const rows = await prisma.toolCall.findMany({
+    where: { messageId: { in: messageIds } },
+    orderBy: { id: "asc" },
+    select: {
+      messageId: true,
+      toolUseId: true,
+      name: true,
+      inputJson: true,
+      resultText: true,
+      resultTruncated: true,
+      resultCharSize: true,
+      isError: true,
+    },
+  });
+  for (const r of rows) {
+    let arr = out.get(r.messageId);
+    if (arr === undefined) {
+      arr = [];
+      out.set(r.messageId, arr);
+    }
+    arr.push({
+      toolUseId: r.toolUseId,
+      name: r.name,
+      inputJson: r.inputJson,
+      resultText: r.resultText,
+      resultTruncated: r.resultTruncated,
+      resultCharSize: r.resultCharSize,
+      isError: r.isError,
+    });
+  }
+  return out;
 }
 
 type ConversationRow = {
