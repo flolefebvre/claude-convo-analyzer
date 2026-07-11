@@ -87,6 +87,22 @@ assistant turns. An assistant Message carries token usage and Attribution; a
 user Message has neither (its tokens are billed into the following assistant
 Turn). Optionally carries the message `text`.
 
+A user Message is one of three **kinds**, all sharing `role = user` in the log:
+
+- **Prompt** — text the human actually typed. The only kind that represents
+  the user speaking.
+- **Tool-result carrier** — a record delivering a `tool_result` back to the
+  Agent; machinery, not speech.
+- **Meta** — machine-injected content (skill instructions, command output,
+  system reminders), marked `isMeta` in the log.
+
+### Transcript
+The ordered, message-by-message content of **one Agent**: its user and
+assistant Messages with their Tool calls. Every Agent (Main thread or
+Sub-agent) has exactly one Transcript. Distinct from the cost-aggregate
+**detail panel** (`ConversationDetail`) shown in the conversation list — the
+Transcript is *what was said and done*, not *what it cost*.
+
 ### Attribution
 Per-turn labels on an assistant Message naming what drove it: `attribution_skill`
 (e.g. `tdd`, `orchestrate`), `attribution_agent` (e.g. `Explore`),

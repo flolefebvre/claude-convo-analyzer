@@ -1,0 +1,532 @@
+<title>Transcript view — prototype</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  /* ---- Tokens (mirrors src/app/globals.css) ---- */
+  :root {
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0);
+    --muted: oklch(0.97 0 0);
+    --muted-foreground: oklch(0.556 0 0);
+    --border: oklch(0.922 0 0);
+    --sidebar: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.955 0 0);
+    --ring: oklch(0.708 0 0);
+    --destructive: oklch(0.577 0.245 27.325);
+    --destructive-muted: oklch(0.577 0.245 27.325 / 10%);
+    --cost: oklch(0.62 0.13 40);
+    --cost-muted: oklch(0.62 0.13 40 / 12%);
+    --skill: oklch(0.55 0.15 295);
+    --skill-muted: oklch(0.55 0.15 295 / 10%);
+    --agent: oklch(0.55 0.13 250);
+    --agent-muted: oklch(0.55 0.13 250 / 10%);
+    --radius: 0.625rem;
+    --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --background: oklch(0.145 0 0);
+      --foreground: oklch(0.985 0 0);
+      --card: oklch(0.185 0 0);
+      --muted: oklch(0.24 0 0);
+      --muted-foreground: oklch(0.66 0 0);
+      --border: oklch(1 0 0 / 12%);
+      --sidebar: oklch(0.185 0 0);
+      --sidebar-accent: oklch(0.26 0 0);
+      --ring: oklch(0.556 0 0);
+      --destructive: oklch(0.704 0.191 22.216);
+      --destructive-muted: oklch(0.704 0.191 22.216 / 14%);
+      --cost: oklch(0.72 0.13 45);
+      --cost-muted: oklch(0.72 0.13 45 / 16%);
+      --skill: oklch(0.72 0.13 295);
+      --skill-muted: oklch(0.72 0.13 295 / 14%);
+      --agent: oklch(0.72 0.11 250);
+      --agent-muted: oklch(0.72 0.11 250 / 14%);
+    }
+  }
+  :root[data-theme="light"] {
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0);
+    --muted: oklch(0.97 0 0);
+    --muted-foreground: oklch(0.556 0 0);
+    --border: oklch(0.922 0 0);
+    --sidebar: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.955 0 0);
+    --ring: oklch(0.708 0 0);
+    --destructive: oklch(0.577 0.245 27.325);
+    --destructive-muted: oklch(0.577 0.245 27.325 / 10%);
+    --cost: oklch(0.62 0.13 40);
+    --cost-muted: oklch(0.62 0.13 40 / 12%);
+    --skill: oklch(0.55 0.15 295);
+    --skill-muted: oklch(0.55 0.15 295 / 10%);
+    --agent: oklch(0.55 0.13 250);
+    --agent-muted: oklch(0.55 0.13 250 / 10%);
+  }
+  :root[data-theme="dark"] {
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.185 0 0);
+    --muted: oklch(0.24 0 0);
+    --muted-foreground: oklch(0.66 0 0);
+    --border: oklch(1 0 0 / 12%);
+    --sidebar: oklch(0.185 0 0);
+    --sidebar-accent: oklch(0.26 0 0);
+    --ring: oklch(0.556 0 0);
+    --destructive: oklch(0.704 0.191 22.216);
+    --destructive-muted: oklch(0.704 0.191 22.216 / 14%);
+    --cost: oklch(0.72 0.13 45);
+    --cost-muted: oklch(0.72 0.13 45 / 16%);
+    --skill: oklch(0.72 0.13 295);
+    --skill-muted: oklch(0.72 0.13 295 / 14%);
+    --agent: oklch(0.72 0.11 250);
+    --agent-muted: oklch(0.72 0.11 250 / 14%);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    background: var(--background);
+    color: var(--foreground);
+    font-size: 14px;
+    line-height: 1.55;
+  }
+  button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; padding: 0; text-align: left; }
+  button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 4px; }
+  a { color: inherit; }
+  code, pre { font-family: var(--font-mono); }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+  .num { font-variant-numeric: tabular-nums; }
+  .cost { color: var(--cost); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12px; }
+  .microlabel { font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted-foreground); }
+
+  /* ---- Two-pane layout ---- */
+  .app { display: flex; height: 100vh; }
+
+  /* ---- Agent tree sidebar ---- */
+  .tree {
+    width: 280px; flex-shrink: 0;
+    background: var(--sidebar);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    overflow-y: auto;
+  }
+  .tree-header { padding: 16px 16px 12px; border-bottom: 1px solid var(--border); }
+  .back-link { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted-foreground); text-decoration: none; margin-bottom: 10px; }
+  .back-link:hover { color: var(--foreground); }
+  .conv-title { font-size: 14px; font-weight: 600; line-height: 1.35; text-wrap: balance; margin: 0 0 6px; }
+  .conv-meta { font-size: 11.5px; color: var(--muted-foreground); font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tree-caption { padding: 14px 16px 6px; }
+  .tree-nodes { padding: 0 8px 16px; display: flex; flex-direction: column; gap: 1px; }
+  .node {
+    display: flex; align-items: center; gap: 7px;
+    width: 100%;
+    padding: 5px 8px 5px calc(8px + var(--depth) * 16px);
+    border-radius: calc(var(--radius) * 0.6);
+    color: var(--foreground);
+  }
+  .node:hover { background: var(--sidebar-accent); }
+  .node[aria-current="true"] { background: var(--sidebar-accent); font-weight: 600; }
+  .node-glyph { color: var(--muted-foreground); flex-shrink: 0; width: 14px; text-align: center; font-size: 11px; }
+  .node[aria-current="true"] .node-glyph { color: var(--agent); }
+  .node-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+  .node-sub { color: var(--muted-foreground); font-weight: 400; }
+  .node-err { width: 6px; height: 6px; border-radius: 50%; background: var(--destructive); flex-shrink: 0; }
+  .tree-total { margin-top: auto; padding: 12px 16px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: baseline; }
+  .tree-total .cost { font-size: 13px; font-weight: 600; }
+
+  /* ---- Transcript pane ---- */
+  .pane { flex: 1; overflow-y: auto; }
+  .pane-header {
+    position: sticky; top: 0; z-index: 10;
+    background: color-mix(in oklch, var(--background) 88%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 32px;
+    display: flex; align-items: baseline; gap: 10px;
+  }
+  .crumb { display: flex; align-items: baseline; gap: 8px; font-size: 13px; flex: 1; min-width: 0; }
+  .crumb button { color: var(--muted-foreground); }
+  .crumb button:hover { color: var(--foreground); text-decoration: underline; }
+  .crumb .sep { color: var(--muted-foreground); }
+  .crumb .here { font-weight: 600; }
+  .pane-header .stats { display: flex; gap: 14px; align-items: baseline; flex-shrink: 0; font-size: 12px; color: var(--muted-foreground); }
+  .pane-header .cost { font-size: 13px; font-weight: 600; }
+
+  .transcript { max-width: 46rem; margin: 0 auto; padding: 28px 32px 80px; display: flex; flex-direction: column; gap: 22px; }
+
+  /* ---- Prompt (human) ---- */
+  .prompt { border-left: 3px solid var(--foreground); background: var(--muted); border-radius: 0 var(--radius) var(--radius) 0; padding: 10px 16px 12px; }
+  .prompt-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+  .prompt-body { white-space: pre-wrap; }
+  .slash { display: inline-flex; align-items: baseline; gap: 8px; font-family: var(--font-mono); font-size: 13px; }
+  .slash-cmd { background: var(--background); border: 1px solid var(--border); border-radius: 6px; padding: 1px 7px; font-weight: 600; }
+  .slash-args { color: var(--muted-foreground); }
+
+  /* ---- Assistant turn ---- */
+  .turn-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+  .turn-head .model { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted-foreground); }
+  .turn-head .spacer { flex: 1; }
+  .turn-cost { background: var(--cost-muted); border-radius: 999px; padding: 1px 9px; }
+  .badge-err { font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--destructive); background: var(--destructive-muted); border-radius: 999px; padding: 2px 9px; }
+  .turn-body > p { margin: 0 0 10px; }
+  .turn-body > p:last-child { margin-bottom: 0; }
+  .turn-body ul { margin: 0 0 10px; padding-left: 22px; }
+  .turn-body li { margin: 2px 0; }
+  .turn-body code { background: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; font-size: 12.5px; }
+  .turn-body h3 { font-size: 14px; margin: 14px 0 6px; }
+  .api-error-note { color: var(--muted-foreground); font-size: 13px; font-style: italic; }
+
+  /* ---- Tool calls ---- */
+  .calls { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
+  details.call { border: 1px solid var(--border); border-radius: calc(var(--radius) * 0.8); background: var(--card); overflow: hidden; }
+  details.call summary { list-style: none; display: flex; align-items: center; gap: 9px; padding: 7px 12px; cursor: pointer; }
+  details.call summary::-webkit-details-marker { display: none; }
+  details.call summary:hover { background: var(--muted); }
+  .chev { color: var(--muted-foreground); font-size: 10px; transition: transform 0.15s; flex-shrink: 0; width: 10px; }
+  details[open] .chev { transform: rotate(90deg); }
+  .kind {
+    font-size: 10.5px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase;
+    border-radius: 5px; padding: 2px 7px; flex-shrink: 0;
+  }
+  .kind-tool { background: var(--muted); color: var(--muted-foreground); }
+  .kind-skill { background: var(--skill-muted); color: var(--skill); }
+  .kind-agent { background: var(--agent-muted); color: var(--agent); }
+  .call-name { font-weight: 600; font-size: 13px; flex-shrink: 0; }
+  .call-snippet { font-family: var(--font-mono); font-size: 12px; color: var(--muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .call-meta { font-size: 11.5px; color: var(--muted-foreground); flex-shrink: 0; }
+  .call-err { color: var(--destructive); font-weight: 600; font-size: 11.5px; flex-shrink: 0; }
+  .call-body { border-top: 1px solid var(--border); padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 10px; }
+  .io-block .microlabel { display: block; margin-bottom: 4px; }
+  .io-block pre {
+    margin: 0; background: var(--muted); border-radius: 6px; padding: 8px 10px;
+    font-size: 12px; line-height: 1.5; overflow-x: auto; white-space: pre;
+  }
+  .io-block pre.err { background: var(--destructive-muted); color: var(--destructive); }
+  .trunc { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted-foreground); background: var(--muted); border-radius: 0 0 6px 6px; padding: 4px 10px; border-top: 1px dashed var(--border); margin-top: -6px; }
+  .open-agent {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12.5px; font-weight: 600; color: var(--agent);
+    background: var(--agent-muted); border-radius: 6px; padding: 5px 11px;
+    align-self: flex-start;
+  }
+  .open-agent:hover { filter: brightness(1.08); }
+
+  /* ---- Meta divider ---- */
+  .meta-hidden { display: flex; align-items: center; gap: 10px; color: var(--muted-foreground); font-size: 11.5px; }
+  .meta-hidden::before, .meta-hidden::after { content: ""; flex: 1; border-top: 1px dashed var(--border); }
+
+  .proto-note { position: fixed; bottom: 12px; right: 16px; font-size: 10.5px; color: var(--muted-foreground); background: var(--card); border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; }
+
+  @media (max-width: 760px) {
+    .app { flex-direction: column; height: auto; }
+    .tree { width: 100%; border-right: none; border-bottom: 1px solid var(--border); }
+    .tree-total { margin-top: 0; }
+    .pane-header, .transcript { padding-left: 16px; padding-right: 16px; }
+  }
+</style>
+
+<div class="app">
+  <aside class="tree" aria-label="Agent tree">
+    <div class="tree-header">
+      <a class="back-link" href="#" onclick="return false"><span aria-hidden>←</span> All conversations</a>
+      <h1 class="conv-title">Add transcript view to the analyzer</h1>
+      <div class="conv-meta" title="session id">9f2c41aa-77b3-4e0e-a1c2-8d3f5b6e0c19</div>
+    </div>
+    <div class="tree-caption microlabel">Agents</div>
+    <nav class="tree-nodes" id="tree"></nav>
+    <div class="tree-total">
+      <span class="microlabel">Conversation total</span>
+      <span class="cost num">$5.81</span>
+    </div>
+  </aside>
+
+  <main class="pane" id="pane">
+    <div class="pane-header" id="pane-header"></div>
+    <div class="transcript" id="transcript"></div>
+  </main>
+</div>
+<div class="proto-note">prototype · fake data</div>
+
+<script>
+"use strict";
+
+/* ---------------- Fake data ---------------- */
+
+const AGENTS = {
+  main: {
+    id: "main", label: "main", parent: null, model: "claude-opus-4-8",
+    cost: "$3.42", turns: 24, tools: 61, hasError: true,
+  },
+  exp1: {
+    id: "exp1", label: "Explore", sub: "scan core readers", parent: "main",
+    model: "claude-haiku-4-5", cost: "$0.31", turns: 9, tools: 17, hasError: false,
+  },
+  plan1: {
+    id: "plan1", label: "Plan", sub: "transcript reader design", parent: "main",
+    model: "claude-opus-4-8", cost: "$0.87", turns: 7, tools: 11, hasError: false,
+  },
+  gp1: {
+    id: "gp1", label: "claude", sub: "implement slice 1", parent: "main",
+    model: "claude-sonnet-5", cost: "$1.12", turns: 15, tools: 32, hasError: false,
+  },
+  exp2: {
+    id: "exp2", label: "Explore", sub: "find JSONL fixtures", parent: "gp1",
+    model: "claude-haiku-4-5", cost: "$0.09", turns: 4, tools: 6, hasError: false,
+  },
+};
+
+/* Transcript items. kind: prompt | slash | turn | metaHidden */
+const TRANSCRIPTS = {
+  main: [
+    { kind: "prompt", time: "09:14", text:
+      "I want to open a conversation and see its full transcript — my messages, the agent's messages, skill loads, tool calls. And if it spawned sub-agents I want to walk into those too." },
+    { kind: "turn", time: "09:14", model: "claude-opus-4-8", cost: "$0.42",
+      html: "<p>Before proposing anything, let me check what the database already stores — the schema may cover most of this.</p>",
+      calls: [
+        { type: "tool", name: "Read", snippet: "src/core/prisma/schema.prisma",
+          input: '{ "file_path": "src/core/prisma/schema.prisma" }',
+          result: "1  // Claude Conversation Analyzer — data model.\n2  // Seven tables per ADR-0001 …\n3  model Message {\n4    id        Int    @id\n5    role      String\n6    text      String?\n…", size: "6.2k chars" },
+        { type: "tool", name: "Bash", snippet: 'grep -rn "toolUses" src/core/parse.ts',
+          input: '{ "command": "grep -rn \\"toolUses\\" src/core/parse.ts" }',
+          result: "374:        toolUses: [],\n407:      toolUses: extractToolUseBlocks(message.content),",
+          size: "0.1k chars" },
+      ] },
+    { kind: "turn", time: "09:16", model: "claude-opus-4-8", cost: "$0.51",
+      html: "<p>The schema already stores every <code>Message</code>, every <code>ToolCall</code> (with truncated results), and the full agent lineage. What's missing is a transcript reader in core and the view itself.</p><p>Loading the TDD skill before writing the reader:</p>",
+      calls: [
+        { type: "skill", name: "tdd", snippet: "red → green → refactor, one slice at a time",
+          input: '{ "skill": "tdd", "args": "getTranscript() core reader" }',
+          result: "Launching skill: tdd" },
+        { type: "agent", agent: "exp1", name: "Explore", snippet: "scan core readers + fixtures for transcript shapes",
+          cost: "$0.31",
+          input: "Find every reader in src/core/read.ts and how the JSONL fixtures represent tool_use / tool_result pairs. Report shapes only.",
+          result: "read.ts exposes listConversations() and getConversation(); fixtures pair tool_use ↔ tool_result by toolUseId; sub-agent files parse identically (isSidechain: true)." },
+      ] },
+    { kind: "slash", time: "09:31", cmd: "/grill-me", args: "transcript view — walk every design branch" },
+    { kind: "metaHidden", count: 3 },
+    { kind: "turn", time: "09:33", model: "claude-opus-4-8", cost: "$0.38",
+      html: "<h3>Question 1 — new route or grow the expanded panel?</h3><p>The <code>?expanded=</code> panel is a cost breakdown; a transcript with a tree sidebar doesn't fit a table row. My recommendation:</p><ul><li>New route <code>/conversation/&lt;sessionId&gt;</code></li><li>Pane-switch navigation — the tree shows agents, the pane shows one transcript</li><li>Tool calls collapsed by default, client-side disclosure</li></ul>",
+      calls: [] },
+    { kind: "turn", time: "09:47", model: "claude-opus-4-8", cost: "$0.29", apiError: "529 — overloaded, retried",
+      html: "",
+      calls: [] },
+    { kind: "turn", time: "09:48", model: "claude-opus-4-8", cost: "$0.64",
+      html: "<p>Design agreed. Planning the core reader, then delegating the first implementation slice:</p>",
+      calls: [
+        { type: "agent", agent: "plan1", name: "Plan", snippet: "getTranscript() reader + message-kind migration", cost: "$0.87",
+          input: "Design the getTranscript(sessionId, agentId?) core reader and the message-kind migration (prompt | tool-result | meta). Respect the ADR-0002 boundary.",
+          result: "Plan: new kind column derived at parse time; reader returns agent tree + one agent's ordered messages with nested tool calls; forced full re-parse via parse-version bump." },
+        { type: "agent", agent: "gp1", name: "claude", snippet: "implement slice 1 — schema migration + reader, TDD", cost: "$1.12",
+          input: "Implement slice 1 of the transcript view per the plan: message.kind migration + getTranscript() reader, test-first against the sanitized fixtures.",
+          result: "Slice 1 done. 14 new tests green — TEST OK, LINT OK, FALLOW OK, BUILD OK. Reader returns tree + transcript; carriers and meta records excluded from prompts." },
+        { type: "tool", name: "Bash", snippet: "pnpm test",
+          input: '{ "command": "pnpm test" }',
+          result: " ✓ src/core/__tests__/get-transcript.test.ts (14)\n ✓ src/core/__tests__/refresh.test.ts (11)\n\n Test Files  9 passed (9)\n      Tests  87 passed (87)\n\nTEST OK", size: "1.4k chars" },
+        { type: "tool", name: "Bash", snippet: "pnpm build", isError: true,
+          input: '{ "command": "pnpm build" }',
+          result: "Type error: 'kind' does not exist on type 'MessageRow'.\n  src/app/_lib/transcript.ts:41:19\n\nBUILD FAILED", size: "0.8k chars" },
+      ] },
+    { kind: "prompt", time: "10:22", text: "Nice — fix the build error and show me the view." },
+    { kind: "turn", time: "10:23", model: "claude-opus-4-8", cost: "$0.47",
+      html: "<p>Fixed — the app-zone type import was stale after the migration. All four gates pass now: <code>TEST OK</code>, <code>LINT OK</code>, <code>FALLOW OK</code>, <code>BUILD OK</code>.</p>",
+      calls: [
+        { type: "tool", name: "Read", snippet: "src/app/_lib/transcript.ts",
+          input: '{ "file_path": "src/app/_lib/transcript.ts" }',
+          result: "// Pure presentation helpers for the transcript pane …", size: "3.1k chars" },
+        { type: "tool", name: "Bash", snippet: "pnpm lint && pnpm fallow && pnpm build",
+          input: '{ "command": "pnpm lint && pnpm fallow && pnpm build" }',
+          result: "LINT OK\nFALLOW OK\n\n▲ Next.js 16.2.9\n✓ Compiled successfully\n\nBUILD OK",
+          size: "12.6k chars", truncated: "12,619 chars total — stored result truncated at 10,000" },
+      ] },
+  ],
+
+  exp1: [
+    { kind: "prompt", time: "09:16", text:
+      "Find every reader in src/core/read.ts and how the JSONL fixtures represent tool_use / tool_result pairs. Report shapes only." },
+    { kind: "turn", time: "09:16", model: "claude-haiku-4-5", cost: "$0.02",
+      html: "<p>Scanning the core readers and fixtures.</p>",
+      calls: [
+        { type: "tool", name: "Grep", snippet: '"export (async )?function" src/core/read.ts',
+          input: '{ "pattern": "export (async )?function", "path": "src/core/read.ts" }',
+          result: "71:export async function listConversations(\n183:export async function getConversation(", size: "0.1k chars" },
+        { type: "tool", name: "Read", snippet: "src/core/__tests__/fixtures/session-basic.jsonl",
+          input: '{ "file_path": "src/core/__tests__/fixtures/session-basic.jsonl" }',
+          result: '{"type":"user","message":{"content":"hello"}}\n{"type":"assistant","message":{"id":"msg_01","content":[{"type":"text","text":"hi"}]}}', size: "2.3k chars" },
+      ] },
+    { kind: "turn", time: "09:18", model: "claude-haiku-4-5", cost: "$0.29",
+      html: "<p><code>read.ts</code> exposes <code>listConversations()</code> and <code>getConversation()</code> — both aggregate readers, no transcript reader. Fixtures pair <code>tool_use</code> ↔ <code>tool_result</code> by <code>toolUseId</code>; sub-agent files parse identically (<code>isSidechain: true</code>).</p>",
+      calls: [] },
+  ],
+
+  plan1: [
+    { kind: "prompt", time: "09:48", text:
+      "Design the getTranscript(sessionId, agentId?) core reader and the message-kind migration (prompt | tool-result | meta). Respect the ADR-0002 boundary." },
+    { kind: "turn", time: "09:49", model: "claude-opus-4-8", cost: "$0.87",
+      html: "<h3>Plan</h3><ul><li>Migration: <code>message.kind</code> derived at parse time from <code>isMeta</code> / <code>tool_result</code> content</li><li>Reader: agent tree + one agent's ordered messages, tool calls nested per turn</li><li>Backfill: parse-version bump forces a full re-parse on next Refresh</li></ul>",
+      calls: [
+        { type: "tool", name: "Read", snippet: "docs/adr/0002-local-architecture-and-persistence.md",
+          input: '{ "file_path": "docs/adr/0002-local-architecture-and-persistence.md" }',
+          result: "# Local architecture and persistence …", size: "3.4k chars" },
+      ] },
+  ],
+
+  gp1: [
+    { kind: "prompt", time: "09:52", text:
+      "Implement slice 1 of the transcript view per the plan: message.kind migration + getTranscript() reader, test-first against the sanitized fixtures." },
+    { kind: "turn", time: "09:53", model: "claude-sonnet-5", cost: "$0.31",
+      html: "<p>Starting red: writing the failing reader tests first. I need a fixture with a sub-agent — checking what exists:</p>",
+      calls: [
+        { type: "agent", agent: "exp2", name: "Explore", snippet: "find JSONL fixtures with sub-agent transcripts", cost: "$0.09",
+          input: "List the sanitized JSONL fixtures under src/core/__tests__/fixtures and which ones include subagents/ transcripts.",
+          result: "session-subagents.jsonl + subagents/agent-a1.jsonl cover the spawn ↔ transcript pairing; session-basic.jsonl has none." },
+        { type: "tool", name: "Write", snippet: "src/core/__tests__/get-transcript.test.ts",
+          input: '{ "file_path": "src/core/__tests__/get-transcript.test.ts", "content": "…" }',
+          result: "File created.", size: "0.1k chars" },
+      ] },
+    { kind: "turn", time: "10:08", model: "claude-sonnet-5", cost: "$0.81",
+      html: "<p>Green. 14 new tests pass; carriers and meta records are excluded from prompts, tool calls nest under their turn, and the agent tree comes back with own-cost per node.</p>",
+      calls: [
+        { type: "tool", name: "Bash", snippet: "pnpm test",
+          input: '{ "command": "pnpm test" }',
+          result: " ✓ src/core/__tests__/get-transcript.test.ts (14)\n\nTEST OK", size: "1.1k chars" },
+      ] },
+  ],
+
+  exp2: [
+    { kind: "prompt", time: "09:53", text:
+      "List the sanitized JSONL fixtures under src/core/__tests__/fixtures and which ones include subagents/ transcripts." },
+    { kind: "turn", time: "09:54", model: "claude-haiku-4-5", cost: "$0.09",
+      html: "<p><code>session-subagents.jsonl</code> + <code>subagents/agent-a1.jsonl</code> cover the spawn ↔ transcript pairing; <code>session-basic.jsonl</code> has none.</p>",
+      calls: [
+        { type: "tool", name: "Bash", snippet: "ls -R src/core/__tests__/fixtures",
+          input: '{ "command": "ls -R src/core/__tests__/fixtures" }',
+          result: "session-basic.jsonl\nsession-subagents.jsonl\nsubagents/agent-a1.jsonl", size: "0.1k chars" },
+      ] },
+  ],
+};
+
+/* ---------------- Rendering ---------------- */
+
+const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+let current = "main";
+
+function lineage(id) {
+  const chain = [];
+  for (let a = AGENTS[id]; a; a = a.parent ? AGENTS[a.parent] : null) chain.unshift(a);
+  return chain;
+}
+
+function renderTree() {
+  const order = ["main", "exp1", "plan1", "gp1", "exp2"];
+  const depth = (id) => lineage(id).length - 1;
+  document.getElementById("tree").innerHTML = order.map((id) => {
+    const a = AGENTS[id];
+    const sub = a.sub ? ` <span class="node-sub">· ${esc(a.sub)}</span>` : "";
+    return `<button class="node" style="--depth:${depth(id)}" aria-current="${id === current}" onclick="select('${id}')">
+      <span class="node-glyph" aria-hidden>${a.parent ? "◇" : "◆"}</span>
+      <span class="node-label">${esc(a.label)}${sub}</span>
+      ${a.hasError ? '<span class="node-err" title="transcript recorded an API error"></span>' : ""}
+      <span class="cost num">${a.cost}</span>
+    </button>`;
+  }).join("");
+}
+
+function renderHeader() {
+  const chain = lineage(current);
+  const crumb = chain.map((a, i) =>
+    i === chain.length - 1
+      ? `<span class="here">${esc(a.label)}</span>`
+      : `<button onclick="select('${a.id}')">${esc(a.label)}</button><span class="sep" aria-hidden>/</span>`
+  ).join(" ");
+  const a = AGENTS[current];
+  document.getElementById("pane-header").innerHTML = `
+    <nav class="crumb" aria-label="Agent lineage">${crumb}</nav>
+    <div class="stats">
+      <span class="num">${a.turns} turns</span>
+      <span class="num">${a.tools} tool calls</span>
+      <span class="model">${esc(a.model)}</span>
+      <span class="cost num turn-cost">${a.cost}</span>
+    </div>`;
+}
+
+function renderCall(c) {
+  if (c.type === "agent") {
+    return `<details class="call">
+      <summary><span class="chev" aria-hidden>▶</span><span class="kind kind-agent">Agent</span>
+        <span class="call-name">${esc(c.name)}</span>
+        <span class="call-snippet">${esc(c.snippet)}</span>
+        <span class="cost num">${c.cost}</span></summary>
+      <div class="call-body">
+        <div class="io-block"><span class="microlabel">Prompt</span><pre>${esc(c.input)}</pre></div>
+        <div class="io-block"><span class="microlabel">Returned</span><pre>${esc(c.result)}</pre></div>
+        <button class="open-agent" onclick="select('${c.agent}')">Open transcript <span aria-hidden>→</span></button>
+      </div>
+    </details>`;
+  }
+  const kindClass = c.type === "skill" ? "kind-skill" : "kind-tool";
+  const kindLabel = c.type === "skill" ? "Skill" : "Tool";
+  const meta = c.isError
+    ? '<span class="call-err">error</span>'
+    : (c.size ? `<span class="call-meta num">${c.size}</span>` : "");
+  const trunc = c.truncated
+    ? `<div class="trunc"><span aria-hidden>✂</span> truncated — ${c.truncated}</div>` : "";
+  return `<details class="call">
+    <summary><span class="chev" aria-hidden>▶</span><span class="kind ${kindClass}">${kindLabel}</span>
+      <span class="call-name">${esc(c.name)}</span>
+      <span class="call-snippet">${esc(c.snippet)}</span>${meta}</summary>
+    <div class="call-body">
+      <div class="io-block"><span class="microlabel">Input</span><pre>${esc(c.input)}</pre></div>
+      <div class="io-block"><span class="microlabel">Result</span><pre${c.isError ? ' class="err"' : ""}>${esc(c.result)}</pre>${trunc}</div>
+    </div>
+  </details>`;
+}
+
+function renderItem(item) {
+  if (item.kind === "prompt") {
+    return `<article class="prompt">
+      <div class="prompt-head"><span class="microlabel">You</span><span class="call-meta num">${item.time}</span></div>
+      <div class="prompt-body">${esc(item.text)}</div>
+    </article>`;
+  }
+  if (item.kind === "slash") {
+    return `<article class="prompt">
+      <div class="prompt-head"><span class="microlabel">You</span><span class="call-meta num">${item.time}</span></div>
+      <div class="slash"><span class="slash-cmd">${esc(item.cmd)}</span><span class="slash-args">${esc(item.args)}</span></div>
+    </article>`;
+  }
+  if (item.kind === "metaHidden") {
+    return `<div class="meta-hidden">${item.count} meta records hidden</div>`;
+  }
+  const err = item.apiError ? `<span class="badge-err">API error</span>` : "";
+  const body = item.apiError && !item.html
+    ? `<p class="api-error-note">turn failed — ${esc(item.apiError)}</p>`
+    : item.html;
+  return `<article class="turn">
+    <div class="turn-head">
+      <span class="microlabel" style="color:var(--agent)">Assistant</span>
+      <span class="model">${esc(item.model)}</span>${err}
+      <span class="spacer"></span>
+      <span class="call-meta num">${item.time}</span>
+      <span class="cost num turn-cost">${item.cost}</span>
+    </div>
+    <div class="turn-body">${body}</div>
+    ${item.calls.length ? `<div class="calls">${item.calls.map(renderCall).join("")}</div>` : ""}
+  </article>`;
+}
+
+function select(id) {
+  current = id;
+  renderTree();
+  renderHeader();
+  document.getElementById("transcript").innerHTML = TRANSCRIPTS[id].map(renderItem).join("");
+  document.getElementById("pane").scrollTop = 0;
+}
+
+select("main");
+</script>
