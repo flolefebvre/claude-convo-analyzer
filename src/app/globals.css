@@ -44,6 +44,13 @@
      Everything else stays on the neutral grayscale base. */
   --color-cost: var(--cost);
   --color-cost-muted: var(--cost-muted);
+  /* Transcript-view accents: violet for skill loads, blue for sub-agents.
+     Wired here so `text-skill`/`bg-skill-muted`/`text-agent`/… utilities generate,
+     exactly like `--cost`. Base values live in `:root`/`.dark` below. */
+  --color-skill: var(--skill);
+  --color-skill-muted: var(--skill-muted);
+  --color-agent: var(--agent);
+  --color-agent-muted: var(--agent-muted);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -89,6 +96,11 @@
   --cost: oklch(0.62 0.13 40);
   /* A faint clay tint for bar tracks / active-row backgrounds. */
   --cost-muted: oklch(0.62 0.13 40 / 12%);
+  /* Transcript accents (light): violet skill, blue sub-agent, with faint tints. */
+  --skill: oklch(0.55 0.15 295);
+  --skill-muted: oklch(0.55 0.15 295 / 10%);
+  --agent: oklch(0.55 0.13 250);
+  --agent-muted: oklch(0.55 0.13 250 / 10%);
 }
 
 .dark {
@@ -126,6 +138,11 @@
   /* Lifted lightness + a touch more chroma so the clay reads on the dark base. */
   --cost: oklch(0.72 0.14 45);
   --cost-muted: oklch(0.72 0.14 45 / 16%);
+  /* Transcript accents (dark): lifted lightness so violet/blue read on the dark base. */
+  --skill: oklch(0.72 0.13 295);
+  --skill-muted: oklch(0.72 0.13 295 / 14%);
+  --agent: oklch(0.72 0.11 250);
+  --agent-muted: oklch(0.72 0.11 250 / 14%);
 }
 
 @layer base {
