@@ -28,7 +28,7 @@ export const metadata: Metadata = {
 
 // The persistent app shell (PR #13). The header + two-column sidebar/main grid
 // live HERE in the layout, which does NOT re-render on navigation, so changing
-// `?folder=`/sort no longer reloads/flashes the sidebar (ADR-0004 amendment).
+// `?folder=`/sort no longer reloads/flashes the sidebar.
 // The page renders only the table region as `{children}`.
 //
 // The sidebar's folder list is scope-independent (derived from ALL
@@ -45,7 +45,7 @@ export default function RootLayout({
       lang="en"
       // The ThemeProvider's blocking script sets the `.dark` class on <html>
       // before hydration (no theme flash); suppress the resulting class mismatch
-      // warning (ADR-0004 sanctions this deliberate client-JS exception).
+      // warning.
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >

@@ -4,9 +4,11 @@ import type { ConversationSummary } from "@/core/read";
 
 import {
   DEFAULT_SORT,
+  expandHref,
   folderHref,
   isSortableField,
   modelLabel,
+  resolveExpanded,
   resolveSort,
   sortConversations,
   sortHref,
@@ -180,6 +182,56 @@ describe("folderHref", () => {
   it("url-encodes a folder value with special characters", () => {
     expect(folderHref("a b&c", DEFAULT_SORT)).toBe(
       "?sortBy=date&dir=desc&folder=a+b%26c",
+    );
+  });
+});
+
+describe("resolveExpanded", () => {
+  it("returns undefined when the param is absent", () => {
+    expect(resolveExpanded(undefined)).toBeUndefined();
+  });
+
+  it("returns the conversation id from a string param", () => {
+    expect(resolveExpanded("sess-basic")).toBe("sess-basic");
+  });
+
+  it("reads the first value when the param arrives as an array", () => {
+    expect(resolveExpanded(["sess-a", "sess-b"])).toBe("sess-a");
+  });
+
+  it("treats an empty string as no expansion", () => {
+    expect(resolveExpanded("")).toBeUndefined();
+  });
+});
+
+describe("expandHref", () => {
+  it("expands a collapsed row while preserving sort and folder", () => {
+    expect(
+      expandHref("sess-basic", undefined, { sortBy: "cost", dir: "desc" }, "-Users-me-dev-demo"),
+    ).toBe("?sortBy=cost&dir=desc&folder=-Users-me-dev-demo&expanded=sess-basic");
+  });
+
+  it("expands a collapsed row while ANOTHER row is expanded (replaces it)", () => {
+    expect(expandHref("sess-b", "sess-a", DEFAULT_SORT)).toBe(
+      "?sortBy=date&dir=desc&expanded=sess-b",
+    );
+  });
+
+  it("collapses the already-expanded row (drops the param) keeping sort and folder", () => {
+    expect(
+      expandHref("sess-basic", "sess-basic", { sortBy: "cost", dir: "desc" }, "-Users-me-dev-demo"),
+    ).toBe("?sortBy=cost&dir=desc&folder=-Users-me-dev-demo");
+  });
+
+  it("omits the folder param when there is no active scope", () => {
+    expect(expandHref("sess-basic", undefined, DEFAULT_SORT)).toBe(
+      "?sortBy=date&dir=desc&expanded=sess-basic",
+    );
+  });
+
+  it("url-encodes a row id with special characters", () => {
+    expect(expandHref("a b&c", undefined, DEFAULT_SORT)).toBe(
+      "?sortBy=date&dir=desc&expanded=a+b%26c",
     );
   });
 });

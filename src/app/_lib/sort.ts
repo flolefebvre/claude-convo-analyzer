@@ -1,5 +1,5 @@
-// Pure sort-state, comparator, and label helpers for the conversation list
-// table.
+// Pure URL-view-state (sort, folder scope, expanded row), comparator, and
+// label helpers for the conversation list table.
 //
 // Sorting is done SERVER-SIDE BY THE APP, not by the core. The core's
 // `listConversations` comparator only handles top-level scalar
@@ -140,9 +140,14 @@ export function toggleSort(field: SortableField, current: SortState): SortState 
  * the active sort. `folder` is omitted (cleared) when `undefined`/empty.
  * `URLSearchParams` handles value encoding.
  */
-function buildHref(sort: SortState, folder: string | undefined): string {
+function buildHref(
+  sort: SortState,
+  folder: string | undefined,
+  expanded?: string,
+): string {
   const params = new URLSearchParams({ sortBy: sort.sortBy, dir: sort.dir });
   if (folder) params.set("folder", folder);
+  if (expanded) params.set("expanded", expanded);
   return `?${params.toString()}`;
 }
 
@@ -169,6 +174,32 @@ export function folderHref(
   current: SortState,
 ): string {
   return buildHref(current, folder);
+}
+
+/**
+ * Query-string href for a row's expand/collapse toggle link. Clicking a
+ * collapsed row expands it (`?expanded=<id>`); clicking the already-expanded
+ * row collapses it (the param is dropped). Sort and folder are preserved in
+ * both directions so toggling a panel never changes the view.
+ */
+export function expandHref(
+  rowId: string,
+  expanded: string | undefined,
+  sort: SortState,
+  folder?: string,
+): string {
+  return buildHref(sort, folder, rowId === expanded ? undefined : rowId);
+}
+
+/**
+ * Resolve the expanded-row id from the raw `?expanded=` search param. Mirrors
+ * {@link resolveSort}: first value when the param repeats, and an absent/empty
+ * value means "no row expanded" (`undefined`).
+ */
+export function resolveExpanded(
+  raw: string | string[] | undefined,
+): string | undefined {
+  return firstParam(raw) || undefined;
 }
 
 /** Active-sort arrow for a header, or "" when the field is not the active sort. */

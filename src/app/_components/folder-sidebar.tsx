@@ -1,7 +1,7 @@
 // The left folder sidebar (issue #10). A SERVER component: it server-renders the
 // folder labels + counts + cost (scope-independent — derived from ALL
 // conversations), so it lives in the root layout and persists across `?folder=`/
-// sort navigations without flashing (ADR-0004 amendment, PR #13).
+// sort navigations without flashing (PR #13).
 //
 // Beyond navigation it doubles as a spend read-out: each Project shows its summed
 // cost and a `CostBar` (the app's signature motif, scaled to the TOTAL spend so

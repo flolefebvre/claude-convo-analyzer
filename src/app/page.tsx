@@ -1,10 +1,11 @@
 // Conversation list — the app's single page (issue #3). A React Server
-// Component: it reads the active scope + sort from `searchParams`, fetches the
-// rows via the cached app-zone reader, and renders a sortable shadcn table with
-// a grand-total footer. The persistent app shell (header + sidebar) lives in the
-// root layout (PR #13); the page renders ONLY the table region. Sorting and
-// scoping are server-side via search-param links (no front-end data filtering —
-// ADR-0004); the pure sort/label logic lives in `@/app/_lib/sort`.
+// Component: it reads the active scope + sort + expanded row from
+// `searchParams`, fetches the rows (and the expanded row's detail) via the
+// cached app-zone readers, and renders a sortable shadcn table with a
+// grand-total footer. The persistent app shell (header + sidebar) lives in the
+// root layout (PR #13); the page renders ONLY the table region. Sorting,
+// scoping, and row expansion are all server-side via search-param links (no
+// front-end data filtering); the pure URL-state logic lives in `@/app/_lib/sort`.
 //
 // ADR-0002 boundary: the core read is reached through `loadConversations`
 // (app-zone), not a direct core import. The shadcn Table/Button + `next/link`
@@ -18,7 +19,10 @@ import Link from "next/link";
 import { Suspense } from "react";
 
 import { ConversationRow } from "@/app/_components/conversation-row";
-import { loadConversations } from "@/app/_lib/conversations";
+import {
+  loadConversationDetail,
+  loadConversations,
+} from "@/app/_lib/conversations";
 import { footerLabelColSpan } from "@/app/_lib/columns";
 import { type FolderEntry } from "@/app/_lib/folders";
 import { formatDate, formatGrandTotalCost, formatTokens } from "@/app/_lib/format";
@@ -26,7 +30,9 @@ import { buildListView } from "@/app/_lib/list-view";
 import {
   type SortableField,
   type SortState,
+  expandHref,
   folderHref,
+  resolveExpanded,
   resolveSort,
   sortHref,
   sortIndicator,
@@ -45,6 +51,7 @@ type PageSearchParams = {
   sortBy?: string | string[];
   dir?: string | string[];
   folder?: string | string[];
+  expanded?: string | string[];
 };
 
 /** First value of a `searchParams` entry (Next gives string | string[]). */
@@ -80,12 +87,15 @@ async function ConversationTable({
   searchParams: Promise<PageSearchParams>;
 }) {
   const params = await searchParams;
-  // URL → resolved intent at the page edge (ADR-0004); the seam takes intent,
-  // never raw searchParams.
+  // URL → resolved intent at the page edge; the seam takes intent, never raw
+  // searchParams.
   const sort = resolveSort(params.sortBy, params.dir);
   // The active scope, normalized: a non-empty key, or `undefined`/empty for
   // "All folders". Threaded onto the header links so re-sorting keeps the scope.
   const activeFolder = firstParam(params.folder) || undefined;
+  // The expanded row's id, if any (`?expanded=<id>`). Row expansion is URL view
+  // state like sort/folder, so expanded panels are shareable and survive reload.
+  const expandedId = resolveExpanded(params.expanded);
   // Fetch ALL rows once (deduped with the layout's sidebar read via React
   // cache()); the seam owns the order-dependent pipeline (filter BEFORE sort,
   // one `deriveFolders` derive feeding the table breadcrumb + scope).
@@ -93,11 +103,19 @@ async function ConversationTable({
   const { rows, scoped: isScoped, selectedFolder, grandTotal: total } =
     buildListView(allRows, { folder: activeFolder, sort });
 
-  // Format every row's relative Date label against ONE request-time `now`, here
-  // on the server, and hand each row the resulting strings as plain props. The
-  // row is a client component; computing the relative label inside it would use a
-  // different `new Date()` on the server vs. on hydration and throw a React
-  // hydration mismatch (#418) that froze the Refresh button (issue #20).
+  // Fetch the expanded row's panel detail server-side — only when that row is
+  // actually visible in the current view (a stale/foreign `?expanded=` is
+  // ignored). `null` detail still renders the panel with a graceful note.
+  const expandedRow = expandedId
+    ? rows.find((row) => row.id === expandedId)
+    : undefined;
+  const expandedDetail = expandedRow
+    ? await loadConversationDetail(expandedRow.id)
+    : null;
+
+  // Format every row's relative Date label against ONE request-time `now` so
+  // all rows agree on what "5m ago" means, and hand each row the resulting
+  // strings as plain props.
   const now = new Date();
 
   // Empty when there are genuinely no conversations OR when the active scope
@@ -160,6 +178,9 @@ async function ConversationTable({
                 row={row}
                 date={formatDate(row.startedAt, now)}
                 scoped={isScoped}
+                expanded={row.id === expandedRow?.id}
+                detail={row.id === expandedRow?.id ? expandedDetail : null}
+                toggleHref={expandHref(row.id, expandedId, sort, activeFolder)}
               />
             ))}
           </TableBody>

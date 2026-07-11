@@ -1,11 +1,12 @@
 "use server";
 
-// Server Actions for the conversation list (slice 3). This module is one of the
-// two places in the app that touch `src/core`'s refresh entry point (the other
-// is the list page). Importing core is side-effect-free — it opens no DB at load
-// (see `import-side-effects.test.ts`) — so core is a normal top-level import.
-// Each action still calls `connection()` before reading, so the synchronous
-// better-sqlite3 query runs only on a real request and never during build-time
+// Server Actions for the conversation list. The one action left is the Refresh
+// MUTATION — reads (the list, the expanded row's detail) are served by the
+// server components via the `_lib/conversations` seam, driven by the URL.
+// Importing core is side-effect-free — it opens no DB at load (see
+// `import-side-effects.test.ts`) — so core is a normal top-level import. The
+// action still calls `connection()` before touching the DB, so the synchronous
+// better-sqlite3 work runs only on a real request and never during build-time
 // prerender (Cache Components is on). A "use server" module's exports may be
 // imported and called from a "use client" component, but the client never
 // imports core itself (ADR-0002).
@@ -13,7 +14,6 @@
 import { revalidatePath } from "next/cache";
 import { connection } from "next/server";
 
-import { type ConversationDetail, getConversation } from "@/core/read";
 import { type RefreshSummary, refresh } from "@/core/refresh";
 
 /**
@@ -34,20 +34,4 @@ export async function refreshConversations(): Promise<RefreshSummary> {
   // so the next render reflects the freshly-scanned rows.
   revalidatePath("/");
   return summary;
-}
-
-/**
- * Fetch one conversation's full detail for the expandable row (slice 4).
- *
- * The interactive row is a client component (it owns expand state) and so may
- * NOT import core (ADR-0002); it calls THIS action on first expand instead. Same
- * request-time gating as {@link refreshConversations}: `connection()` first so
- * the read never runs during build-time prerender. Returns the plain
- * serializable {@link ConversationDetail}, or `null` for an unknown id.
- */
-export async function getConversationDetail(
-  id: string,
-): Promise<ConversationDetail | null> {
-  await connection();
-  return getConversation(id);
 }
