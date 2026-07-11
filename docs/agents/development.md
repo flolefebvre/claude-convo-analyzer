@@ -43,7 +43,7 @@ documentation of the log format.
 
 ## The validation gate (definition of done)
 
-A feature is complete only when all four commands pass and print their sentinel.
+A feature is complete only when all five commands pass and print their sentinel.
 The sentinel exists so a run is verifiable — a command that exits 0 but does not
 print its `OK` line is treated as a failure.
 
@@ -51,6 +51,7 @@ print its `OK` line is treated as a failure.
 |---|---|---|
 | `pnpm test` | `TEST OK` | vitest — behavior |
 | `pnpm lint` | `LINT OK` | eslint — style/correctness |
+| `pnpm typecheck` | `TYPECHECK OK` | `tsc --noEmit` — types |
 | `pnpm fallow` | `FALLOW OK` | dead code, circular deps, duplication, complexity, **architecture boundaries** |
 | `pnpm build` | `BUILD OK` | `next build` — it compiles |
 

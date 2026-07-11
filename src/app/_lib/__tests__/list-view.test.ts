@@ -37,6 +37,7 @@ function summary(over: {
       total,
     },
     costUsd: over.costUsd ?? 0,
+    costByType: { input: 0, output: 0, cacheWrite: 0, cacheRead: over.cacheRead ?? 0 },
     unpriced: over.unpriced ?? false,
     subAgentCount: 0,
     continuedFromId: null,

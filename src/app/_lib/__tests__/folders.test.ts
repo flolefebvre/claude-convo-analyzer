@@ -30,6 +30,7 @@ function summary(over: {
     models: { dominant: "opus", distinctCount: 1 },
     tokens: { input: total, output: 0, cacheWrite: 0, cacheRead: 0, total },
     costUsd: over.costUsd ?? 0,
+    costByType: { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 },
     unpriced: over.unpriced ?? false,
     subAgentCount: 0,
     continuedFromId: null,

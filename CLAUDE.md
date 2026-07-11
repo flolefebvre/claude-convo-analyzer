@@ -11,13 +11,14 @@ path); pragmatic, lighter testing on the Next UI. Match test names and
 vocabulary to `CONTEXT.md` and respect the ADRs.
 
 **Definition of done — the validation gate.** A feature is not done until **all
-four** pass, each printing its `OK` sentinel:
+five** pass, each printing its `OK` sentinel:
 
 ```
-pnpm test    # → TEST OK    vitest
-pnpm lint    # → LINT OK    eslint
-pnpm fallow  # → FALLOW OK  dead code, cycles, duplication, complexity, core boundary
-pnpm build   # → BUILD OK   next build
+pnpm test       # → TEST OK       vitest
+pnpm lint       # → LINT OK       eslint
+pnpm typecheck  # → TYPECHECK OK  tsc --noEmit
+pnpm fallow     # → FALLOW OK     dead code, cycles, duplication, complexity, core boundary
+pnpm build      # → BUILD OK      next build
 ```
 
 Run them yourself and confirm each sentinel before calling work complete. Treat

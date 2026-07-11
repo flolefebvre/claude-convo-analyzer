@@ -35,6 +35,7 @@ function detail(partial: Partial<ConversationDetail> = {}): ConversationDetail {
     models: { dominant: "sonnet", distinctCount: 1 },
     tokens: TOKENS,
     costUsd: 1,
+    costByType: { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 },
     unpriced: false,
     subAgentCount: 0,
     continuedFromId: null,
