@@ -48,5 +48,6 @@ next-env.d.ts
 /src/core/prisma/generated/
 
 # local agent dev tooling (vendored skills are personal, not part of the app)
+/.agents/
 /.claude/
 /skills-lock.json
