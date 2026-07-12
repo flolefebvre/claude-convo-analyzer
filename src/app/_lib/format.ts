@@ -63,6 +63,20 @@ export function formatGrandTotalCost(usd: number): string {
 }
 
 /**
+ * Wall-clock `HH:MM` (UTC, 24-hour) for a transcript message's timestamp, or ""
+ * for a missing/unparseable value. UTC keeps it deterministic regardless of host
+ * timezone, matching the rest of this module's date reasoning.
+ */
+export function formatClock(iso: string | null): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const hh = String(date.getUTCHours()).padStart(2, "0");
+  const mm = String(date.getUTCMinutes()).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
+/**
  * Render an ISO8601 timestamp for the conversation list's Date column,
  * returning both a compact `label` and a full `absolute` string for hover.
  *

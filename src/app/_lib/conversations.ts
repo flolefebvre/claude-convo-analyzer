@@ -12,7 +12,7 @@
 import { cache } from "react";
 import { connection } from "next/server";
 
-import { getConversation, listConversations } from "@/core/read";
+import { getConversation, getTranscript, listConversations } from "@/core/read";
 
 /**
  * Read every conversation summary once per request. Wrapped in React `cache()`
@@ -34,4 +34,19 @@ export const loadConversations = cache(async () => {
 export const loadConversationDetail = cache(async (id: string) => {
   await connection();
   return getConversation(id);
+});
+
+/**
+ * Read one conversation's transcript for the `/conversation/<sessionId>` view —
+ * the agent tree plus one agent's ordered messages/tool calls. `agentId` selects
+ * which agent's transcript to shape; omitting it (or an unknown id) resolves to
+ * the main agent inside the core reader. Same request-time gating as
+ * {@link loadConversations}; returns `null` for an unknown session. `cache()`
+ * dedupes to a single core read per `(id, agentId)` within a request.
+ *
+ * ADR-0002: this seam is the ONLY place the app touches core for transcript data.
+ */
+export const loadTranscript = cache(async (id: string, agentId?: string) => {
+  await connection();
+  return getTranscript(id, { agentId });
 });

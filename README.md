@@ -25,6 +25,14 @@ Expand any row for the per-model, per-skill, and per-sub-agent cost breakdown:
 
 ![Conversation detail](docs/images/conversation-detail.png)
 
+Open any conversation for the Transcript view — an IDE-like two-pane view with
+the agent tree (main plus every sub-agent, each with its own cost) on the left
+and one agent's turn-by-turn transcript on the right. Click a row's title to
+land on the main agent, or a sub-agent in the cost breakdown to jump straight
+into its transcript:
+
+![Transcript view](docs/images/transcript-view.png)
+
 ## Requirements
 
 - [Node.js](https://nodejs.org) 20 or newer

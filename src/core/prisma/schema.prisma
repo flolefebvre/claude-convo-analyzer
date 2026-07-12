@@ -107,6 +107,12 @@ model Message {
   uuid      String? @map("uuid")
   /// `user` | `assistant`.
   role      String
+  /// USER-record classification for the transcript view: `prompt` (genuine
+  /// human prompt) | `tool-result` (a tool_result carrier) | `meta`
+  /// (machine-injected: skill instructions, command output, system reminders).
+  /// NULL on assistant rows — they carry no meaningful kind. The transcript
+  /// renders assistant rows plus user rows WHERE kind = 'prompt'.
+  kind      String?
   text      String?
 
   /// Token split — NULL for user messages (no usage of their own).
