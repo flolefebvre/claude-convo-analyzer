@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Fragment } from "react";
 
+import { RefreshButton } from "@/app/_components/refresh-button";
 import { subAgentLabel } from "@/app/_lib/detail";
 import { formatCost } from "@/app/_lib/format";
 import { agentLineage } from "@/app/_lib/transcript";
@@ -11,8 +12,9 @@ import { TranscriptMessageRow } from "./transcript-message";
 
 /**
  * The right pane: the selected agent's transcript, topped by a sticky header
- * with the lineage breadcrumb (root → selected; ancestors are links) and the
- * turn/tool/model/cost stats. Below it, the agent's messages render in order,
+ * with the lineage breadcrumb (root → selected; ancestors are links), the
+ * turn/tool/model/cost stats, and a Refresh control (re-scan the logs without
+ * leaving an ongoing conversation). Below it, the agent's messages render in order,
  * with a trailing "N meta records hidden" divider when the reader dropped meta
  * rows for this agent.
  */
@@ -67,6 +69,10 @@ export function TranscriptPane({ view }: { view: TranscriptView }) {
             {formatCost(selected.costUsd)}
           </span>
         </div>
+        {/* Re-scan the logs without leaving an ongoing conversation. The action
+            revalidates the whole tree, so this page re-renders with the new
+            messages; compact variant to sit inside the sticky stats header. */}
+        <RefreshButton variant="outline" size="sm" />
       </div>
 
       <div className="transcript">

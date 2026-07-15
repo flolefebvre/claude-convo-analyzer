@@ -17,12 +17,13 @@ import { connection } from "next/server";
 import { type RefreshSummary, refresh } from "@/core/refresh";
 
 /**
- * Re-scan the local Claude Code logs into the DB and refresh the list.
+ * Re-scan the local Claude Code logs into the DB and refresh the current view.
  *
  * Runs the core `refresh()` (skip-unchanged / re-parse-changed / delete-gone),
- * revalidates `/` so the server component re-reads the now-fresh rows on the next
- * render, and returns the plain serializable {@link RefreshSummary} so the client
- * button can surface what happened.
+ * revalidates every route so whichever page invoked it (the list or a
+ * `/conversation/<id>` transcript) re-reads the now-fresh rows, and returns the
+ * plain serializable {@link RefreshSummary} so the client button can surface
+ * what happened.
  */
 export async function refreshConversations(): Promise<RefreshSummary> {
   // Exclude the DB write/read from prerendering: with Cache Components on, this
@@ -30,8 +31,9 @@ export async function refreshConversations(): Promise<RefreshSummary> {
   // on a real request (Next 16 docs).
   await connection();
   const summary = await refresh();
-  // The list page is a server component reading core at request time; revalidate
-  // so the next render reflects the freshly-scanned rows.
-  revalidatePath("/");
+  // A refresh rewrites the DB every server page reads from — the list, the
+  // expanded-row detail, and the transcripts — so purge the whole tree rather
+  // than just `/` (revalidatePath docs: root + "layout" invalidates all paths).
+  revalidatePath("/", "layout");
   return summary;
 }
