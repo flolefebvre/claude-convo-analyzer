@@ -22,7 +22,13 @@ import { refreshConversations } from "@/app/actions";
 import { formatRefreshSummary } from "@/app/_lib/refresh-summary";
 import { Button } from "@/components/ui/button";
 
-export function RefreshButton() {
+export function RefreshButton({
+  variant = "default",
+  size = "default",
+}: {
+  variant?: React.ComponentProps<typeof Button>["variant"];
+  size?: React.ComponentProps<typeof Button>["size"];
+}) {
   const [isPending, setIsPending] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +53,13 @@ export function RefreshButton() {
     // sat in normal flow it would tall-en the header row and re-center the
     // sibling theme toggle (and the title) — a post-refresh layout jump.
     <div className="relative flex flex-col items-end">
-      <Button onClick={handleClick} disabled={isPending} aria-busy={isPending}>
+      <Button
+        variant={variant}
+        size={size}
+        onClick={handleClick}
+        disabled={isPending}
+        aria-busy={isPending}
+      >
         {isPending ? (
           <Loader2 className="animate-spin" aria-hidden />
         ) : (
