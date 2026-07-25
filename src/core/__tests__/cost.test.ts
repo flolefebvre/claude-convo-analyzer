@@ -81,6 +81,25 @@ describe("computeCost — known resolved models", () => {
     );
     expect(result).toEqual({ usd: 30, unpriced: false, approximate: false });
   });
+
+  it("prices claude-opus-5 at Opus-tier rates ($5/$25 per MTok)", () => {
+    // 1M input @ $5 + 1M output @ $25 = $30.
+    const result = computeCost(
+      tokens({ input: 1_000_000, output: 1_000_000 }),
+      "claude-opus-5",
+    );
+    expect(result).toEqual({ usd: 30, unpriced: false, approximate: false });
+  });
+
+  it("prices claude-opus-5 cache tiers at the standard multipliers", () => {
+    // 5m write = 1.25x $5 = $6.25/MTok; read = 0.1x $5 = $0.50/MTok.
+    expect(
+      computeCost(tokens({ cacheWrite: 1_000_000 }), "claude-opus-5").usd,
+    ).toBe(6.25);
+    expect(
+      computeCost(tokens({ cacheRead: 1_000_000 }), "claude-opus-5").usd,
+    ).toBe(0.5);
+  });
 });
 
 function split(partial: Partial<TokenSplit>): TokenSplit {
@@ -125,12 +144,9 @@ describe("computeCost — merged cacheWrite is priced at the 5m tier", () => {
 });
 
 describe("computeCost — bare aliases price at family-latest, flagged approximate", () => {
-  it("prices `opus` at claude-opus-4-8 rates and flags approximate (still priced)", () => {
+  it("prices `opus` at claude-opus-5 (family-latest) rates and flags approximate (still priced)", () => {
     const alias = computeCost(tokens({ input: 1_000_000 }), "opus");
-    const resolved = computeCost(
-      tokens({ input: 1_000_000 }),
-      "claude-opus-4-8",
-    );
+    const resolved = computeCost(tokens({ input: 1_000_000 }), "claude-opus-5");
     expect(alias.usd).toBe(resolved.usd);
     expect(alias.unpriced).toBe(false);
     expect(alias.approximate).toBe(true);
@@ -279,7 +295,7 @@ describe("resolveModel — shared resolution logic", () => {
 
   it("maps a bare alias to family-latest and flags approximate", () => {
     expect(resolveModel("opus")).toEqual({
-      key: "claude-opus-4-8",
+      key: "claude-opus-5",
       approximate: true,
       unpriced: false,
     });

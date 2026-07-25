@@ -9,21 +9,25 @@
 // UNITS: every rate below is USD per *single* token (USD/MTok ÷ 1_000_000).
 // Storing per-token keeps computeCost a plain multiply with no scaling factor.
 //
-// SOURCE & DATE: Anthropic list prices as of 2026-07-02.
-//   - Base input/output USD/MTok: claude-api skill model table (cached 2026-06-24):
-//       fable-5 $10 / $50,  opus-4-8 $5 / $25,  opus-4-7 $5 / $25,
-//       opus-4-6 $5 / $25,  sonnet-5 $3 / $15,  sonnet-4-6 $3 / $15,
-//       haiku-4-5 $1 / $5.
+// SOURCE & DATE: Anthropic list prices as of 2026-07-25, read from
+//   platform.claude.com/docs/en/about-claude/pricing (model pricing table).
+//   - Base input/output USD/MTok:
+//       fable-5 $10 / $50,  opus-5 $5 / $25,  opus-4-8 $5 / $25,
+//       opus-4-7 $5 / $25,  opus-4-6 $5 / $25,  sonnet-5 $3 / $15,
+//       sonnet-4-6 $3 / $15,  haiku-4-5 $1 / $5.
 //   - sonnet-5: Anthropic also lists an introductory rate of $2 / $10 through
 //       2026-08-31; per ADR-0003 ("not blended/discounted rates") we price at the
 //       standard $3 / $15 list rate, not the temporary intro discount.
+//   - Fast mode (opus-5 / opus-4-8 at $10 / $50) is a per-request premium, not a
+//       distinct model id in the logs, so it gets no row here — same reasoning as
+//       the Batch API's 50% discount (ADR-0003: price at standard list rate).
 //   - Cache-tier multipliers vs base input (platform.claude.com prompt-caching docs):
 //       cache write 5m = 1.25x base input,  cache write 1h = 2x base input,
 //       cache read = 0.1x base input.
 //   Cache tiers are kept DISTINCT here (not derived by a shared multiplier at call
 //   time) so a model with atypical cache pricing stays correct — ADR-0003.
 //
-// PRICE TABLE VERSION: 2026-07-02.1
+// PRICE TABLE VERSION: 2026-07-25.1
 
 const PER_MTOK = 1_000_000;
 
@@ -54,6 +58,7 @@ function priceRow(inputPerMTok: number, outputPerMTok: number): ModelPrices {
  */
 export const PRICES: Record<string, ModelPrices> = {
   "claude-fable-5": priceRow(10, 50),
+  "claude-opus-5": priceRow(5, 25),
   "claude-opus-4-8": priceRow(5, 25),
   "claude-opus-4-7": priceRow(5, 25),
   "claude-opus-4-6": priceRow(5, 25),
@@ -68,7 +73,7 @@ export const PRICES: Record<string, ModelPrices> = {
  * resolver flags it. `unpriced` stays false — aliases ARE priced.
  */
 export const ALIAS_TO_LATEST: Record<string, string> = {
-  opus: "claude-opus-4-8",
+  opus: "claude-opus-5",
   sonnet: "claude-sonnet-5",
   haiku: "claude-haiku-4-5-20251001",
 };
