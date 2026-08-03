@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   agentHref,
+  messageAnchorId,
+  messageHref,
   resolveAgent,
   resolveCall,
+  resolveMessage,
   toolCallHref,
 } from "@/app/_lib/transcript-url";
 
@@ -64,6 +67,48 @@ describe("toolCallHref", () => {
   it("degrades to the plain agent link when the call has no id", () => {
     expect(toolCallHref("sess-1", "sub1", null)).toBe(
       "/conversation/sess-1?agent=sub1",
+    );
+  });
+});
+
+describe("resolveMessage", () => {
+  it("reads the anchored message, defaulting to none", () => {
+    expect(resolveMessage(undefined)).toBeUndefined();
+    expect(resolveMessage("")).toBeUndefined();
+    expect(resolveMessage("uuid-1")).toBe("uuid-1");
+    expect(resolveMessage(["uuid-1", "uuid-2"])).toBe("uuid-1");
+  });
+});
+
+describe("messageAnchorId", () => {
+  it("namespaces the element id so it cannot collide with a tool call", () => {
+    expect(messageAnchorId("uuid-1")).toBe("msg-uuid-1");
+    expect(messageAnchorId("uuid-1")).not.toBe(`call-uuid-1`);
+  });
+});
+
+describe("messageHref", () => {
+  it("links to the agent's transcript, anchored on one message", () => {
+    expect(messageHref("sess-1", "sub1", "uuid-9")).toBe(
+      "/conversation/sess-1?agent=sub1&msg=uuid-9#msg-uuid-9",
+    );
+  });
+
+  it("anchors on the main agent's transcript too", () => {
+    expect(messageHref("sess-1", undefined, "uuid-9")).toBe(
+      "/conversation/sess-1?msg=uuid-9#msg-uuid-9",
+    );
+  });
+
+  it("degrades to the plain agent link when the message has no uuid", () => {
+    expect(messageHref("sess-1", "sub1", null)).toBe(
+      "/conversation/sess-1?agent=sub1",
+    );
+  });
+
+  it("url-encodes a uuid with reserved characters", () => {
+    expect(messageHref("sess-1", undefined, "a b")).toBe(
+      "/conversation/sess-1?msg=a+b#msg-a%20b",
     );
   });
 });

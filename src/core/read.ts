@@ -78,6 +78,13 @@ export type TranscriptToolCall = {
 export type TranscriptMessage = {
   /** `message` row id — stable per message; a spawn's `spawnedByMessageId` points here. */
   id: number;
+  /**
+   * Record `uuid` from the log — the DEEP-LINK anchor (`?msg=`/`#msg-<uuid>`).
+   * The row id above cannot serve: it is re-assigned on every re-parse, so a
+   * shared or bookmarked link would rot. Null when the record carried no uuid;
+   * such a message is simply not anchorable.
+   */
+  uuid: string | null;
   /** `user` | `assistant`. */
   role: string;
   /** `prompt` on rendered user rows (tool-result/meta are filtered out); null on assistant. */
@@ -1001,6 +1008,7 @@ async function readAgentTranscript(
     orderBy: [{ timestamp: "asc" }, { id: "asc" }],
     select: {
       id: true,
+      uuid: true,
       role: true,
       kind: true,
       text: true,
@@ -1026,6 +1034,7 @@ async function readAgentTranscript(
     const turn = priceTurn(r);
     return {
       id: r.id,
+      uuid: r.uuid,
       role: r.role,
       kind: r.kind,
       text: r.text,

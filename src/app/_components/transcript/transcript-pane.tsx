@@ -21,10 +21,14 @@ import { TranscriptMessageRow } from "./transcript-message";
 export function TranscriptPane({
   view,
   anchoredCall,
+  anchoredMessage,
 }: {
   view: TranscriptView;
   /** The `?call=` deep-link target — that tool call renders open + highlighted. */
   anchoredCall?: string;
+  /** The `?msg=` deep-link target — that message renders highlighted (a search
+   *  result's landing spot). */
+  anchoredMessage?: string;
 }) {
   const lineage = agentLineage(view.tree, view.selectedAgentId);
   const selected = lineage[lineage.length - 1] ?? view.tree;
@@ -96,6 +100,7 @@ export function TranscriptPane({
             view={view}
             effortChanged={effort.changedIds.has(message.id)}
             anchoredCall={anchoredCall}
+            anchoredMessage={anchoredMessage}
           />
         ))}
         {view.metaHiddenCount > 0 && (

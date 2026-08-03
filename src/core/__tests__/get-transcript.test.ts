@@ -48,6 +48,13 @@ describe("getTranscript core reader", () => {
     expect(view?.totalTokens.total).toBe(25);
   });
 
+  it("carries each message's record uuid — the deep-link anchor", async () => {
+    const view = await getTranscript("sess-transcript", { dbPath });
+    // The uuid survives a re-parse (unlike the row id), so it is what a saved
+    // search link anchors on.
+    expect(view?.messages.map((m) => m.uuid)).toEqual(["tu1", "ta1", "ta2"]);
+  });
+
   it("flags the API-error dot and counts hidden meta on the node", async () => {
     const view = await getTranscript("sess-transcript", { dbPath });
     expect(view?.tree.hasError).toBe(true); // ta2 is an API-error turn
