@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createPrismaClient } from "@/core/db";
 import { refresh } from "@/core/refresh";
 
+import { dropSearchIndex } from "./helpers/search-index";
+
 const FIXTURES_ROOT = path.join(import.meta.dirname, "fixtures", "logs");
 
 describe("message.kind persisted through refresh", () => {
@@ -70,6 +72,9 @@ describe("message.kind persisted through refresh", () => {
     db.prepare("DELETE FROM _cca_migrations WHERE migration_name = ?").run(
       KIND_MIGRATION,
     );
+    // The search index's triggers read `message.kind`, so the index has to come
+    // down with the column; re-opening re-applies both migrations in order.
+    dropSearchIndex(db);
     db.exec('ALTER TABLE "message" DROP COLUMN "kind"');
     const before = db
       .prepare("SELECT source_mtime AS m FROM conversation WHERE session_id = 'sess-transcript'")
