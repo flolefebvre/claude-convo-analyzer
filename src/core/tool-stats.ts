@@ -187,3 +187,206 @@ function scopeWhere(opts: ToolStatsOptions) {
     },
   };
 }
+
+/** One sampled tool call — enough to render it and deep-link into its Transcript. */
+export type ToolCallSample = {
+  /** Session id of the conversation the call ran in (the transcript route key). */
+  sessionId: string;
+  /** Conversation title, when the log recorded one. */
+  conversationTitle: string | null;
+  /** The `?agent=` key of the agent that made the call (sub-agents included). */
+  agentId: string;
+  /** `tool_use` block id — the in-transcript anchor (`?call=`); null when unlogged. */
+  toolUseId: string | null;
+  /** The turn's timestamp as an ISO string (null when absent). */
+  timestamp: string | null;
+  /** Full result length in characters; null when the result never paired. */
+  charSize: number | null;
+  isError: boolean;
+  /** Full tool input, serialized JSON — the app extracts its own snippet. */
+  inputJson: string;
+  /** First {@link EXCERPT_CHARS} characters of the result (the error message, typically). */
+  excerpt: string | null;
+};
+
+/** One slice of a Skill/Agent drill-down: a skill name or sub-agent type. */
+export type ToolBreakdownEntry = {
+  /** The skill name / sub-agent type, or {@link UNKNOWN_KEY} when the input carried none. */
+  key: string;
+  calls: number;
+  errors: number;
+};
+
+/** One tool's drill-down: its worst calls plus, for Skill/Agent, a breakdown. */
+export type ToolCallSamples = {
+  /** The tool name the samples belong to (as logged). */
+  name: string;
+  /** The tool's most recent errors, newest first. */
+  recentErrors: ToolCallSample[];
+  /** The tool's biggest results, largest first (errors included). */
+  largestResults: ToolCallSample[];
+  /**
+   * For `Skill` (by `input.skill`) and `Agent` (by `input.subagent_type`): one
+   * entry per skill/sub-agent type, calls descending. Empty for every other
+   * tool — one row per tool name is the whole story there.
+   */
+  breakdown: ToolBreakdownEntry[];
+};
+
+/** How many calls each drill-down list holds by default. */
+const DEFAULT_SAMPLE_LIMIT = 5;
+
+/** How much of a result the drill-down shows inline. */
+const EXCERPT_CHARS = 240;
+
+/** Breakdown bucket for a call whose input carried no usable key. */
+const UNKNOWN_KEY = "unknown";
+
+/** Which input field names a call's breakdown bucket, per tool. */
+const BREAKDOWN_FIELD: Record<string, string> = {
+  Skill: "skill",
+  Agent: "subagent_type",
+};
+
+export type ToolCallSamplesOptions = ToolStatsOptions & {
+  /** How many calls each list holds (default {@link DEFAULT_SAMPLE_LIMIT}). */
+  limit?: number;
+};
+
+/**
+ * The drill-down behind one row of the Tools table, over the SAME scope as
+ * {@link getToolStats}: the tool's most recent errors and its largest results —
+ * each carrying the session, agent and `tool_use` id a Transcript deep-link
+ * needs — plus, for `Skill` and `Agent`, a per-skill / per-sub-agent-type
+ * breakdown of calls and errors.
+ *
+ * Fetched only when a row is expanded, so the table itself never pays for it.
+ */
+export async function getToolCallSamples(
+  name: string,
+  opts: ToolCallSamplesOptions = {},
+): Promise<ToolCallSamples> {
+  const limit = opts.limit ?? DEFAULT_SAMPLE_LIMIT;
+  const { prisma, owned } = readClient(opts.dbPath);
+  try {
+    const rows = await prisma.toolCall.findMany({
+      where: { name, ...scopeWhere(opts) },
+      select: {
+        toolUseId: true,
+        inputJson: true,
+        resultText: true,
+        resultCharSize: true,
+        isError: true,
+        agent: { select: { id: true, externalAgentId: true } },
+        message: {
+          select: {
+            timestamp: true,
+            conversation: { select: { sessionId: true, title: true } },
+          },
+        },
+      },
+    });
+
+    const samples = rows.map(toSample);
+    return {
+      name,
+      recentErrors: samples
+        .filter((s) => s.isError)
+        .sort(byRecencyDesc)
+        .slice(0, limit),
+      largestResults: samples
+        .filter((s) => s.charSize !== null)
+        .sort(bySizeDesc)
+        .slice(0, limit),
+      breakdown: breakdownFor(name, rows),
+    };
+  } finally {
+    // Only a caller-owned (non-default) client is disconnected; the shared
+    // default singleton stays open for the next request.
+    if (owned) await prisma.$disconnect();
+  }
+}
+
+/** One `tool_call` row as read for the drill-down. */
+type SampleRow = {
+  toolUseId: string | null;
+  inputJson: string;
+  resultText: string | null;
+  resultCharSize: number | null;
+  isError: boolean;
+  agent: { id: number; externalAgentId: string | null };
+  message: {
+    timestamp: bigint | number | null;
+    conversation: { sessionId: string; title: string | null };
+  } | null;
+};
+
+/** Shape one row into a sample (agent key + ISO timestamp + result excerpt). */
+function toSample(row: SampleRow): ToolCallSample {
+  const ts = row.message?.timestamp ?? null;
+  return {
+    sessionId: row.message?.conversation.sessionId ?? "",
+    conversationTitle: row.message?.conversation.title ?? null,
+    // The transcript's `?agent=` key — the same rule as `getTranscript`'s tree.
+    agentId: row.agent.externalAgentId ?? String(row.agent.id),
+    toolUseId: row.toolUseId,
+    timestamp: ts === null ? null : new Date(Number(ts)).toISOString(),
+    charSize: row.resultCharSize,
+    isError: row.isError,
+    inputJson: row.inputJson,
+    excerpt: row.resultText === null ? null : row.resultText.slice(0, EXCERPT_CHARS),
+  };
+}
+
+/** Newest first; ties broken by `tool_use` id so the order is deterministic. */
+function byRecencyDesc(a: ToolCallSample, b: ToolCallSample): number {
+  const at = a.timestamp ?? "";
+  const bt = b.timestamp ?? "";
+  if (at !== bt) return bt.localeCompare(at);
+  return (a.toolUseId ?? "").localeCompare(b.toolUseId ?? "");
+}
+
+/** Biggest first; ties broken by `tool_use` id so the order is deterministic. */
+function bySizeDesc(a: ToolCallSample, b: ToolCallSample): number {
+  const diff = (b.charSize ?? 0) - (a.charSize ?? 0);
+  if (diff !== 0) return diff;
+  return (a.toolUseId ?? "").localeCompare(b.toolUseId ?? "");
+}
+
+/**
+ * The Skill/Agent breakdown: group the calls by the tool's own key field
+ * (`input.skill` / `input.subagent_type`), calls descending then key ascending.
+ * Any other tool gets no breakdown at all.
+ */
+function breakdownFor(name: string, rows: SampleRow[]): ToolBreakdownEntry[] {
+  const field = BREAKDOWN_FIELD[name];
+  if (field === undefined) return [];
+
+  const byKey = new Map<string, ToolBreakdownEntry>();
+  for (const row of rows) {
+    const key = inputField(row.inputJson, field) ?? UNKNOWN_KEY;
+    let entry = byKey.get(key);
+    if (entry === undefined) {
+      entry = { key, calls: 0, errors: 0 };
+      byKey.set(key, entry);
+    }
+    entry.calls += 1;
+    if (row.isError) entry.errors += 1;
+  }
+
+  return [...byKey.values()].sort((a, b) =>
+    a.calls === b.calls ? a.key.localeCompare(b.key) : b.calls - a.calls,
+  );
+}
+
+/** Read one string field out of a stored tool input; null when absent/unparseable. */
+function inputField(inputJson: string, field: string): string | null {
+  try {
+    const parsed: unknown = JSON.parse(inputJson);
+    if (parsed === null || typeof parsed !== "object") return null;
+    const value = (parsed as Record<string, unknown>)[field];
+    return typeof value === "string" && value !== "" ? value : null;
+  } catch {
+    return null;
+  }
+}

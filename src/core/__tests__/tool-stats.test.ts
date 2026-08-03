@@ -82,9 +82,9 @@ describe("getToolStats", () => {
     });
 
     expect(stats.tools[0]?.name).toBe("Bash");
-    // 5 Bash + 2 Grep + 2 MCP + 2 Skill + 1 Agent.
-    expect(stats.totalCalls).toBe(12);
-    expect(stats.totalErrors).toBe(3);
+    // 5 Bash + 3 Edit + 2 Grep + 2 MCP + 2 Skill + 1 Agent.
+    expect(stats.totalCalls).toBe(15);
+    expect(stats.totalErrors).toBe(5);
   });
 
   it("scopes to one Project, leaving the other Project's calls out", async () => {
@@ -107,7 +107,7 @@ describe("getToolStats", () => {
       days: 7,
       now: NOW,
     });
-    expect(inRange.totalCalls).toBe(12);
+    expect(inRange.totalCalls).toBe(15);
 
     // …while a 7-day range weeks later contains nothing at all.
     const after = await getToolStats({
