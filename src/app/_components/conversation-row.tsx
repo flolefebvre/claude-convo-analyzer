@@ -11,7 +11,7 @@
 // the panel is `SubAgentBreakdown` (ephemeral per-group open/closed state),
 // which receives plain serializable props.
 
-import { ChevronDown, ChevronRight, GitBranch } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, GitBranch } from "lucide-react";
 import Link from "next/link";
 
 import { CostList, CostRow } from "@/app/_components/cost-list";
@@ -120,6 +120,19 @@ export function ConversationRow({
             {/* Continuation family: this conversation is one sitting of a piece
                 of work spread over several (`--resume`/fork). The badge counts
                 the WHOLE family, so every member shows the same number. */}
+            {/* API errors: turns the API failed on, anywhere in the
+                conversation (sub-agents included). Destructive tone, the same
+                alarm the Transcript's `badge-err` carries — expand the row for
+                the per-error list. */}
+            {row.errorCount > 0 && (
+              <span
+                className="inline-flex shrink-0 items-center gap-1 rounded bg-destructive/10 px-1.5 py-0.5 text-xs font-normal text-destructive tabular-nums dark:bg-destructive/20"
+                title={`${row.errorCount} turn${row.errorCount === 1 ? "" : "s"} failed with an API error — expand the row to see them.`}
+              >
+                <AlertTriangle className="size-3" aria-hidden />
+                {row.errorCount} error{row.errorCount === 1 ? "" : "s"}
+              </span>
+            )}
             {familySize > 1 && (
               <span
                 className="inline-flex shrink-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground tabular-nums"
