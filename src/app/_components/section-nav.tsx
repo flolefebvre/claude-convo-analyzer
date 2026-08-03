@@ -1,7 +1,7 @@
 "use client";
 
-// The sidebar's section switcher (issue #41): the two analysis surfaces sharing
-// the shell — the conversation list and Trends. A small client component,
+// The sidebar's section switcher (issue #41): the analysis surfaces sharing the
+// shell — the conversation list, Trends, and Tools. A small client component,
 // for the same reason as `SidebarLink`: it lives in the shell layout, which
 // CANNOT read `searchParams`, so both things that depend on the live URL are
 // decided here —
@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils-cn";
 const SECTIONS = [
   { href: "/", label: "Conversations" },
   { href: "/trends", label: "Trends" },
+  { href: "/tools", label: "Tools" },
 ] as const;
 
 /** The view params worth carrying across a surface switch. */

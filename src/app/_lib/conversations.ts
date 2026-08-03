@@ -18,6 +18,7 @@ import {
   getTranscript,
   listConversations,
 } from "@/core/read";
+import { getToolCallSamples, getToolStats } from "@/core/tool-stats";
 
 /**
  * Read every conversation summary once per request. Wrapped in React `cache()`
@@ -66,3 +67,26 @@ export const loadTranscript = cache(async (id: string, agentId?: string) => {
   await connection();
   return getTranscript(id, { agentId });
 });
+
+/**
+ * Read the Tools view's per-tool analytics for one folder + range scope
+ * (`?folder=`/`?range=`). Same request-time gating as {@link loadConversations};
+ * `days` is `undefined` for "all time". `cache()` dedupes to a single core read
+ * per `(folder, days)` within a request.
+ */
+export const loadToolStats = cache(async (folder?: string, days?: number) => {
+  await connection();
+  return getToolStats({ folder, days });
+});
+
+/**
+ * Read one tool's drill-down (recent errors, largest results, Skill/Agent
+ * breakdown) over the SAME scope as {@link loadToolStats}. Called only when a
+ * row is expanded (`?expanded=<tool>`), so the table never pays for it.
+ */
+export const loadToolCallSamples = cache(
+  async (name: string, folder?: string, days?: number) => {
+    await connection();
+    return getToolCallSamples(name, { folder, days });
+  },
+);

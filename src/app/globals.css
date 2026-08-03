@@ -500,6 +500,14 @@
   cursor: pointer;
 }
 .tview details.call summary::-webkit-details-marker { display: none; }
+/* The `?call=` deep-link target (a Tools-page drill-down): rendered open, and
+   ringed in the accent hue so the eye finds it after the fragment scroll. Both
+   themes read it correctly — the colours are semantic tokens. */
+.tview details.call.anchored {
+  border-color: var(--cost);
+  box-shadow: 0 0 0 2px var(--cost-muted);
+  scroll-margin-top: 96px;
+}
 .tview details.call summary:hover { background: var(--muted); }
 .tview .chev {
   color: var(--muted-foreground);

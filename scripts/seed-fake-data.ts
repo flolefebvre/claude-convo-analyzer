@@ -202,7 +202,13 @@ function userPrompt(ms: number, cwd: string, text: string): string {
   });
 }
 
-function toolResult(ms: number, cwd: string, toolUseId: string, result: unknown): string {
+function toolResult(
+  ms: number,
+  cwd: string,
+  toolUseId: string,
+  result: unknown,
+  isError = false,
+): string {
   return JSON.stringify({
     type: "user",
     uuid: uid("u"),
@@ -210,10 +216,69 @@ function toolResult(ms: number, cwd: string, toolUseId: string, result: unknown)
     cwd,
     message: {
       role: "user",
-      content: [{ type: "tool_result", tool_use_id: toolUseId, content: "ok", is_error: false }],
+      content: [
+        { type: "tool_result", tool_use_id: toolUseId, content: "ok", is_error: isError },
+      ],
     },
     toolUseResult: result,
   });
+}
+
+// ── The tool palette ────────────────────────────────────────────────────────
+// The Tools page reads three things off a tool call: how often it runs, how
+// often it errors, and how many characters it returns. So each kind here has a
+// weight, a failure rate, and a result-size band — a `Read` of a big file
+// floods the context, an `Edit` barely registers, an MCP server fails more than
+// a built-in does.
+
+const GREP_PATTERNS = ["TODO", "createUser", "useEffect\\(", "process.env", "async function"] as const;
+const MCP_QUERIES = ["open bugs", "release blockers", "stale PRs"] as const;
+
+const TOOL_KINDS = [
+  { name: "Read", weight: 9, errorChance: 0.02, min: 400, max: 42_000,
+    input: () => ({ file_path: pick(READ_FILES) }) },
+  { name: "Bash", weight: 8, errorChance: 0.13, min: 40, max: 6_000,
+    input: () => ({ command: pick(BASH_CMDS) }) },
+  { name: "Edit", weight: 6, errorChance: 0.08, min: 30, max: 320,
+    input: () => ({ file_path: pick(READ_FILES) }) },
+  { name: "Grep", weight: 5, errorChance: 0.04, min: 80, max: 14_000,
+    input: () => ({ pattern: pick(GREP_PATTERNS) }) },
+  { name: "Skill", weight: 3, errorChance: 0.02, min: 600, max: 9_000,
+    input: () => ({ skill: pick(SKILLS) }) },
+  { name: "mcp__github__create_issue", weight: 2, errorChance: 0.17, min: 200, max: 1_400,
+    input: () => ({ title: pick(TITLES), repository: "acme/acme-api" }) },
+  { name: "mcp__linear__search_issues", weight: 2, errorChance: 0.09, min: 300, max: 22_000,
+    input: () => ({ query: pick(MCP_QUERIES) }) },
+] as const;
+
+const TOTAL_TOOL_WEIGHT = TOOL_KINDS.reduce((sum, k) => sum + k.weight, 0);
+
+/** Pick a tool kind by weight, so built-ins dominate as they do in real logs. */
+function pickToolKind(): (typeof TOOL_KINDS)[number] {
+  let roll = rand() * TOTAL_TOOL_WEIGHT;
+  for (const kind of TOOL_KINDS) {
+    roll -= kind.weight;
+    if (roll <= 0) return kind;
+  }
+  return TOOL_KINDS[0];
+}
+
+const RESULT_FILLER =
+  "export function handler(req: Request) { const user = await lookup(req); return json(user); }\n";
+
+const ERROR_MESSAGES = [
+  "Error: command failed with exit code 1",
+  "Error: ENOENT: no such file or directory",
+  "Error: request failed (429 Too Many Requests)",
+  "Error: string to replace not found in file",
+  "Error: timed out after 120000ms",
+] as const;
+
+/** A result payload of roughly the kind's size band (or a short error message). */
+function toolResultText(kind: (typeof TOOL_KINDS)[number], isError: boolean): string {
+  if (isError) return pick(ERROR_MESSAGES);
+  const size = int(kind.min, kind.max);
+  return RESULT_FILLER.repeat(Math.ceil(size / RESULT_FILLER.length)).slice(0, size);
 }
 
 /** Build a sub-agent transcript file + the parent's spawn ledger tool_result. */
@@ -232,6 +297,10 @@ function spawnSubAgent(
   const turns = int(2, 5);
   for (let i = 0; i < turns; i++) {
     const u = makeUsage(0.6);
+    const subKind = pickToolKind();
+    const subToolUse = chance(0.6)
+      ? { type: "tool_use", id: uid("tu"), name: subKind.name, input: subKind.input() }
+      : null;
     subTotal +=
       u.input_tokens +
       u.output_tokens +
@@ -252,11 +321,26 @@ function spawnSubAgent(
           id: uid("smsg"),
           role: "assistant",
           model: subModel,
-          content: [{ type: "text", text: "Sub-agent working." }],
+          content: subToolUse === null
+            ? [{ type: "text", text: "Sub-agent working." }]
+            : [{ type: "text", text: "Sub-agent working." }, subToolUse],
           usage: u,
         },
       }),
     );
+    // Sub-agents call tools too, and the Tools page counts them — same friction.
+    if (subToolUse !== null) {
+      const isError = chance(subKind.errorChance);
+      subLines.push(
+        toolResult(
+          ms + i * 30_000 + 5_000,
+          cwd,
+          subToolUse.id,
+          toolResultText(subKind, isError),
+          isError,
+        ),
+      );
+    }
   }
 
   const toolUse = {
@@ -315,17 +399,12 @@ function buildConversation(
 
     if (chance(0.7)) {
       const tuId = uid("tu");
-      const which = int(0, 2);
-      if (which === 0) {
-        toolUses.push({ type: "tool_use", id: tuId, name: "Bash", input: { command: pick(BASH_CMDS) } });
-      } else if (which === 1) {
-        toolUses.push({ type: "tool_use", id: tuId, name: "Read", input: { file_path: pick(READ_FILES) } });
-      } else {
-        toolUses.push({ type: "tool_use", id: tuId, name: "Edit", input: { file_path: pick(READ_FILES) } });
-      }
+      const kind = pickToolKind();
+      const isError = chance(kind.errorChance);
+      toolUses.push({ type: "tool_use", id: tuId, name: kind.name, input: kind.input() });
       lines.push(assistantTurn(t, cwd, model, { skill, toolUses }));
       t += int(2_000, 20_000);
-      lines.push(toolResult(t, cwd, tuId, { stdout: "ok", stderr: "", interrupted: false }));
+      lines.push(toolResult(t, cwd, tuId, toolResultText(kind, isError), isError));
     } else {
       lines.push(assistantTurn(t, cwd, model, { skill }));
     }

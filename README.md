@@ -33,6 +33,15 @@ into its transcript:
 
 ![Transcript view](docs/images/transcript-view.png)
 
+The Tools page answers a different question: which tools you actually use, which
+ones fail, and which ones flood your context. One row per tool — calls, error
+count and rate, mean/median/p95 result size, the largest single result, and the
+total volume of characters it returned — for the selected project and date
+range, sub-agent calls included. Expand a row for its most recent errors and
+biggest results, each linking straight to that call in the Transcript:
+
+![Tools page](docs/images/tools-view.png)
+
 ## Requirements
 
 - [Node.js](https://nodejs.org) 20 or newer
@@ -82,10 +91,11 @@ Today the app answers *"where did the tokens and cost go?"*. The next steps push
 it toward *"what actually happened in these conversations, and how do I make them
 better?"*
 
-- **Usage stats by skill, tool, and sub-agent.** Go beyond cost to behaviour:
-  how often each skill fires, which tools get used the most, how sub-agents are
-  distributed across a run — so you can see your real usage patterns at a glance,
-  not just the bill.
+- **Usage stats by skill and sub-agent.** The Tools page already covers tool
+  usage (calls, errors, result sizes). The same behavioural lens still has to
+  reach skills and sub-agents — how often each skill fires, how sub-agents are
+  distributed across a run — so you see your real usage patterns, not just the
+  bill.
 
 - **Deeper conversation analysis — surfacing friction.** When running fully
   autonomous, different sub-agents often grind on the *same* underlying problem —

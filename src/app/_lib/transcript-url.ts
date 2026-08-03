@@ -34,3 +34,38 @@ export function agentHref(sessionId: string, agentId?: string): string {
   if (!agentId) return base;
   return `${base}?${new URLSearchParams({ agent: agentId }).toString()}`;
 }
+
+/**
+ * Resolve the anchored tool call from the raw `?call=` search param — the
+ * `tool_use` id a Tools-page drill-down link points at. The transcript renders
+ * that call EXPANDED and highlighted; the matching `#call-<id>` fragment does
+ * the scrolling. A fragment alone could not do the expanding: it never reaches
+ * the server.
+ */
+export function resolveCall(
+  raw: string | string[] | undefined,
+): string | undefined {
+  return firstParam(raw) || undefined;
+}
+
+/** The element id of one tool call in a transcript — the deep link's anchor. */
+export function callAnchorId(toolUseId: string): string {
+  return `call-${toolUseId}`;
+}
+
+/**
+ * Deep-link to ONE tool call inside a transcript:
+ * `/conversation/<id>?agent=<agent>&call=<toolUse>#call-<toolUse>`. Without a
+ * `toolUseId` (an unlogged block id) it degrades to the plain agent link.
+ */
+export function toolCallHref(
+  sessionId: string,
+  agentId: string | undefined,
+  toolUseId: string | null,
+): string {
+  const base = agentHref(sessionId, agentId);
+  if (toolUseId === null) return base;
+  const separator = base.includes("?") ? "&" : "?";
+  const query = new URLSearchParams({ call: toolUseId }).toString();
+  return `${base}${separator}${query}#${callAnchorId(toolUseId)}`;
+}
