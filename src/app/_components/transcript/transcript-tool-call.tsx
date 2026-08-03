@@ -8,7 +8,7 @@ import {
   toolCallSnippet,
   truncationNote,
 } from "@/app/_lib/transcript";
-import { agentHref } from "@/app/_lib/transcript-url";
+import { agentHref, callAnchorId } from "@/app/_lib/transcript-url";
 import type { TranscriptToolCall, TranscriptView } from "@/core/read";
 
 /** Pretty-print a stored `inputJson` when it parses; otherwise show it verbatim. */
@@ -35,13 +35,23 @@ export function TranscriptToolCallRow({
   call,
   messageId,
   view,
+  anchoredCall,
 }: {
   call: TranscriptToolCall;
   messageId: number;
   view: TranscriptView;
+  /** The `?call=` deep-link target: THIS call renders open and highlighted. */
+  anchoredCall?: string;
 }) {
   const kind = classifyToolCall(call);
   const snippet = toolCallSnippet(call);
+  // A Tools-page drill-down links here as `?call=<id>#call-<id>`: the query
+  // opens + highlights the call server-side (a fragment never reaches the
+  // server), the fragment scrolls to the `id` below.
+  const anchored = call.toolUseId !== null && call.toolUseId === anchoredCall;
+  const anchorProps = call.toolUseId === null
+    ? {}
+    : { id: callAnchorId(call.toolUseId) };
 
   if (kind === "agent") {
     const spawned = findSpawnedNode(view.tree, {
@@ -52,7 +62,11 @@ export function TranscriptToolCallRow({
       ? subAgentLabel({ agentType: spawned.agentType ?? "" })
       : "Agent";
     return (
-      <details className="call">
+      <details
+        {...anchorProps}
+        open={anchored || undefined}
+        className={anchored ? "call anchored" : "call"}
+      >
         <summary>
           <span className="chev" aria-hidden>
             ▶
@@ -97,7 +111,11 @@ export function TranscriptToolCallRow({
     (call.resultText !== null ? call.resultText.length : null);
 
   return (
-    <details className="call">
+    <details
+      {...anchorProps}
+      open={anchored || undefined}
+      className={anchored ? "call anchored" : "call"}
+    >
       <summary>
         <span className="chev" aria-hidden>
           ▶

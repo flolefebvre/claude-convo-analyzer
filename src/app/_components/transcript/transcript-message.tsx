@@ -15,9 +15,12 @@ export function TranscriptMessageRow({
   message,
   view,
   effortChanged,
+  anchoredCall,
 }: {
   message: TranscriptMessage;
   view: TranscriptView;
+  /** The `?call=` deep-link target, threaded down to the tool calls. */
+  anchoredCall?: string;
   /** True when this turn's effort differs from the previous effort-carrying
    *  turn (computed once for the whole transcript by the pane). */
   effortChanged: boolean;
@@ -33,6 +36,7 @@ export function TranscriptMessageRow({
       time={time}
       view={view}
       effortChanged={effortChanged}
+      anchoredCall={anchoredCall}
     />
   );
 }
@@ -78,11 +82,14 @@ function AssistantTurn({
   time,
   view,
   effortChanged,
+  anchoredCall,
 }: {
   message: TranscriptMessage;
   time: string;
   view: TranscriptView;
   effortChanged: boolean;
+  /** The `?call=` deep-link target, threaded down to the tool calls. */
+  anchoredCall?: string;
 }) {
   const text = message.text ?? "";
   const errorOnly = message.isApiError && text.trim() === "";
@@ -123,6 +130,7 @@ function AssistantTurn({
               call={call}
               messageId={message.id}
               view={view}
+              anchoredCall={anchoredCall}
             />
           ))}
         </div>

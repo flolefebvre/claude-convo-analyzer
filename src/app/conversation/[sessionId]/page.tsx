@@ -8,6 +8,10 @@
 // list chrome (header + folder sidebar) — it brings its own full-bleed shell
 // with an "All conversations" back-link instead (see `TranscriptTree`).
 //
+// A Tools-page drill-down can deep-link into ONE tool call here
+// (`?agent=<id>&call=<toolUseId>#call-<toolUseId>`): `?call=` opens and
+// highlights that call server-side, the fragment does the scrolling.
+//
 // Like the list page, the request-time reads (`params`/`searchParams` are both
 // Promises in this Next.js) are awaited inside a <Suspense> boundary so the
 // static shell can prerender while the DB-backed transcript streams in; the read
@@ -20,14 +24,14 @@ import { Suspense } from "react";
 import { TranscriptPane } from "@/app/_components/transcript/transcript-pane";
 import { TranscriptTree } from "@/app/_components/transcript/transcript-tree";
 import { loadTranscript } from "@/app/_lib/conversations";
-import { resolveAgent } from "@/app/_lib/transcript-url";
+import { resolveAgent, resolveCall } from "@/app/_lib/transcript-url";
 
 export default function ConversationPage({
   params,
   searchParams,
 }: {
   params: Promise<{ sessionId: string }>;
-  searchParams: Promise<{ agent?: string | string[] }>;
+  searchParams: Promise<{ agent?: string | string[]; call?: string | string[] }>;
 }) {
   return (
     <Suspense fallback={<TranscriptLoading />}>
@@ -46,18 +50,21 @@ async function TranscriptRoute({
   searchParams,
 }: {
   params: Promise<{ sessionId: string }>;
-  searchParams: Promise<{ agent?: string | string[] }>;
+  searchParams: Promise<{ agent?: string | string[]; call?: string | string[] }>;
 }) {
   const { sessionId } = await params;
-  const { agent } = await searchParams;
+  const { agent, call } = await searchParams;
 
   const view = await loadTranscript(sessionId, resolveAgent(agent));
   if (view === null) return <NotFoundState sessionId={sessionId} />;
 
+  // `?call=` is how a Tools-page drill-down points at ONE tool call: the pane
+  // renders it open and highlighted, and the matching `#call-<id>` fragment
+  // scrolls to it. Server-side, because a fragment never reaches the server.
   return (
     <div className="tview">
       <TranscriptTree view={view} />
-      <TranscriptPane view={view} />
+      <TranscriptPane view={view} anchoredCall={resolveCall(call)} />
     </div>
   );
 }

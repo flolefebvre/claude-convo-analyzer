@@ -18,7 +18,14 @@ import { TranscriptMessageRow } from "./transcript-message";
  * with a trailing "N meta records hidden" divider when the reader dropped meta
  * rows for this agent.
  */
-export function TranscriptPane({ view }: { view: TranscriptView }) {
+export function TranscriptPane({
+  view,
+  anchoredCall,
+}: {
+  view: TranscriptView;
+  /** The `?call=` deep-link target — that tool call renders open + highlighted. */
+  anchoredCall?: string;
+}) {
   const lineage = agentLineage(view.tree, view.selectedAgentId);
   const selected = lineage[lineage.length - 1] ?? view.tree;
 
@@ -88,6 +95,7 @@ export function TranscriptPane({ view }: { view: TranscriptView }) {
             message={message}
             view={view}
             effortChanged={effort.changedIds.has(message.id)}
+            anchoredCall={anchoredCall}
           />
         ))}
         {view.metaHiddenCount > 0 && (
