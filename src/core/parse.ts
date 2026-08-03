@@ -100,6 +100,14 @@ export type ParsedMessage = {
   isApiError: boolean;
   /** apiErrorStatus captured as text (schema has no dedicated status column). */
   apiErrorMessage: string | null;
+  /**
+   * Reasoning effort level of this assistant turn, verbatim from the record's
+   * TOP-LEVEL `effort` field (`high`, `xhigh`, `medium`, …). Null on user rows
+   * and on turns from Claude Code versions that did not record it. Deliberately
+   * an unconstrained string, NOT an enum: future levels must flow through
+   * without a code change; classification happens at read time.
+   */
+  effort: string | null;
   /** Record timestamp in epoch ms (null when absent/unparseable). */
   timestamp: number | null;
 };
@@ -410,6 +418,7 @@ export function parseSessionLines(lines: Iterable<string>): ParsedSession {
         permissionMode: asString(record.permissionMode),
         isApiError: false,
         apiErrorMessage: null,
+        effort: null, // a user record has no reasoning effort of its own.
         timestamp: toEpochMs(record.timestamp),
       });
       continue;
@@ -454,6 +463,9 @@ export function parseSessionLines(lines: Iterable<string>): ParsedSession {
       permissionMode: asString(record.permissionMode),
       isApiError: record.isApiErrorMessage === true,
       apiErrorMessage: asString(record.apiErrorStatus),
+      // Top-level field, NOT inside `message`. Later lines of the same turn are
+      // merged above, so the first line's effort wins — as it does for usage.
+      effort: asString(record.effort),
       timestamp: toEpochMs(record.timestamp),
     };
     messages.push(parsed);

@@ -219,6 +219,34 @@ describe("getTranscript core reader", () => {
     expect(orphan?.children).toHaveLength(0);
   });
 
+  it("carries each assistant turn's effort, null where the log recorded none", async () => {
+    const view = await getTranscript("sess-effort", { dbPath });
+    const msgs = view?.messages ?? [];
+    // eu1 prompt, then the four assistant turns: high, high, (none), xhigh.
+    expect(msgs.map((m) => m.effort)).toEqual([
+      null,
+      "high",
+      "high",
+      null,
+      "xhigh",
+    ]);
+  });
+
+  it("carries effort on a sub-agent's transcript too", async () => {
+    const view = await getTranscript("sess-effort", { dbPath, agentId: "eff1" });
+    expect(view?.selectedAgentId).toBe("eff1");
+    expect(view?.messages.map((m) => m.effort)).toEqual([
+      null,
+      "medium",
+      "medium",
+    ]);
+  });
+
+  it("reports null effort throughout a transcript from a log that recorded none", async () => {
+    const view = await getTranscript("sess-transcript", { dbPath });
+    expect(view?.messages.every((m) => m.effort === null)).toBe(true);
+  });
+
   it("attaches sub-agents whose spawn ledgers form a cycle under the main thread", async () => {
     const view = await getTranscript("sess-cycle", { dbPath });
     const kids = view?.tree.children ?? [];
