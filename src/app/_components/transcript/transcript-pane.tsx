@@ -4,7 +4,7 @@ import { Fragment } from "react";
 import { RefreshButton } from "@/app/_components/refresh-button";
 import { subAgentLabel } from "@/app/_lib/detail";
 import { formatCost } from "@/app/_lib/format";
-import { agentLineage } from "@/app/_lib/transcript";
+import { agentLineage, effortSummary } from "@/app/_lib/transcript";
 import { agentHref } from "@/app/_lib/transcript-url";
 import type { TranscriptView } from "@/core/read";
 
@@ -27,6 +27,11 @@ export function TranscriptPane({ view }: { view: TranscriptView }) {
     (sum, m) => sum + m.toolCalls.length,
     0,
   );
+  // Reasoning effort across this agent's turns: one stat here (the level, or
+  // "mixed"), and a badge on each turn that changed it. Nothing at all when the
+  // log recorded no effort.
+  const effort = effortSummary(view.messages);
+  const effortLabel = effort.mixed ? "mixed" : effort.uniform;
 
   return (
     <main className="pane">
@@ -65,6 +70,7 @@ export function TranscriptPane({ view }: { view: TranscriptView }) {
           {selected.resolvedModel && (
             <span className="model">{selected.resolvedModel}</span>
           )}
+          {effortLabel && <span className="effort">{effortLabel} effort</span>}
           <span className="cost num turn-cost">
             {formatCost(selected.costUsd)}
           </span>
@@ -81,6 +87,7 @@ export function TranscriptPane({ view }: { view: TranscriptView }) {
             key={message.id}
             message={message}
             view={view}
+            effortChanged={effort.changedIds.has(message.id)}
           />
         ))}
         {view.metaHiddenCount > 0 && (

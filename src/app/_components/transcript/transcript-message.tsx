@@ -14,16 +14,27 @@ import { TurnMarkdown } from "./turn-markdown";
 export function TranscriptMessageRow({
   message,
   view,
+  effortChanged,
 }: {
   message: TranscriptMessage;
   view: TranscriptView;
+  /** True when this turn's effort differs from the previous effort-carrying
+   *  turn (computed once for the whole transcript by the pane). */
+  effortChanged: boolean;
 }) {
   const time = formatClock(message.timestamp);
 
   if (message.role === "user") {
     return <PromptRow message={message} time={time} />;
   }
-  return <AssistantTurn message={message} time={time} view={view} />;
+  return (
+    <AssistantTurn
+      message={message}
+      time={time}
+      view={view}
+      effortChanged={effortChanged}
+    />
+  );
 }
 
 /** A human prompt. Rendered PLAIN (never markdown) — humans don't write reliable
@@ -66,10 +77,12 @@ function AssistantTurn({
   message,
   time,
   view,
+  effortChanged,
 }: {
   message: TranscriptMessage;
   time: string;
   view: TranscriptView;
+  effortChanged: boolean;
 }) {
   const text = message.text ?? "";
   const errorOnly = message.isApiError && text.trim() === "";
@@ -81,6 +94,11 @@ function AssistantTurn({
           Assistant
         </span>
         {message.model && <span className="model">{message.model}</span>}
+        {/* Only on a turn that CHANGED effort (a mid-conversation `/effort`
+            flip); the pane's header stat covers the steady state. */}
+        {effortChanged && message.effort && (
+          <span className="badge-effort">{message.effort} effort</span>
+        )}
         {message.isApiError && <span className="badge-err">API error</span>}
         <span className="spacer" />
         {time && <span className="call-meta num">{time}</span>}
