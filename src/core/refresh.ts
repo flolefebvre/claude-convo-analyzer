@@ -15,6 +15,12 @@
 // so an INTERRUPTED run leaves its conversations re-parseable rather than
 // looking up-to-date with a missing link (see `UNSTAMPED_PARSER_VERSION`).
 //
+// DUPLICATE SESSION IDS: the session id is a FILE STEM, so a transcript copied
+// into a second project folder presents as two sessions with one id — which the
+// unique `conversation.sessionId` rejected, aborting the whole run. Discovery
+// now keeps ONE file per session id (smallest source path wins) and reports the
+// losers in `RefreshSummary.duplicateSessionsSkipped` (see `dedupeBySessionId`).
+//
 // ROLLUP DESIGN (ADR-0001): conversation totals/cost are SUM queries over ALL
 // messages of ALL agents in the conversation — so sub-agent tokens roll up
 // automatically, counted ONCE (the parent Agent aggregate is never summed in).
@@ -56,11 +62,26 @@ type ToolCallData = {
   isError: boolean;
 };
 
+/**
+ * One `.jsonl` file dropped because another file already claimed its session id
+ * (see `dedupeBySessionId`). Carries both paths so the report can tell the user
+ * exactly which stray file to delete.
+ */
+export type DuplicateSessionSkip = {
+  sessionId: string;
+  /** The file that was ingested (smallest source path). */
+  keptPath: string;
+  /** The file that was NOT ingested. */
+  skippedPath: string;
+};
+
 export type RefreshSummary = {
   conversationsParsed: number;
   conversationsSkipped: number;
   conversationsDeleted: number;
   malformedLinesSkipped: number;
+  /** Files dropped for sharing a session id with an already-claimed file. */
+  duplicateSessionsSkipped: DuplicateSessionSkip[];
   durationMs: number;
 };
 
@@ -154,18 +175,34 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
   let conversationsDeleted = 0;
   let malformedLinesSkipped = 0;
 
+  // Assigned by the dedupe below, before anything else looks at the file set.
+  let duplicateSessionsSkipped: DuplicateSessionSkip[] = [];
+
   try {
-    const discovered = discoverWithKeys(logsRoot);
+    // Two files may carry the same session id (a copied transcript). Resolve
+    // that HERE, before the incremental compare, so every pass below sees one
+    // file per session id (see `dedupeBySessionId`).
+    const { unique: discovered, duplicatesSkipped } = dedupeBySessionId(
+      discoverWithKeys(logsRoot),
+    );
+    duplicateSessionsSkipped = duplicatesSkipped;
 
     // Existing rows, keyed by sessionId, for the skip/changed/delete decision.
     const existing = new Map<
       string,
-      { id: number; mtime: bigint; size: bigint; parserVersion: number }
+      {
+        id: number;
+        sourcePath: string;
+        mtime: bigint;
+        size: bigint;
+        parserVersion: number;
+      }
     >();
     for (const row of await prisma.conversation.findMany({
       select: {
         id: true,
         sessionId: true,
+        sourcePath: true,
         sourceMtime: true,
         sourceSize: true,
         parserVersion: true,
@@ -173,6 +210,7 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     })) {
       existing.set(row.sessionId, {
         id: row.id,
+        sourcePath: row.sourcePath,
         mtime: row.sourceMtime,
         size: row.sourceSize,
         parserVersion: row.parserVersion,
@@ -195,9 +233,17 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
       // Rows written by another parser version are stale by definition, however
       // untouched their source files are — re-parse them (exactly once: the
       // rewrite stamps the current version).
+      //
+      // The source PATH is part of the comparison, not just (mtime, size): when
+      // a duplicate at a smaller path takes over a session id (see
+      // `dedupeBySessionId`), a metadata-preserving copy presents the very same
+      // composite key. Without the path check the conversation would look
+      // unchanged and keep the LOSER's rows while the summary reports the winner
+      // as the file that was kept.
       const unchanged =
         prior !== undefined &&
         prior.parserVersion === PARSER_VERSION &&
+        prior.sourcePath === d.session.sourcePath &&
         prior.mtime === BigInt(d.compositeMtime) &&
         prior.size === BigInt(d.compositeSize);
       if (unchanged) {
@@ -253,8 +299,51 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     conversationsSkipped,
     conversationsDeleted,
     malformedLinesSkipped,
+    duplicateSessionsSkipped,
     durationMs: Math.round(performance.now() - start),
   };
+}
+
+/**
+ * Drop every file that shares a session id with one already claimed, so the rest
+ * of `refresh()` only ever sees ONE file per session id.
+ *
+ * WHY: the session id is a file STEM, so two copies of a transcript in two
+ * project folders (a user copying a `.jsonl` around) present as two sessions
+ * with one id — and `conversation.sessionId` is UNIQUE, so writing the second
+ * threw and aborted the ENTIRE refresh (issue #37).
+ *
+ * THE RULE — the smallest `sourcePath` by plain lexicographic order wins.
+ * Directory listing order is filesystem-dependent and must never decide this;
+ * sorting makes the winner identical on every machine and on every run, so a
+ * conversation does not flip between copies from one refresh to the next.
+ *
+ * This runs at DISCOVERY, before the incremental compare, so the winner is
+ * well-defined even when a new, smaller-path duplicate appears next to a
+ * conversation that is already in the database.
+ */
+function dedupeBySessionId(discovered: DiscoveredWithKey[]): {
+  unique: DiscoveredWithKey[];
+  duplicatesSkipped: DuplicateSessionSkip[];
+} {
+  const bySmallestPath = [...discovered].sort((a, b) =>
+    a.session.sourcePath < b.session.sourcePath ? -1 : 1,
+  );
+
+  const unique: DiscoveredWithKey[] = [];
+  const duplicatesSkipped: DuplicateSessionSkip[] = [];
+  const keptPathBySessionId = new Map<string, string>();
+  for (const d of bySmallestPath) {
+    const { sessionId, sourcePath } = d.session;
+    const keptPath = keptPathBySessionId.get(sessionId);
+    if (keptPath !== undefined) {
+      duplicatesSkipped.push({ sessionId, keptPath, skippedPath: sourcePath });
+      continue;
+    }
+    keptPathBySessionId.set(sessionId, sourcePath);
+    unique.push(d);
+  }
+  return { unique, duplicatesSkipped };
 }
 
 /**

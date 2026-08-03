@@ -28,9 +28,9 @@ export function formatDuration(ms: number): string {
  * One-line, human-readable digest of a Refresh result for the status region:
  * "Parsed 12 · Skipped 5 · Deleted 2 · 3 malformed lines skipped · 1.2s".
  *
- * The malformed-lines segment is omitted entirely when zero (the common, clean
- * case) and singularized at exactly one. Duration is rendered by
- * {@link formatDuration}.
+ * The malformed-lines and duplicate-session-files segments are omitted entirely
+ * when zero (the common, clean case) and singularized at exactly one. Duration
+ * is rendered by {@link formatDuration}.
  */
 export function formatRefreshSummary(summary: RefreshSummary): string {
   const segments = [
@@ -42,6 +42,31 @@ export function formatRefreshSummary(summary: RefreshSummary): string {
     const noun = summary.malformedLinesSkipped === 1 ? "line" : "lines";
     segments.push(`${summary.malformedLinesSkipped} malformed ${noun} skipped`);
   }
+  const duplicates = summary.duplicateSessionsSkipped.length;
+  if (duplicates > 0) {
+    const noun = duplicates === 1 ? "file" : "files";
+    segments.push(`${duplicates} duplicate session ${noun} skipped`);
+  }
   segments.push(formatDuration(summary.durationMs));
   return segments.join(" · ");
+}
+
+/**
+ * The multi-line detail behind the duplicate-session count: which file was NOT
+ * ingested, and which one took the session id instead.
+ *
+ * The one-line digest can only carry a count, but a count alone is not
+ * actionable — the user needs the PATH of the stray file to delete it. Returns
+ * null in the normal case (no duplicates) so the caller can skip rendering it.
+ */
+export function formatDuplicateSessionDetail(
+  summary: RefreshSummary,
+): string | null {
+  if (summary.duplicateSessionsSkipped.length === 0) return null;
+  return [
+    "Two log files shared one session id; only one was ingested:",
+    ...summary.duplicateSessionsSkipped.map(
+      (d) => `${d.sessionId}: skipped ${d.skippedPath} (kept ${d.keptPath})`,
+    ),
+  ].join("\n");
 }
