@@ -12,7 +12,12 @@
 import { cache } from "react";
 import { connection } from "next/server";
 
-import { getConversation, getTranscript, listConversations } from "@/core/read";
+import {
+  getConversation,
+  getDailySpend,
+  getTranscript,
+  listConversations,
+} from "@/core/read";
 
 /**
  * Read every conversation summary once per request. Wrapped in React `cache()`
@@ -34,6 +39,17 @@ export const loadConversations = cache(async () => {
 export const loadConversationDetail = cache(async (id: string) => {
   await connection();
   return getConversation(id);
+});
+
+/**
+ * Read the Trends view's daily spend: per-day, per-model priced rows for one
+ * range, optionally scoped to a Project (`?folder=`). Same request-time gating
+ * as {@link loadConversations}; `days` is `undefined` for "all time". `cache()`
+ * dedupes to a single core read per `(folder, days)` within a request.
+ */
+export const loadDailySpend = cache(async (folder?: string, days?: number) => {
+  await connection();
+  return getDailySpend({ folder, days });
 });
 
 /**

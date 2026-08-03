@@ -1,25 +1,28 @@
 import { Suspense } from "react";
 
 import { FolderSidebar } from "@/app/_components/folder-sidebar";
-import { OverviewBand } from "@/app/_components/overview-band";
 import { RefreshButton } from "@/app/_components/refresh-button";
+import { SectionNav } from "@/app/_components/section-nav";
 import { ThemeToggle } from "@/app/_components/theme-toggle";
 import { loadConversations } from "@/app/_lib/conversations";
 import { buildListView } from "@/app/_lib/list-view";
 
-// The persistent list chrome (PR #13): header + overview band + two-column
-// sidebar/main grid. It lived in the root layout, but now sits in the `(list)`
-// route group so ONLY the conversation-list surface is wrapped in it — the
-// full-bleed `/conversation/<id>` transcript view (its own route, outside this
-// group) renders without the folder sidebar. This layout does NOT re-render on
-// navigation within the list, so changing `?folder=`/sort no longer flashes the
-// sidebar.
+// The persistent app chrome (PR #13): header + two-column sidebar/main grid,
+// shared by the analysis surfaces — the conversation list (`/`) and Trends
+// (`/trends`). It lived in the root layout, then in a `(list)` route group;
+// with a second surface joining it the group is `(shell)`, since what it holds
+// is the shell, not the list. The full-bleed `/conversation/<id>` transcript
+// view (its own route, outside this group) still renders without the sidebar.
+// This layout does NOT re-render on navigation within the group, so changing
+// `?folder=`/sort/range never flashes the sidebar.
 //
-// The sidebar's folder list is scope-independent (derived from ALL
+// The sidebar (section nav + folder list) is scope-independent (derived from ALL
 // conversations), so the layout can build it without reading `searchParams`
 // (which layouts cannot do anyway). Both this and the page call
 // `loadConversations()`, but React `cache()` dedupes it to one read per request.
-export default function ListLayout({
+// Surface-specific chrome — e.g. the list's overview band — belongs to its page,
+// not here.
+export default function ShellLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
@@ -47,21 +50,16 @@ export default function ListLayout({
         </div>
       </header>
 
-      {/* The analysis surface, full-width above the split. Global (scope-
-          independent), like the sidebar, so it can live in the layout — which
-          cannot read `searchParams` — and persists across navigation without
-          flashing. Its own Suspense boundary defers the request-time read out of
-          prerendering (PPR). */}
-      <Suspense fallback={null}>
-        <Overview />
-      </Suspense>
-
       <div className="flex flex-col gap-6 md:flex-row md:items-start">
-        <aside className="w-full shrink-0 md:w-64">
-          {/* The sidebar reads the live URL (useSearchParams) for its active
-              highlight, and its folder list is fetched at request time — both
-              reasons to keep it inside a Suspense boundary so the shell can
-              prerender (Next local docs: use-search-params "Prerendering"). */}
+        <aside className="flex w-full shrink-0 flex-col gap-5 md:w-64">
+          {/* The sidebar reads the live URL (usePathname/useSearchParams) for
+              its active highlights, and its folder list is fetched at request
+              time — both reasons to keep it inside Suspense boundaries so the
+              shell can prerender (Next local docs: use-pathname "Cache
+              Components", use-search-params "Prerendering"). */}
+          <Suspense fallback={null}>
+            <SectionNav />
+          </Suspense>
           <Suspense
             fallback={
               <p className="text-sm text-muted-foreground">Loading folders…</p>
@@ -96,19 +94,4 @@ async function Sidebar() {
       totalUnpriced={totals.unpriced}
     />
   );
-}
-
-/**
- * The overview band's data: the headline aggregate plus the cost-ranked top
- * Projects, both derived from ALL conversations (scope-independent). Split out
- * so the request-time read sits inside its own <Suspense> boundary. The
- * `loadConversations()` read is deduped with the sidebar/page via React
- * `cache()`, so the band adds no extra DB work.
- */
-async function Overview() {
-  const allRows = await loadConversations();
-  // No sort intent -> scope-independent slice only; one `deriveFolders` pass
-  // feeds both the overview aggregate and the cost-ranked top Projects.
-  const { overview, topProjects } = buildListView(allRows);
-  return <OverviewBand overview={overview} topProjects={topProjects} />;
 }

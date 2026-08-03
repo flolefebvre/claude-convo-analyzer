@@ -87,11 +87,16 @@
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  /* Chart bands (light). The shadcn defaults are a neutral grey ramp — five
+     greys cannot tell five models apart, so the ramp is rebuilt from the app's
+     own accents: clay first (this chart IS spend), then the transcript violet
+     and blue, then amber and teal. Same lightness/chroma discipline as the
+     accents above, so the bands read as one family. */
+  --chart-1: oklch(0.62 0.13 40);
+  --chart-2: oklch(0.55 0.15 295);
+  --chart-3: oklch(0.55 0.13 250);
+  --chart-4: oklch(0.68 0.13 85);
+  --chart-5: oklch(0.6 0.1 175);
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
@@ -131,11 +136,13 @@
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  /* Chart bands (dark): the same five hues with lifted lightness, exactly as
+     the accents below do, so every band stays legible on the dark base. */
+  --chart-1: oklch(0.72 0.14 45);
+  --chart-2: oklch(0.72 0.13 295);
+  --chart-3: oklch(0.72 0.11 250);
+  --chart-4: oklch(0.79 0.12 85);
+  --chart-5: oklch(0.72 0.09 175);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);

@@ -166,6 +166,27 @@ describe("sortHref", () => {
   });
 });
 
+describe("range preservation across list links", () => {
+  it("keeps an active trends range on a sort toggle", () => {
+    expect(sortHref("cost", { sortBy: "date", dir: "desc" }, undefined, "90")).toBe(
+      "?sortBy=cost&dir=desc&range=90",
+    );
+  });
+
+  it("keeps an active trends range on a row expand", () => {
+    expect(expandHref("s1", undefined, DEFAULT_SORT, "-Users-me-dev-demo", "7")).toBe(
+      "?sortBy=date&dir=desc&folder=-Users-me-dev-demo&expanded=s1&range=7",
+    );
+  });
+
+  it("adds no range param when the URL carries none", () => {
+    expect(sortHref("cost", DEFAULT_SORT)).toBe("?sortBy=cost&dir=desc");
+    expect(expandHref("s1", undefined, DEFAULT_SORT)).toBe(
+      "?sortBy=date&dir=desc&expanded=s1",
+    );
+  });
+});
+
 describe("folderHref", () => {
   it("sets the folder param while preserving the active sort", () => {
     expect(folderHref("-Users-me-dev-demo", { sortBy: "cost", dir: "desc" })).toBe(
@@ -176,6 +197,16 @@ describe("folderHref", () => {
   it("clears the folder param (All folders) but keeps the sort", () => {
     expect(folderHref(undefined, { sortBy: "title", dir: "asc" })).toBe(
       "?sortBy=title&dir=asc",
+    );
+  });
+
+  it("preserves an active trends range so folder and range compose", () => {
+    expect(folderHref("-Users-me-dev-demo", DEFAULT_SORT, "90")).toBe(
+      "?sortBy=date&dir=desc&folder=-Users-me-dev-demo&range=90",
+    );
+    // No range in the URL (the conversation list) -> no range param.
+    expect(folderHref("-Users-me-dev-demo", DEFAULT_SORT)).toBe(
+      "?sortBy=date&dir=desc&folder=-Users-me-dev-demo",
     );
   });
 

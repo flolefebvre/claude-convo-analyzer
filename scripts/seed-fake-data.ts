@@ -99,8 +99,27 @@ const READ_FILES = ["src/index.ts", "src/server.ts", "README.md", "src/db.ts", "
 
 const CC_VERSION = "2.1.185";
 
-// Base "now" for the demo timeline (deterministic — never `Date.now()`).
-const NOW = Date.parse("2026-06-22T17:00:00.000Z");
+// Base "now" for the demo timeline. Fixed by default (deterministic — never an
+// implicit `Date.now()`), but slidable with `--now=<ISO>` or `--now=today` so
+// the seeded three weeks can be made to land inside a range that ends today —
+// the Trends page's default 30-day window shows nothing otherwise.
+const NOW = resolveNow();
+
+function resolveNow(): number {
+  const flag = "--now=";
+  const arg = process.argv.find((a) => a.startsWith(flag))?.slice(flag.length);
+  if (arg === undefined) return Date.parse("2026-06-22T17:00:00.000Z");
+  if (arg === "today") {
+    const today = new Date();
+    today.setHours(17, 0, 0, 0);
+    return today.getTime();
+  }
+  const parsed = Date.parse(arg);
+  if (Number.isNaN(parsed)) {
+    throw new Error(`--now: expected an ISO instant or "today", got "${arg}"`);
+  }
+  return parsed;
+}
 const DAY = 86_400_000;
 
 let uuidCounter = 0;

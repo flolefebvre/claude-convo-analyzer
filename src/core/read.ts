@@ -11,6 +11,7 @@ import {
   type CostByType,
   priceSplitByType,
   resolveModel,
+  type TokenSplit,
   type Tokens,
 } from "@/core/cost";
 import { readClient } from "@/core/db";
@@ -545,6 +546,282 @@ export async function getTranscript(
     // default singleton stays open for the next request.
     if (owned) await prisma.$disconnect();
   }
+}
+
+/** One priced model's share of a day (a band of the stack) or of the range. */
+export type DailySpendModel = {
+  /** The model string as logged — the band/legend key (never an unpriced one). */
+  model: string;
+  costUsd: number;
+  tokens: Tokens;
+};
+
+/** One local calendar day of the range — always present, even with no activity. */
+export type DailySpendDay = {
+  /** Local calendar day, `YYYY-MM-DD`. */
+  date: string;
+  /** The day's total cost — the sum of {@link perModel} (unpriced usage adds $0). */
+  costUsd: number;
+  /** The day's token split across ALL models, unpriced usage included. */
+  tokens: Tokens;
+  /** The day's priced models, cost descending. Empty on a day with no priced usage. */
+  perModel: { model: string; costUsd: number }[];
+};
+
+/** Daily spend over a range, ready to stack: one band per priced model. */
+export type DailySpend = {
+  /** Every local day of the range, ascending and contiguous (gaps zero-filled). */
+  days: DailySpendDay[];
+  /** Range totals per priced model, cost descending — the stack + legend order. */
+  models: DailySpendModel[];
+  /** Range total cost; a lower bound when {@link hasUnpriced} is true. */
+  totalCostUsd: number;
+  /** Range total tokens across ALL models, unpriced usage included. */
+  totalTokens: Tokens;
+  /** True when the range contains usage on an unknown/`<synthetic>` model. */
+  hasUnpriced: boolean;
+  /** True when the range contains bare-alias usage, priced at the family rate. */
+  hasApproximate: boolean;
+};
+
+type DailySpendOptions = {
+  /** Scope to one Project by its `folderName` (the `?folder=` key); all Projects when omitted. */
+  folder?: string;
+  /** Range length in days, ending today (inclusive). All time when omitted. */
+  days?: number;
+  /** Clock injection point — the instant "today" is derived from. Defaults to now. */
+  now?: number;
+  /** Additional (non-seam) opt for isolated DBs in refresh + tests. */
+  dbPath?: string;
+};
+
+/**
+ * Daily spend read API (ADR-0001, ADR-0002): per-day, per-model cost for the
+ * Trends view. Messages are bucketed by the LOCAL calendar day of their own
+ * timestamp, so an assistant Turn's cost lands on the day it ran; sub-agent
+ * messages are ordinary Messages and are therefore included (no join needed —
+ * `conversationId` is denormalized onto every row). Every day of the range is
+ * emitted, zero-filled where nothing ran, so the axis is continuous.
+ *
+ * The range always ENDS on today's local day: `days` counts back from today
+ * (inclusive), and omitting it spans from the earliest in-scope message day.
+ * Usage timestamped after today is excluded.
+ *
+ * Pricing is exact per tier (`priceSplitByType`, 5m and 1h cache writes priced
+ * separately). Three row policies, all deliberate:
+ *  - a message with a NULL timestamp is EXCLUDED — it cannot be bucketed;
+ *  - a message with a NULL model is SKIPPED, as in every other rollup here;
+ *  - an unpriced model (`<synthetic>`/unknown) contributes `$0` and NO band,
+ *    but its tokens still count in the day/range totals and raise `hasUnpriced`
+ *    so the UI can mark the cost as a lower bound.
+ */
+export async function getDailySpend(
+  opts: DailySpendOptions = {},
+): Promise<DailySpend> {
+  const { prisma, owned } = readClient(opts.dbPath);
+  try {
+    const today = startOfLocalDay(opts.now ?? Date.now());
+    // `days` counts back from today inclusive: 7 days = today and the 6 before.
+    const from = opts.days === undefined ? null : addLocalDays(today, 1 - opts.days);
+
+    const rows = await prisma.message.findMany({
+      where: {
+        model: { not: null },
+        // A NULL timestamp never satisfies a comparison, so this filter also
+        // enforces the "no timestamp → excluded" policy.
+        timestamp: {
+          lt: BigInt(addLocalDays(today, 1).getTime()),
+          ...(from === null ? {} : { gte: BigInt(from.getTime()) }),
+        },
+        ...(opts.folder === undefined
+          ? {}
+          : { conversation: { project: { folderName: opts.folder } } }),
+      },
+      select: {
+        timestamp: true,
+        model: true,
+        inputTokens: true,
+        outputTokens: true,
+        cacheCreation5mTokens: true,
+        cacheCreation1hTokens: true,
+        cacheReadTokens: true,
+      },
+    });
+
+    const byDay = foldByLocalDay(rows);
+    return assembleDailySpend(byDay, {
+      from: from ?? earliestDay(byDay, today),
+      to: today,
+      empty: from === null && byDay.size === 0,
+    });
+  } finally {
+    // Only a caller-owned (non-default) client is disconnected; the shared
+    // default singleton stays open for the next request.
+    if (owned) await prisma.$disconnect();
+  }
+}
+
+/** One message row as read for the daily fold (already filtered to a real model). */
+type DailyMessageRow = {
+  timestamp: bigint | number | null;
+  model: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  cacheCreation5mTokens: number | null;
+  cacheCreation1hTokens: number | null;
+  cacheReadTokens: number | null;
+};
+
+/** Local midnight of the day an instant falls on. */
+function startOfLocalDay(epochMs: number): Date {
+  const d = new Date(epochMs);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+/** `n` local days after `day` — via the Date constructor, so DST shifts are handled. */
+function addLocalDays(day: Date, n: number): Date {
+  return new Date(day.getFullYear(), day.getMonth(), day.getDate() + n);
+}
+
+/** A local day as its `YYYY-MM-DD` key (the axis label and bucket key). */
+function localDayKey(day: Date): string {
+  const month = String(day.getMonth() + 1).padStart(2, "0");
+  const date = String(day.getDate()).padStart(2, "0");
+  return `${day.getFullYear()}-${month}-${date}`;
+}
+
+/** A zeroed per-tier accumulator (cache-write tiers kept separate for pricing). */
+function emptySplit(): TokenSplit {
+  return { input: 0, output: 0, cacheWrite5m: 0, cacheWrite1h: 0, cacheRead: 0 };
+}
+
+/** Accumulate message rows into per-local-day, per-model per-tier token splits. */
+function foldByLocalDay(
+  rows: DailyMessageRow[],
+): Map<string, Map<string, TokenSplit>> {
+  const byDay = new Map<string, Map<string, TokenSplit>>();
+  for (const r of rows) {
+    if (r.timestamp === null || r.model === null) continue;
+    const key = localDayKey(startOfLocalDay(Number(r.timestamp)));
+    let models = byDay.get(key);
+    if (models === undefined) {
+      models = new Map<string, TokenSplit>();
+      byDay.set(key, models);
+    }
+    let split = models.get(r.model);
+    if (split === undefined) {
+      split = emptySplit();
+      models.set(r.model, split);
+    }
+    split.input += r.inputTokens ?? 0;
+    split.output += r.outputTokens ?? 0;
+    split.cacheWrite5m += r.cacheCreation5mTokens ?? 0;
+    split.cacheWrite1h += r.cacheCreation1hTokens ?? 0;
+    split.cacheRead += r.cacheReadTokens ?? 0;
+  }
+  return byDay;
+}
+
+/** The earliest bucketed day (all-time range start), or `fallback` when empty. */
+function earliestDay(
+  byDay: Map<string, Map<string, TokenSplit>>,
+  fallback: Date,
+): Date {
+  let earliest: string | undefined;
+  for (const key of byDay.keys()) {
+    if (earliest === undefined || key < earliest) earliest = key;
+  }
+  if (earliest === undefined) return fallback;
+  const [year, month, date] = earliest.split("-").map(Number);
+  return new Date(year, month - 1, date);
+}
+
+/** Add a per-tier split's tokens into a merged `Tokens` accumulator. */
+function addSplitTokens(into: Tokens, split: TokenSplit): void {
+  addTokens(into, {
+    input: split.input,
+    output: split.output,
+    cacheWrite: split.cacheWrite5m + split.cacheWrite1h,
+    cacheRead: split.cacheRead,
+    total: 0,
+  });
+}
+
+/** Walk the range day by day, pricing each day's models and rolling up the range. */
+function assembleDailySpend(
+  byDay: Map<string, Map<string, TokenSplit>>,
+  range: { from: Date; to: Date; empty: boolean },
+): DailySpend {
+  const days: DailySpendDay[] = [];
+  const modelTotals = new Map<string, DailySpendModel>();
+  const totalTokens = emptyTokens();
+  let totalCostUsd = 0;
+  let hasUnpriced = false;
+  let hasApproximate = false;
+
+  for (
+    let cursor = range.from;
+    !range.empty && cursor.getTime() <= range.to.getTime();
+    cursor = addLocalDays(cursor, 1)
+  ) {
+    const date = localDayKey(cursor);
+    const tokens = emptyTokens();
+    const perModel: { model: string; costUsd: number }[] = [];
+    let costUsd = 0;
+
+    for (const [model, split] of byDay.get(date) ?? []) {
+      addSplitTokens(tokens, split);
+      const cost = priceSplitByType(split, model);
+      if (cost.unpriced) {
+        // $0 and NO band — but the tokens above still count, and the flag lets
+        // the UI mark the total as a lower bound.
+        hasUnpriced = true;
+        continue;
+      }
+      if (cost.approximate) hasApproximate = true;
+      costUsd += cost.usd;
+      perModel.push({ model, costUsd: cost.usd });
+      accumulateModelTotal(modelTotals, model, split, cost.usd);
+    }
+
+    perModel.sort(byCostDesc);
+    addTokens(totalTokens, tokens);
+    totalCostUsd += costUsd;
+    days.push({ date, costUsd, tokens, perModel });
+  }
+
+  return {
+    days,
+    models: [...modelTotals.values()].sort(byCostDesc),
+    totalCostUsd,
+    totalTokens,
+    hasUnpriced,
+    hasApproximate,
+  };
+}
+
+/** Roll one day's model slice into that model's range total. */
+function accumulateModelTotal(
+  totals: Map<string, DailySpendModel>,
+  model: string,
+  split: TokenSplit,
+  costUsd: number,
+): void {
+  let entry = totals.get(model);
+  if (entry === undefined) {
+    entry = { model, costUsd: 0, tokens: emptyTokens() };
+    totals.set(model, entry);
+  }
+  entry.costUsd += costUsd;
+  addSplitTokens(entry.tokens, split);
+}
+
+/** Cost descending, ties broken by model name so the order is deterministic. */
+function byCostDesc(
+  a: { model: string; costUsd: number },
+  b: { model: string; costUsd: number },
+): number {
+  return b.costUsd - a.costUsd || a.model.localeCompare(b.model);
 }
 
 /** Agent ids that recorded at least one API-error turn (the error dot). */

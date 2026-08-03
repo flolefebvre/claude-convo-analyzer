@@ -43,10 +43,14 @@ export function SidebarLink({
   const activeFolder = rawFolder ? rawFolder : undefined;
   const active = activeFolder === (folder ?? undefined);
   // Build the href from the LIVE sort so changing folder keeps the current sort
-  // (the layout can't read it to pass down). `resolveSort` defaults safely.
+  // (the layout can't read it to pass down). `resolveSort` defaults safely. The
+  // href stays a bare query string, so on the Trends page — which shares this
+  // sidebar — clicking a folder re-scopes in place instead of navigating away;
+  // its `?range=` is carried along for the same reason.
   const href = folderHref(
     folder ?? undefined,
     resolveSort(params.get("sortBy") ?? undefined, params.get("dir") ?? undefined),
+    params.get("range") ?? undefined,
   );
   return (
     <Link

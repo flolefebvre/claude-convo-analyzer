@@ -6,6 +6,7 @@ import {
   formatCost,
   formatDate,
   formatDateRange,
+  formatDayKey,
   formatDuration,
   formatGrandTotalCost,
   formatTokens,
@@ -172,5 +173,19 @@ describe("formatDate", () => {
     expect(formatDate("2026-06-19T14:30:00Z", now).absolute).toBe(
       "Jun 19, 2026, 14:30 UTC",
     );
+  });
+});
+
+describe("formatDayKey", () => {
+  it("labels a local day key as 'MMM d', without a leading zero", () => {
+    expect(formatDayKey("2026-06-10")).toBe("Jun 10");
+    expect(formatDayKey("2026-01-02")).toBe("Jan 2");
+    expect(formatDayKey("2026-12-31")).toBe("Dec 31");
+  });
+
+  it("returns anything that is not a day key unchanged", () => {
+    expect(formatDayKey("")).toBe("");
+    expect(formatDayKey("2026-13-01")).toBe("2026-13-01");
+    expect(formatDayKey("2026-06-10T12:00:00Z")).toBe("2026-06-10T12:00:00Z");
   });
 });
