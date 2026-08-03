@@ -197,7 +197,12 @@ type Usage = {
 };
 
 function makeUsage(scale: number): Usage {
-  const create5m = int(800, 18_000) * scale;
+  // Real Claude Code logs always carry integer token counts, so a non-integer
+  // `scale` must not leak fractions into the output. Round the component, then
+  // derive the sum from it — that keeps `cache_creation_input_tokens` exactly
+  // equal to the ephemeral breakdown, which rounding the sum separately would
+  // not.
+  const create5m = Math.round(int(800, 18_000) * scale);
   const create1h = chance(0.3) ? int(0, 4_000) : 0;
   return {
     input_tokens: int(150, 2_200),
