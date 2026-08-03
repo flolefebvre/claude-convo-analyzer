@@ -82,6 +82,12 @@ export type TranscriptMessage = {
   kind: string | null;
   text: string | null;
   model: string | null;
+  /**
+   * Reasoning effort of this assistant turn, verbatim (`high`, `xhigh`, …).
+   * Null on user prompts and on turns whose log predates the field. The pane
+   * derives uniform-vs-mixed and the change markers from these values.
+   */
+  effort: string | null;
   /** Merged per-turn token split; null on user prompts (they have no usage). */
   tokens: Tokens | null;
   /** Exact per-tier cost of this turn ($0 on user prompts and unpriced models). */
@@ -739,6 +745,7 @@ async function readAgentTranscript(
       kind: true,
       text: true,
       model: true,
+      effort: true,
       inputTokens: true,
       outputTokens: true,
       cacheCreation5mTokens: true,
@@ -763,6 +770,7 @@ async function readAgentTranscript(
       kind: r.kind,
       text: r.text,
       model: r.model,
+      effort: r.effort,
       tokens: turn.tokens,
       costUsd: turn.costUsd,
       unpriced: turn.unpriced,
