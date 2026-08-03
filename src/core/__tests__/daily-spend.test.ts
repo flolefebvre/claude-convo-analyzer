@@ -1,9 +1,9 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
+
 import { getDailySpend } from "@/core/read";
-import { refresh } from "@/core/refresh";
+
+import { seededTempDb } from "./helpers/temp-db";
 
 const FIXTURES_ROOT = path.join(import.meta.dirname, "fixtures", "logs");
 
@@ -31,22 +31,11 @@ const DAY_TWO = "2026-06-12T12:00:00.000Z";
 const NOW = Date.parse("2026-07-01T12:00:00.000Z");
 
 describe("getDailySpend", () => {
-  let tmpDir: string;
-  let dbPath: string;
-
-  beforeEach(async () => {
-    tmpDir = mkdtempSync(path.join(tmpdir(), "cca-daily-"));
-    dbPath = path.join(tmpDir, "analyzer.db");
-    await refresh({ logsRoot: FIXTURES_ROOT, dbPath });
-  });
-
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
-  });
+  const db = seededTempDb({ prefix: "cca-daily-", logsRoot: FIXTURES_ROOT });
 
   it("buckets cost by local day and zero-fills days with no activity", async () => {
     const spend = await getDailySpend({
-      dbPath,
+      dbPath: db.dbPath,
       folder: TRENDS_FOLDER,
       now: NOW,
     });
@@ -65,7 +54,7 @@ describe("getDailySpend", () => {
 
   it("returns exactly `days` days ending today, excluding older activity", async () => {
     const spend = await getDailySpend({
-      dbPath,
+      dbPath: db.dbPath,
       folder: TRENDS_FOLDER,
       days: 7,
       now: NOW,
@@ -84,7 +73,7 @@ describe("getDailySpend", () => {
 
   it("spans from the earliest in-scope message day to today when no range is given", async () => {
     const spend = await getDailySpend({
-      dbPath,
+      dbPath: db.dbPath,
       folder: TRENDS_FOLDER,
       now: NOW,
     });
@@ -99,7 +88,7 @@ describe("getDailySpend", () => {
 
   it("prices each day's models per tier, 5m and 1h cache writes apart", async () => {
     const spend = await getDailySpend({
-      dbPath,
+      dbPath: db.dbPath,
       folder: TRENDS_FOLDER,
       now: NOW,
     });
@@ -118,7 +107,7 @@ describe("getDailySpend", () => {
 
   it("includes sub-agent usage as a band of the day it ran on", async () => {
     const spend = await getDailySpend({
-      dbPath,
+      dbPath: db.dbPath,
       folder: TRENDS_FOLDER,
       now: NOW,
     });
@@ -142,7 +131,7 @@ describe("getDailySpend", () => {
 
   it("ranks the range's priced models by cost — the stack and legend order", async () => {
     const spend = await getDailySpend({
-      dbPath,
+      dbPath: db.dbPath,
       folder: TRENDS_FOLDER,
       now: NOW,
     });
@@ -162,7 +151,7 @@ describe("getDailySpend", () => {
 
   it("gives unpriced usage $0 and no band, but keeps its tokens and flags it", async () => {
     const spend = await getDailySpend({
-      dbPath,
+      dbPath: db.dbPath,
       folder: TRENDS_FOLDER,
       now: NOW,
     });
@@ -180,7 +169,7 @@ describe("getDailySpend", () => {
 
   it("excludes a message with no timestamp and one with no model", async () => {
     const spend = await getDailySpend({
-      dbPath,
+      dbPath: db.dbPath,
       folder: TRENDS_FOLDER,
       now: NOW,
     });
@@ -192,13 +181,13 @@ describe("getDailySpend", () => {
 
   it("scopes to one Project, or spans all Projects when unscoped", async () => {
     const scoped = await getDailySpend({
-      dbPath,
+      dbPath: db.dbPath,
       folder: TRENDS_FOLDER,
       now: NOW,
     });
-    const all = await getDailySpend({ dbPath, now: NOW });
+    const all = await getDailySpend({ dbPath: db.dbPath, now: NOW });
     const other = await getDailySpend({
-      dbPath,
+      dbPath: db.dbPath,
       folder: "-Users-me-dev-demo",
       now: NOW,
     });

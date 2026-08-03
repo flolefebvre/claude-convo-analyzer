@@ -1,9 +1,10 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
+
 import { createPrismaClient } from "@/core/db";
 import { refresh } from "@/core/refresh";
+
+import { seededTempDb } from "./helpers/temp-db";
 
 const FIXTURES_ROOT = path.join(import.meta.dirname, "fixtures", "logs");
 
@@ -14,21 +15,10 @@ const FIXTURES_ROOT = path.join(import.meta.dirname, "fixtures", "logs");
  * turn in between, and spawns a sub-agent whose own turns are all `medium`.
  */
 describe("effort persistence", () => {
-  let tmpDir: string;
-  let dbPath: string;
-
-  beforeEach(async () => {
-    tmpDir = mkdtempSync(path.join(tmpdir(), "cca-effort-"));
-    dbPath = path.join(tmpDir, "analyzer.db");
-    await refresh({ logsRoot: FIXTURES_ROOT, dbPath });
-  });
-
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
-  });
+  const db = seededTempDb({ prefix: "cca-effort-", logsRoot: FIXTURES_ROOT });
 
   it("stores each assistant turn's effort, null where the log recorded none", async () => {
-    const prisma = createPrismaClient(dbPath);
+    const prisma = createPrismaClient(db.dbPath);
     try {
       const rows = await prisma.message.findMany({
         where: { messageId: { startsWith: "emsg-" } },
@@ -47,7 +37,7 @@ describe("effort persistence", () => {
   });
 
   it("stores effort on a sub-agent's own turns", async () => {
-    const prisma = createPrismaClient(dbPath);
+    const prisma = createPrismaClient(db.dbPath);
     try {
       const rows = await prisma.message.findMany({
         where: { messageId: { startsWith: "esmsg-" } },
@@ -64,7 +54,7 @@ describe("effort persistence", () => {
     // Simulate a pre-upgrade database: rows written by a parser that ignored
     // effort, stamped with the version that preceded this one. The source files
     // are untouched, so ONLY the parser-version bump can trigger the re-parse.
-    const prisma = createPrismaClient(dbPath);
+    const prisma = createPrismaClient(db.dbPath);
     try {
       await prisma.message.updateMany({ data: { effort: null } });
       await prisma.conversation.updateMany({ data: { parserVersion: 1 } });
@@ -72,10 +62,13 @@ describe("effort persistence", () => {
       await prisma.$disconnect();
     }
 
-    const result = await refresh({ logsRoot: FIXTURES_ROOT, dbPath });
+    const result = await refresh({
+      logsRoot: FIXTURES_ROOT,
+      dbPath: db.dbPath,
+    });
     expect(result.conversationsParsed).toBeGreaterThan(0);
 
-    const after = createPrismaClient(dbPath);
+    const after = createPrismaClient(db.dbPath);
     try {
       const row = await after.message.findFirst({
         where: { messageId: "emsg-4" },
@@ -88,7 +81,7 @@ describe("effort persistence", () => {
   });
 
   it("leaves effort null for user prompts", async () => {
-    const prisma = createPrismaClient(dbPath);
+    const prisma = createPrismaClient(db.dbPath);
     try {
       const prompt = await prisma.message.findFirst({
         where: { uuid: "eu1" },
