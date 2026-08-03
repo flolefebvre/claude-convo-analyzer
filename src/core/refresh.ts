@@ -98,8 +98,10 @@ type RefreshOptions = { logsRoot?: string; dbPath?: string };
  *
  * 1 — sub-agents nest under the agent that actually spawned them (before, every
  *     sub-agent was flattened onto the main thread).
+ * 2 — assistant turns carry their reasoning `effort` (previously ignored), so
+ *     already-ingested conversations must re-parse to fill the new column.
  */
-const PARSER_VERSION = 1;
+const PARSER_VERSION = 2;
 
 /**
  * The version a conversation carries while it is written but NOT YET COMPLETE:
@@ -414,6 +416,7 @@ function messageData(
     cacheCreation1hTokens: m.cacheCreation1hTokens,
     cacheReadTokens: m.cacheReadTokens,
     model: m.model,
+    effort: m.effort,
     attributionSkill: m.attributionSkill,
     attributionAgent: m.attributionAgent,
     attributionPlugin: m.attributionPlugin,

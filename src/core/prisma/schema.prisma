@@ -128,6 +128,13 @@ model Message {
   /// Resolved model for this turn (assistant `message.model`).
   model String?
 
+  /// Reasoning effort of this assistant turn, verbatim from the record's
+  /// top-level `effort` field (`high`, `xhigh`, `medium`, …). NULL on user rows
+  /// and on turns from Claude Code versions that did not record it. Kept as a
+  /// free string, NOT an enum: future levels must flow through without a code
+  /// change. Uniform-vs-mixed and change markers are derived at read time.
+  effort String?
+
   /// Per-turn attribution — what drove this assistant message.
   attributionSkill     String? @map("attribution_skill")
   attributionAgent     String? @map("attribution_agent")

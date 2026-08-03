@@ -1,0 +1,11 @@
+-- Reasoning effort level of an assistant turn, verbatim from the record's
+-- top-level `effort` field (`high`, `xhigh`, `medium`, …). NULL on user rows and
+-- on turns Claude Code wrote before it recorded effort at all — roughly half of
+-- the assistant lines in existing logs. Stored as free text, never an enum, so a
+-- future level flows through without a schema or code change; the Transcript
+-- view derives uniform-vs-mixed and the change markers at read time. No index:
+-- effort is only read alongside an already-indexed `agent_id` transcript scan.
+--
+-- Backfill of already-ingested conversations is handled by the PARSER_VERSION
+-- bump in `src/core/refresh.ts`, not by touching rows here.
+ALTER TABLE "message" ADD COLUMN "effort" TEXT;
