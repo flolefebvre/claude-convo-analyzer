@@ -199,6 +199,59 @@ export function findSpawnedNode(
 }
 
 /**
+ * How a transcript's per-turn reasoning effort reads as a whole (see
+ * {@link effortSummary}).
+ */
+export type EffortSummary = {
+  /**
+   * The single level every effort-carrying turn agrees on — the header stat.
+   * Null when the transcript is `mixed` or when no turn carries effort at all.
+   */
+  uniform: string | null;
+  /** True once two or more DISTINCT levels appear; the header then reads "mixed". */
+  mixed: boolean;
+  /**
+   * Ids of the turns whose effort differs from the previous effort-carrying
+   * turn — the only turns that get a change badge. The first effort-carrying
+   * turn is never in here: the header stat is its baseline.
+   */
+  changedIds: Set<number>;
+};
+
+/**
+ * Classify a transcript's reasoning effort for the pane: the header stat
+ * (uniform level vs `mixed`) and the turns that changed it.
+ *
+ * Turns carrying NO effort are ignored entirely — user prompts have none, and
+ * roughly half of real assistant lines predate the field. A null therefore
+ * neither makes a transcript `mixed` nor counts as a change; comparisons always
+ * run against the previous EFFORT-CARRYING turn. Levels are compared as raw
+ * strings and never validated, so a future level (`low`, `max`, …) flows
+ * through to the UI verbatim.
+ */
+export function effortSummary(
+  messages: { id: number; effort: string | null }[],
+): EffortSummary {
+  const changedIds = new Set<number>();
+  let previous: string | null = null;
+  let mixed = false;
+
+  for (const message of messages) {
+    const effort = message.effort;
+    if (effort === null) continue;
+    if (previous !== null && effort !== previous) {
+      changedIds.add(message.id);
+      mixed = true;
+    }
+    previous = effort;
+  }
+
+  // `previous` is the last level seen; when nothing was mixed it is also the
+  // only one, i.e. the uniform level (null when no turn carried effort).
+  return { uniform: mixed ? null : previous, mixed, changedIds };
+}
+
+/**
  * The ancestor chain (root → selected) for `selectedId` within the agent `tree`,
  * for the transcript pane's breadcrumb. Returns the path inclusive of both ends,
  * or `[]` when the id is not in the tree.
