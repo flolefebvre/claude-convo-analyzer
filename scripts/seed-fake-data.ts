@@ -215,14 +215,15 @@ const API_ERRORS = [
 
 /**
  * One failed assistant turn. `agent` marks it as a SUB-AGENT record, carrying
- * the real log shape (`isSidechain` + `agentId`) the parser keys sidechains by.
- * A failed turn still bills a little input, and no output.
+ * the real log shape (`isSidechain` + `agentId` + `attributionAgent`) every
+ * line of a `subagents/agent-<id>.jsonl` file has. A failed turn still bills a
+ * little input, and no output.
  */
 function apiErrorTurn(
   ms: number,
   cwd: string,
   model: string,
-  agent?: { agentId: string },
+  agent?: { agentId: string; agentType: string },
 ): string {
   const failure = pick(API_ERRORS);
   const rec: Record<string, unknown> = {
@@ -255,6 +256,7 @@ function apiErrorTurn(
   if (agent !== undefined) {
     rec.isSidechain = true;
     rec.agentId = agent.agentId;
+    rec.attributionAgent = agent.agentType;
   }
   return JSON.stringify(rec);
 }
@@ -310,14 +312,20 @@ function userPrompt(
   return JSON.stringify(rec);
 }
 
+/**
+ * One `tool_result` carrier record. `agent` marks it as a SUB-AGENT record,
+ * carrying the real log shape (`isSidechain` + `agentId`) every line of a
+ * `subagents/agent-<id>.jsonl` file has — same as {@link apiErrorTurn}.
+ */
 function toolResult(
   ms: number,
   cwd: string,
   toolUseId: string,
   result: unknown,
   isError = false,
+  agent?: { agentId: string },
 ): string {
-  return JSON.stringify({
+  const rec: Record<string, unknown> = {
     type: "user",
     uuid: uid("u"),
     timestamp: iso(ms),
@@ -329,7 +337,12 @@ function toolResult(
       ],
     },
     toolUseResult: result,
-  });
+  };
+  if (agent !== undefined) {
+    rec.isSidechain = true;
+    rec.agentId = agent.agentId;
+  }
+  return JSON.stringify(rec);
 }
 
 // ── The tool palette ────────────────────────────────────────────────────────
@@ -399,7 +412,9 @@ function spawnSubAgent(
   const agentType = pick(SUBAGENT_TYPES);
   const subModel = pick(MODELS);
 
-  // The sub-agent's own transcript — the source of truth for its tokens.
+  // The sub-agent's own transcript — the source of truth for its tokens. Every
+  // record in it carries the real sidechain shape (`isSidechain` + `agentId`),
+  // and its assistant turns name the spawned agent via `attributionAgent`.
   const subLines: string[] = [];
   let subTotal = 0;
   const turns = int(2, 5);
@@ -425,6 +440,8 @@ function spawnSubAgent(
         gitBranch: "main",
         version: CC_VERSION,
         isSidechain: true,
+        agentId,
+        attributionAgent: agentType,
         resolvedModel: subModel,
         message: {
           id: uid("smsg"),
@@ -440,7 +457,7 @@ function spawnSubAgent(
     // A sub-agent's turn can fail exactly like the main thread's.
     if (chance(0.06)) {
       subLines.push(
-        apiErrorTurn(ms + i * 30_000 + 15_000, cwd, subModel, { agentId }),
+        apiErrorTurn(ms + i * 30_000 + 15_000, cwd, subModel, { agentId, agentType }),
       );
     }
     // Sub-agents call tools too, and the Tools page counts them — same friction.
@@ -453,6 +470,7 @@ function spawnSubAgent(
           subToolUse.id,
           toolResultText(subKind, isError),
           isError,
+          { agentId },
         ),
       );
     }
