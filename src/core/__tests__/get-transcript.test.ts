@@ -176,4 +176,53 @@ describe("getTranscript core reader", () => {
     expect(kids[0]?.spawnedByToolUseId).toBe("toolu-beta");
     expect(kids[1]?.spawnedByToolUseId).toBe("toolu-alpha");
   });
+
+  it("nests a grandchild under the sub-agent that spawned it, to any depth", async () => {
+    const view = await getTranscript("sess-nested", { dbPath });
+    const main = view?.tree;
+    // Main's own children: suba (spawned by main) + orphan (no ledger anywhere).
+    expect(main?.children.map((c) => c.id).sort()).toEqual(["orphan", "suba"]);
+
+    const suba = main?.children.find((c) => c.id === "suba");
+    expect(suba?.agentType).toBe("Explore");
+    expect(suba?.children.map((c) => c.id)).toEqual(["subb"]);
+
+    const subb = suba?.children[0];
+    expect(subb?.agentType).toBe("Plan");
+    expect(subb?.children.map((c) => c.id)).toEqual(["subc"]);
+
+    const subc = subb?.children[0];
+    expect(subc?.agentType).toBe("general-purpose");
+    expect(subc?.children).toHaveLength(0);
+  });
+
+  it("links a grandchild's spawn to the Agent call in its own parent's transcript", async () => {
+    const view = await getTranscript("sess-nested", { dbPath, agentId: "subb" });
+    // The Agent call that launched subc lives in subb's transcript, not main's.
+    const agentCall = view?.messages
+      .flatMap((m) => m.toolCalls)
+      .find((tc) => tc.name === "Agent");
+    expect(agentCall?.toolUseId).toBe("toolu-agent-c");
+
+    const subc = view?.tree.children[0]?.children[0]?.children[0];
+    expect(subc?.id).toBe("subc");
+    expect(subc?.spawnedByMessageId).not.toBeNull();
+    expect(subc?.spawnedByToolUseId).toBe(agentCall?.toolUseId);
+  });
+
+  it("attaches a sub-agent with no spawn ledger under the main thread", async () => {
+    const view = await getTranscript("sess-nested", { dbPath });
+    const orphan = view?.tree.children.find((c) => c.id === "orphan");
+    expect(orphan).toBeDefined();
+    expect(orphan?.agentType).toBeNull();
+    expect(orphan?.spawnedByMessageId).toBeNull();
+    expect(orphan?.children).toHaveLength(0);
+  });
+
+  it("attaches sub-agents whose spawn ledgers form a cycle under the main thread", async () => {
+    const view = await getTranscript("sess-cycle", { dbPath });
+    const kids = view?.tree.children ?? [];
+    expect(kids.map((k) => k.id).sort()).toEqual(["cyc1", "cyc2"]);
+    expect(kids.every((k) => k.children.length === 0)).toBe(true);
+  });
 });

@@ -27,7 +27,11 @@ import {
   discoverSessions,
   discoverSubAgents,
 } from "@/core/discovery";
-import { parseSessionLines, type ParsedSession } from "@/core/parse";
+import {
+  type ParsedAgentSpawn,
+  parseSessionLines,
+  type ParsedSession,
+} from "@/core/parse";
 import type { PrismaClient } from "@/core/prisma/generated/client";
 
 /** The interactive-transaction client handle (a subset of PrismaClient). */
@@ -345,8 +349,10 @@ async function writeAgentMessages(
  * Write one conversation + root agent + messages + tool_calls, then each
  * sub-agent (its own agent row + messages + tool_calls), then pr_links and
  * turn_durations — all in one transaction. Sub-agent `spawnedByMessageId` is
- * linked via the parent `Agent` tool_use that produced the matching `agentId`
- * (log-format §4); `agentType`/`resolvedModel` come from that spawn ledger.
+ * linked via the spawning `Agent` tool_use that produced the matching `agentId`
+ * (log-format §4) — in whichever transcript that ledger lives, main thread or
+ * another sub-agent (see `planSubAgents`); `agentType`/`resolvedModel` come from
+ * that spawn ledger.
  */
 async function writeConversation(
   prisma: PrismaClient,
@@ -389,32 +395,54 @@ async function writeConversation(
 
     // Sub-agents: each transcript is its own agent row (single source of truth
     // for its tokens — the parent aggregate is NOT summed). Linked back to the
-    // spawning Agent tool_use via the spawn ledger's agentId → tool_use_id.
-    for (const sub of subAgents) {
-      const spawn = parsed.agentSpawns.get(sub.agentId);
+    // spawning Agent tool_use via the spawn ledger's agentId → tool_use_id —
+    // that ledger may live in ANOTHER sub-agent's transcript (a sub-agent can
+    // itself spawn sub-agents), so parentage is resolved across every transcript
+    // and the rows are written parents-first.
+    const written = new Map<string, AgentWriteTarget>();
+    const rootTarget: AgentWriteTarget = {
+      agentRowId: rootAgent.id,
+      parsed,
+      messageRowByMsgId: rootByMsgId,
+    };
+
+    for (const plan of planSubAgents(parsed, subAgents)) {
+      const parent =
+        plan.parentExternalId === null
+          ? rootTarget
+          : (written.get(plan.parentExternalId) ?? rootTarget);
       const spawnedByMessageId =
-        spawn?.toolUseId == null
+        plan.spawn?.toolUseId == null
           ? null
-          : (toolUseToMessageRow(parsed, spawn.toolUseId, rootByMsgId) ?? null);
+          : (toolUseToMessageRow(
+              parent.parsed,
+              plan.spawn.toolUseId,
+              parent.messageRowByMsgId,
+            ) ?? null);
 
       const subAgent = await tx.agent.create({
         data: {
           conversationId: conversation.id,
-          parentAgentId: rootAgent.id,
-          externalAgentId: sub.agentId,
+          parentAgentId: parent.agentRowId,
+          externalAgentId: plan.agentId,
           spawnedByMessageId,
-          agentType: spawn?.agentType ?? null,
-          resolvedModel: spawn?.resolvedModel ?? sub.parsed.dominantModel,
+          agentType: plan.spawn?.agentType ?? null,
+          resolvedModel: plan.spawn?.resolvedModel ?? plan.parsed.dominantModel,
         },
       });
 
       const subByMsgId = await writeAgentMessages(
         tx,
-        sub.parsed,
+        plan.parsed,
         conversation.id,
         subAgent.id,
       );
-      await writeToolCalls(tx, sub.parsed, subAgent.id, subByMsgId);
+      await writeToolCalls(tx, plan.parsed, subAgent.id, subByMsgId);
+      written.set(plan.agentId, {
+        agentRowId: subAgent.id,
+        parsed: plan.parsed,
+        messageRowByMsgId: subByMsgId,
+      });
     }
 
     if (parsed.prLinks.length > 0) {
@@ -438,6 +466,90 @@ async function writeConversation(
       });
     }
   });
+}
+
+/** An already-written agent: what a child needs to resolve its spawn linkage. */
+type AgentWriteTarget = {
+  agentRowId: number;
+  /** That agent's own parsed transcript (where its Agent tool_uses live). */
+  parsed: ParsedSession;
+  /** Its `message.id → row id` map (spawn linkage points at ITS messages). */
+  messageRowByMsgId: Map<string, number>;
+};
+
+/** One sub-agent resolved to its true parent, ready to write. */
+type SubAgentPlan = {
+  agentId: string;
+  parsed: ParsedSession;
+  /** External id of the spawning SUB-agent; null ⇒ spawned by the main thread. */
+  parentExternalId: string | null;
+  spawn: ParsedAgentSpawn | undefined;
+};
+
+/**
+ * Resolve each sub-agent's true parent and order the set PARENTS-FIRST.
+ *
+ * A sub-agent may itself spawn sub-agents, so a grandchild's spawn ledger lives
+ * in its parent sub-agent's transcript, not the root's. We index every ledger
+ * (root + every sub-agent) by spawned agentId, then emit sub-agents in
+ * dependency order so a child is always written after its parent's row and
+ * message rows exist.
+ *
+ * Unresolvable parentage — no ledger anywhere, a ledger naming a transcript that
+ * is not on disk, or a ledger CYCLE — falls back to the main thread, matching the
+ * defensive nesting in `buildAgentTree` (read.ts). The leftover pass is what
+ * makes a cycle terminate instead of looping forever.
+ */
+function planSubAgents(
+  root: ParsedSession,
+  subAgents: { agentId: string; parsed: ParsedSession }[],
+): SubAgentPlan[] {
+  // agentId → who spawned it (null = main thread) + its ledger entry. The root's
+  // ledgers win over a sub-agent's on a (malformed) duplicate claim.
+  const ledger = new Map<
+    string,
+    { parentExternalId: string | null; spawn: ParsedAgentSpawn }
+  >();
+  for (const [agentId, spawn] of root.agentSpawns) {
+    ledger.set(agentId, { parentExternalId: null, spawn });
+  }
+  for (const sub of subAgents) {
+    for (const [agentId, spawn] of sub.parsed.agentSpawns) {
+      if (agentId === sub.agentId || ledger.has(agentId)) continue;
+      ledger.set(agentId, { parentExternalId: sub.agentId, spawn });
+    }
+  }
+
+  const ordered: SubAgentPlan[] = [];
+  const emitted = new Set<string>();
+  const pending = [...subAgents];
+
+  // Repeatedly emit every sub-agent whose parent is the main thread or has
+  // already been emitted, until a full sweep makes no progress.
+  for (let progress = true; progress; ) {
+    progress = false;
+    for (let i = pending.length - 1; i >= 0; i -= 1) {
+      const sub = pending[i];
+      if (sub === undefined) continue;
+      const entry = ledger.get(sub.agentId);
+      const parentExternalId = entry?.parentExternalId ?? null;
+      if (parentExternalId !== null && !emitted.has(parentExternalId)) continue;
+      ordered.push({ ...sub, parentExternalId, spawn: entry?.spawn });
+      emitted.add(sub.agentId);
+      pending.splice(i, 1);
+      progress = true;
+    }
+  }
+
+  // Leftovers: dangling parent or cycle → attach under the main thread.
+  for (const sub of pending) {
+    ordered.push({
+      ...sub,
+      parentExternalId: null,
+      spawn: ledger.get(sub.agentId)?.spawn,
+    });
+  }
+  return ordered;
 }
 
 /** Map a spawning `tool_use_id` back to the assistant message row that holds it. */
