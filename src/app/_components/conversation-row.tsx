@@ -18,6 +18,7 @@ import { CostList, CostRow } from "@/app/_components/cost-list";
 import { SubAgentBreakdown } from "@/app/_components/sub-agent-breakdown";
 import { columnCount } from "@/app/_lib/columns";
 import { detailSections, tokenComposition } from "@/app/_lib/detail";
+import type { ErrorViewRow } from "@/app/_lib/errors-view";
 import type { FamilyView } from "@/app/_lib/family-view";
 import { friendlyFolderName } from "@/app/_lib/folders";
 import {
@@ -52,6 +53,9 @@ export function ConversationRow({
   // The expanded row's continuation family, already shaped for rendering by the
   // page (`null` when standalone or collapsed).
   family = null,
+  // The expanded row's failed turns, already shaped by the page (`null` when
+  // collapsed; `[]` when the conversation never failed).
+  errors = null,
   // The row's expand/collapse toggle target (built by the page via expandHref).
   toggleHref,
 }: {
@@ -62,6 +66,7 @@ export function ConversationRow({
   detail?: ConversationDetail | null;
   familySize?: number;
   family?: FamilyView | null;
+  errors?: ErrorViewRow[] | null;
   toggleHref: string;
 }) {
   const model = modelLabel(row.models);
@@ -117,9 +122,6 @@ export function ConversationRow({
                 <span className="text-muted-foreground">{row.id}</span>
               )}
             </Link>
-            {/* Continuation family: this conversation is one sitting of a piece
-                of work spread over several (`--resume`/fork). The badge counts
-                the WHOLE family, so every member shows the same number. */}
             {/* API errors: turns the API failed on, anywhere in the
                 conversation (sub-agents included). Destructive tone, the same
                 alarm the Transcript's `badge-err` carries — expand the row for
@@ -133,6 +135,9 @@ export function ConversationRow({
                 {row.errorCount} error{row.errorCount === 1 ? "" : "s"}
               </span>
             )}
+            {/* Continuation family: this conversation is one sitting of a piece
+                of work spread over several (`--resume`/fork). The badge counts
+                the WHOLE family, so every member shows the same number. */}
             {familySize > 1 && (
               <span
                 className="inline-flex shrink-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground tabular-nums"
@@ -177,7 +182,12 @@ export function ConversationRow({
       {expanded && (
         <TableRow>
           <TableCell colSpan={columnCount(scoped)} className="bg-muted/30 p-0">
-            <DetailPanel detail={detail} row={row} family={family} />
+            <DetailPanel
+              detail={detail}
+              row={row}
+              family={family}
+              errors={errors}
+            />
           </TableCell>
         </TableRow>
       )}
@@ -195,14 +205,23 @@ function DetailPanel({
   detail,
   row,
   family,
+  errors,
 }: {
   detail: ConversationDetail | null;
   row: ConversationSummary;
   family: FamilyView | null;
+  errors: ErrorViewRow[] | null;
 }) {
   return (
     <div className="space-y-6 px-6 py-5">
       <SummaryStrip row={row} detail={detail} />
+      {/* Failed turns lead the panel: a conversation that hit the API's limits
+          is the most urgent thing to know about it. Absent when nothing failed. */}
+      {errors !== null && errors.length > 0 && (
+        <Section title="API errors">
+          <ErrorList errors={errors} />
+        </Section>
+      )}
       {/* The family comes FIRST: it reframes every number below it as one
           sitting of a larger piece of work. Absent for a standalone row. */}
       {family && family.size > 1 && (
@@ -397,6 +416,44 @@ function FamilyTree({ family }: { family: FamilyView }) {
         </span>
       </div>
     </div>
+  );
+}
+
+/**
+ * The conversation's failed turns, oldest first: when it failed, which agent it
+ * failed in, and what the API said. Each row links into that agent's Transcript,
+ * anchored at the failing turn — the same `?msg=` deep link a search hit uses.
+ */
+function ErrorList({ errors }: { errors: ErrorViewRow[] }) {
+  return (
+    <ol className="space-y-0.5">
+      {errors.map((error) => (
+        <li key={error.key}>
+          <Link
+            href={error.href}
+            className="flex items-baseline gap-2 rounded-sm px-2 py-1 text-sm outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50"
+          >
+            <span
+              className="shrink-0 text-xs text-muted-foreground tabular-nums"
+              {...(error.timeAbsolute ? { title: error.timeAbsolute } : {})}
+            >
+              {error.timeLabel || "—"}
+            </span>
+            <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+              {error.agentLabel}
+            </span>
+            {error.status && (
+              <span className="shrink-0 font-medium text-destructive">
+                {error.status}
+              </span>
+            )}
+            <span className="truncate text-muted-foreground">
+              {error.excerpt}
+            </span>
+          </Link>
+        </li>
+      ))}
+    </ol>
   );
 }
 

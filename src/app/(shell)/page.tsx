@@ -23,11 +23,13 @@ import { ConversationRow } from "@/app/_components/conversation-row";
 import { OverviewBand } from "@/app/_components/overview-band";
 import {
   loadConversationDetail,
+  loadConversationErrors,
   loadConversations,
   loadFamily,
   loadFamilySizes,
 } from "@/app/_lib/conversations";
 import { footerLabelColSpan } from "@/app/_lib/columns";
+import { errorsView } from "@/app/_lib/errors-view";
 import { familyView } from "@/app/_lib/family-view";
 import { type FolderEntry } from "@/app/_lib/folders";
 import { formatDate, formatGrandTotalCost, formatTokens } from "@/app/_lib/format";
@@ -160,6 +162,12 @@ async function ConversationTable({
     ? await loadConversationDetail(expandedRow.id)
     : null;
 
+  // The expanded row's failed turns, shaped for the panel's error list. Read
+  // only for the open row — a collapsed table costs nothing.
+  const expandedErrors = expandedRow
+    ? errorsView(expandedRow.id, await loadConversationErrors(expandedRow.id))
+    : null;
+
   // Format every row's relative Date label against ONE request-time `now` so
   // all rows agree on what "5m ago" means, and hand each row the resulting
   // strings as plain props.
@@ -251,6 +259,7 @@ async function ConversationTable({
                 detail={row.id === expandedRow?.id ? expandedDetail : null}
                 familySize={familySize.get(row.id) ?? 1}
                 family={row.id === expandedRow?.id ? expandedFamilyView : null}
+                errors={row.id === expandedRow?.id ? expandedErrors : null}
                 toggleHref={expandHref(row.id, expandedId, links)}
               />
             ))}

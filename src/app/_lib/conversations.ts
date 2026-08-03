@@ -12,6 +12,7 @@
 import { cache } from "react";
 import { connection } from "next/server";
 
+import { getConversationErrors } from "@/core/errors";
 import { buildFamily, familySizes } from "@/core/family";
 import {
   getConversation,
@@ -42,6 +43,17 @@ export const loadConversations = cache(async () => {
 export const loadConversationDetail = cache(async (id: string) => {
   await connection();
   return getConversation(id);
+});
+
+/**
+ * Read one conversation's failed turns (the expanded row's API-error section) —
+ * every agent's, oldest first. Called only when a row is expanded, so the table
+ * itself never pays for it. Same request-time gating as
+ * {@link loadConversations}; `[]` for an unknown id.
+ */
+export const loadConversationErrors = cache(async (id: string) => {
+  await connection();
+  return getConversationErrors(id);
 });
 
 /**
