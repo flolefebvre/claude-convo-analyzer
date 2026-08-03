@@ -32,6 +32,21 @@ file inside a Project folder. Each line is a typed Record. A Conversation is the
 unit shown as one row in the conversation list. Its human-readable name comes
 from an `ai-title` Record.
 
+### Continuation family
+The set of Conversations that make up ONE piece of work spread over several
+sittings. Resuming a session (`--resume`) or forking it starts a **new**
+Conversation whose first Record points back into the previous one: that link is
+the **continued-from** parent pointer. A Conversation can have several
+continuations (forks), so the links form a **tree**; the **family** is the whole
+connected component — walked in both directions, parents and continuations
+alike. Its **cumulative total** is the sum of its members' Costs, and is a lower
+bound whenever any member has unpriced usage.
+
+A family is a *view*, never a merge: every member stays its own Conversation
+row with its own Cost, so per-conversation totals and the overview aggregate are
+unchanged by it (nothing is double-counted). Members can live in different
+Projects — resuming from a git worktree launches in another directory.
+
 ### Record
 One line of a Conversation's JSONL file, identified by a `type` (e.g.
 `assistant`, `user`, `ai-title`, `system`). Only some Record types carry token

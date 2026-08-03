@@ -229,8 +229,15 @@ function assistantTurn(
   return JSON.stringify(rec);
 }
 
-function userPrompt(ms: number, cwd: string, text: string): string {
-  return JSON.stringify({
+function userPrompt(
+  ms: number,
+  cwd: string,
+  text: string,
+  /** Set on a RESUMED session's first prompt: the parent session's record it
+   *  continues from. `refresh()` resolves it into a `continued_from` link. */
+  parentUuid?: string,
+): string {
+  const rec: Record<string, unknown> = {
     type: "user",
     uuid: uid("u"),
     timestamp: iso(ms),
@@ -239,7 +246,9 @@ function userPrompt(ms: number, cwd: string, text: string): string {
     version: CC_VERSION,
     permissionMode: "default",
     message: { role: "user", content: text },
-  });
+  };
+  if (parentUuid !== undefined) rec.parentUuid = parentUuid;
+  return JSON.stringify(rec);
 }
 
 function toolResult(
@@ -402,29 +411,46 @@ function spawnSubAgent(
   return { toolUse, ledgerResult, sub: { agentId, lines: subLines } };
 }
 
+/** Where a later session can pick this one up (`--resume`/fork): the record it
+ *  would continue from, and when that happened. */
+type ResumePoint = { uuid: string; ms: number };
+
 type Conversation = {
   folder: string;
   sessionId: string;
   mainLines: string[];
   subAgents: SubAgent[];
+  /** The point a continuation of this conversation attaches to. */
+  resumePoint: ResumePoint;
 };
 
 function buildConversation(
   project: (typeof PROJECTS)[number],
   index: number,
+  opts: {
+    /** Makes this a CONTINUATION of an earlier session (issue #46): its first
+     *  prompt carries that session's record as `parentUuid`, and it starts a few
+     *  hours later. */
+    resumeFrom?: ResumePoint;
+    /** Overrides the random title — used so a family reads as one piece of work. */
+    title?: string;
+  } = {},
 ): Conversation {
   const cwd = project.path;
   const folder = cwd.replace(/\//g, "-");
   const sessionId = `seed-${folder.slice(1)}-${index}`;
 
-  const start = NOW - int(0, 21) * DAY - int(0, 18) * 3_600_000;
+  const start =
+    opts.resumeFrom === undefined
+      ? NOW - int(0, 21) * DAY - int(0, 18) * 3_600_000
+      : opts.resumeFrom.ms + int(1, 8) * 3_600_000;
   let t = start;
   const lines: string[] = [];
   const subAgents: SubAgent[] = [];
 
-  const title = pick(TITLES);
+  const title = opts.title ?? pick(TITLES);
   lines.push(JSON.stringify({ type: "ai-title", aiTitle: title }));
-  lines.push(userPrompt(t, cwd, pick(PROMPTS)));
+  lines.push(userPrompt(t, cwd, pick(PROMPTS), opts.resumeFrom?.uuid));
 
   // Most conversations have a dominant model; some are mixed.
   const dominant = pick(MODELS);
@@ -487,7 +513,82 @@ function buildConversation(
     );
   }
 
-  return { folder, sessionId, mainLines: lines, subAgents };
+  return {
+    folder,
+    sessionId,
+    mainLines: lines,
+    subAgents,
+    resumePoint: { uuid: lastAssistantUuid(lines), ms: t },
+  };
+}
+
+/** The uuid of the conversation's LAST assistant record — what a `--resume`
+ *  writes as its first prompt's `parentUuid`. */
+function lastAssistantUuid(lines: readonly string[]): string {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const rec = JSON.parse(lines[i]) as { type?: string; uuid?: string };
+    if (rec.type === "assistant" && typeof rec.uuid === "string") return rec.uuid;
+  }
+  throw new Error("conversation has no assistant record to resume from");
+}
+
+/**
+ * Two continuation families (issue #46), so the seeded data exercises the
+ * badge, the panel's family tree and the transcript banner:
+ *
+ *  - a FORKED family in the first project: a root sitting, two continuations of
+ *    it, a continuation of the first one, and one resumed from ANOTHER project
+ *    (a worktree — five members, depth 3, one cross-directory);
+ *  - a plain two-sitting chain in the second project.
+ *
+ * Indices continue after the standalone conversations so their session ids —
+ * and therefore the whole seed — stay deterministic run to run.
+ */
+function continuationFamilies(startIndex: number): Conversation[] {
+  const forkProject = PROJECTS[0];
+  const chainProject = PROJECTS[1];
+  let i = startIndex;
+
+  const root = buildConversation(forkProject, i++, {
+    title: "Split the billing service out of the monolith",
+  });
+  const firstBranch = buildConversation(forkProject, i++, {
+    resumeFrom: root.resumePoint,
+    title: "Billing split — extract the invoice writer",
+  });
+  const secondBranch = buildConversation(forkProject, i++, {
+    resumeFrom: root.resumePoint,
+    title: "Billing split — try the event-sourced angle instead",
+  });
+  const deeper = buildConversation(forkProject, i++, {
+    resumeFrom: firstBranch.resumePoint,
+    title: "Billing split — migrate the last caller and delete the shim",
+  });
+
+  // Resumed from a git worktree of the same repo: Claude Code launches there in
+  // its own directory, so the sitting belongs to a DIFFERENT Project (CONTEXT.md).
+  const inWorktree = buildConversation(PROJECTS[2], i++, {
+    resumeFrom: secondBranch.resumePoint,
+    title: "Billing split — event-sourced spike, in a worktree",
+  });
+
+  const chainStart = buildConversation(chainProject, i++, {
+    title: "Make the nightly export idempotent",
+  });
+  const chainEnd = buildConversation(chainProject, i++, {
+    resumeFrom: chainStart.resumePoint,
+    title: "Nightly export — finish the retry path",
+  });
+
+  return [
+    root,
+    firstBranch,
+    secondBranch,
+    deeper,
+    inWorktree,
+    chainStart,
+    chainEnd,
+  ];
 }
 
 // ── Generate, write to a throwaway logs root, and ingest ─────────────────────
@@ -499,9 +600,13 @@ async function main(): Promise<void> {
   let subAgentCount = 0;
   // Spread ~30 conversations across the 6 projects.
   const total = 30;
+  const conversations: Conversation[] = [];
   for (let i = 0; i < total; i++) {
-    const project = PROJECTS[i % PROJECTS.length];
-    const convo = buildConversation(project, i);
+    conversations.push(buildConversation(PROJECTS[i % PROJECTS.length], i));
+  }
+  conversations.push(...continuationFamilies(total));
+
+  for (const convo of conversations) {
     const projectDir = path.join(logsRoot, convo.folder);
     mkdirSync(projectDir, { recursive: true });
     writeFileSync(
