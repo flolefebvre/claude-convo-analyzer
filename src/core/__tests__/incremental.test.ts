@@ -38,6 +38,32 @@ async function rowCounts(dbPath: string): Promise<Record<string, number>> {
   }
 }
 
+/** Every conversation's row id, keyed by session id (row-identity evidence). */
+async function conversationRowIds(dbPath: string): Promise<Map<string, number>> {
+  const prisma = createPrismaClient(dbPath);
+  try {
+    const rows = await prisma.conversation.findMany({
+      select: { id: true, sessionId: true },
+    });
+    return new Map(rows.map((r) => [r.sessionId, r.id]));
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+/** Rewrite the stored parser version of every conversation (upgrade sim). */
+async function setStoredParserVersion(
+  dbPath: string,
+  version: number,
+): Promise<void> {
+  const prisma = createPrismaClient(dbPath);
+  try {
+    await prisma.conversation.updateMany({ data: { parserVersion: version } });
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
 describe("incremental refresh", () => {
   let tmpDir: string;
   let logsRoot: string;
@@ -200,6 +226,39 @@ describe("incremental refresh", () => {
     // Parent and child stay DISTINCT rows; the parent has no continuation.
     expect(origin?.continuedFromId).toBeNull();
     expect(child?.id).not.toBe(origin?.id);
+  });
+
+  it("re-parses every conversation exactly once after a parser-version bump, then skips again", async () => {
+    const first = await refresh({ logsRoot, dbPath });
+    const total = first.conversationsParsed;
+    expect(total).toBeGreaterThanOrEqual(2);
+
+    const before = await conversationRowIds(dbPath);
+
+    // Simulate rows ingested by an OLDER parser (what an upgrade leaves behind:
+    // the new column's default). The source files are untouched, so the
+    // mtime/size key still matches — only the parser version differs.
+    await setStoredParserVersion(dbPath, 0);
+
+    const second = await refresh({ logsRoot, dbPath });
+    // Evidence of a real re-parse, not merely "no duplicates": every
+    // conversation was parsed and none skipped...
+    expect(second.conversationsParsed).toBe(total);
+    expect(second.conversationsSkipped).toBe(0);
+
+    // ...and every conversation row was deleted and re-inserted, so its row id
+    // is brand new while the session set and row counts are unchanged.
+    const after = await conversationRowIds(dbPath);
+    expect([...after.keys()].sort()).toEqual([...before.keys()].sort());
+    for (const [sessionId, id] of after) {
+      expect(id).not.toBe(before.get(sessionId));
+    }
+
+    // Exactly once: the next refresh skips everything again, ids now stable.
+    const third = await refresh({ logsRoot, dbPath });
+    expect(third.conversationsParsed).toBe(0);
+    expect(third.conversationsSkipped).toBe(total);
+    expect(await conversationRowIds(dbPath)).toEqual(after);
   });
 
   it("re-parses the parent when only a sub-agent transcript changes", async () => {

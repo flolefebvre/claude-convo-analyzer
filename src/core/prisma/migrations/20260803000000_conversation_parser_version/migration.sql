@@ -1,0 +1,11 @@
+-- Parser version stamped on every conversation, replacing the `source_mtime = -1`
+-- sentinel used by earlier re-parse migrations. `refresh()` treats a stored
+-- version that differs from its `PARSER_VERSION` constant as "changed", so
+-- bumping the constant forces EVERY conversation to re-parse exactly once; the
+-- run stamps the current version back, and subsequent refreshes skip unchanged
+-- conversations again.
+--
+-- Existing rows default to 0, i.e. below the current PARSER_VERSION — which is
+-- exactly what this release needs: sub-agent parentage was previously flattened
+-- to the main thread, so those rows must be rebuilt with their real lineage.
+ALTER TABLE "conversation" ADD COLUMN "parser_version" INTEGER NOT NULL DEFAULT 0;

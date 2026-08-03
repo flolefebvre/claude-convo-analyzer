@@ -8,6 +8,9 @@
 // file PLUS its sub-agent transcripts (max mtime, summed size) — a sub-agent
 // file changing alone (the main file untouched) still triggers a re-parse,
 // because sub-agents have no independent conversation/mtime row of their own.
+// The stored `parserVersion` is part of that decision too: rows produced by an
+// older parser are re-parsed once even when their source files are untouched
+// (see `PARSER_VERSION`).
 //
 // ROLLUP DESIGN (ADR-0001): conversation totals/cost are SUM queries over ALL
 // messages of ALL agents in the conversation — so sub-agent tokens roll up
@@ -59,6 +62,20 @@ export type RefreshSummary = {
 };
 
 type RefreshOptions = { logsRoot?: string; dbPath?: string };
+
+/**
+ * Version of the parse/write logic behind the rows in the database.
+ *
+ * BUMP THIS whenever a parser or writer change makes previously ingested rows
+ * wrong or incomplete: a conversation whose stored `parserVersion` differs is
+ * treated as CHANGED even when its source files did not move, so it re-parses
+ * exactly once and is stamped with the new version. This replaces the old
+ * `UPDATE conversation SET source_mtime = -1` migration hack.
+ *
+ * 1 — sub-agents nest under the agent that actually spawned them (before, every
+ *     sub-agent was flattened onto the main thread).
+ */
+const PARSER_VERSION = 1;
 
 /** One main session + its sub-agent transcripts, all parsed, ready to write. */
 type ParsedConversation = {
@@ -118,14 +135,24 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     const discovered = discoverWithKeys(logsRoot);
 
     // Existing rows, keyed by sessionId, for the skip/changed/delete decision.
-    const existing = new Map<string, { id: number; mtime: bigint; size: bigint }>();
+    const existing = new Map<
+      string,
+      { id: number; mtime: bigint; size: bigint; parserVersion: number }
+    >();
     for (const row of await prisma.conversation.findMany({
-      select: { id: true, sessionId: true, sourceMtime: true, sourceSize: true },
+      select: {
+        id: true,
+        sessionId: true,
+        sourceMtime: true,
+        sourceSize: true,
+        parserVersion: true,
+      },
     })) {
       existing.set(row.sessionId, {
         id: row.id,
         mtime: row.sourceMtime,
         size: row.sourceSize,
+        parserVersion: row.parserVersion,
       });
     }
 
@@ -142,8 +169,12 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
 
     for (const d of discovered) {
       const prior = existing.get(d.session.sessionId);
+      // Rows written by another parser version are stale by definition, however
+      // untouched their source files are — re-parse them (exactly once: the
+      // rewrite stamps the current version).
       const unchanged =
         prior !== undefined &&
+        prior.parserVersion === PARSER_VERSION &&
         prior.mtime === BigInt(d.compositeMtime) &&
         prior.size === BigInt(d.compositeSize);
       if (unchanged) {
@@ -372,6 +403,7 @@ async function writeConversation(
         sourcePath: session.sourcePath,
         sourceMtime: BigInt(session.sourceMtime),
         sourceSize: BigInt(session.sourceSize),
+        parserVersion: PARSER_VERSION,
         continuedFromConversationId: null,
       },
     });

@@ -44,6 +44,9 @@ model Conversation {
   sourceMtime BigInt  @map("source_mtime")
   /// Source file size in bytes — incremental-refresh change key.
   sourceSize  BigInt  @map("source_size")
+  /// Parser version these rows were produced by; a mismatch with the current
+  /// `PARSER_VERSION` (refresh.ts) forces a one-time re-parse after an upgrade.
+  parserVersion Int   @default(0) @map("parser_version")
 
   /// Set when the first message's parentUuid resolves into a prior session (--resume/fork).
   continuedFromConversationId Int? @map("continued_from_conversation_id")
