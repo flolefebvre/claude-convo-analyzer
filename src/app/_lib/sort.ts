@@ -156,14 +156,16 @@ function buildHref(
 /**
  * Query-string href for a sortable header link (toggles via {@link toggleSort}).
  * Threads the active `folder` scope through so re-sorting keeps the current
- * folder selection.
+ * folder selection — and, like every list href, the Trends `range` the user
+ * arrived with, so switching back to Trends restores their selection.
  */
 export function sortHref(
   field: SortableField,
   current: SortState,
   folder?: string,
+  range?: string,
 ): string {
-  return buildHref(toggleSort(field, current), folder);
+  return buildHref(toggleSort(field, current), folder, undefined, range);
 }
 
 /**
@@ -192,8 +194,9 @@ export function expandHref(
   expanded: string | undefined,
   sort: SortState,
   folder?: string,
+  range?: string,
 ): string {
-  return buildHref(sort, folder, rowId === expanded ? undefined : rowId);
+  return buildHref(sort, folder, rowId === expanded ? undefined : rowId, range);
 }
 
 /**
