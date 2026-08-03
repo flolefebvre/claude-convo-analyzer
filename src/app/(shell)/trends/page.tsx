@@ -12,10 +12,10 @@
 // `cacheComponents` (PPR) is on, so the request-time `searchParams` read is
 // wrapped in <Suspense>: the page shell prerenders, the chart streams in.
 
-import Link from "next/link";
 import { Suspense } from "react";
 
 import { CostBar } from "@/app/_components/cost-bar";
+import { RangePicker } from "@/app/_components/range-picker";
 import { TrendsChart } from "@/app/_components/trends-chart";
 import { loadDailySpend } from "@/app/_lib/conversations";
 import {
@@ -23,16 +23,8 @@ import {
   formatGrandTotalCost,
   formatTokens,
 } from "@/app/_lib/format";
-import {
-  RANGE_PRESETS,
-  type TrendsRange,
-  type TrendsView,
-  buildTrendsView,
-  rangeDays,
-  rangeHref,
-  resolveRange,
-} from "@/app/_lib/trends";
-import { Button } from "@/components/ui/button";
+import { rangeDays, rangeHref, resolveRange } from "@/app/_lib/range";
+import { type TrendsView, buildTrendsView } from "@/app/_lib/trends";
 
 type PageSearchParams = {
   range?: string | string[];
@@ -86,7 +78,10 @@ async function TrendsSurface({
             What Claude Code cost per day, split by model.
           </p>
         </div>
-        <RangePicker active={range} folder={folder} />
+        <RangePicker
+          active={range}
+          hrefFor={(preset) => rangeHref(preset, folder)}
+        />
       </div>
 
       <StatsRow view={view} />
@@ -101,36 +96,6 @@ async function TrendsSurface({
         )}
       </div>
     </section>
-  );
-}
-
-/** The range presets, as scope-preserving links styled like a segmented control. */
-function RangePicker({
-  active,
-  folder,
-}: {
-  active: TrendsRange;
-  /** The active `?folder=` scope, threaded so changing range keeps the scope. */
-  folder?: string;
-}) {
-  return (
-    <nav aria-label="Range" className="flex items-center gap-1">
-      {RANGE_PRESETS.map((preset) => (
-        <Button
-          key={preset.value}
-          asChild
-          size="sm"
-          variant={preset.value === active ? "secondary" : "ghost"}
-        >
-          <Link
-            href={rangeHref(preset.value, folder)}
-            aria-current={preset.value === active ? "true" : undefined}
-          >
-            {preset.label}
-          </Link>
-        </Button>
-      ))}
-    </nav>
   );
 }
 

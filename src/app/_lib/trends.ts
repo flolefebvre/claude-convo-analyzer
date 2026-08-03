@@ -1,6 +1,7 @@
-// Pure app-zone seam for the Trends view: the URL range presets and the shaping
-// of the core's `DailySpend` into what the chart + stats row render (bands with
-// colors, one point per day, share-of-total). Built ON TOP of the core read —
+// Pure app-zone seam for the Trends view: the shaping of the core's
+// `DailySpend` into what the chart + stats row render (bands with colors, one
+// point per day, share-of-total). The `?range=` presets it used to own moved to
+// `@/app/_lib/range` when Tools adopted them. Built ON TOP of the core read —
 // the only core touch is a type-only import, erased at compile time (ADR-0002).
 //
 // React-free + I/O-free so it unit-tests in the node vitest environment; the
@@ -9,54 +10,6 @@
 import type { Tokens } from "@/core/cost";
 import type { DailySpend } from "@/core/read";
 import { formatDayKey } from "@/app/_lib/format";
-
-/** The selectable ranges — preset buttons only, no free date inputs. */
-export type TrendsRange = "7" | "30" | "90" | "all";
-
-/** The presets in display order, with their button labels. */
-export const RANGE_PRESETS = [
-  { value: "7", label: "7 days" },
-  { value: "30", label: "30 days" },
-  { value: "90", label: "90 days" },
-  { value: "all", label: "All time" },
-] as const satisfies readonly { value: TrendsRange; label: string }[];
-
-/** The range used when the URL carries none (or an unknown one). */
-export const DEFAULT_RANGE: TrendsRange = "30";
-
-/** First value of a `searchParams` entry (Next gives string | string[]). */
-function firstParam(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
-
-/**
- * Resolve the active range from the raw `?range=` search param. Mirrors
- * `resolveSort`: never trusts the URL blindly — anything that is not a preset
- * falls back to {@link DEFAULT_RANGE}.
- */
-export function resolveRange(
-  raw: string | string[] | undefined,
-): TrendsRange {
-  const value = firstParam(raw);
-  const preset = RANGE_PRESETS.find((p) => p.value === value);
-  return preset === undefined ? DEFAULT_RANGE : preset.value;
-}
-
-/** The core's `days` option for a range — `undefined` (all time) for "all". */
-export function rangeDays(range: TrendsRange): number | undefined {
-  return range === "all" ? undefined : Number(range);
-}
-
-/**
- * Query-string href for a range preset button, PRESERVING the active folder
- * scope so the two axes compose (the mirror of `folderHref`, which preserves
- * the range coming the other way). A missing/empty folder means "all Projects".
- */
-export function rangeHref(range: TrendsRange, folder?: string): string {
-  const params = new URLSearchParams({ range });
-  if (folder) params.set("folder", folder);
-  return `?${params.toString()}`;
-}
 
 /** One model's band of the stack — also one entry of the stats-row legend. */
 export type TrendsBand = {
