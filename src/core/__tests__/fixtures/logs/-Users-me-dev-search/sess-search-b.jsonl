@@ -1,0 +1,3 @@
+{"type":"ai-title","aiTitle":"Cache warmup rollout"}
+{"type":"user","uuid":"bu1","timestamp":"2026-06-27T14:00:00.000Z","cwd":"/Users/me/dev/search","version":"2.1.180","message":{"role":"user","content":"warm the cache before the invalidation window closes"}}
+{"type":"assistant","uuid":"ba1","requestId":"breq-1","timestamp":"2026-06-27T14:00:10.000Z","cwd":"/Users/me/dev/search","version":"2.1.180","message":{"id":"bmsg-1","role":"assistant","model":"claude-opus-4-8","content":[{"type":"text","text":"the postgres connection pool is already warm"}],"usage":{"input_tokens":6,"output_tokens":12,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}}}

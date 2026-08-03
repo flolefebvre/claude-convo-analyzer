@@ -1,0 +1,3 @@
+{"type":"ai-title","aiTitle":"Postgres tuning notes"}
+{"type":"user","uuid":"cu1","timestamp":"2026-06-24T08:00:00.000Z","cwd":"/Users/me/dev/search","version":"2.1.180","message":{"role":"user","content":"summarize yesterday's widget benchmarks"}}
+{"type":"assistant","uuid":"ca1","requestId":"creq-1","timestamp":"2026-06-24T08:00:10.000Z","cwd":"/Users/me/dev/search","version":"2.1.180","message":{"id":"cmsg-1","role":"assistant","model":"claude-opus-4-8","content":[{"type":"text","text":"the widget benchmarks were flat week over week"}],"usage":{"input_tokens":4,"output_tokens":8,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}}}

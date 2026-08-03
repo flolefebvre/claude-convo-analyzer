@@ -21,6 +21,7 @@ import { createPrismaClient } from "@/core/db";
 import { refresh } from "@/core/refresh";
 
 import { dropSearchIndex } from "./helpers/search-index";
+import { seededTempDb } from "./helpers/temp-db";
 
 const FIXTURES_ROOT = path.join(import.meta.dirname, "fixtures", "logs");
 
@@ -124,49 +125,40 @@ function matchingTitleSessions(dbPath: string, query: string): string[] {
 }
 
 describe("FTS search index — corpus", () => {
-  let tmpDir: string;
-  let dbPath: string;
-
-  beforeEach(async () => {
-    tmpDir = mkdtempSync(path.join(tmpdir(), "cca-fts-"));
-    dbPath = path.join(tmpDir, "analyzer.db");
-    await refresh({ logsRoot: FIXTURES_ROOT, dbPath });
-  });
-
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
-  });
+  const db = seededTempDb({ prefix: "cca-fts-", logsRoot: FIXTURES_ROOT });
 
   it("indexes human prompts", () => {
-    expect(matchingUuids(dbPath, "transcript")).toContain("tu1");
+    expect(matchingUuids(db.dbPath, "transcript")).toContain("tu1");
   });
 
   it("indexes assistant message text", () => {
-    expect(matchingUuids(dbPath, "running")).toContain("ta1");
+    expect(matchingUuids(db.dbPath, "running")).toContain("ta1");
   });
 
   it("indexes conversation titles", () => {
-    expect(matchingTitleSessions(dbPath, "kinds")).toContain("sess-transcript");
+    expect(matchingTitleSessions(db.dbPath, "kinds")).toContain(
+      "sess-transcript",
+    );
   });
 
   it("never indexes meta records", () => {
     // `tu3` is an isMeta skill-instruction record.
-    expect(matchingUuids(dbPath, "skill")).not.toContain("tu3");
-    expect(matchingUuids(dbPath, "directory")).toHaveLength(0);
+    expect(matchingUuids(db.dbPath, "skill")).not.toContain("tu3");
+    expect(matchingUuids(db.dbPath, "directory")).toHaveLength(0);
   });
 
   it("never indexes tool-result carrier messages", () => {
     // `tu2` carries the Bash result "done".
-    expect(matchingUuids(dbPath, "done")).not.toContain("tu2");
+    expect(matchingUuids(db.dbPath, "done")).not.toContain("tu2");
   });
 
   it("never indexes tool inputs or tool results", () => {
     // The Bash call's command/description live in tool_call, not the corpus.
-    expect(matchingUuids(dbPath, "finish")).toHaveLength(0);
+    expect(matchingUuids(db.dbPath, "finish")).toHaveLength(0);
   });
 
   it("covers exactly the corpus after a first refresh", () => {
-    expectIndexMatchesCorpus(dbPath);
+    expectIndexMatchesCorpus(db.dbPath);
   });
 });
 
@@ -261,25 +253,19 @@ describe("FTS search index — consistency through refresh()", () => {
 });
 
 describe("FTS search index — backfill on upgrade", () => {
-  let tmpDir: string;
-  let dbPath: string;
-
-  beforeEach(async () => {
-    tmpDir = mkdtempSync(path.join(tmpdir(), "cca-fts-backfill-"));
-    dbPath = path.join(tmpDir, "analyzer.db");
-    await refresh({ logsRoot: FIXTURES_ROOT, dbPath });
-  });
-
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
+  const db = seededTempDb({
+    prefix: "cca-fts-backfill-",
+    logsRoot: FIXTURES_ROOT,
   });
 
   it("indexes conversations that were already in the database, with no re-parse", async () => {
+    const dbPath = db.dbPath;
+
     // Simulate the pre-search database: drop the index + its ledger entry, as
     // if the migration had never run, then re-open (which re-applies it).
-    const db = open(dbPath);
-    dropSearchIndex(db);
-    db.close();
+    const raw = open(dbPath);
+    dropSearchIndex(raw);
+    raw.close();
 
     // Re-opening applies the migration — which must BACKFILL the existing rows.
     const prisma = createPrismaClient(dbPath);
