@@ -11,13 +11,14 @@
 // the panel is `SubAgentBreakdown` (ephemeral per-group open/closed state),
 // which receives plain serializable props.
 
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, GitBranch } from "lucide-react";
 import Link from "next/link";
 
 import { CostList, CostRow } from "@/app/_components/cost-list";
 import { SubAgentBreakdown } from "@/app/_components/sub-agent-breakdown";
 import { columnCount } from "@/app/_lib/columns";
 import { detailSections, tokenComposition } from "@/app/_lib/detail";
+import type { FamilyView } from "@/app/_lib/family-view";
 import { friendlyFolderName } from "@/app/_lib/folders";
 import {
   formatCompactTokens,
@@ -48,6 +49,9 @@ export function ConversationRow({
   // Size of this row's continuation family (issue #46) — 1 for a standalone
   // conversation, which renders no badge at all.
   familySize = 1,
+  // The expanded row's continuation family, already shaped for rendering by the
+  // page (`null` when standalone or collapsed).
+  family = null,
   // The row's expand/collapse toggle target (built by the page via expandHref).
   toggleHref,
 }: {
@@ -57,6 +61,7 @@ export function ConversationRow({
   expanded?: boolean;
   detail?: ConversationDetail | null;
   familySize?: number;
+  family?: FamilyView | null;
   toggleHref: string;
 }) {
   const model = modelLabel(row.models);
@@ -117,12 +122,15 @@ export function ConversationRow({
                 the WHOLE family, so every member shows the same number. */}
             {familySize > 1 && (
               <span
-                className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground tabular-nums"
+                className="inline-flex shrink-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground tabular-nums"
                 title={`Part of a continuation family of ${familySize} conversations — expand the row for the family tree.`}
               >
-                <span aria-hidden>⛓ </span>
+                <GitBranch className="size-3" aria-hidden />
                 {familySize}
-                <span className="sr-only"> conversations in this continuation family</span>
+                <span className="sr-only">
+                  {" "}
+                  conversations in this continuation family
+                </span>
               </span>
             )}
           </span>
@@ -156,7 +164,7 @@ export function ConversationRow({
       {expanded && (
         <TableRow>
           <TableCell colSpan={columnCount(scoped)} className="bg-muted/30 p-0">
-            <DetailPanel detail={detail} row={row} />
+            <DetailPanel detail={detail} row={row} family={family} />
           </TableCell>
         </TableRow>
       )}
@@ -173,13 +181,22 @@ export function ConversationRow({
 function DetailPanel({
   detail,
   row,
+  family,
 }: {
   detail: ConversationDetail | null;
   row: ConversationSummary;
+  family: FamilyView | null;
 }) {
   return (
     <div className="space-y-6 px-6 py-5">
       <SummaryStrip row={row} detail={detail} />
+      {/* The family comes FIRST: it reframes every number below it as one
+          sitting of a larger piece of work. Absent for a standalone row. */}
+      {family && family.size > 1 && (
+        <Section title="Continuation family">
+          <FamilyTree family={family} />
+        </Section>
+      )}
       <div className="grid gap-x-10 gap-y-6 lg:grid-cols-[16rem_1fr]">
         <Section title="Token composition">
           <TokenComposition
@@ -285,6 +302,88 @@ function TokenComposition({
         </li>
       ))}
     </ul>
+  );
+}
+
+/**
+ * The continuation family as a tree: every sitting of this piece of work, in
+ * chronological order, indented by fork structure — the same idiom as the
+ * Transcript view's agent tree (16px per level). The current conversation is
+ * highlighted ("you are here"), a member from another Project carries its
+ * folder label, and each row links to that conversation's own expanded panel.
+ * The family total closes the section, marked as a lower bound when a member
+ * has unpriced usage.
+ */
+function FamilyTree({ family }: { family: FamilyView }) {
+  return (
+    <div className="space-y-2">
+      <ol className="space-y-0.5">
+        {family.rows.map((member) => (
+          <li key={member.id}>
+            <Link
+              href={member.href}
+              scroll={false}
+              aria-current={member.isCurrent ? "true" : undefined}
+              style={{ paddingLeft: `${8 + member.depth * 16}px` }}
+              className={`flex items-center gap-2 rounded-sm py-1 pr-2 text-sm outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50 ${
+                member.isCurrent
+                  ? "bg-muted font-medium text-foreground"
+                  : "text-muted-foreground"
+              }`}
+            >
+              <span aria-hidden className="shrink-0 text-xs">
+                {member.depth === 0 ? "◆" : "◇"}
+              </span>
+              <span className="truncate">
+                {member.title ?? (
+                  <span className="text-muted-foreground">{member.id}</span>
+                )}
+              </span>
+              {member.isCurrent && (
+                <span className="sr-only">(this conversation)</span>
+              )}
+              {member.projectLabel !== null && (
+                <span
+                  className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground"
+                  title="Continued in another project"
+                >
+                  {member.projectLabel}
+                </span>
+              )}
+              <span
+                className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums"
+                {...(member.dateAbsolute ? { title: member.dateAbsolute } : {})}
+              >
+                {member.dateLabel}
+              </span>
+              <span className="w-16 shrink-0 text-right tabular-nums">
+                {member.unpriced ? (
+                  <span title="Cost excludes unpriced model usage — lower bound.">
+                    ~{formatCost(member.costUsd)}
+                  </span>
+                ) : (
+                  formatCost(member.costUsd)
+                )}
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ol>
+      <div className="flex items-center gap-2 border-t pt-2 pr-2 pl-2 text-sm">
+        <span className="text-muted-foreground">
+          Family total · {family.size} conversations
+        </span>
+        <span className="ml-auto w-16 shrink-0 text-right font-semibold tabular-nums text-cost">
+          {family.hasUnpriced ? (
+            <span title="Includes unpriced model usage — this total is a lower bound.">
+              ~{formatCost(family.totalCostUsd)}
+            </span>
+          ) : (
+            formatCost(family.totalCostUsd)
+          )}
+        </span>
+      </div>
+    </div>
   );
 }
 
