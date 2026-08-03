@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { RefreshSummary } from "@/core/refresh";
 
 import {
+  formatDuplicateSessionDetail,
   formatDuration,
   formatRefreshSummary,
 } from "@/app/_lib/refresh-summary";
@@ -96,5 +97,25 @@ describe("formatRefreshSummary", () => {
     expect(formatRefreshSummary(summary({ durationMs: 0 }))).toBe(
       "Parsed 0 · Skipped 0 · Deleted 0 · 0ms",
     );
+  });
+});
+
+describe("formatDuplicateSessionDetail", () => {
+  it("names the file that was skipped and the one that was kept for each session", () => {
+    expect(
+      formatDuplicateSessionDetail(
+        summary({ duplicateSessionsSkipped: duplicates(2) }),
+      ),
+    ).toBe(
+      [
+        "Two log files shared one session id; only one was ingested:",
+        "sess-0: skipped /logs/-b/sess-0.jsonl (kept /logs/-a/sess-0.jsonl)",
+        "sess-1: skipped /logs/-b/sess-1.jsonl (kept /logs/-a/sess-1.jsonl)",
+      ].join("\n"),
+    );
+  });
+
+  it("has nothing to report when no duplicate was skipped", () => {
+    expect(formatDuplicateSessionDetail(summary())).toBeNull();
   });
 });

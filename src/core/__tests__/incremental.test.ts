@@ -96,6 +96,24 @@ async function conversationRowIds(dbPath: string): Promise<Map<string, number>> 
   }
 }
 
+/** The source file a conversation row is currently ingested from. */
+async function conversationSourcePath(
+  dbPath: string,
+  sessionId: string,
+): Promise<string | undefined> {
+  const prisma = createPrismaClient(dbPath);
+  try {
+    return (
+      await prisma.conversation.findUnique({
+        where: { sessionId },
+        select: { sourcePath: true },
+      })
+    )?.sourcePath;
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
 /** Rewrite the stored parser version of every conversation (upgrade sim). */
 async function setStoredParserVersion(
   dbPath: string,
@@ -444,6 +462,42 @@ describe("incremental refresh", () => {
     expect(convos.find((c) => c.id === "sess-copy")?.title).toBe(
       "The kept copy — appeared later",
     );
+  });
+
+  it("re-parses when the winning duplicate has the same mtime and size as the ingested one", async () => {
+    // A metadata-preserving copy (`cp -p`) at a SMALLER path wins the session id
+    // while presenting an identical composite key. Comparing only
+    // (parserVersion, mtime, size) would call the conversation unchanged and
+    // leave the row pointing at — and holding the content of — the file the
+    // summary just reported as skipped. The stored source path is part of the
+    // change decision precisely so the winner switch is honoured.
+    const sameTime = new Date(2026, 0, 1);
+    const strayPath = writeSessionCopy(
+      logsRoot,
+      "-Users-me-dev-copy-b",
+      "Same bytes either way",
+    );
+    utimesSync(strayPath, sameTime, sameTime);
+
+    await refresh({ logsRoot, dbPath });
+    expect(await conversationSourcePath(dbPath, "sess-copy")).toBe(strayPath);
+
+    // Byte-identical, same mtime: the stored (mtime, size) key still matches.
+    const keptPath = writeSessionCopy(
+      logsRoot,
+      "-Users-me-dev-copy-a",
+      "Same bytes either way",
+    );
+    utimesSync(keptPath, sameTime, sameTime);
+
+    const second = await refresh({ logsRoot, dbPath });
+
+    expect(second.conversationsParsed).toBe(1);
+    expect(second.duplicateSessionsSkipped).toEqual([
+      { sessionId: "sess-copy", keptPath, skippedPath: strayPath },
+    ]);
+    // The row now belongs to the file the summary reports as kept.
+    expect(await conversationSourcePath(dbPath, "sess-copy")).toBe(keptPath);
   });
 
   it("reports no duplicates when every session id is unique", async () => {

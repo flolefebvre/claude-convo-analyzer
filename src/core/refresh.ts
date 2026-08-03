@@ -190,12 +190,19 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     // Existing rows, keyed by sessionId, for the skip/changed/delete decision.
     const existing = new Map<
       string,
-      { id: number; mtime: bigint; size: bigint; parserVersion: number }
+      {
+        id: number;
+        sourcePath: string;
+        mtime: bigint;
+        size: bigint;
+        parserVersion: number;
+      }
     >();
     for (const row of await prisma.conversation.findMany({
       select: {
         id: true,
         sessionId: true,
+        sourcePath: true,
         sourceMtime: true,
         sourceSize: true,
         parserVersion: true,
@@ -203,6 +210,7 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     })) {
       existing.set(row.sessionId, {
         id: row.id,
+        sourcePath: row.sourcePath,
         mtime: row.sourceMtime,
         size: row.sourceSize,
         parserVersion: row.parserVersion,
@@ -225,9 +233,17 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
       // Rows written by another parser version are stale by definition, however
       // untouched their source files are — re-parse them (exactly once: the
       // rewrite stamps the current version).
+      //
+      // The source PATH is part of the comparison, not just (mtime, size): when
+      // a duplicate at a smaller path takes over a session id (see
+      // `dedupeBySessionId`), a metadata-preserving copy presents the very same
+      // composite key. Without the path check the conversation would look
+      // unchanged and keep the LOSER's rows while the summary reports the winner
+      // as the file that was kept.
       const unchanged =
         prior !== undefined &&
         prior.parserVersion === PARSER_VERSION &&
+        prior.sourcePath === d.session.sourcePath &&
         prior.mtime === BigInt(d.compositeMtime) &&
         prior.size === BigInt(d.compositeSize);
       if (unchanged) {

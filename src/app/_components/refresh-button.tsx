@@ -19,7 +19,10 @@ import { Loader2, RefreshCw } from "lucide-react";
 import { useState } from "react";
 
 import { refreshConversations } from "@/app/actions";
-import { formatRefreshSummary } from "@/app/_lib/refresh-summary";
+import {
+  formatDuplicateSessionDetail,
+  formatRefreshSummary,
+} from "@/app/_lib/refresh-summary";
 import { Button } from "@/components/ui/button";
 
 export function RefreshButton({
@@ -31,6 +34,10 @@ export function RefreshButton({
 }) {
   const [isPending, setIsPending] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  // The stray-file paths behind a "N duplicate session files skipped" count.
+  // The digest is a single nowrap line, so the paths ride along as its tooltip
+  // rather than growing the header row (see the layout note below).
+  const [detail, setDetail] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function handleClick() {
@@ -39,8 +46,10 @@ export function RefreshButton({
     try {
       const summary = await refreshConversations();
       setStatus(formatRefreshSummary(summary));
+      setDetail(formatDuplicateSessionDetail(summary));
     } catch {
       setStatus(null);
+      setDetail(null);
       setError("Refresh failed. Check the logs and try again.");
     } finally {
       setIsPending(false);
@@ -77,6 +86,7 @@ export function RefreshButton({
       ) : status !== null ? (
         <p
           aria-live="polite"
+          title={detail ?? undefined}
           className="absolute top-full right-0 mt-1 whitespace-nowrap text-xs text-muted-foreground tabular-nums"
         >
           {status}

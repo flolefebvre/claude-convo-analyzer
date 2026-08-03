@@ -50,3 +50,23 @@ export function formatRefreshSummary(summary: RefreshSummary): string {
   segments.push(formatDuration(summary.durationMs));
   return segments.join(" · ");
 }
+
+/**
+ * The multi-line detail behind the duplicate-session count: which file was NOT
+ * ingested, and which one took the session id instead.
+ *
+ * The one-line digest can only carry a count, but a count alone is not
+ * actionable — the user needs the PATH of the stray file to delete it. Returns
+ * null in the normal case (no duplicates) so the caller can skip rendering it.
+ */
+export function formatDuplicateSessionDetail(
+  summary: RefreshSummary,
+): string | null {
+  if (summary.duplicateSessionsSkipped.length === 0) return null;
+  return [
+    "Two log files shared one session id; only one was ingested:",
+    ...summary.duplicateSessionsSkipped.map(
+      (d) => `${d.sessionId}: skipped ${d.skippedPath} (kept ${d.keptPath})`,
+    ),
+  ].join("\n");
+}
