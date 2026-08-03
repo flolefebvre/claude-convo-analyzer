@@ -37,6 +37,17 @@ lineage as a one-line banner — what it continued from, and what continues it:
 
 ![Continuation family](docs/images/continuation-family.png)
 
+When the API itself fails a turn — overloaded, rate-limited, timed out — you
+usually only find out by opening the conversation. The list surfaces it instead:
+any conversation with failed turns carries a badge with the count (sub-agent
+failures included, since they are the conversation's failures too), and the
+expanded panel lists each one — when it happened, which agent it happened in,
+and what the API said — with a link straight to that turn in the Transcript. The
+**Only with errors** toggle narrows the whole list to the conversations that hit
+them, composing with the folder scope and the sort:
+
+![API errors](docs/images/api-errors.png)
+
 Open any conversation for the Transcript view — an IDE-like two-pane view with
 the agent tree (main plus every sub-agent, each with its own cost) on the left
 and one agent's turn-by-turn transcript on the right. Click a row's title to
