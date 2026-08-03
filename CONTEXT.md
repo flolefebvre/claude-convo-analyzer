@@ -42,16 +42,18 @@ An autonomous Claude execution within a Conversation. There are two kinds:
 
 - **Main thread** (root agent): the primary conversation the user drives
   directly. Its work appears as `assistant` Records in the Conversation file.
-- **Sub-agent**: an agent spawned by the Main thread via the `Agent` tool
-  (e.g. an `Explore` or `Plan` agent). A sub-agent runs in its own context and
-  has its **own full transcript file** at
-  `<sessionId>/subagents/agent-<agentId>.jsonl`, with the same per-turn
-  `assistant` Records as a Main thread (marked `isSidechain: true`). The
-  spawning `Agent` call also mirrors the sub-agent's *aggregated* token ledger
-  into its tool result (`toolUseResult`) — the same tokens as the transcript,
-  so the transcript is the source of truth and the aggregate is only a
-  cross-check. A sub-agent may resolve to a different (often cheaper) model than
-  the Main thread.
+- **Sub-agent**: an agent spawned by another Agent via the `Agent` tool
+  (e.g. an `Explore` or `Plan` agent). The spawner is usually the Main thread,
+  but a sub-agent can itself spawn sub-agents, so lineage nests to arbitrary
+  depth. A sub-agent runs in its own context and has its **own full transcript
+  file** at `<sessionId>/subagents/agent-<agentId>.jsonl`, with the same
+  per-turn `assistant` Records as a Main thread (marked `isSidechain: true`) —
+  including, when it spawns, its own `Agent` calls and spawn ledger, which is
+  where a grandchild's parentage is recorded. The spawning `Agent` call also
+  mirrors the sub-agent's *aggregated* token ledger into its tool result
+  (`toolUseResult`) — the same tokens as the transcript, so the transcript is
+  the source of truth and the aggregate is only a cross-check. A sub-agent may
+  resolve to a different (often cheaper) model than the Main thread.
 
 Main thread and Sub-agent are the **same kind of thing** — a transcript of
 Claude doing work — differing only by location and lineage. They are parsed
