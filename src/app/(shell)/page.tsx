@@ -19,6 +19,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 
 import { ConversationRow } from "@/app/_components/conversation-row";
+import { OverviewBand } from "@/app/_components/overview-band";
 import {
   loadConversationDetail,
   loadConversations,
@@ -65,14 +66,39 @@ export default function Page({
   searchParams: Promise<PageSearchParams>;
 }) {
   return (
-    <Suspense
-      fallback={
-        <p className="text-sm text-muted-foreground">Loading conversations…</p>
-      }
-    >
-      <ConversationTable searchParams={searchParams} />
-    </Suspense>
+    <>
+      {/* The overview band: this surface's headline analysis, above its table.
+          Global (scope-independent), so it needs no `searchParams` and gets its
+          own Suspense boundary — the request-time read is deferred out of
+          prerendering (PPR) while the page shell prerenders. */}
+      <Suspense fallback={null}>
+        <Overview />
+      </Suspense>
+
+      <Suspense
+        fallback={
+          <p className="text-sm text-muted-foreground">Loading conversations…</p>
+        }
+      >
+        <ConversationTable searchParams={searchParams} />
+      </Suspense>
+    </>
   );
+}
+
+/**
+ * The overview band's data: the headline aggregate plus the cost-ranked top
+ * Projects, both derived from ALL conversations (scope-independent). Split out
+ * so the request-time read sits inside its own <Suspense> boundary. The
+ * `loadConversations()` read is deduped with the sidebar/table via React
+ * `cache()`, so the band adds no extra DB work.
+ */
+async function Overview() {
+  const allRows = await loadConversations();
+  // No sort intent -> scope-independent slice only; one `deriveFolders` pass
+  // feeds both the overview aggregate and the cost-ranked top Projects.
+  const { overview, topProjects } = buildListView(allRows);
+  return <OverviewBand overview={overview} topProjects={topProjects} />;
 }
 
 /**
