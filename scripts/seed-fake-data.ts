@@ -134,6 +134,19 @@ const MODELS = [
 
 const SKILLS = ["tdd", "orchestrate", "commit", "code-review", "fresh-review"] as const;
 const SUBAGENT_TYPES = ["Explore", "Plan", "general-purpose"] as const;
+
+/**
+ * The task a sub-agent is spawned with, one per agent type. The SAME string is
+ * the parent's `Agent` tool_use `input.prompt` AND the first record of the
+ * sub-agent's own transcript — that is how a real log reads. Keyed by the
+ * already-picked agent type rather than picked at random, so adding it costs no
+ * draw from the PRNG and the rest of the seeded corpus stays byte-identical.
+ */
+const SUBAGENT_PROMPTS: Record<(typeof SUBAGENT_TYPES)[number], string> = {
+  Explore: "Sweep the repo and report where this behaviour is implemented.",
+  Plan: "Draft the implementation plan for this change, smallest slices first.",
+  "general-purpose": "Investigate this and report back with what you find.",
+};
 const BASH_CMDS = ["pnpm test", "pnpm lint", "git status", "pnpm build", "npm run typecheck"] as const;
 const READ_FILES = ["src/index.ts", "src/server.ts", "README.md", "src/db.ts", "package.json"] as const;
 
@@ -290,6 +303,12 @@ function assistantTurn(
   return JSON.stringify(rec);
 }
 
+/**
+ * One prompt record. `agent` marks it as a SUB-AGENT prompt — the task handed
+ * to the sub-agent, which is the FIRST line of every real
+ * `subagents/agent-<id>.jsonl` file: sidechain shape (`isSidechain` +
+ * `agentId`) and no `permissionMode`, which only a main-thread prompt carries.
+ */
 function userPrompt(
   ms: number,
   cwd: string,
@@ -297,6 +316,7 @@ function userPrompt(
   /** Set on a RESUMED session's first prompt: the parent session's record it
    *  continues from. `refresh()` resolves it into a `continued_from` link. */
   parentUuid?: string,
+  agent?: { agentId: string },
 ): string {
   const rec: Record<string, unknown> = {
     type: "user",
@@ -305,9 +325,13 @@ function userPrompt(
     cwd,
     gitBranch: "main",
     version: CC_VERSION,
-    permissionMode: "default",
     message: { role: "user", content: text },
   };
+  if (agent === undefined) rec.permissionMode = "default";
+  else {
+    rec.isSidechain = true;
+    rec.agentId = agent.agentId;
+  }
   if (parentUuid !== undefined) rec.parentUuid = parentUuid;
   return JSON.stringify(rec);
 }
@@ -415,10 +439,15 @@ function spawnSubAgent(
   // The sub-agent's own transcript — the source of truth for its tokens. Every
   // record in it carries the real sidechain shape (`isSidechain` + `agentId`),
   // and its assistant turns name the spawned agent via `attributionAgent`.
-  const subLines: string[] = [];
+  //
+  // It OPENS with the prompt the sub-agent was handed (issue #56), exactly as a
+  // real file does, then replies from five seconds later on.
+  const prompt = SUBAGENT_PROMPTS[agentType];
+  const subLines: string[] = [userPrompt(ms, cwd, prompt, undefined, { agentId })];
   let subTotal = 0;
   const turns = int(2, 5);
   for (let i = 0; i < turns; i++) {
+    const turnMs = ms + 5_000 + i * 30_000;
     const u = makeUsage(0.6);
     const subKind = pickToolKind();
     const subToolUse = chance(0.6)
@@ -435,7 +464,7 @@ function spawnSubAgent(
         type: "assistant",
         uuid: uid("sa"),
         requestId: uid("sreq"),
-        timestamp: iso(ms + i * 30_000),
+        timestamp: iso(turnMs),
         cwd,
         gitBranch: "main",
         version: CC_VERSION,
@@ -457,7 +486,7 @@ function spawnSubAgent(
     // A sub-agent's turn can fail exactly like the main thread's.
     if (chance(0.06)) {
       subLines.push(
-        apiErrorTurn(ms + i * 30_000 + 15_000, cwd, subModel, { agentId, agentType }),
+        apiErrorTurn(turnMs + 15_000, cwd, subModel, { agentId, agentType }),
       );
     }
     // Sub-agents call tools too, and the Tools page counts them — same friction.
@@ -465,7 +494,7 @@ function spawnSubAgent(
       const isError = chance(subKind.errorChance);
       subLines.push(
         toolResult(
-          ms + i * 30_000 + 5_000,
+          turnMs + 5_000,
           cwd,
           subToolUse.id,
           toolResultText(subKind, isError),
@@ -480,7 +509,7 @@ function spawnSubAgent(
     type: "tool_use",
     id: toolUseId,
     name: "Agent",
-    input: { subagent_type: agentType, description: "investigate", prompt: "Look into it." },
+    input: { subagent_type: agentType, description: "investigate", prompt },
   };
   const ledgerResult = {
     agentId,
