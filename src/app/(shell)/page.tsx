@@ -23,6 +23,7 @@ import { OverviewBand } from "@/app/_components/overview-band";
 import {
   loadConversationDetail,
   loadConversations,
+  loadFamilySizes,
 } from "@/app/_lib/conversations";
 import { footerLabelColSpan } from "@/app/_lib/columns";
 import { type FolderEntry } from "@/app/_lib/folders";
@@ -133,6 +134,11 @@ async function ConversationTable({
   const { rows, scoped: isScoped, selectedFolder, grandTotal: total } =
     buildListView(allRows, { folder: activeFolder, sort });
 
+  // Continuation-family size per conversation, walked ONCE over the same rows
+  // (issue #46). Sizes come from the UNSCOPED set on purpose: a family spanning
+  // two Projects still reports its true size while the list is scoped to one.
+  const familySize = await loadFamilySizes();
+
   // Fetch the expanded row's panel detail server-side — only when that row is
   // actually visible in the current view (a stale/foreign `?expanded=` is
   // ignored). `null` detail still renders the panel with a graceful note.
@@ -234,6 +240,7 @@ async function ConversationTable({
                 scoped={isScoped}
                 expanded={row.id === expandedRow?.id}
                 detail={row.id === expandedRow?.id ? expandedDetail : null}
+                familySize={familySize.get(row.id) ?? 1}
                 toggleHref={expandHref(row.id, expandedId, sort, activeFolder, range)}
               />
             ))}

@@ -45,6 +45,9 @@ export function ConversationRow({
   // row's server-fetched panel data (`null` when collapsed or unknown id).
   expanded = false,
   detail = null,
+  // Size of this row's continuation family (issue #46) — 1 for a standalone
+  // conversation, which renders no badge at all.
+  familySize = 1,
   // The row's expand/collapse toggle target (built by the page via expandHref).
   toggleHref,
 }: {
@@ -53,6 +56,7 @@ export function ConversationRow({
   scoped?: boolean;
   expanded?: boolean;
   detail?: ConversationDetail | null;
+  familySize?: number;
   toggleHref: string;
 }) {
   const model = modelLabel(row.models);
@@ -98,15 +102,30 @@ export function ConversationRow({
             (`/conversation/<sessionId>`; `row.id` IS the stable sessionId). Bare
             path → the main/root agent. Only the title is a link — the row's
             `?expanded=` toggle (on the Date cell) and sorting are untouched. */}
-        <TableCell className="max-w-xs truncate font-medium">
-          <Link
-            href={agentHref(row.id)}
-            className="rounded-sm outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
-          >
-            {row.title ?? (
-              <span className="text-muted-foreground">{row.id}</span>
+        <TableCell className="max-w-xs font-medium">
+          <span className="flex items-center gap-1.5">
+            <Link
+              href={agentHref(row.id)}
+              className="truncate rounded-sm outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+            >
+              {row.title ?? (
+                <span className="text-muted-foreground">{row.id}</span>
+              )}
+            </Link>
+            {/* Continuation family: this conversation is one sitting of a piece
+                of work spread over several (`--resume`/fork). The badge counts
+                the WHOLE family, so every member shows the same number. */}
+            {familySize > 1 && (
+              <span
+                className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground tabular-nums"
+                title={`Part of a continuation family of ${familySize} conversations — expand the row for the family tree.`}
+              >
+                <span aria-hidden>⛓ </span>
+                {familySize}
+                <span className="sr-only"> conversations in this continuation family</span>
+              </span>
             )}
-          </Link>
+          </span>
         </TableCell>
         <TableCell>
           <span className="inline-flex items-center gap-1">

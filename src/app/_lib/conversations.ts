@@ -12,6 +12,7 @@
 import { cache } from "react";
 import { connection } from "next/server";
 
+import { buildFamily, familySizes } from "@/core/family";
 import {
   getConversation,
   getDailySpend,
@@ -42,6 +43,27 @@ export const loadConversationDetail = cache(async (id: string) => {
   await connection();
   return getConversation(id);
 });
+
+/**
+ * Family size (connected-component size) for every conversation — what the
+ * list's continuation badge reads. Derived from the SAME cached
+ * {@link loadConversations} rows, so the badge costs no extra query; `cache()`
+ * keeps the walk to once per request.
+ */
+export const loadFamilySizes = cache(async () =>
+  familySizes(await loadConversations()),
+);
+
+/**
+ * The continuation family of one conversation — its whole connected component,
+ * laid out as a tree with per-member cost and the family total. Built over the
+ * cached {@link loadConversations} rows (ADR-0002: the core walk never touches
+ * the DB itself), so the panel and the transcript banner share one read.
+ * `null` for an unknown session id.
+ */
+export const loadFamily = cache(async (id: string) =>
+  buildFamily(await loadConversations(), id),
+);
 
 /**
  * Read the Trends view's daily spend: per-day, per-model priced rows for one
