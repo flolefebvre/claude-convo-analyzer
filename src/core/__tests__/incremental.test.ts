@@ -7,10 +7,54 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPrismaClient } from "@/core/db";
 import { getConversation, listConversations } from "@/core/read";
 import { refresh } from "@/core/refresh";
+
+/**
+ * Fault injection for the "interrupted refresh" test: when ARMED, the next
+ * `message.findFirst` on a client handed out by `createPrismaClient` throws,
+ * then disarms.
+ *
+ * WHY `message.findFirst`: it is the FIRST database call of the
+ * continued-from resolution pass (`resolveContinuedFrom` in refresh.ts) and the
+ * ONLY `findFirst` in core — the read seams never call it. Arming it therefore
+ * aborts a refresh at exactly the hazard window this suite pins: after every
+ * conversation has been written, before any continuation link is resolved. If a
+ * refactor moves or renames that call, this injection stops reproducing the
+ * interruption — the test guards against that by asserting the aborted run DID
+ * write its conversation rows, so a crash that drifts earlier fails loudly
+ * instead of passing vacuously.
+ */
+const crash = vi.hoisted(() => ({ armed: false }));
+
+vi.mock("@/core/db", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/core/db")>();
+  return {
+    ...actual,
+    createPrismaClient: (dbPath?: string) => {
+      const client = actual.createPrismaClient(dbPath);
+      return new Proxy(client, {
+        get(target, prop, receiver) {
+          const value: unknown = Reflect.get(target, prop, receiver);
+          if (prop !== "message") return value;
+          return new Proxy(value as object, {
+            get(model, method, modelReceiver) {
+              if (method === "findFirst" && crash.armed) {
+                return () => {
+                  crash.armed = false;
+                  throw new Error("simulated interruption");
+                };
+              }
+              return Reflect.get(model, method, modelReceiver) as unknown;
+            },
+          });
+        },
+      });
+    },
+  };
+});
 
 const FIXTURES_ROOT = path.join(import.meta.dirname, "fixtures", "logs");
 
@@ -78,6 +122,7 @@ describe("incremental refresh", () => {
   });
 
   afterEach(() => {
+    crash.armed = false;
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
@@ -226,6 +271,55 @@ describe("incremental refresh", () => {
     // Parent and child stay DISTINCT rows; the parent has no continuation.
     expect(origin?.continuedFromId).toBeNull();
     expect(child?.id).not.toBe(origin?.id);
+  });
+
+  it("completes continued_from links left unresolved by an INTERRUPTED refresh", async () => {
+    // A refresh that dies between the conversation writes and the continuation
+    // linking pass must not strand those conversations: they are written but NOT
+    // yet stamped as up-to-date, so the next refresh re-parses them and resolves
+    // their links. Stamping them at write time would make the next refresh skip
+    // them and lose `continuedFromConversationId` forever.
+    const resumeDir = path.join(logsRoot, "-Users-me-dev-resume");
+    rmSync(path.join(resumeDir, "sess-resumed.jsonl"));
+    writeFileSync(
+      path.join(resumeDir, "sess-child.jsonl"),
+      [
+        '{"type":"ai-title","aiTitle":"Child of origin"}',
+        '{"type":"user","uuid":"child-u1","parentUuid":"orig-a1","timestamp":"2026-06-20T09:00:00.000Z","cwd":"/Users/me/dev/resume","version":"2.1.180","message":{"role":"user","content":"resume from origin"}}',
+        '{"type":"assistant","uuid":"child-a1","parentUuid":"child-u1","requestId":"creq-1","timestamp":"2026-06-20T09:00:05.000Z","cwd":"/Users/me/dev/resume","version":"2.1.180","message":{"id":"cmsg-1","role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"continued"}],"usage":{"input_tokens":5,"output_tokens":5,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}}}',
+        "",
+      ].join("\n"),
+    );
+
+    crash.armed = true;
+    await expect(refresh({ logsRoot, dbPath })).rejects.toThrow(
+      "simulated interruption",
+    );
+    expect(crash.armed).toBe(false); // the injected fault really fired
+
+    // The interruption happened AFTER the writes: the rows are there, unlinked.
+    const interrupted = await listConversations({ dbPath });
+    expect(interrupted.some((c) => c.id === "sess-origin")).toBe(true);
+    expect(interrupted.find((c) => c.id === "sess-child")?.continuedFromId).toBeNull();
+    const afterCrash = await rowCounts(dbPath);
+
+    // The next refresh repairs what the interrupted run left behind.
+    await refresh({ logsRoot, dbPath });
+    const repaired = await listConversations({ dbPath });
+    expect(repaired.find((c) => c.id === "sess-child")?.continuedFromId).toBe(
+      "sess-origin",
+    );
+    expect(repaired.find((c) => c.id === "sess-origin")?.continuedFromId).toBeNull();
+
+    // Re-parsing the interrupted run's conversations rewrote them wholesale
+    // (delete + cascade + re-write), including their sub-agent rows — no
+    // duplication anywhere.
+    expect(await rowCounts(dbPath)).toEqual(afterCrash);
+
+    // And the repaired state is stamped: the run after it skips everything.
+    const third = await refresh({ logsRoot, dbPath });
+    expect(third.conversationsParsed).toBe(0);
+    expect(third.conversationsSkipped).toBe(repaired.length);
   });
 
   it("re-parses every conversation exactly once after a parser-version bump, then skips again", async () => {
