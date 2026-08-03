@@ -239,3 +239,14 @@ function absoluteLabel(date: Date): string {
   }).format(date);
 }
 
+
+/**
+ * A result size in characters, compactly (`8.2K`), with an em dash for "no
+ * size" — the Tools table's cell for a tool whose calls never paired a result
+ * (NULL `result_char_size`), which is deliberately absent from the size stats
+ * rather than shown as zero.
+ */
+export function formatChars(n: number | null): string {
+  if (n === null) return "—";
+  return formatCompactTokens(n);
+}
