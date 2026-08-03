@@ -200,6 +200,65 @@ function makeUsage(scale: number): Usage {
 
 type SubAgent = { agentId: string; lines: string[] };
 
+// ── API errors (issue #47) ──────────────────────────────────────────────────
+// Turns the API itself failed on: the log marks them `isApiErrorMessage` with
+// an `apiErrorStatus`, and the turn's only content is the `API Error: …` line.
+// They happen on the main thread and inside sub-agents alike, which is exactly
+// what the list badge and the panel's error section have to surface.
+
+const API_ERRORS = [
+  { status: "overloaded_error", text: "API Error: Overloaded" },
+  { status: "rate_limit_error", text: "API Error: 429 rate limit exceeded" },
+  { status: "timeout_error", text: "API Error: Request timed out after 600s" },
+  { status: "api_error", text: "API Error: 500 internal server error" },
+] as const;
+
+/**
+ * One failed assistant turn. `agent` marks it as a SUB-AGENT record, carrying
+ * the real log shape (`isSidechain` + `agentId`) the parser keys sidechains by.
+ * A failed turn still bills a little input, and no output.
+ */
+function apiErrorTurn(
+  ms: number,
+  cwd: string,
+  model: string,
+  agent?: { agentId: string },
+): string {
+  const failure = pick(API_ERRORS);
+  const rec: Record<string, unknown> = {
+    type: "assistant",
+    uuid: uid("a"),
+    requestId: uid("req"),
+    timestamp: iso(ms),
+    cwd,
+    gitBranch: "main",
+    version: CC_VERSION,
+    isApiErrorMessage: true,
+    apiErrorStatus: failure.status,
+    message: {
+      id: uid("msg"),
+      role: "assistant",
+      model,
+      content: [{ type: "text", text: failure.text }],
+      usage: {
+        input_tokens: int(80, 900),
+        output_tokens: 0,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: int(2_000, 40_000),
+        cache_creation: {
+          ephemeral_5m_input_tokens: 0,
+          ephemeral_1h_input_tokens: 0,
+        },
+      },
+    },
+  };
+  if (agent !== undefined) {
+    rec.isSidechain = true;
+    rec.agentId = agent.agentId;
+  }
+  return JSON.stringify(rec);
+}
+
 /** Build one main-thread assistant turn (optionally with tool_use blocks). */
 function assistantTurn(
   ms: number,
@@ -378,6 +437,12 @@ function spawnSubAgent(
         },
       }),
     );
+    // A sub-agent's turn can fail exactly like the main thread's.
+    if (chance(0.06)) {
+      subLines.push(
+        apiErrorTurn(ms + i * 30_000 + 15_000, cwd, subModel, { agentId }),
+      );
+    }
     // Sub-agents call tools too, and the Tools page counts them — same friction.
     if (subToolUse !== null) {
       const isError = chance(subKind.errorChance);
@@ -474,6 +539,12 @@ function buildConversation(
       lines.push(toolResult(t, cwd, tuId, toolResultText(kind, isError), isError));
     } else {
       lines.push(assistantTurn(t, cwd, model, { skill }));
+    }
+
+    // The API occasionally fails a turn; Claude Code retries on the next one.
+    if (chance(0.05)) {
+      t += int(3_000, 15_000);
+      lines.push(apiErrorTurn(t, cwd, model));
     }
 
     // Occasionally spawn a sub-agent.

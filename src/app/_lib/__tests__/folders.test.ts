@@ -33,6 +33,7 @@ function summary(over: {
     costByType: { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 },
     unpriced: over.unpriced ?? false,
     subAgentCount: 0,
+    errorCount: 0,
     continuedFromId: null,
   };
 }

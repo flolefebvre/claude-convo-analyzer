@@ -15,6 +15,7 @@
 // wrapped in <Suspense>: the page shell prerenders, the data table streams in.
 // `loadConversations` defers the DB read out of prerendering (connection()).
 
+import { AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import { Suspense } from "react";
 
@@ -22,20 +23,24 @@ import { ConversationRow } from "@/app/_components/conversation-row";
 import { OverviewBand } from "@/app/_components/overview-band";
 import {
   loadConversationDetail,
+  loadConversationErrors,
   loadConversations,
   loadFamily,
   loadFamilySizes,
 } from "@/app/_lib/conversations";
 import { footerLabelColSpan } from "@/app/_lib/columns";
+import { errorsView } from "@/app/_lib/errors-view";
 import { familyView } from "@/app/_lib/family-view";
 import { type FolderEntry } from "@/app/_lib/folders";
 import { formatDate, formatGrandTotalCost, formatTokens } from "@/app/_lib/format";
 import { buildListView } from "@/app/_lib/list-view";
 import {
+  type ListLinkContext,
   type SortableField,
-  type SortState,
+  errorsHref,
   expandHref,
   folderHref,
+  resolveErrorsOnly,
   resolveExpanded,
   resolveSort,
   sortHref,
@@ -57,6 +62,7 @@ type PageSearchParams = {
   folder?: string | string[];
   expanded?: string | string[];
   range?: string | string[];
+  errors?: string | string[];
 };
 
 /** First value of a `searchParams` entry (Next gives string | string[]). */
@@ -129,12 +135,17 @@ async function ConversationTable({
   // The Trends range, carried verbatim through every link this page builds, so
   // sorting/expanding here never resets the range the user picked on Trends.
   const range = firstParam(params.range) || undefined;
+  // The "only with errors" filter (`?errors=1`), off by default (issue #47).
+  const errorsOnly = resolveErrorsOnly(params.errors);
+  // The one view-state value every link on this page carries forward, so the
+  // axes compose instead of clobbering each other (see `ListLinkContext`).
+  const links: ListLinkContext = { sort, folder: activeFolder, range, errorsOnly };
   // Fetch ALL rows once (deduped with the layout's sidebar read via React
   // cache()); the seam owns the order-dependent pipeline (filter BEFORE sort,
   // one `deriveFolders` derive feeding the table breadcrumb + scope).
   const allRows = await loadConversations();
   const { rows, scoped: isScoped, selectedFolder, grandTotal: total } =
-    buildListView(allRows, { folder: activeFolder, sort });
+    buildListView(allRows, { folder: activeFolder, sort, errorsOnly });
 
   // Continuation-family size per conversation, walked ONCE over the same rows
   // (issue #46). Sizes come from the UNSCOPED set on purpose: a family spanning
@@ -151,6 +162,12 @@ async function ConversationTable({
     ? await loadConversationDetail(expandedRow.id)
     : null;
 
+  // The expanded row's failed turns, shaped for the panel's error list. Read
+  // only for the open row — a collapsed table costs nothing.
+  const expandedErrors = expandedRow
+    ? errorsView(expandedRow.id, await loadConversationErrors(expandedRow.id))
+    : null;
+
   // Format every row's relative Date label against ONE request-time `now` so
   // all rows agree on what "5m ago" means, and hand each row the resulting
   // strings as plain props.
@@ -162,26 +179,23 @@ async function ConversationTable({
     ? await loadFamily(expandedRow.id)
     : null;
   const expandedFamilyView = expandedFamily
-    ? familyView(
-        expandedFamily,
-        { sort, folder: activeFolder, range },
-        now,
-      )
+    ? familyView(expandedFamily, links, now)
     : null;
 
   // Empty when there are genuinely no conversations OR when the active scope
   // matched nothing (unknown/stale `?folder=`, or a folder with zero rows).
   if (rows.length === 0) {
-    return <EmptyState scoped={isScoped} sort={sort} range={range} />;
+    return (
+      <>
+        <ListControls folder={selectedFolder} links={links} />
+        <EmptyState scoped={isScoped} links={links} />
+      </>
+    );
   }
 
   return (
     <>
-      {/* When scoped, every row shares one Project: show its full path once as a
-          breadcrumb (with a way back to all folders) instead of a Folder column. */}
-      {selectedFolder && (
-        <FolderBreadcrumb folder={selectedFolder} sort={sort} range={range} />
-      )}
+      <ListControls folder={selectedFolder} links={links} />
 
       <div className="overflow-hidden rounded-xl border bg-card">
         <Table>
@@ -189,9 +203,7 @@ async function ConversationTable({
             <TableRow>
               <SortableHead
                 field="date"
-                sort={sort}
-                folder={activeFolder}
-                range={range}
+                links={links}
               >
                 Date
               </SortableHead>
@@ -199,43 +211,33 @@ async function ConversationTable({
               {!isScoped && (
                 <SortableHead
                   field="folder"
-                  sort={sort}
-                  folder={activeFolder}
-                  range={range}
+                  links={links}
                 >
                   Folder
                 </SortableHead>
               )}
               <SortableHead
                 field="title"
-                sort={sort}
-                folder={activeFolder}
-                range={range}
+                links={links}
               >
                 Title
               </SortableHead>
               <SortableHead
                 field="model"
-                sort={sort}
-                folder={activeFolder}
-                range={range}
+                links={links}
               >
                 Model(s)
               </SortableHead>
               <SortableHead
                 field="total"
-                sort={sort}
-                folder={activeFolder}
-                range={range}
+                links={links}
                 className="text-right"
               >
                 Total
               </SortableHead>
               <SortableHead
                 field="cost"
-                sort={sort}
-                folder={activeFolder}
-                range={range}
+                links={links}
                 className="text-right"
               >
                 Cost
@@ -257,7 +259,8 @@ async function ConversationTable({
                 detail={row.id === expandedRow?.id ? expandedDetail : null}
                 familySize={familySize.get(row.id) ?? 1}
                 family={row.id === expandedRow?.id ? expandedFamilyView : null}
-                toggleHref={expandHref(row.id, expandedId, sort, activeFolder, range)}
+                errors={row.id === expandedRow?.id ? expandedErrors : null}
+                toggleHref={expandHref(row.id, expandedId, links)}
               />
             ))}
           </TableBody>
@@ -291,6 +294,51 @@ async function ConversationTable({
 }
 
 /**
+ * The strip above the table: the Project breadcrumb when scoped (left) and the
+ * "only with errors" toggle (right). Rendered in BOTH states — with rows and
+ * empty — so the toggle never disappears at the moment you want to turn it off.
+ */
+function ListControls({
+  folder,
+  links,
+}: {
+  /** The selected Project, when a `?folder=` scope is active. */
+  folder: FolderEntry | undefined;
+  links: ListLinkContext;
+}) {
+  return (
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+      {folder ? <FolderBreadcrumb folder={folder} links={links} /> : <span />}
+      <ErrorsFilterToggle links={links} />
+    </div>
+  );
+}
+
+/**
+ * The "only with errors" filter, a server-side link like every other list
+ * control (`?errors=1`). Pressed state is the URL's, so it is shareable and
+ * survives a reload; `aria-pressed` carries it to assistive tech.
+ */
+function ErrorsFilterToggle({ links }: { links: ListLinkContext }) {
+  const active = links.errorsOnly === true;
+  return (
+    <Link
+      href={errorsHref(links)}
+      scroll={false}
+      aria-pressed={active}
+      className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50 ${
+        active
+          ? "border-destructive/30 bg-destructive/10 text-destructive dark:bg-destructive/20"
+          : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
+      }`}
+    >
+      <AlertTriangle className="size-3.5" aria-hidden />
+      Only with errors
+    </Link>
+  );
+}
+
+/**
  * The table-region empty state. When scoped, the `?folder=` matched nothing
  * (unknown/stale key or an empty Project) so we offer a clear-filter link back
  * to "All folders" (preserving sort). When unscoped, there are simply no
@@ -298,23 +346,33 @@ async function ConversationTable({
  */
 function EmptyState({
   scoped,
-  sort,
-  range,
+  links,
 }: {
   scoped: boolean;
-  sort: SortState;
-  /** The active Trends range, preserved by the clear-filter link. */
-  range?: string;
+  /** The active view state, preserved by the clear-filter link. */
+  links: ListLinkContext;
 }) {
   return (
     <div className="rounded-xl border border-dashed bg-card p-16 text-center">
-      {scoped ? (
+      {links.errorsOnly ? (
+        <>
+          <p className="text-sm text-muted-foreground">
+            No conversations with API errors{scoped ? " in this folder" : ""}.
+          </p>
+          <Link
+            href={errorsHref(links)}
+            className="mt-3 inline-block text-sm font-medium hover:underline"
+          >
+            Show all conversations
+          </Link>
+        </>
+      ) : scoped ? (
         <>
           <p className="text-sm text-muted-foreground">
             No conversations in this folder.
           </p>
           <Link
-            href={folderHref(undefined, sort, range)}
+            href={folderHref(undefined, links)}
             className="mt-3 inline-block text-sm font-medium hover:underline"
           >
             Clear filter — show all folders
@@ -336,21 +394,19 @@ function EmptyState({
  */
 function FolderBreadcrumb({
   folder,
-  sort,
-  range,
+  links,
 }: {
   folder: FolderEntry;
-  sort: SortState;
-  /** The active Trends range, preserved by the "All folders" link. */
-  range?: string;
+  /** The active view state, preserved by the "All folders" link. */
+  links: ListLinkContext;
 }) {
   return (
     <nav
       aria-label="Folder scope"
-      className="mb-3 flex flex-wrap items-center gap-2 text-sm"
+      className="flex flex-wrap items-center gap-2 text-sm"
     >
       <Link
-        href={folderHref(undefined, sort, range)}
+        href={folderHref(undefined, links)}
         className="text-muted-foreground hover:underline"
       >
         All folders
@@ -368,21 +424,17 @@ function FolderBreadcrumb({
 /** A header cell that links to the toggled sort + shows the active arrow. */
 function SortableHead({
   field,
-  sort,
-  folder,
-  range,
+  links,
   className,
   children,
 }: {
   field: SortableField;
-  sort: SortState;
-  /** The active `?folder=` scope, threaded so re-sorting keeps the folder. */
-  folder?: string;
-  /** The active Trends range, threaded for the same reason. */
-  range?: string;
+  /** The active view state, threaded so re-sorting keeps every other axis. */
+  links: ListLinkContext;
   className?: string;
   children: React.ReactNode;
 }) {
+  const sort = links.sort;
   const indicator = sortIndicator(field, sort);
   const isActive = sort.sortBy === field;
   const ariaSort = isActive
@@ -395,7 +447,7 @@ function SortableHead({
       {/* Quiet uppercase labels echo the overview band's stat-card captions. The
           active sort column lifts to full foreground; the rest stay muted. */}
       <Link
-        href={sortHref(field, sort, folder, range)}
+        href={sortHref(field, links)}
         className={`inline-flex items-center gap-1 text-xs font-medium tracking-wide uppercase transition-colors hover:text-foreground ${
           isActive ? "text-foreground" : "text-muted-foreground"
         }`}

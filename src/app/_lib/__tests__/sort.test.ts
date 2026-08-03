@@ -4,10 +4,12 @@ import type { ConversationSummary } from "@/core/read";
 
 import {
   DEFAULT_SORT,
+  errorsHref,
   expandHref,
   folderHref,
   isSortableField,
   modelLabel,
+  resolveErrorsOnly,
   resolveExpanded,
   resolveSort,
   sortConversations,
@@ -136,31 +138,34 @@ describe("toggleSort", () => {
 
 describe("sortHref", () => {
   it("encodes the toggled sort as a query string", () => {
-    expect(sortHref("title", { sortBy: "cost", dir: "desc" })).toBe(
+    expect(sortHref("title", { sort: { sortBy: "cost", dir: "desc" } })).toBe(
       "?sortBy=title&dir=asc",
     );
   });
 
   it("encodes the flipped dir when re-clicking the active field", () => {
-    expect(sortHref("cost", { sortBy: "cost", dir: "desc" })).toBe(
+    expect(sortHref("cost", { sort: { sortBy: "cost", dir: "desc" } })).toBe(
       "?sortBy=cost&dir=asc",
     );
   });
 
   it("preserves the active folder scope so sort composes with folder", () => {
     expect(
-      sortHref("title", { sortBy: "cost", dir: "desc" }, "-Users-me-dev-demo"),
+      sortHref("title", {
+        sort: { sortBy: "cost", dir: "desc" },
+        folder: "-Users-me-dev-demo",
+      }),
     ).toBe("?sortBy=title&dir=asc&folder=-Users-me-dev-demo");
   });
 
   it("omits the folder param when there is no active scope", () => {
-    expect(sortHref("title", { sortBy: "cost", dir: "desc" }, undefined)).toBe(
+    expect(sortHref("title", { sort: { sortBy: "cost", dir: "desc" }, folder: undefined })).toBe(
       "?sortBy=title&dir=asc",
     );
   });
 
   it("url-encodes a folder value with special characters", () => {
-    expect(sortHref("title", DEFAULT_SORT, "a b&c")).toBe(
+    expect(sortHref("title", { sort: DEFAULT_SORT, folder: "a b&c" })).toBe(
       "?sortBy=title&dir=asc&folder=a+b%26c",
     );
   });
@@ -168,20 +173,24 @@ describe("sortHref", () => {
 
 describe("range preservation across list links", () => {
   it("keeps an active trends range on a sort toggle", () => {
-    expect(sortHref("cost", { sortBy: "date", dir: "desc" }, undefined, "90")).toBe(
+    expect(sortHref("cost", { sort: { sortBy: "date", dir: "desc" }, range: "90" })).toBe(
       "?sortBy=cost&dir=desc&range=90",
     );
   });
 
   it("keeps an active trends range on a row expand", () => {
-    expect(expandHref("s1", undefined, DEFAULT_SORT, "-Users-me-dev-demo", "7")).toBe(
+    expect(expandHref("s1", undefined, {
+      sort: DEFAULT_SORT,
+      folder: "-Users-me-dev-demo",
+      range: "7",
+    })).toBe(
       "?sortBy=date&dir=desc&folder=-Users-me-dev-demo&expanded=s1&range=7",
     );
   });
 
   it("adds no range param when the URL carries none", () => {
-    expect(sortHref("cost", DEFAULT_SORT)).toBe("?sortBy=cost&dir=desc");
-    expect(expandHref("s1", undefined, DEFAULT_SORT)).toBe(
+    expect(sortHref("cost", { sort: DEFAULT_SORT })).toBe("?sortBy=cost&dir=desc");
+    expect(expandHref("s1", undefined, { sort: DEFAULT_SORT })).toBe(
       "?sortBy=date&dir=desc&expanded=s1",
     );
   });
@@ -189,29 +198,29 @@ describe("range preservation across list links", () => {
 
 describe("folderHref", () => {
   it("sets the folder param while preserving the active sort", () => {
-    expect(folderHref("-Users-me-dev-demo", { sortBy: "cost", dir: "desc" })).toBe(
+    expect(folderHref("-Users-me-dev-demo", { sort: { sortBy: "cost", dir: "desc" } })).toBe(
       "?sortBy=cost&dir=desc&folder=-Users-me-dev-demo",
     );
   });
 
   it("clears the folder param (All folders) but keeps the sort", () => {
-    expect(folderHref(undefined, { sortBy: "title", dir: "asc" })).toBe(
+    expect(folderHref(undefined, { sort: { sortBy: "title", dir: "asc" } })).toBe(
       "?sortBy=title&dir=asc",
     );
   });
 
   it("preserves an active trends range so folder and range compose", () => {
-    expect(folderHref("-Users-me-dev-demo", DEFAULT_SORT, "90")).toBe(
+    expect(folderHref("-Users-me-dev-demo", { sort: DEFAULT_SORT, range: "90" })).toBe(
       "?sortBy=date&dir=desc&folder=-Users-me-dev-demo&range=90",
     );
     // No range in the URL (the conversation list) -> no range param.
-    expect(folderHref("-Users-me-dev-demo", DEFAULT_SORT)).toBe(
+    expect(folderHref("-Users-me-dev-demo", { sort: DEFAULT_SORT })).toBe(
       "?sortBy=date&dir=desc&folder=-Users-me-dev-demo",
     );
   });
 
   it("url-encodes a folder value with special characters", () => {
-    expect(folderHref("a b&c", DEFAULT_SORT)).toBe(
+    expect(folderHref("a b&c", { sort: DEFAULT_SORT })).toBe(
       "?sortBy=date&dir=desc&folder=a+b%26c",
     );
   });
@@ -238,30 +247,36 @@ describe("resolveExpanded", () => {
 describe("expandHref", () => {
   it("expands a collapsed row while preserving sort and folder", () => {
     expect(
-      expandHref("sess-basic", undefined, { sortBy: "cost", dir: "desc" }, "-Users-me-dev-demo"),
+      expandHref("sess-basic", undefined, {
+        sort: { sortBy: "cost", dir: "desc" },
+        folder: "-Users-me-dev-demo",
+      }),
     ).toBe("?sortBy=cost&dir=desc&folder=-Users-me-dev-demo&expanded=sess-basic");
   });
 
   it("expands a collapsed row while ANOTHER row is expanded (replaces it)", () => {
-    expect(expandHref("sess-b", "sess-a", DEFAULT_SORT)).toBe(
+    expect(expandHref("sess-b", "sess-a", { sort: DEFAULT_SORT })).toBe(
       "?sortBy=date&dir=desc&expanded=sess-b",
     );
   });
 
   it("collapses the already-expanded row (drops the param) keeping sort and folder", () => {
     expect(
-      expandHref("sess-basic", "sess-basic", { sortBy: "cost", dir: "desc" }, "-Users-me-dev-demo"),
+      expandHref("sess-basic", "sess-basic", {
+        sort: { sortBy: "cost", dir: "desc" },
+        folder: "-Users-me-dev-demo",
+      }),
     ).toBe("?sortBy=cost&dir=desc&folder=-Users-me-dev-demo");
   });
 
   it("omits the folder param when there is no active scope", () => {
-    expect(expandHref("sess-basic", undefined, DEFAULT_SORT)).toBe(
+    expect(expandHref("sess-basic", undefined, { sort: DEFAULT_SORT })).toBe(
       "?sortBy=date&dir=desc&expanded=sess-basic",
     );
   });
 
   it("url-encodes a row id with special characters", () => {
-    expect(expandHref("a b&c", undefined, DEFAULT_SORT)).toBe(
+    expect(expandHref("a b&c", undefined, { sort: DEFAULT_SORT })).toBe(
       "?sortBy=date&dir=desc&expanded=a+b%26c",
     );
   });
@@ -338,6 +353,7 @@ function summary(over: {
     costByType: { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 },
     unpriced: false,
     subAgentCount: 0,
+    errorCount: 0,
     continuedFromId: null,
   };
 }
@@ -466,5 +482,72 @@ describe("sortConversations", () => {
     // All equal on cost -> tiebreak by id ascending, regardless of dir.
     expect(ids(sortConversations(rows, { sortBy: "cost", dir: "asc" }))).toEqual(["a", "b", "c"]);
     expect(ids(sortConversations(rows, { sortBy: "cost", dir: "desc" }))).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("resolveErrorsOnly", () => {
+  it("is off when the param is absent", () => {
+    expect(resolveErrorsOnly(undefined)).toBe(false);
+  });
+
+  it("is on for the canonical `errors=1`", () => {
+    expect(resolveErrorsOnly("1")).toBe(true);
+  });
+
+  it("is off for any other value, so a stale URL never hides rows silently", () => {
+    expect(resolveErrorsOnly("")).toBe(false);
+    expect(resolveErrorsOnly("0")).toBe(false);
+    expect(resolveErrorsOnly("yes")).toBe(false);
+  });
+
+  it("reads the first value when the param repeats", () => {
+    expect(resolveErrorsOnly(["1", "0"])).toBe(true);
+  });
+});
+
+describe("errorsHref", () => {
+  it("turns the filter ON while preserving sort and folder", () => {
+    expect(
+      errorsHref({
+        sort: { sortBy: "cost", dir: "desc" },
+        folder: "-Users-me-dev-demo",
+      }),
+    ).toBe("?sortBy=cost&dir=desc&folder=-Users-me-dev-demo&errors=1");
+  });
+
+  it("turns the filter OFF when it is already on", () => {
+    expect(errorsHref({ sort: DEFAULT_SORT, errorsOnly: true })).toBe(
+      "?sortBy=date&dir=desc",
+    );
+  });
+
+  it("drops the expanded row: it may not survive the filter change", () => {
+    // No `expanded` axis is ever written by this link — compare with expandHref.
+    expect(errorsHref({ sort: DEFAULT_SORT, range: "7" })).toBe(
+      "?sortBy=date&dir=desc&range=7&errors=1",
+    );
+  });
+});
+
+describe("the errors filter travels with every other list link", () => {
+  it("survives a sort toggle", () => {
+    expect(sortHref("cost", { sort: DEFAULT_SORT, errorsOnly: true })).toBe(
+      "?sortBy=cost&dir=desc&errors=1",
+    );
+  });
+
+  it("survives a folder change and a row expand", () => {
+    expect(
+      folderHref("-Users-me-dev-demo", { sort: DEFAULT_SORT, errorsOnly: true }),
+    ).toBe("?sortBy=date&dir=desc&folder=-Users-me-dev-demo&errors=1");
+    expect(
+      expandHref("s1", undefined, { sort: DEFAULT_SORT, errorsOnly: true }),
+    ).toBe("?sortBy=date&dir=desc&expanded=s1&errors=1");
+  });
+
+  it("adds no param when the filter is off", () => {
+    expect(sortHref("cost", { sort: DEFAULT_SORT, errorsOnly: false })).toBe(
+      "?sortBy=cost&dir=desc",
+    );
   });
 });

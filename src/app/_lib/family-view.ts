@@ -8,7 +8,7 @@ import type { ConversationFamily } from "@/core/family";
 
 import { formatDate } from "@/app/_lib/format";
 import { friendlyFolderName } from "@/app/_lib/folders";
-import { expandHref, type SortState } from "@/app/_lib/sort";
+import { expandHref, type ListLinkContext } from "@/app/_lib/sort";
 
 /** One family member, ready to render as a row of the panel's tree. */
 export type FamilyViewRow = {
@@ -42,23 +42,19 @@ export type FamilyView = {
   hasUnpriced: boolean;
 };
 
-/** The list view-state a member link has to preserve. */
-export type FamilyLinkContext = {
-  sort: SortState;
-  /** The active `?folder=` scope, or `undefined` for "All folders". */
-  folder?: string;
-  /** The active Trends range, carried verbatim like every other list link. */
-  range?: string;
-};
+/** The list view-state a member link has to preserve — the same context every
+ *  other list link carries, so a new list axis reaches the family tree too. */
+export type FamilyLinkContext = ListLinkContext;
 
 /**
  * Shape a {@link ConversationFamily} into the panel's tree rows.
  *
  * Order and depth come from the core walk (chronological, indented by fork), so
  * this only formats: relative dates against ONE request-time `now`, the
- * cross-project label, and each member's expand link. A member that lives in a
- * DIFFERENT Project than the active scope gets a link with the scope DROPPED —
- * otherwise the click would land on a filtered list that cannot show that row.
+ * cross-project label, and each member's expand link. A member link drops any
+ * filter that could hide its target — the folder scope when the member lives in
+ * another Project, and the errors filter always — otherwise the click would land
+ * on a filtered list that cannot show that row.
  */
 export function familyView(
   family: ConversationFamily,
@@ -69,7 +65,8 @@ export function familyView(
   return {
     rows: family.members.map((member) => {
       const date = formatDate(member.startedAt, now);
-      const inScope = ctx.folder === undefined || ctx.folder === member.project.folder;
+      const inScope =
+        ctx.folder === undefined || ctx.folder === member.project.folder;
       return {
         id: member.id,
         title: member.title,
@@ -88,9 +85,17 @@ export function familyView(
           // Never a toggle: clicking a member always EXPANDS it, even the one
           // already open (whose panel this is).
           undefined,
-          ctx.sort,
-          inScope ? ctx.folder : undefined,
-          ctx.range,
+          {
+            ...ctx,
+            // A member in a DIFFERENT Project gets the scope DROPPED — the click
+            // would otherwise land on a filtered list that cannot show that row.
+            folder: inScope ? ctx.folder : undefined,
+            // Same reasoning for the errors filter, but unconditional: a family
+            // member that never failed is invisible under `?errors=1`, and the
+            // family view does not know which members failed. Following a family
+            // link always lands on the member, filter cleared.
+            errorsOnly: false,
+          },
         ),
       };
     }),

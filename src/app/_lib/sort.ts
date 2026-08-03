@@ -14,6 +14,8 @@
 
 import type { ConversationSummary } from "@/core/read";
 
+import { firstParam } from "@/app/_lib/search-params";
+
 export type SortDir = "asc" | "desc";
 
 /** A sortable column key + its resolved direction. */
@@ -86,6 +88,9 @@ const COLUMNS = {
 
 export type SortableField = keyof typeof COLUMNS;
 
+/** The single `?errors=` value that means "only conversations with errors". */
+const ERRORS_ON = "1";
+
 /** Default when the URL carries no (valid) sort params. */
 export const DEFAULT_SORT: SortState = { sortBy: "date", dir: "desc" };
 
@@ -97,11 +102,6 @@ export function isSortableField(field: string): field is SortableField {
 /** The direction a fresh (inactive) click on `field` should start at. */
 function defaultDirFor(field: SortableField): SortDir {
   return COLUMNS[field].defaultDir;
-}
-
-/** First value of a `searchParams` entry (Next gives string | string[]). */
-function firstParam(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
 }
 
 /**
@@ -135,68 +135,93 @@ export function toggleSort(field: SortableField, current: SortState): SortState 
 }
 
 /**
- * Build the page's query string from a sort state and an optional folder scope,
- * so both axes compose: sort links keep the active folder and folder links keep
- * the active sort. `folder` is omitted (cleared) when `undefined`/empty.
- * `URLSearchParams` handles value encoding.
+ * The list view state EVERY link on this page has to carry forward, so the axes
+ * compose: a sort link keeps the active folder scope, a folder link keeps the
+ * active sort, and both keep the Trends range the user arrived with. Passed as
+ * one value rather than a growing tail of positional arguments — each new list
+ * axis then reaches every link by extending this type, not every signature.
  */
-function buildHref(
-  sort: SortState,
-  folder: string | undefined,
-  expanded?: string,
-  range?: string,
-): string {
-  const params = new URLSearchParams({ sortBy: sort.sortBy, dir: sort.dir });
-  if (folder) params.set("folder", folder);
+export type ListLinkContext = {
+  /** The resolved sort state. */
+  sort: SortState;
+  /** The active `?folder=` scope, or `undefined`/empty for "All folders". */
+  folder?: string;
+  /** The active Trends range, carried verbatim so Trends keeps its selection. */
+  range?: string;
+  /** True when the list is filtered to conversations WITH API errors (`?errors=1`). */
+  errorsOnly?: boolean;
+};
+
+/**
+ * Build the page's query string from a link context and an optional expanded
+ * row. Empty/`undefined` axes are omitted (i.e. cleared). `URLSearchParams`
+ * handles value encoding.
+ */
+function buildHref(ctx: ListLinkContext, expanded?: string): string {
+  const params = new URLSearchParams({
+    sortBy: ctx.sort.sortBy,
+    dir: ctx.sort.dir,
+  });
+  if (ctx.folder) params.set("folder", ctx.folder);
   if (expanded) params.set("expanded", expanded);
-  if (range) params.set("range", range);
+  if (ctx.range) params.set("range", ctx.range);
+  if (ctx.errorsOnly) params.set("errors", ERRORS_ON);
   return `?${params.toString()}`;
 }
 
 /**
- * Query-string href for a sortable header link (toggles via {@link toggleSort}).
- * Threads the active `folder` scope through so re-sorting keeps the current
- * folder selection — and, like every list href, the Trends `range` the user
- * arrived with, so switching back to Trends restores their selection.
+ * Query-string href for a sortable header link (toggles via {@link toggleSort}),
+ * preserving every other axis of {@link ListLinkContext}.
  */
-export function sortHref(
-  field: SortableField,
-  current: SortState,
-  folder?: string,
-  range?: string,
-): string {
-  return buildHref(toggleSort(field, current), folder, undefined, range);
+export function sortHref(field: SortableField, ctx: ListLinkContext): string {
+  return buildHref({ ...ctx, sort: toggleSort(field, ctx.sort) });
 }
 
 /**
  * Query-string href for a sidebar folder link: scopes to `folder` (or clears
- * the scope, "All folders", when `undefined`/empty) while PRESERVING the active
- * sort, so changing folder composes with the current sort. The sidebar is shared
- * with the Trends page, so an active `?range=` is threaded through too — folder
- * scoping there must not reset the selected range.
+ * the scope, "All folders", when `undefined`/empty) while PRESERVING every other
+ * axis, so changing folder composes with the current sort — and, since the
+ * sidebar is shared with Trends, never resets the selected range.
  */
 export function folderHref(
   folder: string | undefined,
-  current: SortState,
-  range?: string,
+  ctx: ListLinkContext,
 ): string {
-  return buildHref(current, folder, undefined, range);
+  return buildHref({ ...ctx, folder });
 }
 
 /**
  * Query-string href for a row's expand/collapse toggle link. Clicking a
  * collapsed row expands it (`?expanded=<id>`); clicking the already-expanded
- * row collapses it (the param is dropped). Sort and folder are preserved in
+ * row collapses it (the param is dropped). Every other axis is preserved in
  * both directions so toggling a panel never changes the view.
  */
 export function expandHref(
   rowId: string,
   expanded: string | undefined,
-  sort: SortState,
-  folder?: string,
-  range?: string,
+  ctx: ListLinkContext,
 ): string {
-  return buildHref(sort, folder, rowId === expanded ? undefined : rowId, range);
+  return buildHref(ctx, rowId === expanded ? undefined : rowId);
+}
+
+/**
+ * Query-string href for the "only with errors" toggle: flips the filter and
+ * keeps every other axis. `?expanded=` is deliberately NOT carried — the open
+ * row may not be in the filtered set, and an expanded panel for an invisible row
+ * means nothing.
+ */
+export function errorsHref(ctx: ListLinkContext): string {
+  return buildHref({ ...ctx, errorsOnly: !ctx.errorsOnly });
+}
+
+/**
+ * Resolve the "only with errors" filter from the raw `?errors=` search param.
+ * ONLY the canonical {@link ERRORS_ON} value switches it on: anything else — an
+ * absent param, an empty value, a hand-edited `errors=yes` — leaves the list
+ * unfiltered, so a URL is never read as "hide rows" by accident.
+ */
+export function resolveErrorsOnly(raw: string | string[] | undefined): boolean {
+  return firstParam(raw) === ERRORS_ON;
 }
 
 /**

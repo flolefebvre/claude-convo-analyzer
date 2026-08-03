@@ -98,6 +98,20 @@ describe("familyView", () => {
     for (const row of view.rows) expect(row.href).toContain("range=30");
   });
 
+  it("drops the errors filter, which could hide a member that never failed", () => {
+    const view = familyView(
+      family([member({ id: "a", isCurrent: true }), member({ id: "b" })]),
+      { sort: SORT, errorsOnly: true, range: "30" },
+      NOW,
+    );
+
+    for (const row of view.rows) {
+      expect(row.href).not.toContain("errors=");
+      // Everything else the user chose still travels with the link.
+      expect(row.href).toContain("range=30");
+    }
+  });
+
   it("carries the lower-bound flag when any member is unpriced", () => {
     const view = familyView(
       family([
