@@ -62,7 +62,9 @@ export function TrendsChart({
             dataKey={(point: TrendsPoint) => point.models[band.model] ?? 0}
             name={band.model}
             stackId="cost"
-            type="monotone"
+            // Straight segments between days: a spline would bow through the
+            // zero-filled days and imply spend that never happened.
+            type="linear"
             stroke={`var(--color-${band.model})`}
             fill={`var(--color-${band.model})`}
             fillOpacity={0.28}

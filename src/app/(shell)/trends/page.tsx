@@ -192,25 +192,31 @@ function ModelLegend({ view }: { view: TrendsView }) {
       {view.bands.length === 0 ? (
         <p className="text-sm text-muted-foreground">No priced usage.</p>
       ) : (
-        <ul className="flex flex-col gap-2">
+        // Two lines per model — the full name never truncates, and the bar
+        // reads as its share of the range, as in the sidebar and detail panel.
+        <ul className="flex flex-col gap-2.5">
           {view.bands.map((band) => (
-            <li key={band.model} className="flex items-center gap-2 text-sm">
-              <span
-                aria-hidden
-                className="size-2.5 shrink-0 rounded-[2px]"
-                style={{ backgroundColor: band.color }}
-              />
-              <span className="min-w-0 flex-1 truncate" title={band.model}>
-                {band.model}
-              </span>
+            <li key={band.model} className="text-sm">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="flex min-w-0 items-center gap-2">
+                  <span
+                    aria-hidden
+                    className="size-2.5 shrink-0 rounded-[2px]"
+                    style={{ backgroundColor: band.color }}
+                  />
+                  <span className="truncate" title={band.model}>
+                    {band.model}
+                  </span>
+                </span>
+                <span className="shrink-0 tabular-nums text-muted-foreground">
+                  {formatGrandTotalCost(band.costUsd)}
+                </span>
+              </div>
               <CostBar
                 value={band.costUsd}
                 max={view.totalCostUsd}
-                className="w-16 shrink-0"
+                className="mt-1.5"
               />
-              <span className="w-16 shrink-0 text-right tabular-nums text-muted-foreground">
-                {formatGrandTotalCost(band.costUsd)}
-              </span>
             </li>
           ))}
         </ul>
