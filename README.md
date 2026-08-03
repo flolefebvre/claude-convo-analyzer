@@ -25,6 +25,18 @@ Expand any row for the per-model, per-skill, and per-sub-agent cost breakdown:
 
 ![Conversation detail](docs/images/conversation-detail.png)
 
+Work rarely fits in one sitting. When you resume a session (or fork it), Claude
+Code starts a new conversation linked to the previous one — so the app groups
+them into a **continuation family**: rows that belong to one show a badge with
+the family size, and the expanded panel draws the whole family as a tree,
+chronological and indented by fork, with each sitting's date and cost, the one
+you are looking at highlighted, sittings resumed from another project labelled,
+and the cumulative total of the entire piece of work at the bottom. Click any
+member to jump to it. The Transcript view of a family member carries the same
+lineage as a one-line banner — what it continued from, and what continues it:
+
+![Continuation family](docs/images/continuation-family.png)
+
 Open any conversation for the Transcript view — an IDE-like two-pane view with
 the agent tree (main plus every sub-agent, each with its own cost) on the left
 and one agent's turn-by-turn transcript on the right. Click a row's title to
