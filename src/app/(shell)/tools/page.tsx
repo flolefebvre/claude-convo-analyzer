@@ -23,6 +23,7 @@ import { ToolRow } from "@/app/_components/tool-row";
 import { loadToolCallSamples, loadToolStats } from "@/app/_lib/conversations";
 import { formatChars } from "@/app/_lib/format";
 import { rangeDays, resolveRange } from "@/app/_lib/range";
+import { firstParam } from "@/app/_lib/search-params";
 import { resolveExpanded } from "@/app/_lib/sort";
 import {
   type ToolSortField,
@@ -52,11 +53,6 @@ type PageSearchParams = {
   expanded?: string | string[];
   range?: string | string[];
 };
-
-/** First value of a `searchParams` entry (Next gives string | string[]). */
-function firstParam(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
 
 export default function Page({
   searchParams,

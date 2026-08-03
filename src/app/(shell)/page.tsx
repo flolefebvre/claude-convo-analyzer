@@ -34,6 +34,7 @@ import { familyView } from "@/app/_lib/family-view";
 import { type FolderEntry } from "@/app/_lib/folders";
 import { formatDate, formatGrandTotalCost, formatTokens } from "@/app/_lib/format";
 import { buildListView } from "@/app/_lib/list-view";
+import { firstParam } from "@/app/_lib/search-params";
 import {
   type ListLinkContext,
   type SortableField,
@@ -64,11 +65,6 @@ type PageSearchParams = {
   range?: string | string[];
   errors?: string | string[];
 };
-
-/** First value of a `searchParams` entry (Next gives string | string[]). */
-function firstParam(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
 
 export default function Page({
   searchParams,

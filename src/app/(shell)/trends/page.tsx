@@ -24,17 +24,13 @@ import {
   formatTokens,
 } from "@/app/_lib/format";
 import { rangeDays, rangeHref, resolveRange } from "@/app/_lib/range";
+import { firstParam } from "@/app/_lib/search-params";
 import { type TrendsView, buildTrendsView } from "@/app/_lib/trends";
 
 type PageSearchParams = {
   range?: string | string[];
   folder?: string | string[];
 };
-
-/** First value of a `searchParams` entry (Next gives string | string[]). */
-function firstParam(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
 
 export default function Page({
   searchParams,

@@ -6,10 +6,7 @@
 //
 // React-free + I/O-free so it unit-tests in the node vitest environment.
 
-/** First value of a `searchParams` entry (Next gives `string | string[]`). */
-function firstParam(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
+import { firstParam } from "@/app/_lib/search-params";
 
 /**
  * Resolve the selected agent id from the raw `?agent=` search param. Mirrors

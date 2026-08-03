@@ -16,6 +16,8 @@ import type { ToolStat } from "@/core/tool-stats";
 import type { RangeKey } from "@/app/_lib/range";
 import type { SortDir } from "@/app/_lib/sort";
 
+import { firstParam } from "@/app/_lib/search-params";
+
 /** Per-column spec: the comparable value and the direction a fresh click starts at. */
 type ToolColumnSpec = {
   defaultDir: SortDir;
@@ -57,11 +59,6 @@ export type ToolsViewState = {
 /** True when `field` is one of the Tools table's columns. */
 function isToolSortField(field: string): field is ToolSortField {
   return field in TOOL_COLUMNS;
-}
-
-/** First value of a `searchParams` entry (Next gives string | string[]). */
-function firstParam(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
 }
 
 /**

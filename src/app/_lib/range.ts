@@ -8,6 +8,8 @@
 //
 // React-free + I/O-free so it unit-tests in the node vitest environment.
 
+import { firstParam } from "@/app/_lib/search-params";
+
 /** The selectable ranges — preset buttons only, no free date inputs. */
 export type RangeKey = "7" | "30" | "90" | "all";
 
@@ -21,11 +23,6 @@ export const RANGE_PRESETS = [
 
 /** The range used when the URL carries none (or an unknown one). */
 export const DEFAULT_RANGE: RangeKey = "30";
-
-/** First value of a `searchParams` entry (Next gives string | string[]). */
-function firstParam(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
 
 /**
  * Resolve the active range from the raw `?range=` search param. Mirrors
