@@ -156,6 +156,19 @@ export function formatDuration(startedAt: string, endedAt: string): string {
   return remMinutes === 0 ? `${hours}h` : `${hours}h ${remMinutes}m`;
 }
 
+/**
+ * Short label for a LOCAL calendar-day key (`YYYY-MM-DD`, as the daily-spend
+ * read emits): "2026-06-10" -> "Jun 10". The key is already a local day, so it
+ * is read as plain parts — never parsed as an instant, which would re-apply a
+ * timezone shift. Returns the input unchanged if it is not a day key.
+ */
+export function formatDayKey(dayKey: string): string {
+  const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dayKey);
+  if (parts === null) return dayKey;
+  const month = MONTHS[Number(parts[2]) - 1];
+  return month === undefined ? dayKey : `${month} ${Number(parts[3])}`;
+}
+
 /** Parse an ISO string to a Date, or null for empty/unparseable input. */
 function parseUtc(iso: string): Date | null {
   if (!iso) return null;

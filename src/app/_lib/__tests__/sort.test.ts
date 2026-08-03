@@ -179,6 +179,16 @@ describe("folderHref", () => {
     );
   });
 
+  it("preserves an active trends range so folder and range compose", () => {
+    expect(folderHref("-Users-me-dev-demo", DEFAULT_SORT, "90")).toBe(
+      "?sortBy=date&dir=desc&folder=-Users-me-dev-demo&range=90",
+    );
+    // No range in the URL (the conversation list) -> no range param.
+    expect(folderHref("-Users-me-dev-demo", DEFAULT_SORT)).toBe(
+      "?sortBy=date&dir=desc&folder=-Users-me-dev-demo",
+    );
+  });
+
   it("url-encodes a folder value with special characters", () => {
     expect(folderHref("a b&c", DEFAULT_SORT)).toBe(
       "?sortBy=date&dir=desc&folder=a+b%26c",
