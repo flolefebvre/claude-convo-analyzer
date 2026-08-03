@@ -1,5 +1,6 @@
 import {
   cpSync,
+  mkdirSync,
   mkdtempSync,
   rmSync,
   utimesSync,
@@ -384,4 +385,106 @@ describe("incremental refresh", () => {
     expect(after?.tokens.output).toBe((before?.tokens.output ?? 0) + 11);
     expect(after?.subAgentCount).toBe(1);
   });
+
+  it("keeps the smallest-path file when two log files share a session id, and reports the skip", async () => {
+    // The stray-copy case: the same `<sessionId>.jsonl` sits in two project
+    // folders. `sessionId` is unique in the schema, so ingesting both would
+    // violate the constraint and abort the WHOLE run. One file must win —
+    // deterministically, by smallest source path — and the loser must be
+    // reported, not silently dropped.
+    const [keptPath, skippedPath] = writeDuplicatePair(logsRoot);
+
+    const summary = await refresh({ logsRoot, dbPath });
+
+    // The run completed and ingested everything else in the fixture set.
+    expect(summary.conversationsParsed).toBeGreaterThanOrEqual(2);
+    const convos = await listConversations({ dbPath });
+    expect(convos.some((c) => c.id === "sess-basic")).toBe(true);
+
+    // Exactly one row for the shared session id — the smallest-path file's.
+    const dupes = convos.filter((c) => c.id === "sess-copy");
+    expect(dupes).toHaveLength(1);
+    expect(dupes[0]?.title).toBe("The kept copy");
+
+    // The skip is observable, and names the file the user should delete.
+    expect(summary.duplicateSessionsSkipped).toEqual([
+      { sessionId: "sess-copy", keptPath, skippedPath },
+    ]);
+  });
+
+  it("re-parses from the new winner when a smaller-path duplicate appears next to an ingested conversation", async () => {
+    // Dedupe runs at DISCOVERY, before the incremental compare — so the winner
+    // is decided by the file set on disk, not by what happens to be in the
+    // database already. A copy landing at a SMALLER path takes over the session
+    // id, and the previously ingested file becomes the reported duplicate.
+    const strayPath = writeSessionCopy(
+      logsRoot,
+      "-Users-me-dev-copy-b",
+      "The stray copy",
+    );
+    await refresh({ logsRoot, dbPath });
+    expect(
+      (await listConversations({ dbPath })).find((c) => c.id === "sess-copy")
+        ?.title,
+    ).toBe("The stray copy");
+
+    const keptPath = writeSessionCopy(
+      logsRoot,
+      "-Users-me-dev-copy-a",
+      "The kept copy — appeared later",
+    );
+
+    const second = await refresh({ logsRoot, dbPath });
+
+    expect(second.duplicateSessionsSkipped).toEqual([
+      { sessionId: "sess-copy", keptPath, skippedPath: strayPath },
+    ]);
+    const convos = await listConversations({ dbPath });
+    expect(convos.filter((c) => c.id === "sess-copy")).toHaveLength(1);
+    expect(convos.find((c) => c.id === "sess-copy")?.title).toBe(
+      "The kept copy — appeared later",
+    );
+  });
+
+  it("reports no duplicates when every session id is unique", async () => {
+    const summary = await refresh({ logsRoot, dbPath });
+    expect(summary.duplicateSessionsSkipped).toEqual([]);
+  });
 });
+
+/**
+ * Plant `sess-copy.jsonl` in one project folder and return its path. The title
+ * is the only difference between two copies, so an assertion on the ingested
+ * title says exactly WHICH file won.
+ */
+function writeSessionCopy(
+  logsRoot: string,
+  folder: string,
+  title: string,
+): string {
+  const dir = path.join(logsRoot, folder);
+  mkdirSync(dir, { recursive: true });
+  const filePath = path.join(dir, "sess-copy.jsonl");
+  writeFileSync(
+    filePath,
+    [
+      `{"type":"ai-title","aiTitle":${JSON.stringify(title)}}`,
+      '{"type":"user","uuid":"c0","timestamp":"2026-06-20T13:00:00.000Z","cwd":"/Users/me/dev/copy","message":{"role":"user","content":"copied session"}}',
+      '{"type":"assistant","uuid":"c1","requestId":"creq-9","timestamp":"2026-06-20T13:00:05.000Z","cwd":"/Users/me/dev/copy","message":{"id":"cmsg-9","role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":3,"output_tokens":4,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}}}',
+      "",
+    ].join("\n"),
+  );
+  return filePath;
+}
+
+/**
+ * Plant the same session id in two project folders and return
+ * `[smallestPath, otherPath]` — the expected winner first ("-a" sorts before
+ * "-b").
+ */
+function writeDuplicatePair(logsRoot: string): [string, string] {
+  return [
+    writeSessionCopy(logsRoot, "-Users-me-dev-copy-a", "The kept copy"),
+    writeSessionCopy(logsRoot, "-Users-me-dev-copy-b", "The stray copy"),
+  ];
+}

@@ -32,8 +32,18 @@ function summary(partial: Partial<RefreshSummary> = {}): RefreshSummary {
     conversationsSkipped: partial.conversationsSkipped ?? 0,
     conversationsDeleted: partial.conversationsDeleted ?? 0,
     malformedLinesSkipped: partial.malformedLinesSkipped ?? 0,
+    duplicateSessionsSkipped: partial.duplicateSessionsSkipped ?? [],
     durationMs: partial.durationMs ?? 0,
   };
+}
+
+/** `n` distinct log files all claiming one session id, minus the winner. */
+function duplicates(n: number): RefreshSummary["duplicateSessionsSkipped"] {
+  return Array.from({ length: n }, (_, i) => ({
+    sessionId: `sess-${i}`,
+    keptPath: `/logs/-a/sess-${i}.jsonl`,
+    skippedPath: `/logs/-b/sess-${i}.jsonl`,
+  }));
 }
 
 describe("formatRefreshSummary", () => {
@@ -63,5 +73,28 @@ describe("formatRefreshSummary", () => {
         summary({ conversationsParsed: 1, durationMs: 12_000 }),
       ),
     ).toBe("Parsed 1 · Skipped 0 · Deleted 0 · 12s");
+  });
+
+  it("reports duplicate session files, singularized at exactly one", () => {
+    expect(
+      formatRefreshSummary(
+        summary({ duplicateSessionsSkipped: duplicates(1), durationMs: 500 }),
+      ),
+    ).toBe(
+      "Parsed 0 · Skipped 0 · Deleted 0 · 1 duplicate session file skipped · 500ms",
+    );
+    expect(
+      formatRefreshSummary(
+        summary({ duplicateSessionsSkipped: duplicates(2), durationMs: 500 }),
+      ),
+    ).toBe(
+      "Parsed 0 · Skipped 0 · Deleted 0 · 2 duplicate session files skipped · 500ms",
+    );
+  });
+
+  it("omits the duplicate segment when there are none", () => {
+    expect(formatRefreshSummary(summary({ durationMs: 0 }))).toBe(
+      "Parsed 0 · Skipped 0 · Deleted 0 · 0ms",
+    );
   });
 });
