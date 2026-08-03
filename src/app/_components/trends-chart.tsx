@@ -30,9 +30,14 @@ export function TrendsChart({
   /** One point per day of the range, ascending and contiguous. */
   points: TrendsPoint[];
 }) {
-  // `ChartContainer` turns each config entry into a `--color-<key>` variable.
+  // Labels ONLY — deliberately no `color` here. A config entry that carries a
+  // color makes `ChartContainer` emit a `--color-<key>` custom property, and
+  // the key would be a model string: external input, dash-only on the Anthropic
+  // API but `anthropic.claude-…-v1:0` on Bedrock/Vertex, whose dots and colons
+  // are invalid in a CSS identifier — those bands would render colorless. Each
+  // band's color is applied directly from `band.color` below instead.
   const config: ChartConfig = Object.fromEntries(
-    bands.map((band) => [band.model, { label: band.model, color: band.color }]),
+    bands.map((band) => [band.model, { label: band.model }]),
   );
 
   return (
@@ -65,8 +70,8 @@ export function TrendsChart({
             // Straight segments between days: a spline would bow through the
             // zero-filled days and imply spend that never happened.
             type="linear"
-            stroke={`var(--color-${band.model})`}
-            fill={`var(--color-${band.model})`}
+            stroke={band.color}
+            fill={band.color}
             fillOpacity={0.28}
             strokeWidth={1.5}
             isAnimationActive={false}
