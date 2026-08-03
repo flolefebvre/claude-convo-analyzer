@@ -1,0 +1,3 @@
+{"type":"ai-title","aiTitle":"A session on its own"}
+{"type":"user","uuid":"solo-u1","timestamp":"2026-06-21T08:00:00.000Z","cwd":"/Users/me/dev/family","version":"2.1.180","message":{"role":"user","content":"one sitting only"}}
+{"type":"assistant","uuid":"solo-a1","parentUuid":"solo-u1","requestId":"solo-req-1","timestamp":"2026-06-21T08:00:05.000Z","cwd":"/Users/me/dev/family","version":"2.1.180","message":{"id":"solo-msg-1","role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"done in one"}],"usage":{"input_tokens":9,"output_tokens":9,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}}}
