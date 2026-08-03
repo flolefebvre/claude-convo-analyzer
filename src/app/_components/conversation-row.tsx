@@ -222,8 +222,9 @@ function DetailPanel({
           <ErrorList errors={errors} />
         </Section>
       )}
-      {/* The family comes FIRST: it reframes every number below it as one
-          sitting of a larger piece of work. Absent for a standalone row. */}
+      {/* The family sits above the breakdowns (and below the failures): it
+          reframes every number under it as one sitting of a larger piece of
+          work. Absent for a standalone row. */}
       {family && family.size > 1 && (
         <Section title="Continuation family">
           <FamilyTree family={family} />
