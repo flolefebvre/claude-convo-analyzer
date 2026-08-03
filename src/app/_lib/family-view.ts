@@ -8,7 +8,7 @@ import type { ConversationFamily } from "@/core/family";
 
 import { formatDate } from "@/app/_lib/format";
 import { friendlyFolderName } from "@/app/_lib/folders";
-import { expandHref, type SortState } from "@/app/_lib/sort";
+import { expandHref, type ListLinkContext } from "@/app/_lib/sort";
 
 /** One family member, ready to render as a row of the panel's tree. */
 export type FamilyViewRow = {
@@ -42,14 +42,9 @@ export type FamilyView = {
   hasUnpriced: boolean;
 };
 
-/** The list view-state a member link has to preserve. */
-export type FamilyLinkContext = {
-  sort: SortState;
-  /** The active `?folder=` scope, or `undefined` for "All folders". */
-  folder?: string;
-  /** The active Trends range, carried verbatim like every other list link. */
-  range?: string;
-};
+/** The list view-state a member link has to preserve — the same context every
+ *  other list link carries, so a new list axis reaches the family tree too. */
+export type FamilyLinkContext = ListLinkContext;
 
 /**
  * Shape a {@link ConversationFamily} into the panel's tree rows.
@@ -88,9 +83,7 @@ export function familyView(
           // Never a toggle: clicking a member always EXPANDS it, even the one
           // already open (whose panel this is).
           undefined,
-          ctx.sort,
-          inScope ? ctx.folder : undefined,
-          ctx.range,
+          { ...ctx, folder: inScope ? ctx.folder : undefined },
         ),
       };
     }),

@@ -32,8 +32,8 @@ import { type FolderEntry } from "@/app/_lib/folders";
 import { formatDate, formatGrandTotalCost, formatTokens } from "@/app/_lib/format";
 import { buildListView } from "@/app/_lib/list-view";
 import {
+  type ListLinkContext,
   type SortableField,
-  type SortState,
   expandHref,
   folderHref,
   resolveExpanded,
@@ -129,6 +129,9 @@ async function ConversationTable({
   // The Trends range, carried verbatim through every link this page builds, so
   // sorting/expanding here never resets the range the user picked on Trends.
   const range = firstParam(params.range) || undefined;
+  // The one view-state value every link on this page carries forward, so the
+  // axes compose instead of clobbering each other (see `ListLinkContext`).
+  const links: ListLinkContext = { sort, folder: activeFolder, range };
   // Fetch ALL rows once (deduped with the layout's sidebar read via React
   // cache()); the seam owns the order-dependent pipeline (filter BEFORE sort,
   // one `deriveFolders` derive feeding the table breadcrumb + scope).
@@ -162,17 +165,13 @@ async function ConversationTable({
     ? await loadFamily(expandedRow.id)
     : null;
   const expandedFamilyView = expandedFamily
-    ? familyView(
-        expandedFamily,
-        { sort, folder: activeFolder, range },
-        now,
-      )
+    ? familyView(expandedFamily, links, now)
     : null;
 
   // Empty when there are genuinely no conversations OR when the active scope
   // matched nothing (unknown/stale `?folder=`, or a folder with zero rows).
   if (rows.length === 0) {
-    return <EmptyState scoped={isScoped} sort={sort} range={range} />;
+    return <EmptyState scoped={isScoped} links={links} />;
   }
 
   return (
@@ -180,7 +179,7 @@ async function ConversationTable({
       {/* When scoped, every row shares one Project: show its full path once as a
           breadcrumb (with a way back to all folders) instead of a Folder column. */}
       {selectedFolder && (
-        <FolderBreadcrumb folder={selectedFolder} sort={sort} range={range} />
+        <FolderBreadcrumb folder={selectedFolder} links={links} />
       )}
 
       <div className="overflow-hidden rounded-xl border bg-card">
@@ -189,9 +188,7 @@ async function ConversationTable({
             <TableRow>
               <SortableHead
                 field="date"
-                sort={sort}
-                folder={activeFolder}
-                range={range}
+                links={links}
               >
                 Date
               </SortableHead>
@@ -199,43 +196,33 @@ async function ConversationTable({
               {!isScoped && (
                 <SortableHead
                   field="folder"
-                  sort={sort}
-                  folder={activeFolder}
-                  range={range}
+                  links={links}
                 >
                   Folder
                 </SortableHead>
               )}
               <SortableHead
                 field="title"
-                sort={sort}
-                folder={activeFolder}
-                range={range}
+                links={links}
               >
                 Title
               </SortableHead>
               <SortableHead
                 field="model"
-                sort={sort}
-                folder={activeFolder}
-                range={range}
+                links={links}
               >
                 Model(s)
               </SortableHead>
               <SortableHead
                 field="total"
-                sort={sort}
-                folder={activeFolder}
-                range={range}
+                links={links}
                 className="text-right"
               >
                 Total
               </SortableHead>
               <SortableHead
                 field="cost"
-                sort={sort}
-                folder={activeFolder}
-                range={range}
+                links={links}
                 className="text-right"
               >
                 Cost
@@ -257,7 +244,7 @@ async function ConversationTable({
                 detail={row.id === expandedRow?.id ? expandedDetail : null}
                 familySize={familySize.get(row.id) ?? 1}
                 family={row.id === expandedRow?.id ? expandedFamilyView : null}
-                toggleHref={expandHref(row.id, expandedId, sort, activeFolder, range)}
+                toggleHref={expandHref(row.id, expandedId, links)}
               />
             ))}
           </TableBody>
@@ -298,13 +285,11 @@ async function ConversationTable({
  */
 function EmptyState({
   scoped,
-  sort,
-  range,
+  links,
 }: {
   scoped: boolean;
-  sort: SortState;
-  /** The active Trends range, preserved by the clear-filter link. */
-  range?: string;
+  /** The active view state, preserved by the clear-filter link. */
+  links: ListLinkContext;
 }) {
   return (
     <div className="rounded-xl border border-dashed bg-card p-16 text-center">
@@ -314,7 +299,7 @@ function EmptyState({
             No conversations in this folder.
           </p>
           <Link
-            href={folderHref(undefined, sort, range)}
+            href={folderHref(undefined, links)}
             className="mt-3 inline-block text-sm font-medium hover:underline"
           >
             Clear filter — show all folders
@@ -336,13 +321,11 @@ function EmptyState({
  */
 function FolderBreadcrumb({
   folder,
-  sort,
-  range,
+  links,
 }: {
   folder: FolderEntry;
-  sort: SortState;
-  /** The active Trends range, preserved by the "All folders" link. */
-  range?: string;
+  /** The active view state, preserved by the "All folders" link. */
+  links: ListLinkContext;
 }) {
   return (
     <nav
@@ -350,7 +333,7 @@ function FolderBreadcrumb({
       className="mb-3 flex flex-wrap items-center gap-2 text-sm"
     >
       <Link
-        href={folderHref(undefined, sort, range)}
+        href={folderHref(undefined, links)}
         className="text-muted-foreground hover:underline"
       >
         All folders
@@ -368,21 +351,17 @@ function FolderBreadcrumb({
 /** A header cell that links to the toggled sort + shows the active arrow. */
 function SortableHead({
   field,
-  sort,
-  folder,
-  range,
+  links,
   className,
   children,
 }: {
   field: SortableField;
-  sort: SortState;
-  /** The active `?folder=` scope, threaded so re-sorting keeps the folder. */
-  folder?: string;
-  /** The active Trends range, threaded for the same reason. */
-  range?: string;
+  /** The active view state, threaded so re-sorting keeps every other axis. */
+  links: ListLinkContext;
   className?: string;
   children: React.ReactNode;
 }) {
+  const sort = links.sort;
   const indicator = sortIndicator(field, sort);
   const isActive = sort.sortBy === field;
   const ariaSort = isActive
@@ -395,7 +374,7 @@ function SortableHead({
       {/* Quiet uppercase labels echo the overview band's stat-card captions. The
           active sort column lifts to full foreground; the rest stay muted. */}
       <Link
-        href={sortHref(field, sort, folder, range)}
+        href={sortHref(field, links)}
         className={`inline-flex items-center gap-1 text-xs font-medium tracking-wide uppercase transition-colors hover:text-foreground ${
           isActive ? "text-foreground" : "text-muted-foreground"
         }`}
