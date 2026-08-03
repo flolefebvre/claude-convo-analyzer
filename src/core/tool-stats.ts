@@ -12,6 +12,7 @@
 // ordinary rows here and are therefore INCLUDED — they are the same friction.
 
 import { readClient } from "@/core/db";
+import type { PrismaClient } from "@/core/prisma/generated/client";
 import { addLocalDays, startOfLocalDay } from "@/core/local-day";
 
 /** One tool's aggregate over the scoped slice. */
@@ -268,37 +269,32 @@ export async function getToolCallSamples(
 ): Promise<ToolCallSamples> {
   const limit = opts.limit ?? DEFAULT_SAMPLE_LIMIT;
   const { prisma, owned } = readClient(opts.dbPath);
+  const where = { name, ...scopeWhere(opts) };
   try {
-    const rows = await prisma.toolCall.findMany({
-      where: { name, ...scopeWhere(opts) },
-      select: {
-        toolUseId: true,
-        inputJson: true,
-        resultText: true,
-        resultCharSize: true,
-        isError: true,
-        agent: { select: { id: true, externalAgentId: true } },
-        message: {
-          select: {
-            timestamp: true,
-            conversation: { select: { sessionId: true, title: true } },
-          },
-        },
-      },
-    });
+    // Both lists are ordered and capped BY THE DATABASE: expanding a heavily
+    // used tool over an all-time range must not drag every matching row — each
+    // carrying up to ~10k of `resultText` — into memory to keep five of them.
+    // Ties break on `tool_use` id so the order is deterministic.
+    const [errorRows, largestRows] = await Promise.all([
+      prisma.toolCall.findMany({
+        where: { ...where, isError: true },
+        orderBy: [{ message: { timestamp: "desc" } }, { toolUseId: "asc" }],
+        take: limit,
+        select: SAMPLE_SELECT,
+      }),
+      prisma.toolCall.findMany({
+        where: { ...where, resultCharSize: { not: null } },
+        orderBy: [{ resultCharSize: "desc" }, { toolUseId: "asc" }],
+        take: limit,
+        select: SAMPLE_SELECT,
+      }),
+    ]);
 
-    const samples = rows.map(toSample);
     return {
       name,
-      recentErrors: samples
-        .filter((s) => s.isError)
-        .sort(byRecencyDesc)
-        .slice(0, limit),
-      largestResults: samples
-        .filter((s) => s.charSize !== null)
-        .sort(bySizeDesc)
-        .slice(0, limit),
-      breakdown: breakdownFor(name, rows),
+      recentErrors: errorRows.map(toSample),
+      largestResults: largestRows.map(toSample),
+      breakdown: await breakdownFor(name, prisma, where),
     };
   } finally {
     // Only a caller-owned (non-default) client is disconnected; the shared
@@ -306,6 +302,25 @@ export async function getToolCallSamples(
     if (owned) await prisma.$disconnect();
   }
 }
+
+/** The columns one sampled call needs — everything a deep link and its row show. */
+const SAMPLE_SELECT = {
+  toolUseId: true,
+  inputJson: true,
+  resultText: true,
+  resultCharSize: true,
+  isError: true,
+  agent: { select: { id: true, externalAgentId: true } },
+  message: {
+    select: {
+      timestamp: true,
+      conversation: { select: { sessionId: true, title: true } },
+    },
+  },
+} as const;
+
+/** The slice of the client the breakdown query needs. */
+type BreakdownClient = Pick<PrismaClient, "toolCall">;
 
 /** One `tool_call` row as read for the drill-down. */
 type SampleRow = {
@@ -338,29 +353,25 @@ function toSample(row: SampleRow): ToolCallSample {
   };
 }
 
-/** Newest first; ties broken by `tool_use` id so the order is deterministic. */
-function byRecencyDesc(a: ToolCallSample, b: ToolCallSample): number {
-  const at = a.timestamp ?? "";
-  const bt = b.timestamp ?? "";
-  if (at !== bt) return bt.localeCompare(at);
-  return (a.toolUseId ?? "").localeCompare(b.toolUseId ?? "");
-}
-
-/** Biggest first; ties broken by `tool_use` id so the order is deterministic. */
-function bySizeDesc(a: ToolCallSample, b: ToolCallSample): number {
-  const diff = (b.charSize ?? 0) - (a.charSize ?? 0);
-  if (diff !== 0) return diff;
-  return (a.toolUseId ?? "").localeCompare(b.toolUseId ?? "");
-}
-
 /**
  * The Skill/Agent breakdown: group the calls by the tool's own key field
  * (`input.skill` / `input.subagent_type`), calls descending then key ascending.
- * Any other tool gets no breakdown at all.
+ * Any other tool gets no breakdown at all — and no query either. The two that do
+ * are read with a LIGHTWEIGHT selection (no result text), since the breakdown
+ * genuinely needs every call in scope.
  */
-function breakdownFor(name: string, rows: SampleRow[]): ToolBreakdownEntry[] {
+async function breakdownFor(
+  name: string,
+  prisma: BreakdownClient,
+  where: object,
+): Promise<ToolBreakdownEntry[]> {
   const field = BREAKDOWN_FIELD[name];
   if (field === undefined) return [];
+
+  const rows = await prisma.toolCall.findMany({
+    where,
+    select: { inputJson: true, isError: true },
+  });
 
   const byKey = new Map<string, ToolBreakdownEntry>();
   for (const row of rows) {
