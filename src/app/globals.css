@@ -509,6 +509,15 @@
   scroll-margin-top: 96px;
 }
 .tview details.call summary:hover { background: var(--muted); }
+/* The `?msg=` deep-link target (a search-result drill-down): the matching
+   message is ringed in the same accent hue as an anchored tool call, so both
+   deep links read as one idiom. Semantic tokens → correct in both themes. */
+.tview .prompt.anchored,
+.tview .turn.anchored {
+  border-color: var(--cost);
+  box-shadow: 0 0 0 2px var(--cost-muted);
+  scroll-margin-top: 96px;
+}
 .tview .chev {
   color: var(--muted-foreground);
   font-size: 10px;

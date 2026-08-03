@@ -54,6 +54,46 @@ export function callAnchorId(toolUseId: string): string {
 }
 
 /**
+ * Resolve the anchored message from the raw `?msg=` search param — the message
+ * `uuid` a search result points at. Same idiom as {@link resolveCall}: the query
+ * param highlights the message server-side, the `#msg-<uuid>` fragment scrolls
+ * to it.
+ *
+ * The anchor is the log record's `uuid`, NOT the database row id: row ids are
+ * re-assigned on every re-parse, so an id-based link would silently rot (worse,
+ * point at an unrelated message). An unknown uuid simply highlights nothing.
+ */
+export function resolveMessage(
+  raw: string | string[] | undefined,
+): string | undefined {
+  return firstParam(raw) || undefined;
+}
+
+/** The element id of one message in a transcript — the deep link's anchor. */
+export function messageAnchorId(messageUuid: string): string {
+  return `msg-${messageUuid}`;
+}
+
+/**
+ * Deep-link to ONE message inside a transcript:
+ * `/conversation/<id>?agent=<agent>&msg=<uuid>#msg-<uuid>` — how a search result
+ * opens the conversation AND the agent it matched in, scrolled to the hit.
+ * Without a `messageUuid` (a record the log left unidentified) it degrades to
+ * the plain agent link.
+ */
+export function messageHref(
+  sessionId: string,
+  agentId: string | undefined,
+  messageUuid: string | null,
+): string {
+  const base = agentHref(sessionId, agentId);
+  if (messageUuid === null) return base;
+  const separator = base.includes("?") ? "&" : "?";
+  const query = new URLSearchParams({ msg: messageUuid }).toString();
+  return `${base}${separator}${query}#${encodeURIComponent(messageAnchorId(messageUuid))}`;
+}
+
+/**
  * Deep-link to ONE tool call inside a transcript:
  * `/conversation/<id>?agent=<agent>&call=<toolUse>#call-<toolUse>`. Without a
  * `toolUseId` (an unlogged block id) it degrades to the plain agent link.

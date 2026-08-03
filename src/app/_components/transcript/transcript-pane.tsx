@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Fragment } from "react";
 
 import { RefreshButton } from "@/app/_components/refresh-button";
+import { SearchBox } from "@/app/_components/search-box";
 import { subAgentLabel } from "@/app/_lib/detail";
 import { formatCost } from "@/app/_lib/format";
 import { agentLineage, effortSummary } from "@/app/_lib/transcript";
@@ -21,10 +22,14 @@ import { TranscriptMessageRow } from "./transcript-message";
 export function TranscriptPane({
   view,
   anchoredCall,
+  anchoredMessage,
 }: {
   view: TranscriptView;
   /** The `?call=` deep-link target — that tool call renders open + highlighted. */
   anchoredCall?: string;
+  /** The `?msg=` deep-link target — that message renders highlighted (a search
+   *  result's landing spot). */
+  anchoredMessage?: string;
 }) {
   const lineage = agentLineage(view.tree, view.selectedAgentId);
   const selected = lineage[lineage.length - 1] ?? view.tree;
@@ -82,6 +87,9 @@ export function TranscriptPane({
             {formatCost(selected.costUsd)}
           </span>
         </div>
+        {/* Search is reachable from here too — "find that OTHER conversation"
+            strikes precisely while reading one. */}
+        <SearchBox className="w-44" />
         {/* Re-scan the logs without leaving an ongoing conversation. The action
             revalidates the whole tree, so this page re-renders with the new
             messages; compact variant to sit inside the sticky stats header. */}
@@ -96,6 +104,7 @@ export function TranscriptPane({
             view={view}
             effortChanged={effort.changedIds.has(message.id)}
             anchoredCall={anchoredCall}
+            anchoredMessage={anchoredMessage}
           />
         ))}
         {view.metaHiddenCount > 0 && (

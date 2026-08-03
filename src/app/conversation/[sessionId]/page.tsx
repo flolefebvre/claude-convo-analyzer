@@ -24,14 +24,25 @@ import { Suspense } from "react";
 import { TranscriptPane } from "@/app/_components/transcript/transcript-pane";
 import { TranscriptTree } from "@/app/_components/transcript/transcript-tree";
 import { loadTranscript } from "@/app/_lib/conversations";
-import { resolveAgent, resolveCall } from "@/app/_lib/transcript-url";
+import {
+  resolveAgent,
+  resolveCall,
+  resolveMessage,
+} from "@/app/_lib/transcript-url";
+
+/** The route's URL view-state: which agent, and which anchored call/message. */
+type TranscriptSearchParams = {
+  agent?: string | string[];
+  call?: string | string[];
+  msg?: string | string[];
+};
 
 export default function ConversationPage({
   params,
   searchParams,
 }: {
   params: Promise<{ sessionId: string }>;
-  searchParams: Promise<{ agent?: string | string[]; call?: string | string[] }>;
+  searchParams: Promise<TranscriptSearchParams>;
 }) {
   return (
     <Suspense fallback={<TranscriptLoading />}>
@@ -50,10 +61,10 @@ async function TranscriptRoute({
   searchParams,
 }: {
   params: Promise<{ sessionId: string }>;
-  searchParams: Promise<{ agent?: string | string[]; call?: string | string[] }>;
+  searchParams: Promise<TranscriptSearchParams>;
 }) {
   const { sessionId } = await params;
-  const { agent, call } = await searchParams;
+  const { agent, call, msg } = await searchParams;
 
   const view = await loadTranscript(sessionId, resolveAgent(agent));
   if (view === null) return <NotFoundState sessionId={sessionId} />;
@@ -64,7 +75,11 @@ async function TranscriptRoute({
   return (
     <div className="tview">
       <TranscriptTree view={view} />
-      <TranscriptPane view={view} anchoredCall={resolveCall(call)} />
+      <TranscriptPane
+        view={view}
+        anchoredCall={resolveCall(call)}
+        anchoredMessage={resolveMessage(msg)}
+      />
     </div>
   );
 }

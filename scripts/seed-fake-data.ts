@@ -77,12 +77,52 @@ const TITLES = [
   "Add search to the docs site",
 ] as const;
 
+// The searchable text (issue #45): prompts and replies are what the full-text
+// index covers, so the demo database needs enough VARIETY for a search to show
+// several distinct matches in one conversation. Deliberately generic
+// acme-flavoured engineering chatter — obviously invented, never anything that
+// could read as a real conversation.
 const PROMPTS = [
   "Can you help me implement this feature end to end?",
   "There's a bug here — can you track it down and fix it?",
   "Please refactor this module and add tests.",
   "Let's get this working and then clean it up.",
   "Walk me through the changes and apply them.",
+  "The staging deploy is timing out — where is the latency coming from?",
+  "Add pagination to the users endpoint, then update the OpenAPI spec.",
+  "Why does the checkout flow drop the cart on a slow network?",
+  "Cache invalidation is firing twice per request — dig into it.",
+  "Migrate the reports job to the new queue consumer and keep retries.",
+  "Review the auth middleware for anything that leaks a session token.",
+  "Split this Postgres migration so it can run without downtime.",
+  "The dashboard query is slow after the last release — profile it.",
+  "Write the onboarding docs for the billing service, with examples.",
+  "Turn the flaky integration tests green without weakening them.",
+] as const;
+
+/** Assistant turn bodies — same purpose and same "obviously fake" rule. */
+const ASSISTANT_REPLIES = [
+  "Working on it.",
+  "Reading the module first so the change lands in one place.",
+  "The slow path is the dashboard query — it scans before it filters.",
+  "Cache invalidation runs on both the write and the read path; removing one.",
+  "Added pagination to the users endpoint and regenerated the OpenAPI spec.",
+  "The auth middleware refreshes the session token but never rotates it.",
+  "Splitting the Postgres migration into an additive step and a cleanup step.",
+  "Tests are green; the flake came from a shared fixture, not from timing.",
+  "Retries are back on the queue consumer, capped at five attempts.",
+  "Wrote the onboarding docs with a worked billing example.",
+  "That timeout is the staging deploy waiting on the migration lock.",
+  "Refactored the module and covered the new branch with tests.",
+] as const;
+
+/** Sub-agent turn bodies (a sub-agent reports back, it does not converse). */
+const SUB_AGENT_REPLIES = [
+  "Sub-agent working.",
+  "Swept the repo: the endpoint is defined once, in the users router.",
+  "Found three call sites that invalidate the cache on the read path.",
+  "The migration touches two tables; only one is written during the deploy.",
+  "No session token is logged anywhere in the auth middleware.",
 ] as const;
 
 const MODELS = [
@@ -167,7 +207,7 @@ function assistantTurn(
   model: string,
   opts: { skill?: string; toolUses?: object[]; scale?: number } = {},
 ): string {
-  const content: object[] = [{ type: "text", text: "Working on it." }];
+  const content: object[] = [{ type: "text", text: pick(ASSISTANT_REPLIES) }];
   if (opts.toolUses) content.push(...opts.toolUses);
   const rec: Record<string, unknown> = {
     type: "assistant",
@@ -301,6 +341,7 @@ function spawnSubAgent(
     const subToolUse = chance(0.6)
       ? { type: "tool_use", id: uid("tu"), name: subKind.name, input: subKind.input() }
       : null;
+    const subText = pick(SUB_AGENT_REPLIES);
     subTotal +=
       u.input_tokens +
       u.output_tokens +
@@ -322,8 +363,8 @@ function spawnSubAgent(
           role: "assistant",
           model: subModel,
           content: subToolUse === null
-            ? [{ type: "text", text: "Sub-agent working." }]
-            : [{ type: "text", text: "Sub-agent working." }, subToolUse],
+            ? [{ type: "text", text: subText }]
+            : [{ type: "text", text: subText }, subToolUse],
           usage: u,
         },
       }),

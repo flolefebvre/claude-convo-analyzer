@@ -42,6 +42,16 @@ biggest results, each linking straight to that call in the Transcript:
 
 ![Tools page](docs/images/tools-view.png)
 
+Search answers the "where did we discuss X?" question. The search box in the
+header is on every page; it searches what was *said* — your prompts, Claude's
+replies, and conversation titles — across every project, never tool output or
+machine-injected noise. Results are grouped into one card per conversation, most
+recently matching first, with up to three highlighted extracts; clicking an
+extract opens that conversation's transcript at the exact message, in the right
+agent. Quoted phrases work too:
+
+![Search results](docs/images/search-view.png)
+
 ## Requirements
 
 - [Node.js](https://nodejs.org) 20 or newer
