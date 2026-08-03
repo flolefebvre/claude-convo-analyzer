@@ -323,3 +323,49 @@ describe("buildListView — grandTotal bucket sums (migrated from grandTotal)", 
     expect(view.grandTotal.hasUnpriced).toBe(false);
   });
 });
+
+describe("buildListView — errors-only filter (issue #47)", () => {
+  const rows = [
+    summary({ id: "a", folder: "fA", costUsd: 9, errorCount: 2 }),
+    summary({ id: "b", folder: "fB", costUsd: 100, errorCount: 1 }),
+    summary({ id: "c", folder: "fA", costUsd: 1, errorCount: 0 }),
+  ];
+
+  it("shows every row when the filter is off (the default)", () => {
+    expect(
+      buildListView(rows, { sort: DESC_COST }).rows.map((r) => r.id),
+    ).toEqual(["b", "a", "c"]);
+    expect(
+      buildListView(rows, { sort: DESC_COST, errorsOnly: false }).rows.map(
+        (r) => r.id,
+      ),
+    ).toEqual(["b", "a", "c"]);
+  });
+
+  it("keeps only conversations with at least one API error", () => {
+    const view = buildListView(rows, { sort: DESC_COST, errorsOnly: true });
+    expect(view.rows.map((r) => r.id)).toEqual(["b", "a"]);
+  });
+
+  it("composes with folder scoping and sorting", () => {
+    const view = buildListView(rows, {
+      folder: "fA",
+      sort: DESC_COST,
+      errorsOnly: true,
+    });
+    expect(view.rows.map((r) => r.id)).toEqual(["a"]);
+    expect(view.scoped).toBe(true);
+  });
+
+  it("sums the grandTotal over the FILTERED rows, like folder scoping does", () => {
+    const view = buildListView(rows, { sort: DESC_COST, errorsOnly: true });
+    expect(view.grandTotal.costUsd).toBeCloseTo(109);
+  });
+
+  it("leaves the overview band and sidebar totals global (never filtered)", () => {
+    const view = buildListView(rows, { sort: DESC_COST, errorsOnly: true });
+    expect(view.overview.conversationCount).toBe(3);
+    expect(view.overview.totalCost).toBeCloseTo(110);
+    expect(view.totals.count).toBe(3);
+  });
+});

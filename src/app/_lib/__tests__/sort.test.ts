@@ -4,10 +4,12 @@ import type { ConversationSummary } from "@/core/read";
 
 import {
   DEFAULT_SORT,
+  errorsHref,
   expandHref,
   folderHref,
   isSortableField,
   modelLabel,
+  resolveErrorsOnly,
   resolveExpanded,
   resolveSort,
   sortConversations,
@@ -480,5 +482,72 @@ describe("sortConversations", () => {
     // All equal on cost -> tiebreak by id ascending, regardless of dir.
     expect(ids(sortConversations(rows, { sortBy: "cost", dir: "asc" }))).toEqual(["a", "b", "c"]);
     expect(ids(sortConversations(rows, { sortBy: "cost", dir: "desc" }))).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("resolveErrorsOnly", () => {
+  it("is off when the param is absent", () => {
+    expect(resolveErrorsOnly(undefined)).toBe(false);
+  });
+
+  it("is on for the canonical `errors=1`", () => {
+    expect(resolveErrorsOnly("1")).toBe(true);
+  });
+
+  it("is off for any other value, so a stale URL never hides rows silently", () => {
+    expect(resolveErrorsOnly("")).toBe(false);
+    expect(resolveErrorsOnly("0")).toBe(false);
+    expect(resolveErrorsOnly("yes")).toBe(false);
+  });
+
+  it("reads the first value when the param repeats", () => {
+    expect(resolveErrorsOnly(["1", "0"])).toBe(true);
+  });
+});
+
+describe("errorsHref", () => {
+  it("turns the filter ON while preserving sort and folder", () => {
+    expect(
+      errorsHref({
+        sort: { sortBy: "cost", dir: "desc" },
+        folder: "-Users-me-dev-demo",
+      }),
+    ).toBe("?sortBy=cost&dir=desc&folder=-Users-me-dev-demo&errors=1");
+  });
+
+  it("turns the filter OFF when it is already on", () => {
+    expect(errorsHref({ sort: DEFAULT_SORT, errorsOnly: true })).toBe(
+      "?sortBy=date&dir=desc",
+    );
+  });
+
+  it("drops the expanded row: it may not survive the filter change", () => {
+    // No `expanded` axis is ever written by this link — compare with expandHref.
+    expect(errorsHref({ sort: DEFAULT_SORT, range: "7" })).toBe(
+      "?sortBy=date&dir=desc&range=7&errors=1",
+    );
+  });
+});
+
+describe("the errors filter travels with every other list link", () => {
+  it("survives a sort toggle", () => {
+    expect(sortHref("cost", { sort: DEFAULT_SORT, errorsOnly: true })).toBe(
+      "?sortBy=cost&dir=desc&errors=1",
+    );
+  });
+
+  it("survives a folder change and a row expand", () => {
+    expect(
+      folderHref("-Users-me-dev-demo", { sort: DEFAULT_SORT, errorsOnly: true }),
+    ).toBe("?sortBy=date&dir=desc&folder=-Users-me-dev-demo&errors=1");
+    expect(
+      expandHref("s1", undefined, { sort: DEFAULT_SORT, errorsOnly: true }),
+    ).toBe("?sortBy=date&dir=desc&expanded=s1&errors=1");
+  });
+
+  it("adds no param when the filter is off", () => {
+    expect(sortHref("cost", { sort: DEFAULT_SORT, errorsOnly: false })).toBe(
+      "?sortBy=cost&dir=desc",
+    );
   });
 });

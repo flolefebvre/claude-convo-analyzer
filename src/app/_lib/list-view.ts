@@ -32,6 +32,12 @@ export type ListViewIntent = {
   folder?: string;
   /** The resolved sort state. Its PRESENCE switches on the table slice. */
   sort: SortState;
+  /**
+   * True when the list is filtered to conversations that hit at least one API
+   * error (`?errors=1`). Off (all rows) when absent — the default view never
+   * hides anything.
+   */
+  errorsOnly?: boolean;
 };
 
 /** The "All folders" anchor aggregate the sidebar shows, summed from the
@@ -117,7 +123,12 @@ export function buildListView(
   if (!intent) return base;
 
   const activeFolder = intent.folder ? intent.folder : undefined;
-  const scopedRows = filterByFolder(rows, activeFolder);
+  // Both filters run BEFORE the sort and compose: folder scope narrows to one
+  // Project, the errors filter to the conversations that actually failed.
+  const scopedRows = filterByErrors(
+    filterByFolder(rows, activeFolder),
+    intent.errorsOnly,
+  );
   const sortedRows = sortConversations(scopedRows, intent.sort);
   return {
     ...base,
@@ -144,6 +155,20 @@ function filterByFolder(
 ): ConversationSummary[] {
   if (!folder) return summaries;
   return summaries.filter((s) => s.project.folder === folder);
+}
+
+/**
+ * Keep only conversations with at least one API-error turn, WITHOUT sorting
+ * (input order preserved, like {@link filterByFolder}). All rows when the filter
+ * is off. The `errorCount` is the core's whole-conversation rollup, so a row
+ * whose only failure happened inside a sub-agent survives the filter.
+ */
+function filterByErrors(
+  summaries: ConversationSummary[],
+  errorsOnly: boolean | undefined,
+): ConversationSummary[] {
+  if (!errorsOnly) return summaries;
+  return summaries.filter((s) => s.errorCount > 0);
 }
 
 /** The minimal row shape {@link grandTotal} needs — a structural subset of the

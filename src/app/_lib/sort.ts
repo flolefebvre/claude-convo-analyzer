@@ -14,6 +14,8 @@
 
 import type { ConversationSummary } from "@/core/read";
 
+import { firstParam } from "@/app/_lib/search-params";
+
 export type SortDir = "asc" | "desc";
 
 /** A sortable column key + its resolved direction. */
@@ -86,6 +88,9 @@ const COLUMNS = {
 
 export type SortableField = keyof typeof COLUMNS;
 
+/** The single `?errors=` value that means "only conversations with errors". */
+const ERRORS_ON = "1";
+
 /** Default when the URL carries no (valid) sort params. */
 export const DEFAULT_SORT: SortState = { sortBy: "date", dir: "desc" };
 
@@ -97,11 +102,6 @@ export function isSortableField(field: string): field is SortableField {
 /** The direction a fresh (inactive) click on `field` should start at. */
 function defaultDirFor(field: SortableField): SortDir {
   return COLUMNS[field].defaultDir;
-}
-
-/** First value of a `searchParams` entry (Next gives string | string[]). */
-function firstParam(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
 }
 
 /**
@@ -148,6 +148,8 @@ export type ListLinkContext = {
   folder?: string;
   /** The active Trends range, carried verbatim so Trends keeps its selection. */
   range?: string;
+  /** True when the list is filtered to conversations WITH API errors (`?errors=1`). */
+  errorsOnly?: boolean;
 };
 
 /**
@@ -163,6 +165,7 @@ function buildHref(ctx: ListLinkContext, expanded?: string): string {
   if (ctx.folder) params.set("folder", ctx.folder);
   if (expanded) params.set("expanded", expanded);
   if (ctx.range) params.set("range", ctx.range);
+  if (ctx.errorsOnly) params.set("errors", ERRORS_ON);
   return `?${params.toString()}`;
 }
 
@@ -199,6 +202,26 @@ export function expandHref(
   ctx: ListLinkContext,
 ): string {
   return buildHref(ctx, rowId === expanded ? undefined : rowId);
+}
+
+/**
+ * Query-string href for the "only with errors" toggle: flips the filter and
+ * keeps every other axis. `?expanded=` is deliberately NOT carried — the open
+ * row may not be in the filtered set, and an expanded panel for an invisible row
+ * means nothing.
+ */
+export function errorsHref(ctx: ListLinkContext): string {
+  return buildHref({ ...ctx, errorsOnly: !ctx.errorsOnly });
+}
+
+/**
+ * Resolve the "only with errors" filter from the raw `?errors=` search param.
+ * ONLY the canonical {@link ERRORS_ON} value switches it on: anything else — an
+ * absent param, an empty value, a hand-edited `errors=yes` — leaves the list
+ * unfiltered, so a URL is never read as "hide rows" by accident.
+ */
+export function resolveErrorsOnly(raw: string | string[] | undefined): boolean {
+  return firstParam(raw) === ERRORS_ON;
 }
 
 /**
