@@ -36,6 +36,13 @@ export type ConversationSummary = {
   unpriced: boolean;
   subAgentCount: number;
   continuedFromId: string | null;
+  /**
+   * Number of turns the API failed on, across EVERY agent of the conversation
+   * (ADR-0001 rollup): a sub-agent's failed turn counts here just like its
+   * tokens do, so the list row shows the conversation's real error weight.
+   * `0` for a conversation that never failed.
+   */
+  errorCount: number;
 };
 
 /**
@@ -195,6 +202,14 @@ export async function listConversations(
       where: { parentAgentId: { not: null } },
       _count: { _all: true },
     });
+    // Failed turns per conversation, one batched groupBy like the rollups above
+    // (never a per-conversation query). Scoped on the denormalized
+    // `message.conversationId`, so sub-agent failures are counted too.
+    const errorCounts = await prisma.message.groupBy({
+      by: ["conversationId"],
+      where: { isApiError: true },
+      _count: { _all: true },
+    });
 
     // Bucket the batched rows by conversationId.
     const modelRowsById = new Map<number, ModelSumRow[]>();
@@ -220,6 +235,10 @@ export async function listConversations(
     for (const c of subAgentCounts) {
       subCountById.set(c.conversationId, c._count._all);
     }
+    const errorCountById = new Map<number, number>();
+    for (const c of errorCounts) {
+      errorCountById.set(c.conversationId, c._count._all);
+    }
     const continuedFromById = await resolveContinuedFromIds(
       prisma,
       conversations,
@@ -230,6 +249,7 @@ export async function listConversations(
         groups: pricedRollup(modelRowsById.get(convo.id) ?? []),
         bounds: boundsById.get(convo.id) ?? { startedAt: "", endedAt: "" },
         subAgentCount: subCountById.get(convo.id) ?? 0,
+        errorCount: errorCountById.get(convo.id) ?? 0,
         continuedFromId:
           convo.continuedFromConversationId === null
             ? null
@@ -1336,6 +1356,7 @@ function assembleSummary(
     groups: PricedGroup[];
     bounds: { startedAt: string; endedAt: string };
     subAgentCount: number;
+    errorCount: number;
     continuedFromId: string | null;
   },
 ): ConversationSummary {
@@ -1369,6 +1390,7 @@ function assembleSummary(
     costByType,
     unpriced,
     subAgentCount: parts.subAgentCount,
+    errorCount: parts.errorCount,
     continuedFromId: parts.continuedFromId,
   };
 }
@@ -1388,6 +1410,9 @@ async function summarizeConversation(
   const subAgentCount = await prisma.agent.count({
     where: { conversationId: convo.id, parentAgentId: { not: null } },
   });
+  const errorCount = await prisma.message.count({
+    where: { conversationId: convo.id, isApiError: true },
+  });
 
   let continuedFromId: string | null = null;
   if (convo.continuedFromConversationId !== null) {
@@ -1402,6 +1427,7 @@ async function summarizeConversation(
     groups,
     bounds,
     subAgentCount,
+    errorCount,
     continuedFromId,
   });
   return { summary, groups };

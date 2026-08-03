@@ -18,6 +18,7 @@ function summary(over: {
   cacheRead?: number;
   total?: number;
   unpriced?: boolean;
+  errorCount?: number;
 }): ConversationSummary {
   const path = over.path ?? "/Users/me/dev/demo";
   const folder = over.folder ?? path.replace(/\//g, "-");
@@ -40,6 +41,7 @@ function summary(over: {
     costByType: { input: 0, output: 0, cacheWrite: 0, cacheRead: over.cacheRead ?? 0 },
     unpriced: over.unpriced ?? false,
     subAgentCount: 0,
+    errorCount: over.errorCount ?? 0,
     continuedFromId: null,
   };
 }

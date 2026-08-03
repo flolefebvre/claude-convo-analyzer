@@ -51,6 +51,7 @@ describe("batched list rollup == per-conversation detail rollup", () => {
       costByType: detail.costByType,
       unpriced: detail.unpriced,
       subAgentCount: detail.subAgentCount,
+      errorCount: detail.errorCount,
       continuedFromId: detail.continuedFromId,
     };
     expect(summary).toEqual(base);
