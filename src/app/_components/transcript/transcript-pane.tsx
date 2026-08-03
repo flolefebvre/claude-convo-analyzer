@@ -7,8 +7,10 @@ import { subAgentLabel } from "@/app/_lib/detail";
 import { formatCost } from "@/app/_lib/format";
 import { agentLineage, effortSummary } from "@/app/_lib/transcript";
 import { agentHref } from "@/app/_lib/transcript-url";
+import type { ConversationFamily } from "@/core/family";
 import type { TranscriptView } from "@/core/read";
 
+import { FamilyBanner } from "./family-banner";
 import { TranscriptMessageRow } from "./transcript-message";
 
 /**
@@ -17,14 +19,20 @@ import { TranscriptMessageRow } from "./transcript-message";
  * turn/tool/model/cost stats, and a Refresh control (re-scan the logs without
  * leaving an ongoing conversation). Below it, the agent's messages render in order,
  * with a trailing "N meta records hidden" divider when the reader dropped meta
- * rows for this agent.
+ * rows for this agent. When the conversation belongs to a continuation family,
+ * a one-line banner between the header and the transcript names the sitting
+ * before and the sitting(s) after.
  */
 export function TranscriptPane({
   view,
+  family,
   anchoredCall,
   anchoredMessage,
 }: {
   view: TranscriptView;
+  /** This conversation's continuation family (issue #46) — its DIRECT parent
+   *  and continuations head the pane as a banner. `null` when standalone. */
+  family?: ConversationFamily | null;
   /** The `?call=` deep-link target — that tool call renders open + highlighted. */
   anchoredCall?: string;
   /** The `?msg=` deep-link target — that message renders highlighted (a search
@@ -95,6 +103,10 @@ export function TranscriptPane({
             messages; compact variant to sit inside the sticky stats header. */}
         <RefreshButton variant="outline" size="sm" />
       </div>
+
+      {family && (
+        <FamilyBanner parent={family.parent} continuations={family.children} />
+      )}
 
       <div className="transcript">
         {view.messages.map((message) => (

@@ -23,7 +23,7 @@ import { Suspense } from "react";
 
 import { TranscriptPane } from "@/app/_components/transcript/transcript-pane";
 import { TranscriptTree } from "@/app/_components/transcript/transcript-tree";
-import { loadTranscript } from "@/app/_lib/conversations";
+import { loadFamily, loadTranscript } from "@/app/_lib/conversations";
 import {
   resolveAgent,
   resolveCall,
@@ -69,6 +69,11 @@ async function TranscriptRoute({
   const view = await loadTranscript(sessionId, resolveAgent(agent));
   if (view === null) return <NotFoundState sessionId={sessionId} />;
 
+  // The continuation lineage of this session (issue #46): the pane shows its
+  // DIRECT parent/continuations as a banner. Standalone sessions get `size === 1`
+  // and no banner at all.
+  const family = await loadFamily(sessionId);
+
   // `?call=` is how a Tools-page drill-down points at ONE tool call: the pane
   // renders it open and highlighted, and the matching `#call-<id>` fragment
   // scrolls to it. Server-side, because a fragment never reaches the server.
@@ -77,6 +82,7 @@ async function TranscriptRoute({
       <TranscriptTree view={view} />
       <TranscriptPane
         view={view}
+        family={family}
         anchoredCall={resolveCall(call)}
         anchoredMessage={resolveMessage(msg)}
       />

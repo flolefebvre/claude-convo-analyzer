@@ -366,6 +366,25 @@
 /* Effort stat: sits beside the model, in the same muted register as it. */
 .tview .pane-header .stats .effort { font-family: var(--font-mono); font-size: 11.5px; }
 
+/* Continuation banner (issue #46): the lineage line above the transcript —
+   where this sitting was resumed from and what continues it. Quiet by default
+   (it is context, not content) with the names as links. */
+.tview .family-banner {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 12px 32px 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  /* Column gap separates the two clauses on one line; the row gap keeps them
+     readable when a long pair of titles wraps. */
+  gap: 4px 20px;
+  font-size: 12.5px;
+  color: var(--muted-foreground);
+}
+.tview .family-banner a { color: var(--foreground); text-decoration: none; }
+.tview .family-banner a:hover { text-decoration: underline; }
+
 .tview .transcript {
   max-width: 46rem;
   margin: 0 auto;
