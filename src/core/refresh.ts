@@ -10,7 +10,10 @@
 // because sub-agents have no independent conversation/mtime row of their own.
 // The stored `parserVersion` is part of that decision too: rows produced by an
 // older parser are re-parsed once even when their source files are untouched
-// (see `PARSER_VERSION`).
+// (see `PARSER_VERSION`). It doubles as the COMMIT MARK of a refresh: a
+// conversation is stamped only after its continuation link has been resolved,
+// so an INTERRUPTED run leaves its conversations re-parseable rather than
+// looking up-to-date with a missing link (see `UNSTAMPED_PARSER_VERSION`).
 //
 // ROLLUP DESIGN (ADR-0001): conversation totals/cost are SUM queries over ALL
 // messages of ALL agents in the conversation — so sub-agent tokens roll up
@@ -77,6 +80,25 @@ type RefreshOptions = { logsRoot?: string; dbPath?: string };
  */
 const PARSER_VERSION = 1;
 
+/**
+ * The version a conversation carries while it is written but NOT YET COMPLETE:
+ * its rows exist, its `continued_from` link has not been resolved. Never equal
+ * to `PARSER_VERSION`, so such a row always re-parses.
+ *
+ * This is what makes an INTERRUPTED refresh recoverable. Stamping the current
+ * version at write time left a window — crash after the conversation writes,
+ * before `resolveContinuedFrom` — in which rows looked up-to-date to every
+ * later run and were skipped forever, their `continuedFromConversationId`
+ * permanently null. Conversations are now stamped only once linking has run
+ * for the whole refresh (`stampParserVersion`), so an aborted run leaves them
+ * re-parseable and the next run completes them.
+ *
+ * It shares the column's DEFAULT (0), which already means "not produced by any
+ * current parser run" for rows predating the column — both cases want the same
+ * treatment: re-parse.
+ */
+const UNSTAMPED_PARSER_VERSION = 0;
+
 /** One main session + its sub-agent transcripts, all parsed, ready to write. */
 type ParsedConversation = {
   session: DiscoveredSession;
@@ -108,13 +130,14 @@ type DiscoveredWithKey = {
  * tables) and re-written, so a re-parse never duplicates rows. New conversations
  * are written. Conversations whose source file no longer exists are deleted.
  *
- * Then two passes over the (re)parsed set only: (1) write each conversation with
+ * Then three passes over the (re)parsed set only: (1) write each conversation with
  * its agents/messages/tool_calls/pr_links/turn_durations (each in a transaction,
  * finding #11), persisting each message's `uuid`; (2) resolve `continued_from` by
  * looking up each child's first-message `parentUuid` against the persisted
  * `message` rows of ALL conversations — so a skipped (unchanged) parent still
- * resolves. The sub-agent transcript is the single source of truth for its tokens
- * (GOTCHA 3) — the parent aggregate is a cross-check only.
+ * resolves; (3) stamp the current `parserVersion` on that set — the commit mark
+ * that lets a later run skip them. The sub-agent transcript is the single source
+ * of truth for its tokens (GOTCHA 3) — the parent aggregate is a cross-check only.
  */
 export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary> {
   // Monotonic clock for the elapsed measure: `Date.now()` can jump BACKWARD on a
@@ -216,6 +239,11 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     // Pass 2 — resolve continued-from over the (re)parsed conversations,
     // authoritatively against the persisted message uuids of ALL conversations.
     await resolveContinuedFrom(prisma, conversations);
+
+    // Pass 3 — only NOW are these conversations complete: stamp them, so the
+    // next run may skip them. An abort before this point leaves them unstamped
+    // and therefore re-parseable (see `UNSTAMPED_PARSER_VERSION`).
+    await stampParserVersion(prisma, conversations);
   } finally {
     await prisma.$disconnect();
   }
@@ -403,7 +431,9 @@ async function writeConversation(
         sourcePath: session.sourcePath,
         sourceMtime: BigInt(session.sourceMtime),
         sourceSize: BigInt(session.sourceSize),
-        parserVersion: PARSER_VERSION,
+        // Not stamped yet — `stampParserVersion` does that once this refresh's
+        // continuation linking has run (see `UNSTAMPED_PARSER_VERSION`).
+        parserVersion: UNSTAMPED_PARSER_VERSION,
         continuedFromConversationId: null,
       },
     });
@@ -645,5 +675,24 @@ async function resolveContinuedFrom(
       data: { continuedFromConversationId: from.id },
     });
   }
+}
+
+/**
+ * Pass 3: mark this run's conversations as produced by the current parser — the
+ * commit point that lets a later run SKIP them.
+ *
+ * One statement scoped to the conversations this run (re)wrote: nothing else in
+ * the table is touched, so the incremental cost stays proportional to the work
+ * actually done, not to the size of the database.
+ */
+async function stampParserVersion(
+  prisma: PrismaClient,
+  conversations: ParsedConversation[],
+): Promise<void> {
+  if (conversations.length === 0) return;
+  await prisma.conversation.updateMany({
+    where: { sessionId: { in: conversations.map((c) => c.session.sessionId) } },
+    data: { parserVersion: PARSER_VERSION },
+  });
 }
 
