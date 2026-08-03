@@ -49,9 +49,11 @@ export type ConversationErrorsOptions = {
 
 /**
  * Every failed turn of one conversation, oldest first, across ALL of its agents
- * (ADR-0001: a sub-agent's failure is the conversation's failure). Ties on
- * timestamp — and turns with no timestamp at all — fall back to insertion order
- * (`id`), so the list is deterministic.
+ * (ADR-0001: a sub-agent's failure is the conversation's failure). A turn the
+ * log never timestamped sorts LAST — the database would put its NULL first,
+ * ahead of failures whose moment we actually know. Ties (equal timestamps, or
+ * two undated turns) fall back to insertion order (`id`), so the list is
+ * deterministic.
  *
  * An unknown session id yields `[]`, like a conversation that never failed:
  * both mean "nothing to show" to the panel.
@@ -64,7 +66,7 @@ export async function getConversationErrors(
   try {
     const rows = await prisma.message.findMany({
       where: { isApiError: true, conversation: { sessionId } },
-      orderBy: [{ timestamp: "asc" }, { id: "asc" }],
+      orderBy: [{ id: "asc" }],
       select: {
         uuid: true,
         timestamp: true,
@@ -73,12 +75,27 @@ export async function getConversationErrors(
         agent: { select: { id: true, externalAgentId: true, agentType: true } },
       },
     });
-    return rows.map(toApiError);
+    return rows.map(toApiError).sort(byMomentThenOrder);
   } finally {
     // Only a caller-owned (non-default) client is disconnected; the shared
     // default singleton stays open for the next request.
     if (owned) await prisma.$disconnect();
   }
+}
+
+/**
+ * Order two errors: by moment (oldest first), undated ones last, and equal
+ * moments in the insertion order the query already returned (a stable sort).
+ */
+function byMomentThenOrder(
+  a: ConversationApiError,
+  b: ConversationApiError,
+): number {
+  if (a.timestamp === b.timestamp) return 0;
+  if (a.timestamp === "") return 1;
+  if (b.timestamp === "") return -1;
+  // ISO8601 strings sort lexically in chronological order.
+  return a.timestamp < b.timestamp ? -1 : 1;
 }
 
 /** One failed `message` row as read for the panel. */

@@ -79,6 +79,17 @@ describe("getConversationErrors", () => {
     expect(errors[0].excerpt).toBe("");
   });
 
+  it("puts a failure the log never timestamped LAST, not first", async () => {
+    // SQLite would sort a NULL timestamp before every real one; an undated
+    // failure must not jump ahead of the failures we know the moment of.
+    const errors = await getConversationErrors("sess-err-undated", {
+      dbPath: db.dbPath,
+    });
+
+    expect(errors.map((e) => e.messageUuid)).toEqual(["da2", "da1"]);
+    expect(errors[1].timestamp).toBe("");
+  });
+
   it("returns nothing for a conversation that never failed", async () => {
     expect(
       await getConversationErrors("sess-err-clean", { dbPath: db.dbPath }),
