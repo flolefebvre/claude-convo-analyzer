@@ -18,6 +18,7 @@ import {
   getTranscript,
   listConversations,
 } from "@/core/read";
+import { searchConversations } from "@/core/search";
 import { getToolCallSamples, getToolStats } from "@/core/tool-stats";
 
 /**
@@ -77,6 +78,18 @@ export const loadTranscript = cache(async (id: string, agentId?: string) => {
 export const loadToolStats = cache(async (folder?: string, days?: number) => {
   await connection();
   return getToolStats({ folder, days });
+});
+
+/**
+ * Run the full-text search behind `/search?q=…` — conversations grouped, most
+ * recent match first, with their relevance-picked snippets. Always global: the
+ * search deliberately ignores any `?folder=` scope in effect elsewhere. Same
+ * request-time gating as {@link loadConversations}; `cache()` dedupes to a
+ * single core read per query within a request.
+ */
+export const loadSearch = cache(async (query: string) => {
+  await connection();
+  return searchConversations(query);
 });
 
 /**

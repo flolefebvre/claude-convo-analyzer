@@ -2,6 +2,7 @@ import { Suspense } from "react";
 
 import { FolderSidebar } from "@/app/_components/folder-sidebar";
 import { RefreshButton } from "@/app/_components/refresh-button";
+import { SearchBox } from "@/app/_components/search-box";
 import { SectionNav } from "@/app/_components/section-nav";
 import { ThemeToggle } from "@/app/_components/theme-toggle";
 import { loadConversations } from "@/app/_lib/conversations";
@@ -39,10 +40,11 @@ export default function ShellLayout({
             cost rollups.
           </p>
         </div>
-        {/* Header controls: the Light/Dark/Auto theme toggle and the Refresh
-            control. Both are client components; the layout stays a server
-            component. */}
+        {/* Header controls: full-text search, the Light/Dark/Auto theme toggle
+            and the Refresh control. All bring their own client boundary; the
+            layout stays a server component. */}
         <div className="flex items-center gap-3">
+          <SearchBox />
           <ThemeToggle />
           <div data-slot="refresh-action">
             <RefreshButton />
