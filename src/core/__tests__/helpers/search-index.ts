@@ -32,7 +32,5 @@ export function dropSearchIndex(db: Database.Database): void {
   ]) {
     db.exec(stmt);
   }
-  db.prepare("DELETE FROM _cca_migrations WHERE migration_name = ?").run(
-    SEARCH_INDEX_MIGRATION,
-  );
+  db.prepare("DELETE FROM _cca_migrations WHERE migration_name = ?").run(SEARCH_INDEX_MIGRATION);
 }

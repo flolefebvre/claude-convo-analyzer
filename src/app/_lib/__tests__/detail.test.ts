@@ -3,11 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { ConversationDetail } from "@/core/read";
 
 import { formatCost } from "@/app/_lib/format";
-import {
-  detailSections,
-  subAgentLabel,
-  tokenComposition,
-} from "@/app/_lib/detail";
+import { detailSections, subAgentLabel, tokenComposition } from "@/app/_lib/detail";
 
 describe("subAgentLabel", () => {
   it("returns the agent type when present", () => {
@@ -64,19 +60,9 @@ describe("tokenComposition", () => {
 
   it("pairs each of the four buckets, in display order, with its dollar cost", () => {
     const buckets = tokenComposition(tokens, costByType);
-    expect(buckets.map((b) => b.label)).toEqual([
-      "Input",
-      "Output",
-      "Cache-write",
-      "Cache-read",
-    ]);
+    expect(buckets.map((b) => b.label)).toEqual(["Input", "Output", "Cache-write", "Cache-read"]);
     // The dollar figure is the payload — sourced per-bucket from costByType.
-    expect(buckets.map((b) => formatCost(b.costUsd))).toEqual([
-      "$0.0040",
-      "$1.10",
-      "$0.32",
-      "$0.30",
-    ]);
+    expect(buckets.map((b) => formatCost(b.costUsd))).toEqual(["$0.0040", "$1.10", "$0.32", "$0.30"]);
   });
 
   it("carries the muted secondary token count and its percent of the total", () => {
@@ -108,11 +94,7 @@ describe("detailSections", () => {
       }),
     );
     expect(sections.perModel.isEmpty).toBe(false);
-    expect(sections.perModel.rows.map((r) => r.model)).toEqual([
-      "opus",
-      "sonnet",
-      "haiku",
-    ]);
+    expect(sections.perModel.rows.map((r) => r.model)).toEqual(["opus", "sonnet", "haiku"]);
     expect(sections.perModel.totalCost).toBeCloseTo(12);
   });
 
@@ -125,10 +107,7 @@ describe("detailSections", () => {
         ],
       }),
     );
-    expect(sections.perSkill.rows.map((r) => r.skill)).toEqual([
-      "orchestrate",
-      "commit",
-    ]);
+    expect(sections.perSkill.rows.map((r) => r.skill)).toEqual(["orchestrate", "commit"]);
     expect(sections.perSkill.totalCost).toBeCloseTo(8);
   });
 
@@ -163,10 +142,7 @@ describe("detailSections", () => {
     );
     expect(sections.subAgents.isEmpty).toBe(false);
     // Groups ranked by summed cost desc: general-purpose ($8) before main ($1).
-    expect(sections.subAgents.groups.map((g) => g.label)).toEqual([
-      "general-purpose",
-      "main",
-    ]);
+    expect(sections.subAgents.groups.map((g) => g.label)).toEqual(["general-purpose", "main"]);
     const gp = sections.subAgents.groups[0];
     expect(gp.count).toBe(2);
     expect(gp.costUsd).toBeCloseTo(8);

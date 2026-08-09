@@ -9,12 +9,7 @@
 
 import { CostBar } from "@/app/_components/cost-bar";
 import { type FolderEntry } from "@/app/_lib/folders";
-import {
-  formatCompactTokens,
-  formatDateRange,
-  formatGrandTotalCost,
-  formatTokens,
-} from "@/app/_lib/format";
+import { formatCompactTokens, formatDateRange, formatGrandTotalCost, formatTokens } from "@/app/_lib/format";
 import { type Overview } from "@/app/_lib/overview";
 
 export function OverviewBand({
@@ -28,10 +23,7 @@ export function OverviewBand({
   const cost = formatGrandTotalCost(overview.totalCost);
   const range = formatDateRange(overview.earliest, overview.latest);
   // "24 projects · Jun 2 – Jun 22 2026", dropping whichever half is unknown.
-  const span = [
-    `${overview.projectCount} project${overview.projectCount === 1 ? "" : "s"}`,
-    range,
-  ]
+  const span = [`${overview.projectCount} project${overview.projectCount === 1 ? "" : "s"}`, range]
     .filter(Boolean)
     .join(" · ");
   return (
@@ -39,13 +31,7 @@ export function OverviewBand({
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Total cost">
           <span className="text-cost">
-            {overview.hasUnpriced ? (
-              <span title="Includes unpriced model usage — a lower bound.">
-                ~{cost}
-              </span>
-            ) : (
-              cost
-            )}
+            {overview.hasUnpriced ? <span title="Includes unpriced model usage — a lower bound.">~{cost}</span> : cost}
           </span>
         </StatCard>
         <StatCard label="Tokens" hint={`${formatTokens(overview.tokens.total)} total`}>
@@ -60,9 +46,7 @@ export function OverviewBand({
         </StatCard>
       </div>
 
-      {topProjects.length > 0 && (
-        <TopProjects projects={topProjects} totalCost={overview.totalCost} />
-      )}
+      {topProjects.length > 0 && <TopProjects projects={topProjects} totalCost={overview.totalCost} />}
     </section>
   );
 }
@@ -80,9 +64,7 @@ function StatCard({
 }) {
   return (
     <div className="rounded-xl border bg-card p-5">
-      <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-        {label}
-      </p>
+      <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{label}</p>
       <p className="mt-2 text-3xl font-semibold tabular-nums">{children}</p>
       {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
     </div>
@@ -105,9 +87,7 @@ function TopProjects({
 }) {
   return (
     <div className="rounded-xl border bg-card p-5">
-      <p className="mb-3 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-        Top projects by cost
-      </p>
+      <p className="mb-3 text-xs font-medium tracking-wide text-muted-foreground uppercase">Top projects by cost</p>
       <ul className="flex flex-col gap-2.5">
         {projects.map((p) => (
           <li key={p.folder} className="flex items-center gap-3 text-sm">
@@ -115,7 +95,7 @@ function TopProjects({
               {p.label}
             </span>
             <CostBar value={p.costUsd} max={totalCost} className="min-w-0 flex-1" />
-            <span className="w-20 shrink-0 text-right tabular-nums text-muted-foreground">
+            <span className="w-20 shrink-0 text-right text-muted-foreground tabular-nums">
               {p.unpriced ? "~" : ""}
               {formatGrandTotalCost(p.costUsd)}
             </span>

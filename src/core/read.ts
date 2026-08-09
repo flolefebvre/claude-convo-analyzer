@@ -7,13 +7,7 @@
 // messages of ALL agents in the conversation — so sub-agent tokens roll up
 // automatically, counted ONCE (the parent Agent aggregate is never summed in).
 
-import {
-  type CostByType,
-  priceSplitByType,
-  resolveModel,
-  type TokenSplit,
-  type Tokens,
-} from "@/core/cost";
+import { type CostByType, priceSplitByType, resolveModel, type TokenSplit, type Tokens } from "@/core/cost";
 import { readClient } from "@/core/db";
 import { addLocalDays, localDayKey, startOfLocalDay } from "@/core/local-day";
 import type { PrismaClient } from "@/core/prisma/generated/client";
@@ -175,9 +169,7 @@ type ListOptions = {
  * as SUM queries over every message of every agent in the conversation (ADR-0001),
  * so sub-agents added in Slice 4 roll up automatically.
  */
-export async function listConversations(
-  opts: ListOptions = {},
-): Promise<ConversationSummary[]> {
+export async function listConversations(opts: ListOptions = {}): Promise<ConversationSummary[]> {
   const { prisma, owned } = readClient(opts.dbPath);
   try {
     // O(1) queries regardless of conversation count (no per-conversation loop):
@@ -221,15 +213,9 @@ export async function listConversations(
       }
       rows.push(toModelSumRow(g));
     }
-    const boundsById = new Map<
-      number,
-      { startedAt: string; endedAt: string }
-    >();
+    const boundsById = new Map<number, { startedAt: string; endedAt: string }>();
     for (const t of timeSpans) {
-      boundsById.set(
-        t.conversationId,
-        isoBounds(t._min.timestamp, t._max.timestamp),
-      );
+      boundsById.set(t.conversationId, isoBounds(t._min.timestamp, t._max.timestamp));
     }
     const subCountById = new Map<number, number>();
     for (const c of subAgentCounts) {
@@ -239,10 +225,7 @@ export async function listConversations(
     for (const c of errorCounts) {
       errorCountById.set(c.conversationId, c._count._all);
     }
-    const continuedFromById = await resolveContinuedFromIds(
-      prisma,
-      conversations,
-    );
+    const continuedFromById = await resolveContinuedFromIds(prisma, conversations);
 
     const summaries = conversations.map((convo) =>
       assembleSummary(convo, {
@@ -278,11 +261,7 @@ async function resolveContinuedFromIds(
   conversations: { continuedFromConversationId: number | null }[],
 ): Promise<Map<number, string>> {
   const referenced = [
-    ...new Set(
-      conversations
-        .map((c) => c.continuedFromConversationId)
-        .filter((id): id is number => id !== null),
-    ),
+    ...new Set(conversations.map((c) => c.continuedFromConversationId).filter((id): id is number => id !== null)),
   ];
   const out = new Map<number, string>();
   if (referenced.length === 0) return out;
@@ -302,10 +281,7 @@ type DetailOptions = { dbPath?: string };
  * (so they match exactly); the three breakdowns are independent SUM queries over
  * every agent's messages (sub-agent tokens roll up automatically, counted once).
  */
-export async function getConversation(
-  id: string,
-  opts: DetailOptions = {},
-): Promise<ConversationDetail | null> {
+export async function getConversation(id: string, opts: DetailOptions = {}): Promise<ConversationDetail | null> {
   const { prisma, owned } = readClient(opts.dbPath);
   try {
     const convo = await prisma.conversation.findUnique({
@@ -420,10 +396,7 @@ type OwnCost = { tokens: Tokens; costUsd: number; unpriced: boolean };
  * single source of the per-agent own-cost used by both the sub-agent breakdown
  * (detail panel) and the Transcript agent tree, so their numbers match exactly.
  */
-async function ownCostByAgent(
-  prisma: PrismaClient,
-  agentIds: number[],
-): Promise<Map<number, OwnCost>> {
+async function ownCostByAgent(prisma: PrismaClient, agentIds: number[]): Promise<Map<number, OwnCost>> {
   const out = new Map<number, OwnCost>();
   if (agentIds.length === 0) return out;
 
@@ -487,10 +460,7 @@ function agentKey(a: { externalAgentId: string | null; id: number }): string {
  * assistant turns with per-turn cost + nested tool calls). All queries are
  * batched (groupBy/findMany), never per-agent N+1. Serializable plain shape only.
  */
-export async function getTranscript(
-  id: string,
-  opts: TranscriptOptions = {},
-): Promise<TranscriptView | null> {
+export async function getTranscript(id: string, opts: TranscriptOptions = {}): Promise<TranscriptView | null> {
   const { prisma, owned } = readClient(opts.dbPath);
   try {
     const convo = await prisma.conversation.findUnique({
@@ -514,19 +484,14 @@ export async function getTranscript(
 
     // Batched per-agent aggregates (no N+1): own cost, error dot, meta count,
     // and first-message timestamp for stable spawn-time sibling ordering.
-    const [ownCost, errorAgentIds, metaByAgent, firstTsByAgent] =
-      await Promise.all([
-        ownCostByAgent(prisma, agentIds),
-        errorAgentIdSet(prisma, convo.id),
-        metaCountByAgent(prisma, convo.id),
-        firstMessageTsByAgent(prisma, convo.id),
-      ]);
+    const [ownCost, errorAgentIds, metaByAgent, firstTsByAgent] = await Promise.all([
+      ownCostByAgent(prisma, agentIds),
+      errorAgentIdSet(prisma, convo.id),
+      metaCountByAgent(prisma, convo.id),
+      firstMessageTsByAgent(prisma, convo.id),
+    ]);
 
-    const spawnToolUseByAgent = await resolveSpawnToolUseIds(
-      prisma,
-      agents,
-      firstTsByAgent,
-    );
+    const spawnToolUseByAgent = await resolveSpawnToolUseIds(prisma, agents, firstTsByAgent);
 
     const tree = buildAgentTree(agents, {
       ownCost,
@@ -549,14 +514,9 @@ export async function getTranscript(
     // Resolve the selected agent (the `?agent=` key), defaulting to main.
     const mainAgent = agents.find((a) => a.parentAgentId === null) ?? agents[0];
     const selected =
-      (opts.agentId === undefined
-        ? undefined
-        : agents.find((a) => agentKey(a) === opts.agentId)) ?? mainAgent;
+      (opts.agentId === undefined ? undefined : agents.find((a) => agentKey(a) === opts.agentId)) ?? mainAgent;
 
-    const messages =
-      selected === undefined
-        ? []
-        : await readAgentTranscript(prisma, selected.id);
+    const messages = selected === undefined ? [] : await readAgentTranscript(prisma, selected.id);
 
     return {
       sessionId: convo.sessionId,
@@ -566,8 +526,7 @@ export async function getTranscript(
       totalTokens,
       selectedAgentId: selected === undefined ? "" : agentKey(selected),
       messages,
-      metaHiddenCount:
-        selected === undefined ? 0 : (metaByAgent.get(selected.id) ?? 0),
+      metaHiddenCount: selected === undefined ? 0 : (metaByAgent.get(selected.id) ?? 0),
     };
   } finally {
     // Only a caller-owned (non-default) client is disconnected; the shared
@@ -643,9 +602,7 @@ type DailySpendOptions = {
  *    but its tokens still count in the day/range totals and raise `hasUnpriced`
  *    so the UI can mark the cost as a lower bound.
  */
-export async function getDailySpend(
-  opts: DailySpendOptions = {},
-): Promise<DailySpend> {
+export async function getDailySpend(opts: DailySpendOptions = {}): Promise<DailySpend> {
   const { prisma, owned } = readClient(opts.dbPath);
   try {
     const today = startOfLocalDay(opts.now ?? Date.now());
@@ -661,9 +618,7 @@ export async function getDailySpend(
           lt: BigInt(addLocalDays(today, 1).getTime()),
           ...(from === null ? {} : { gte: BigInt(from.getTime()) }),
         },
-        ...(opts.folder === undefined
-          ? {}
-          : { conversation: { project: { folderName: opts.folder } } }),
+        ...(opts.folder === undefined ? {} : { conversation: { project: { folderName: opts.folder } } }),
       },
       select: {
         timestamp: true,
@@ -706,9 +661,7 @@ function emptySplit(): TokenSplit {
 }
 
 /** Accumulate message rows into per-local-day, per-model per-tier token splits. */
-function foldByLocalDay(
-  rows: DailyMessageRow[],
-): Map<string, Map<string, TokenSplit>> {
+function foldByLocalDay(rows: DailyMessageRow[]): Map<string, Map<string, TokenSplit>> {
   const byDay = new Map<string, Map<string, TokenSplit>>();
   for (const r of rows) {
     if (r.timestamp === null || r.model === null) continue;
@@ -733,10 +686,7 @@ function foldByLocalDay(
 }
 
 /** The earliest bucketed day (all-time range start), or `fallback` when empty. */
-function earliestDay(
-  byDay: Map<string, Map<string, TokenSplit>>,
-  fallback: Date,
-): Date {
+function earliestDay(byDay: Map<string, Map<string, TokenSplit>>, fallback: Date): Date {
   let earliest: string | undefined;
   for (const key of byDay.keys()) {
     if (earliest === undefined || key < earliest) earliest = key;
@@ -827,18 +777,12 @@ function accumulateModelTotal(
 }
 
 /** Cost descending, ties broken by model name so the order is deterministic. */
-function byCostDesc(
-  a: { model: string; costUsd: number },
-  b: { model: string; costUsd: number },
-): number {
+function byCostDesc(a: { model: string; costUsd: number }, b: { model: string; costUsd: number }): number {
   return b.costUsd - a.costUsd || a.model.localeCompare(b.model);
 }
 
 /** Agent ids that recorded at least one API-error turn (the error dot). */
-async function errorAgentIdSet(
-  prisma: PrismaClient,
-  conversationId: number,
-): Promise<Set<number>> {
+async function errorAgentIdSet(prisma: PrismaClient, conversationId: number): Promise<Set<number>> {
   const rows = await prisma.message.groupBy({
     by: ["agentId"],
     where: { conversationId, isApiError: true },
@@ -848,10 +792,7 @@ async function errorAgentIdSet(
 }
 
 /** Per-agent count of hidden `meta` user records (for the "N meta hidden" marker). */
-async function metaCountByAgent(
-  prisma: PrismaClient,
-  conversationId: number,
-): Promise<Map<number, number>> {
+async function metaCountByAgent(prisma: PrismaClient, conversationId: number): Promise<Map<number, number>> {
   const rows = await prisma.message.groupBy({
     by: ["agentId"],
     where: { conversationId, role: "user", kind: "meta" },
@@ -863,10 +804,7 @@ async function metaCountByAgent(
 }
 
 /** Per-agent first-message timestamp (epoch ms) — the spawn-time sort key. */
-async function firstMessageTsByAgent(
-  prisma: PrismaClient,
-  conversationId: number,
-): Promise<Map<number, number>> {
+async function firstMessageTsByAgent(prisma: PrismaClient, conversationId: number): Promise<Map<number, number>> {
   const rows = await prisma.message.groupBy({
     by: ["agentId"],
     where: { conversationId },
@@ -893,13 +831,7 @@ async function resolveSpawnToolUseIds(
   firstTsByAgent: Map<number, number>,
 ): Promise<Map<number, string | null>> {
   const out = new Map<number, string | null>();
-  const spawnMsgIds = [
-    ...new Set(
-      agents
-        .map((a) => a.spawnedByMessageId)
-        .filter((x): x is number => x !== null),
-    ),
-  ];
+  const spawnMsgIds = [...new Set(agents.map((a) => a.spawnedByMessageId).filter((x): x is number => x !== null))];
   if (spawnMsgIds.length === 0) return out;
 
   const calls = await prisma.toolCall.findMany({
@@ -973,25 +905,18 @@ function buildAgentTree(
   const mainId = main?.id;
 
   // Attach children in spawn-time order (stable tiebreak by id).
-  const ts = (aid: number) =>
-    ctx.firstTsByAgent.get(aid) ?? Number.MAX_SAFE_INTEGER;
-  const ordered = [...agents].sort(
-    (x, y) => ts(x.id) - ts(y.id) || x.id - y.id,
-  );
+  const ts = (aid: number) => ctx.firstTsByAgent.get(aid) ?? Number.MAX_SAFE_INTEGER;
+  const ordered = [...agents].sort((x, y) => ts(x.id) - ts(y.id) || x.id - y.id);
   for (const a of ordered) {
     if (a.id === mainId) continue;
     const node = nodeById.get(a.id);
     if (node === undefined) continue;
-    const parent =
-      a.parentAgentId !== null ? nodeById.get(a.parentAgentId) : undefined;
+    const parent = a.parentAgentId !== null ? nodeById.get(a.parentAgentId) : undefined;
     // Dangling/null parent (defensive) → nest under main.
-    (parent ?? (mainId === undefined ? undefined : nodeById.get(mainId)))
-      ?.children.push(node);
+    (parent ?? (mainId === undefined ? undefined : nodeById.get(mainId)))?.children.push(node);
   }
 
-  return mainId === undefined
-    ? emptyMainNode()
-    : (nodeById.get(mainId) as TranscriptAgentNode);
+  return mainId === undefined ? emptyMainNode() : (nodeById.get(mainId) as TranscriptAgentNode);
 }
 
 /** Degenerate main node for a conversation with no agent rows (should not occur). */
@@ -1016,10 +941,7 @@ function emptyMainNode(): TranscriptAgentNode {
  * `kind = 'prompt'` (tool-result & meta excluded), in timestamp/id order, each
  * assistant turn carrying its per-turn cost and nested tool calls.
  */
-async function readAgentTranscript(
-  prisma: PrismaClient,
-  agentId: number,
-): Promise<TranscriptMessage[]> {
+async function readAgentTranscript(prisma: PrismaClient, agentId: number): Promise<TranscriptMessage[]> {
   const rows = await prisma.message.findMany({
     where: {
       agentId,
@@ -1111,10 +1033,7 @@ function priceTurn(row: TurnRow): {
   if (row.model === null) {
     return { tokens, costUsd: 0, unpriced: true };
   }
-  const cost = priceSplitByType(
-    { input, output, cacheWrite5m: cw5m, cacheWrite1h: cw1h, cacheRead: cr },
-    row.model,
-  );
+  const cost = priceSplitByType({ input, output, cacheWrite5m: cw5m, cacheWrite1h: cw1h, cacheRead: cr }, row.model);
   return { tokens, costUsd: cost.usd, unpriced: cost.unpriced };
 }
 
@@ -1208,10 +1127,7 @@ function priceModelRow(row: ModelSumRow): PricedGroup {
     cacheRead: cr,
     total: input + output + cacheWrite + cr,
   };
-  const cost = priceSplitByType(
-    { input, output, cacheWrite5m: cw5m, cacheWrite1h: cw1h, cacheRead: cr },
-    model,
-  );
+  const cost = priceSplitByType({ input, output, cacheWrite5m: cw5m, cacheWrite1h: cw1h, cacheRead: cr }, model);
   return {
     model,
     tokens,
@@ -1299,10 +1215,7 @@ function addTokens(a: Tokens, b: Tokens): void {
 }
 
 /** Group ALL messages of ALL agents in a conversation by model, priced exactly. */
-async function pricedGroupsByModel(
-  prisma: PrismaClient,
-  conversationId: number,
-): Promise<PricedGroup[]> {
+async function pricedGroupsByModel(prisma: PrismaClient, conversationId: number): Promise<PricedGroup[]> {
   // Per-model token sums via one typed `groupBy` (ADR-0001: SUM, never stored
   // aggregates). `message.conversationId` is denormalized onto every row —
   // including sub-agent messages — so scoping by it rolls up every agent's
@@ -1433,11 +1346,7 @@ async function summarizeConversation(
   return { summary, groups };
 }
 
-function sortSummaries(
-  summaries: ConversationSummary[],
-  sortBy: keyof ConversationSummary,
-  dir: "asc" | "desc",
-): void {
+function sortSummaries(summaries: ConversationSummary[], sortBy: keyof ConversationSummary, dir: "asc" | "desc"): void {
   const factor = dir === "desc" ? -1 : 1;
   summaries.sort((a, b) => {
     const av = a[sortBy];

@@ -27,11 +27,7 @@ export function TranscriptTree({ view }: { view: TranscriptView }) {
       </div>
       <div className="tree-caption microlabel">Agents</div>
       <nav className="tree-nodes" aria-label="Agents">
-        <TreeNode
-          node={view.tree}
-          depth={0}
-          view={view}
-        />
+        <TreeNode node={view.tree} depth={0} view={view} />
       </nav>
       <div className="tree-total">
         <span className="microlabel">Conversation total</span>
@@ -42,15 +38,7 @@ export function TranscriptTree({ view }: { view: TranscriptView }) {
 }
 
 /** One agent node plus its descendants, indented by `--depth`. */
-function TreeNode({
-  node,
-  depth,
-  view,
-}: {
-  node: TranscriptAgentNode;
-  depth: number;
-  view: TranscriptView;
-}) {
+function TreeNode({ node, depth, view }: { node: TranscriptAgentNode; depth: number; view: TranscriptView }) {
   const isCurrent = node.id === view.selectedAgentId;
   // The root links to the bare route (clean URL); children carry `?agent=`.
   const href = agentHref(view.sessionId, depth === 0 ? undefined : node.id);
@@ -60,15 +48,8 @@ function TreeNode({
         <span className="node-glyph" aria-hidden>
           {depth === 0 ? "◆" : "◇"}
         </span>
-        <span className="node-label">
-          {subAgentLabel({ agentType: node.agentType ?? "" })}
-        </span>
-        {node.hasError && (
-          <span
-            className="node-err"
-            title="transcript recorded an API error"
-          />
-        )}
+        <span className="node-label">{subAgentLabel({ agentType: node.agentType ?? "" })}</span>
+        {node.hasError && <span className="node-err" title="transcript recorded an API error" />}
         <span className="cost num">{formatCost(node.costUsd)}</span>
       </TreeNodeLink>
       {node.children.map((child) => (

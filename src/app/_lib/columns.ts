@@ -21,7 +21,5 @@ export function columnCount(scoped: boolean): number {
 
 /** The footer summary cell's colSpan, one fewer when the Folder column is hidden. */
 export function footerLabelColSpan(scoped: boolean): number {
-  return scoped
-    ? UNSCOPED_FOOTER_LABEL_COLSPAN - 1
-    : UNSCOPED_FOOTER_LABEL_COLSPAN;
+  return scoped ? UNSCOPED_FOOTER_LABEL_COLSPAN - 1 : UNSCOPED_FOOTER_LABEL_COLSPAN;
 }

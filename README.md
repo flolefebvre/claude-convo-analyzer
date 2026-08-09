@@ -9,8 +9,8 @@ and sub-agent.
 and writes a local SQLite file (`./data/analyzer.db`). Nothing is ever sent
 anywhere.
 
-> **About the cost figure:** the cost shown is always *"what these tokens would
-> cost through the public API"*. If you're on a Pro or Max subscription you
+> **About the cost figure:** the cost shown is always _"what these tokens would
+> cost through the public API"_. If you're on a Pro or Max subscription you
 > don't actually pay per token — so treat the number as the equivalent API
 > value of your usage, not a bill.
 
@@ -66,7 +66,7 @@ biggest results, each linking straight to that call in the Transcript:
 ![Tools page](docs/images/tools-view.png)
 
 Search answers the "where did we discuss X?" question. The search box in the
-header is on every page; it searches what was *said* — your prompts, Claude's
+header is on every page; it searches what was _said_ — your prompts, Claude's
 replies, and conversation titles — across every project, never tool output or
 machine-injected noise. Results are grouped into one card per conversation, most
 recently matching first, with up to three highlighted extracts; clicking an
@@ -120,9 +120,9 @@ The domain model and the reasoning behind it are documented in
 
 ## Roadmap
 
-Today the app answers *"where did the tokens and cost go?"*. The next steps push
-it toward *"what actually happened in these conversations, and how do I make them
-better?"*
+Today the app answers _"where did the tokens and cost go?"_. The next steps push
+it toward _"what actually happened in these conversations, and how do I make them
+better?"_
 
 - **Usage stats by skill and sub-agent.** The Tools page already covers tool
   usage (calls, errors, result sizes). The same behavioural lens still has to
@@ -131,7 +131,7 @@ better?"*
   bill.
 
 - **Deeper conversation analysis — surfacing friction.** When running fully
-  autonomous, different sub-agents often grind on the *same* underlying problem —
+  autonomous, different sub-agents often grind on the _same_ underlying problem —
   e.g. a missing piece of context like how to invoke a command. The goal is to
   detect these recurring friction points automatically and make them visible, so
   a single fix (a note in `CLAUDE.md`, a better tool description) can unblock
@@ -141,16 +141,14 @@ Have an idea or a friction pattern you'd like surfaced? Open an issue.
 
 ## Development
 
-The validation gate — all four must pass:
+The validation gate — format check, lint, typecheck, test, build in sequence;
+it passed only if the output ends with `--gate OK--`:
 
 ```bash
-pnpm test     # vitest
-pnpm lint     # eslint
-pnpm fallow   # dead code, cycles, duplication, complexity, core boundary
-pnpm build    # next build
+pnpm gate
 ```
 
-See [`docs/agents/development.md`](docs/agents/development.md) for the testing
+See [`docs/codebase/testing.md`](docs/codebase/testing.md) for the testing
 approach and fixtures.
 
 ## Was this made with AI?

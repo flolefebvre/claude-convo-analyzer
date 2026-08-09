@@ -183,10 +183,7 @@ export function sortHref(field: SortableField, ctx: ListLinkContext): string {
  * axis, so changing folder composes with the current sort — and, since the
  * sidebar is shared with Trends, never resets the selected range.
  */
-export function folderHref(
-  folder: string | undefined,
-  ctx: ListLinkContext,
-): string {
+export function folderHref(folder: string | undefined, ctx: ListLinkContext): string {
   return buildHref({ ...ctx, folder });
 }
 
@@ -196,11 +193,7 @@ export function folderHref(
  * row collapses it (the param is dropped). Every other axis is preserved in
  * both directions so toggling a panel never changes the view.
  */
-export function expandHref(
-  rowId: string,
-  expanded: string | undefined,
-  ctx: ListLinkContext,
-): string {
+export function expandHref(rowId: string, expanded: string | undefined, ctx: ListLinkContext): string {
   return buildHref(ctx, rowId === expanded ? undefined : rowId);
 }
 
@@ -229,9 +222,7 @@ export function resolveErrorsOnly(raw: string | string[] | undefined): boolean {
  * {@link resolveSort}: first value when the param repeats, and an absent/empty
  * value means "no row expanded" (`undefined`).
  */
-export function resolveExpanded(
-  raw: string | string[] | undefined,
-): string | undefined {
+export function resolveExpanded(raw: string | string[] | undefined): string | undefined {
   return firstParam(raw) || undefined;
 }
 
@@ -247,11 +238,7 @@ export function sortIndicator(field: SortableField, current: SortState): string 
  * case-insensitively via `localeCompare`; numbers compare numerically. Returns
  * the asc-ordered comparison; {@link sortConversations} negates it for desc.
  */
-function compareValues(
-  a: string | number | null,
-  b: string | number | null,
-  kind: SortKind,
-): number {
+function compareValues(a: string | number | null, b: string | number | null, kind: SortKind): number {
   // Nulls last, in both directions (the caller never negates a null result).
   if (a === null && b === null) return 0;
   if (a === null) return 1;
@@ -269,10 +256,7 @@ function compareValues(
  * (always ascending) so the order is deterministic. `null` values sort last in
  * both directions; the direction only flips non-null comparisons.
  */
-export function sortConversations(
-  rows: readonly ConversationSummary[],
-  sort: SortState,
-): ConversationSummary[] {
+export function sortConversations(rows: readonly ConversationSummary[], sort: SortState): ConversationSummary[] {
   const column = COLUMNS[sort.sortBy];
   const sign = sort.dir === "asc" ? 1 : -1;
 
@@ -281,9 +265,7 @@ export function sortConversations(
     const bv = column.value(b);
     // Nulls are anchored last: only direction-flip a comparison of two non-nulls.
     const primary =
-      av === null || bv === null
-        ? compareValues(av, bv, column.kind)
-        : sign * compareValues(av, bv, column.kind);
+      av === null || bv === null ? compareValues(av, bv, column.kind) : sign * compareValues(av, bv, column.kind);
     if (primary !== 0) return primary;
     return a.id.localeCompare(b.id);
   });

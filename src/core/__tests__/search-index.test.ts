@@ -35,12 +35,8 @@ function open(dbPath: string): Database.Database {
  * `fts5vocab` (never through the external content table).
  */
 function indexedMessageIds(db: Database.Database): Set<number> {
-  db.exec(
-    "CREATE VIRTUAL TABLE IF NOT EXISTS temp.msg_vocab USING fts5vocab(main, message_fts, instance)",
-  );
-  const rows = db
-    .prepare("SELECT DISTINCT doc AS id FROM temp.msg_vocab")
-    .all() as { id: number }[];
+  db.exec("CREATE VIRTUAL TABLE IF NOT EXISTS temp.msg_vocab USING fts5vocab(main, message_fts, instance)");
+  const rows = db.prepare("SELECT DISTINCT doc AS id FROM temp.msg_vocab").all() as { id: number }[];
   return new Set(rows.map((r) => r.id));
 }
 
@@ -49,9 +45,7 @@ function indexedTitleIds(db: Database.Database): Set<number> {
   db.exec(
     "CREATE VIRTUAL TABLE IF NOT EXISTS temp.title_vocab USING fts5vocab(main, conversation_title_fts, instance)",
   );
-  const rows = db
-    .prepare("SELECT DISTINCT doc AS id FROM temp.title_vocab")
-    .all() as { id: number }[];
+  const rows = db.prepare("SELECT DISTINCT doc AS id FROM temp.title_vocab").all() as { id: number }[];
   return new Set(rows.map((r) => r.id));
 }
 
@@ -74,15 +68,9 @@ function expectedCorpusIds(db: Database.Database): Set<number> {
 function expectIndexMatchesCorpus(dbPath: string): void {
   const db = open(dbPath);
   try {
-    expect([...indexedMessageIds(db)].sort((a, b) => a - b)).toEqual(
-      [...expectedCorpusIds(db)].sort((a, b) => a - b),
-    );
-    const titles = db
-      .prepare("SELECT id FROM conversation WHERE title IS NOT NULL")
-      .all() as { id: number }[];
-    expect([...indexedTitleIds(db)].sort((a, b) => a - b)).toEqual(
-      titles.map((t) => t.id).sort((a, b) => a - b),
-    );
+    expect([...indexedMessageIds(db)].sort((a, b) => a - b)).toEqual([...expectedCorpusIds(db)].sort((a, b) => a - b));
+    const titles = db.prepare("SELECT id FROM conversation WHERE title IS NOT NULL").all() as { id: number }[];
+    expect([...indexedTitleIds(db)].sort((a, b) => a - b)).toEqual(titles.map((t) => t.id).sort((a, b) => a - b));
   } finally {
     db.close();
   }
@@ -136,9 +124,7 @@ describe("FTS search index — corpus", () => {
   });
 
   it("indexes conversation titles", () => {
-    expect(matchingTitleSessions(db.dbPath, "kinds")).toContain(
-      "sess-transcript",
-    );
+    expect(matchingTitleSessions(db.dbPath, "kinds")).toContain("sess-transcript");
   });
 
   it("never indexes meta records", () => {
@@ -174,11 +160,7 @@ describe("FTS search index — consistency through refresh()", () => {
     logsRoot = path.join(tmpDir, "logs");
     cpSync(FIXTURES_ROOT, logsRoot, { recursive: true });
     dbPath = path.join(tmpDir, "analyzer.db");
-    sessionPath = path.join(
-      logsRoot,
-      "-Users-me-dev-transcript",
-      "sess-transcript.jsonl",
-    );
+    sessionPath = path.join(logsRoot, "-Users-me-dev-transcript", "sess-transcript.jsonl");
     await refresh({ logsRoot, dbPath });
   });
 
@@ -212,9 +194,7 @@ describe("FTS search index — consistency through refresh()", () => {
     expect(matchingUuids(dbPath, "flaky")).toContain("tu1");
     // The old title went with it.
     expect(matchingTitleSessions(dbPath, "kinds")).toHaveLength(0);
-    expect(matchingTitleSessions(dbPath, "retitled")).toContain(
-      "sess-transcript",
-    );
+    expect(matchingTitleSessions(dbPath, "retitled")).toContain("sess-transcript");
     expectIndexMatchesCorpus(dbPath);
   });
 

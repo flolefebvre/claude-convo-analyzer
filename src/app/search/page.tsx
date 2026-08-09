@@ -32,11 +32,7 @@ import type { SearchResult, SearchSnippet } from "@/core/search";
 
 type PageSearchParams = { q?: string | string[] };
 
-export default function SearchPage({
-  searchParams,
-}: {
-  searchParams: Promise<PageSearchParams>;
-}) {
+export default function SearchPage({ searchParams }: { searchParams: Promise<PageSearchParams> }) {
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-10">
       <Suspense fallback={<SearchFallback />}>
@@ -51,32 +47,22 @@ export default function SearchPage({
  * {@link SearchPage} so the request-time read sits inside the page's <Suspense>
  * boundary (PPR).
  */
-async function SearchSurface({
-  searchParams,
-}: {
-  searchParams: Promise<PageSearchParams>;
-}) {
+async function SearchSurface({ searchParams }: { searchParams: Promise<PageSearchParams> }) {
   const params = await searchParams;
   const query = (firstParam(params.q) ?? "").trim();
   // An empty box is not a search: prompt for one, and never touch the database.
-  const { results, hasMore } =
-    query === "" ? { results: [], hasMore: false } : await loadSearch(query);
+  const { results, hasMore } = query === "" ? { results: [], hasMore: false } : await loadSearch(query);
 
   return (
     <>
       <SearchHeader query={query} />
       {query === "" ? (
         <p className="text-sm text-muted-foreground">
-          Search every conversation — your prompts, Claude&apos;s replies, and
-          conversation titles.
+          Search every conversation — your prompts, Claude&apos;s replies, and conversation titles.
         </p>
       ) : results.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No conversation matches{" "}
-          <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
-            {query}
-          </code>
-          .
+          No conversation matches <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{query}</code>.
         </p>
       ) : (
         <>
@@ -93,8 +79,7 @@ async function SearchSurface({
           </ol>
           {hasMore && (
             <p className="mt-5 text-sm text-muted-foreground">
-              More conversations matched than are shown — add a word to refine
-              your search.
+              More conversations matched than are shown — add a word to refine your search.
             </p>
           )}
         </>
@@ -108,10 +93,7 @@ function SearchHeader({ query }: { query: string }) {
   return (
     <header className="mb-6 flex flex-col gap-4">
       <div className="flex items-center justify-between gap-4">
-        <Link
-          href="/"
-          className="text-sm text-muted-foreground hover:text-foreground"
-        >
+        <Link href="/" className="text-sm text-muted-foreground hover:text-foreground">
           <span aria-hidden>←</span> All conversations
         </Link>
         <ThemeToggle />
@@ -128,10 +110,7 @@ function ResultCard({ result }: { result: SearchResult }) {
   return (
     <article className="rounded-lg border border-border p-4">
       <div className="flex items-baseline justify-between gap-4">
-        <Link
-          href={agentHref(result.sessionId)}
-          className="font-medium hover:underline"
-        >
+        <Link href={agentHref(result.sessionId)} className="font-medium hover:underline">
           {result.title ?? "Untitled conversation"}
         </Link>
         <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
@@ -139,9 +118,7 @@ function ResultCard({ result }: { result: SearchResult }) {
         </span>
       </div>
       <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-        <span title={result.project.path}>
-          {friendlyFolderName(result.project.path)}
-        </span>
+        <span title={result.project.path}>{friendlyFolderName(result.project.path)}</span>
         <span aria-hidden>·</span>
         <span className="tabular-nums" title={date.absolute}>
           {date.label}
@@ -163,21 +140,11 @@ function ResultCard({ result }: { result: SearchResult }) {
  * conversation AND agent AND message (`?agent=…&msg=…#msg-…`). A title hit has
  * no message to anchor on, so it opens the conversation itself.
  */
-function SnippetLink({
-  result,
-  snippet,
-}: {
-  result: SearchResult;
-  snippet: SearchSnippet;
-}) {
+function SnippetLink({ result, snippet }: { result: SearchResult; snippet: SearchSnippet }) {
   const href =
     snippet.source === "title"
       ? agentHref(result.sessionId)
-      : messageHref(
-          result.sessionId,
-          snippet.agentId ?? undefined,
-          snippet.messageUuid,
-        );
+      : messageHref(result.sessionId, snippet.agentId ?? undefined, snippet.messageUuid);
 
   return (
     <Link
@@ -185,18 +152,13 @@ function SnippetLink({
       className="block rounded-md border-l-2 border-border bg-muted/40 px-3 py-1.5 text-sm text-muted-foreground hover:border-cost hover:text-foreground"
     >
       {snippet.source === "title" && (
-        <span className="mr-2 text-[10.5px] font-semibold tracking-[0.08em] uppercase">
-          title
-        </span>
+        <span className="mr-2 text-[10.5px] font-semibold tracking-[0.08em] uppercase">title</span>
       )}
       {/* Segments arrive from the core reader already split into plain and
           matched runs — highlighting never round-trips through raw HTML. */}
       {snippet.segments.map((segment, i) =>
         segment.match ? (
-          <mark
-            key={i}
-            className="rounded-sm bg-cost-muted px-0.5 text-foreground"
-          >
+          <mark key={i} className="rounded-sm bg-cost-muted px-0.5 text-foreground">
             {segment.text}
           </mark>
         ) : (

@@ -14,9 +14,7 @@ describe("getTranscript core reader", () => {
   });
 
   it("returns null for an unknown session id", async () => {
-    expect(
-      await getTranscript("does-not-exist", { dbPath: db.dbPath }),
-    ).toBeNull();
+    expect(await getTranscript("does-not-exist", { dbPath: db.dbPath })).toBeNull();
   });
 
   it("returns the sessionId + title for a known session", async () => {
@@ -60,11 +58,7 @@ describe("getTranscript core reader", () => {
     const view = await getTranscript("sess-transcript", { dbPath: db.dbPath });
     const msgs = view?.messages ?? [];
     // tu1 (prompt), ta1 (assistant), ta2 (assistant) — tu2 tool-result & tu3 meta gone.
-    expect(msgs.map((m) => `${m.role}:${m.kind ?? "-"}`)).toEqual([
-      "user:prompt",
-      "assistant:-",
-      "assistant:-",
-    ]);
+    expect(msgs.map((m) => `${m.role}:${m.kind ?? "-"}`)).toEqual(["user:prompt", "assistant:-", "assistant:-"]);
     const prompt = msgs[0];
     expect(prompt?.text).toBe("kick off the transcript run");
     expect(prompt?.tokens).toBeNull();
@@ -126,34 +120,23 @@ describe("getTranscript core reader", () => {
     const detail = await getConversation("sess-sub", { dbPath: db.dbPath });
     expect(sub?.costUsd).toBeCloseTo(detail?.subAgents[0]?.costUsd ?? -1, 10);
     // Grand total = sum of every agent's own cost; total tokens = 225 (no double-count).
-    expect(view?.totalCostUsd).toBeCloseTo(
-      (main?.costUsd ?? 0) + (sub?.costUsd ?? 0),
-      10,
-    );
+    expect(view?.totalCostUsd).toBeCloseTo((main?.costUsd ?? 0) + (sub?.costUsd ?? 0), 10);
     expect(view?.totalTokens.total).toBe(225);
   });
 
   it("correlates the Agent tool call to the spawned sub-agent node", async () => {
     const view = await getTranscript("sess-sub", { dbPath: db.dbPath });
     // Default selection = main, whose transcript holds the Agent tool call.
-    const agentCall = view?.messages
-      .flatMap((m) => m.toolCalls)
-      .find((tc) => tc.name === "Agent");
+    const agentCall = view?.messages.flatMap((m) => m.toolCalls).find((tc) => tc.name === "Agent");
     expect(agentCall?.toolUseId).toBe("toolu-agent-1");
-    expect(view?.tree.children[0]?.spawnedByToolUseId).toBe(
-      agentCall?.toolUseId,
-    );
+    expect(view?.tree.children[0]?.spawnedByToolUseId).toBe(agentCall?.toolUseId);
   });
 
   it("defaults to the main agent's transcript", async () => {
     const view = await getTranscript("sess-sub", { dbPath: db.dbPath });
     expect(view?.selectedAgentId).toBe(view?.tree.id); // resolved to main's key
     // Main transcript: mu1 prompt, ma1 assistant (Agent call), ma2 assistant.
-    expect(view?.messages.map((m) => m.role)).toEqual([
-      "user",
-      "assistant",
-      "assistant",
-    ]);
+    expect(view?.messages.map((m) => m.role)).toEqual(["user", "assistant", "assistant"]);
   });
 
   it("selects a sub-agent transcript via opts.agentId", async () => {
@@ -206,9 +189,7 @@ describe("getTranscript core reader", () => {
       agentId: "subb",
     });
     // The Agent call that launched subc lives in subb's transcript, not main's.
-    const agentCall = view?.messages
-      .flatMap((m) => m.toolCalls)
-      .find((tc) => tc.name === "Agent");
+    const agentCall = view?.messages.flatMap((m) => m.toolCalls).find((tc) => tc.name === "Agent");
     expect(agentCall?.toolUseId).toBe("toolu-agent-c");
 
     const subc = view?.tree.children[0]?.children[0]?.children[0];
@@ -230,13 +211,7 @@ describe("getTranscript core reader", () => {
     const view = await getTranscript("sess-effort", { dbPath: db.dbPath });
     const msgs = view?.messages ?? [];
     // eu1 prompt, then the four assistant turns: high, high, (none), xhigh.
-    expect(msgs.map((m) => m.effort)).toEqual([
-      null,
-      "high",
-      "high",
-      null,
-      "xhigh",
-    ]);
+    expect(msgs.map((m) => m.effort)).toEqual([null, "high", "high", null, "xhigh"]);
   });
 
   it("carries effort on a sub-agent's transcript too", async () => {
@@ -245,11 +220,7 @@ describe("getTranscript core reader", () => {
       agentId: "eff1",
     });
     expect(view?.selectedAgentId).toBe("eff1");
-    expect(view?.messages.map((m) => m.effort)).toEqual([
-      null,
-      "medium",
-      "medium",
-    ]);
+    expect(view?.messages.map((m) => m.effort)).toEqual([null, "medium", "medium"]);
   });
 
   it("reports null effort throughout a transcript from a log that recorded none", async () => {

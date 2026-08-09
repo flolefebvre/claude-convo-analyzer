@@ -45,11 +45,7 @@ describe("classifyToolCall", () => {
 
 describe("toolCallSnippet", () => {
   it("pulls the command for a Bash call", () => {
-    expect(
-      toolCallSnippet(
-        call({ name: "Bash", inputJson: '{"command":"pnpm test"}' }),
-      ),
-    ).toBe("pnpm test");
+    expect(toolCallSnippet(call({ name: "Bash", inputJson: '{"command":"pnpm test"}' }))).toBe("pnpm test");
   });
 
   it("pulls the skill (and args) for a Skill call", () => {
@@ -68,8 +64,7 @@ describe("toolCallSnippet", () => {
       toolCallSnippet(
         call({
           name: "Agent",
-          inputJson:
-            '{"subagent_type":"Explore","prompt":"scan the core readers"}',
+          inputJson: '{"subagent_type":"Explore","prompt":"scan the core readers"}',
         }),
       ),
     ).toBe("Explore: scan the core readers");
@@ -87,18 +82,14 @@ describe("toolCallSnippet", () => {
   });
 
   it("returns a safe empty fallback for malformed or empty JSON (never throws)", () => {
-    expect(toolCallSnippet(call({ name: "Bash", inputJson: "not json" }))).toBe(
-      "",
-    );
+    expect(toolCallSnippet(call({ name: "Bash", inputJson: "not json" }))).toBe("");
     expect(toolCallSnippet(call({ name: "Bash", inputJson: "" }))).toBe("");
     expect(toolCallSnippet(call({ name: "Read", inputJson: "{}" }))).toBe("");
   });
 
   it("collapses a multi-line value to one line and truncates long ones", () => {
     const long = "x".repeat(400);
-    const out = toolCallSnippet(
-      call({ name: "Bash", inputJson: JSON.stringify({ command: long }) }),
-    );
+    const out = toolCallSnippet(call({ name: "Bash", inputJson: JSON.stringify({ command: long }) }));
     expect(out.length).toBeLessThan(long.length);
     expect(out.endsWith("…")).toBe(true);
 
@@ -114,23 +105,17 @@ describe("toolCallSnippet", () => {
 
 describe("truncationNote", () => {
   it("returns null when the result was not truncated", () => {
-    expect(
-      truncationNote(call({ resultTruncated: false, resultCharSize: 42 })),
-    ).toBeNull();
+    expect(truncationNote(call({ resultTruncated: false, resultCharSize: 42 }))).toBeNull();
   });
 
   it("states the full char count and the stored limit when truncated", () => {
-    const note = truncationNote(
-      call({ resultTruncated: true, resultCharSize: 12_619 }),
-    );
+    const note = truncationNote(call({ resultTruncated: true, resultCharSize: 12_619 }));
     expect(note).toContain("12,619");
     expect(note).toContain("10,000");
   });
 
   it("still notes the stored limit when the full size is unknown", () => {
-    const note = truncationNote(
-      call({ resultTruncated: true, resultCharSize: null }),
-    );
+    const note = truncationNote(call({ resultTruncated: true, resultCharSize: null }));
     expect(note).not.toBeNull();
     expect(note).toContain("10,000");
   });
@@ -180,8 +165,7 @@ describe("parseSlashCommand", () => {
   });
 
   it("keeps surrounding free text as rest", () => {
-    const raw =
-      "before <command-name>/run</command-name><command-args>build</command-args> after";
+    const raw = "before <command-name>/run</command-name><command-args>build</command-args> after";
     const r = parseSlashCommand(raw);
     expect(r.isSlashCommand).toBe(true);
     expect(r.rest).toContain("before");
@@ -196,11 +180,7 @@ describe("agentLineage", () => {
     node("a2", "general-purpose", [node("a3", "Explore", [])]),
   ]);
 
-  function node(
-    id: string,
-    agentType: string,
-    children: TranscriptAgentNode[],
-  ): TranscriptAgentNode {
+  function node(id: string, agentType: string, children: TranscriptAgentNode[]): TranscriptAgentNode {
     return {
       id,
       agentType,
@@ -252,15 +232,11 @@ describe("findSpawnedNode", () => {
 
   const tree = node("root", {}, [
     node("a1", { toolUseId: "tu_a", messageId: 10 }),
-    node("a2", { toolUseId: "tu_b", messageId: 20 }, [
-      node("a3", { toolUseId: "tu_c", messageId: 30 }),
-    ]),
+    node("a2", { toolUseId: "tu_b", messageId: 20 }, [node("a3", { toolUseId: "tu_c", messageId: 30 })]),
   ]);
 
   it("correlates by tool_use id, even for a deeply nested node", () => {
-    expect(findSpawnedNode(tree, { toolUseId: "tu_c", messageId: 999 })?.id).toBe(
-      "a3",
-    );
+    expect(findSpawnedNode(tree, { toolUseId: "tu_c", messageId: 999 })?.id).toBe("a3");
   });
 
   it("prefers the tool_use id when a message spawned several agents", () => {
@@ -273,9 +249,7 @@ describe("findSpawnedNode", () => {
   });
 
   it("falls back to the message id when the call has no tool_use id", () => {
-    expect(findSpawnedNode(tree, { toolUseId: null, messageId: 20 })?.id).toBe(
-      "a2",
-    );
+    expect(findSpawnedNode(tree, { toolUseId: null, messageId: 20 })?.id).toBe("a2");
   });
 
   it("returns null when nothing correlates", () => {
@@ -292,8 +266,7 @@ describe("findSpawnedNode", () => {
  */
 describe("effortSummary", () => {
   /** A transcript row reduced to what the classifier reads. */
-  const turns = (...efforts: (string | null)[]) =>
-    efforts.map((effort, i) => ({ id: i + 1, effort }));
+  const turns = (...efforts: (string | null)[]) => efforts.map((effort, i) => ({ id: i + 1, effort }));
 
   it("reports the single level when every effort-carrying turn agrees", () => {
     const summary = effortSummary(turns("high", "high", "high"));

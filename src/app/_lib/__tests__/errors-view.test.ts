@@ -52,9 +52,7 @@ describe("errorsView", () => {
   });
 
   it("carries the status and the excerpt through verbatim", () => {
-    const [row] = errorsView("sess-1", [
-      apiError({ status: "rate_limit_error", excerpt: "API Error: 429" }),
-    ]);
+    const [row] = errorsView("sess-1", [apiError({ status: "rate_limit_error", excerpt: "API Error: 429" })]);
     expect(row.status).toBe("rate_limit_error");
     expect(row.excerpt).toBe("API Error: 429");
   });

@@ -10,14 +10,14 @@ The app reports per-conversation token usage and hypothetical API cost by
 parsing Claude Code's on-disk logs (`~/.claude/projects/<project>/`). Three
 facts about that data drove the model, none of them obvious from a glance:
 
-1. **A conversation's main-thread usage is reported per *turn*, and the same
+1. **A conversation's main-thread usage is reported per _turn_, and the same
    turn can appear in multiple JSONL Records** (one per content block), each
    repeating the identical `usage`. Summing Records naively double-counts;
    usage must be deduplicated by `message.id` before summing.
 2. **Sub-agents (spawned via the `Agent` tool) have their own full transcript
    files** at `<sessionId>/subagents/agent-<agentId>.jsonl`, with `isSidechain:
-   true` and the same per-turn `usage` shape as the main thread — often on a
-   different (cheaper) resolved model. The spawning `Agent` call *also* mirrors
+true` and the same per-turn `usage` shape as the main thread — often on a
+   different (cheaper) resolved model. The spawning `Agent` call _also_ mirrors
    the sub-agent's aggregated ledger into its `toolUseResult`. These are the
    **same tokens**, so counting both double-counts.
 3. A main thread and a sub-agent are structurally **the same thing** — a
@@ -66,7 +66,7 @@ Token accounting rules:
 - Because each assistant turn carries both `usage` and an `attribution_skill`/
   `_agent`/`_plugin`/`_mcp_server`, **per-skill and per-agent-type token cost
   are deterministic** (`SUM(...) WHERE attribution_skill = ?`). Only per-
-  *individual-tool-call* cost remains non-exact (it lives at turn grain).
+  _individual-tool-call_ cost remains non-exact (it lives at turn grain).
 - Cost is **computed in application code** from a per-model, per-token-type
   price list — not stored in the DB — so re-pricing never requires a re-parse.
 

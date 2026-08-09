@@ -68,10 +68,7 @@ export type ConversationFamily = {
  * `rows`. A conversation with neither a parent nor continuations yields a family
  * of one (`size === 1`) — the standalone case the UI renders without a badge.
  */
-export function buildFamily(
-  rows: readonly FamilyRow[],
-  sessionId: string,
-): ConversationFamily | null {
+export function buildFamily(rows: readonly FamilyRow[], sessionId: string): ConversationFamily | null {
   const byId = new Map(rows.map((r) => [r.id, r]));
   if (!byId.has(sessionId)) return null;
 
@@ -119,10 +116,7 @@ export function familySizes(rows: readonly FamilyRow[]): Map<string, number> {
  * treated as absent, so the row is simply a root of its own family instead of
  * dangling.
  */
-function parentOf(
-  row: FamilyRow,
-  byId: Map<string, FamilyRow>,
-): string | null {
+function parentOf(row: FamilyRow, byId: Map<string, FamilyRow>): string | null {
   const parentId = row.continuedFromId;
   if (parentId === null || parentId === row.id || !byId.has(parentId)) {
     return null;
@@ -131,10 +125,7 @@ function parentOf(
 }
 
 /** Parent id → its continuations' ids, each list oldest-first. */
-function childIndex(
-  rows: readonly FamilyRow[],
-  byId: Map<string, FamilyRow>,
-): Map<string, string[]> {
+function childIndex(rows: readonly FamilyRow[], byId: Map<string, FamilyRow>): Map<string, string[]> {
   const index = new Map<string, string[]>();
   for (const row of [...rows].sort(byStartedAt)) {
     const parentId = parentOf(row, byId);
@@ -210,11 +201,7 @@ function orderMembers(
   return members;
 }
 
-function toMember(
-  row: FamilyRow,
-  depth: number,
-  isCurrent: boolean,
-): FamilyMember {
+function toMember(row: FamilyRow, depth: number, isCurrent: boolean): FamilyMember {
   return {
     id: row.id,
     title: row.title,

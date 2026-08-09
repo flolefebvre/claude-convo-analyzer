@@ -14,12 +14,7 @@ import { connection } from "next/server";
 
 import { getConversationErrors } from "@/core/errors";
 import { buildFamily, familySizes } from "@/core/family";
-import {
-  getConversation,
-  getDailySpend,
-  getTranscript,
-  listConversations,
-} from "@/core/read";
+import { getConversation, getDailySpend, getTranscript, listConversations } from "@/core/read";
 import { searchConversations } from "@/core/search";
 import { getToolCallSamples, getToolStats } from "@/core/tool-stats";
 
@@ -62,9 +57,7 @@ export const loadConversationErrors = cache(async (id: string) => {
  * {@link loadConversations} rows, so the badge costs no extra query; `cache()`
  * keeps the walk to once per request.
  */
-export const loadFamilySizes = cache(async () =>
-  familySizes(await loadConversations()),
-);
+export const loadFamilySizes = cache(async () => familySizes(await loadConversations()));
 
 /**
  * The continuation family of one conversation — its whole connected component,
@@ -73,9 +66,7 @@ export const loadFamilySizes = cache(async () =>
  * the DB itself), so the panel and the transcript banner share one read.
  * `null` for an unknown session id.
  */
-export const loadFamily = cache(async (id: string) =>
-  buildFamily(await loadConversations(), id),
-);
+export const loadFamily = cache(async (id: string) => buildFamily(await loadConversations(), id));
 
 /**
  * Read the Trends view's daily spend: per-day, per-model priced rows for one
@@ -131,9 +122,7 @@ export const loadSearch = cache(async (query: string) => {
  * breakdown) over the SAME scope as {@link loadToolStats}. Called only when a
  * row is expanded (`?expanded=<tool>`), so the table never pays for it.
  */
-export const loadToolCallSamples = cache(
-  async (name: string, folder?: string, days?: number) => {
-    await connection();
-    return getToolCallSamples(name, { folder, days });
-  },
-);
+export const loadToolCallSamples = cache(async (name: string, folder?: string, days?: number) => {
+  await connection();
+  return getToolCallSamples(name, { folder, days });
+});

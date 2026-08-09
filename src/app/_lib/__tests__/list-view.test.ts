@@ -123,9 +123,7 @@ describe("buildListView — overview aggregate (migrated from deriveOverview)", 
   });
 
   it("returns a zero cache-read ratio when there are no tokens (no divide by zero)", () => {
-    const { overview } = buildListView([
-      summary({ id: "a", total: 0, cacheRead: 0 }),
-    ]);
+    const { overview } = buildListView([summary({ id: "a", total: 0, cacheRead: 0 })]);
     expect(overview.cacheReadRatio).toBe(0);
   });
 
@@ -221,10 +219,7 @@ describe("buildListView — table slice (with sort)", () => {
   });
 
   it("returns rows: [] and scoped: true for a stale ?folder= (folder no longer present)", () => {
-    const rows = [
-      summary({ id: "a", folder: "fA", costUsd: 9 }),
-      summary({ id: "b", folder: "fB", costUsd: 100 }),
-    ];
+    const rows = [summary({ id: "a", folder: "fA", costUsd: 9 }), summary({ id: "b", folder: "fB", costUsd: 100 })];
     const view = buildListView(rows, { folder: "fGhost", sort: DESC_COST });
     expect(view.rows).toEqual([]);
     expect(view.scoped).toBe(true);
@@ -232,10 +227,7 @@ describe("buildListView — table slice (with sort)", () => {
   });
 
   it("treats an empty/undefined folder as 'All folders' (unscoped)", () => {
-    const rows = [
-      summary({ id: "a", folder: "fA", costUsd: 9 }),
-      summary({ id: "b", folder: "fB", costUsd: 100 }),
-    ];
+    const rows = [summary({ id: "a", folder: "fA", costUsd: 9 }), summary({ id: "b", folder: "fB", costUsd: 100 })];
     const view = buildListView(rows, { sort: DESC_COST });
     expect(view.rows.map((r) => r.id)).toEqual(["b", "a"]);
     expect(view.scoped).toBe(false);
@@ -266,10 +258,7 @@ describe("buildListView — table slice (with sort)", () => {
   });
 
   it("does not mutate the input rows array", () => {
-    const rows = [
-      summary({ id: "a", folder: "fA", costUsd: 9 }),
-      summary({ id: "b", folder: "fA", costUsd: 1 }),
-    ];
+    const rows = [summary({ id: "a", folder: "fA", costUsd: 9 }), summary({ id: "b", folder: "fA", costUsd: 1 })];
     const before = rows.map((r) => r.id);
     buildListView(rows, { folder: "fA", sort: ASC_COST });
     expect(rows.map((r) => r.id)).toEqual(before);
@@ -285,9 +274,7 @@ describe("buildListView — grandTotal bucket sums (migrated from grandTotal)", 
       output: t.output ?? 0,
       cacheWrite: t.cacheWrite ?? 0,
       cacheRead: t.cacheRead ?? 0,
-      total:
-        t.total ??
-        (t.input ?? 0) + (t.output ?? 0) + (t.cacheWrite ?? 0) + (t.cacheRead ?? 0),
+      total: t.total ?? (t.input ?? 0) + (t.output ?? 0) + (t.cacheWrite ?? 0) + (t.cacheRead ?? 0),
     };
     const base = summary({ id, costUsd, unpriced });
     return { ...base, tokens };
@@ -332,14 +319,8 @@ describe("buildListView — errors-only filter (issue #47)", () => {
   ];
 
   it("shows every row when the filter is off (the default)", () => {
-    expect(
-      buildListView(rows, { sort: DESC_COST }).rows.map((r) => r.id),
-    ).toEqual(["b", "a", "c"]);
-    expect(
-      buildListView(rows, { sort: DESC_COST, errorsOnly: false }).rows.map(
-        (r) => r.id,
-      ),
-    ).toEqual(["b", "a", "c"]);
+    expect(buildListView(rows, { sort: DESC_COST }).rows.map((r) => r.id)).toEqual(["b", "a", "c"]);
+    expect(buildListView(rows, { sort: DESC_COST, errorsOnly: false }).rows.map((r) => r.id)).toEqual(["b", "a", "c"]);
   });
 
   it("keeps only conversations with at least one API error", () => {

@@ -19,7 +19,7 @@ import type { CSSProperties, ReactNode } from "react";
  *  never shifts the row's layout. Must be a descendant of the `<Link>`. */
 function NodeHint() {
   const { pending } = useLinkStatus();
-  return <span aria-hidden className={`node-hint${pending ? " is-pending" : ""}`} />;
+  return <span aria-hidden className={`node-hint${pending ? "is-pending" : ""}`} />;
 }
 
 export function TreeNodeLink({

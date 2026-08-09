@@ -4,16 +4,8 @@ import { THEME_OPTIONS, isThemeActive } from "@/app/_lib/theme";
 
 describe("THEME_OPTIONS", () => {
   it("offers Light, Dark, and Auto in display order", () => {
-    expect(THEME_OPTIONS.map((o) => o.value)).toEqual([
-      "light",
-      "dark",
-      "system",
-    ]);
-    expect(THEME_OPTIONS.map((o) => o.label)).toEqual([
-      "Light",
-      "Dark",
-      "Auto",
-    ]);
+    expect(THEME_OPTIONS.map((o) => o.value)).toEqual(["light", "dark", "system"]);
+    expect(THEME_OPTIONS.map((o) => o.label)).toEqual(["Light", "Dark", "Auto"]);
   });
 });
 

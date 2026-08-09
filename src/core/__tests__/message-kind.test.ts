@@ -69,9 +69,7 @@ describe("message.kind persisted through refresh", () => {
     let db = new Database(dbPath);
     // Undo the message_kind migration so re-opening re-applies it (mirrors the
     // idempotency test's drop-and-re-run pattern for a directly observable effect).
-    db.prepare("DELETE FROM _cca_migrations WHERE migration_name = ?").run(
-      KIND_MIGRATION,
-    );
+    db.prepare("DELETE FROM _cca_migrations WHERE migration_name = ?").run(KIND_MIGRATION);
     // The search index's triggers read `message.kind`, so the index has to come
     // down with the column; re-opening re-applies both migrations in order.
     dropSearchIndex(db);
@@ -88,9 +86,7 @@ describe("message.kind persisted through refresh", () => {
     await second.$disconnect();
 
     db = new Database(dbPath);
-    const stamped = db
-      .prepare("SELECT source_mtime AS m FROM conversation")
-      .all() as { m: bigint | number }[];
+    const stamped = db.prepare("SELECT source_mtime AS m FROM conversation").all() as { m: bigint | number }[];
     expect(stamped.every((r) => Number(r.m) === -1)).toBe(true);
     db.close();
 

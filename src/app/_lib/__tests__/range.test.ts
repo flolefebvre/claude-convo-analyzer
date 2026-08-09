@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  DEFAULT_RANGE,
-  rangeDays,
-  rangeHref,
-  resolveRange,
-} from "@/app/_lib/range";
+import { DEFAULT_RANGE, rangeDays, rangeHref, resolveRange } from "@/app/_lib/range";
 
 describe("resolveRange", () => {
   it("defaults to 30 days when the URL carries no (valid) range", () => {
@@ -35,9 +30,7 @@ describe("rangeDays", () => {
 
 describe("rangeHref", () => {
   it("keeps the active folder scope so both axes compose", () => {
-    expect(rangeHref("7", "-Users-me-dev-app")).toBe(
-      "?range=7&folder=-Users-me-dev-app",
-    );
+    expect(rangeHref("7", "-Users-me-dev-app")).toBe("?range=7&folder=-Users-me-dev-app");
   });
 
   it("omits an absent or empty folder scope", () => {

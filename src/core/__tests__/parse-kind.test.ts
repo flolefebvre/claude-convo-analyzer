@@ -23,9 +23,7 @@ describe("message kind derivation", () => {
     toolUseResult: { stdout: "hi\n", stderr: "", interrupted: false },
     message: {
       role: "user",
-      content: [
-        { type: "tool_result", tool_use_id: "toolu-1", is_error: false, content: "hi\n" },
-      ],
+      content: [{ type: "tool_result", tool_use_id: "toolu-1", is_error: false, content: "hi\n" }],
     },
   });
 

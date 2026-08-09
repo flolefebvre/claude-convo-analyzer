@@ -12,8 +12,6 @@
  * A repeated param (`?q=a&q=b`) yields the FIRST value, so a hand-edited or
  * duplicated URL is read deterministically instead of erroring.
  */
-export function firstParam(
-  value: string | string[] | undefined,
-): string | undefined {
+export function firstParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }

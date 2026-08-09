@@ -19,10 +19,7 @@ import { Loader2, RefreshCw } from "lucide-react";
 import { useState } from "react";
 
 import { refreshConversations } from "@/app/actions";
-import {
-  formatDuplicateSessionDetail,
-  formatRefreshSummary,
-} from "@/app/_lib/refresh-summary";
+import { formatDuplicateSessionDetail, formatRefreshSummary } from "@/app/_lib/refresh-summary";
 import { Button } from "@/components/ui/button";
 
 export function RefreshButton({
@@ -44,9 +41,9 @@ export function RefreshButton({
     setError(null);
     setIsPending(true);
     try {
-      const summary = await refreshConversations();
-      setStatus(formatRefreshSummary(summary));
-      setDetail(formatDuplicateSessionDetail(summary));
+      const result = await refreshConversations();
+      setStatus(formatRefreshSummary(result.data));
+      setDetail(formatDuplicateSessionDetail(result.data));
     } catch {
       setStatus(null);
       setDetail(null);
@@ -62,32 +59,19 @@ export function RefreshButton({
     // sat in normal flow it would tall-en the header row and re-center the
     // sibling theme toggle (and the title) — a post-refresh layout jump.
     <div className="relative flex flex-col items-end">
-      <Button
-        variant={variant}
-        size={size}
-        onClick={handleClick}
-        disabled={isPending}
-        aria-busy={isPending}
-      >
-        {isPending ? (
-          <Loader2 className="animate-spin" aria-hidden />
-        ) : (
-          <RefreshCw aria-hidden />
-        )}
+      <Button variant={variant} size={size} onClick={handleClick} disabled={isPending} aria-busy={isPending}>
+        {isPending ? <Loader2 className="animate-spin" aria-hidden /> : <RefreshCw aria-hidden />}
         {isPending ? "Scanning…" : "Refresh"}
       </Button>
       {error !== null ? (
-        <p
-          role="alert"
-          className="absolute top-full right-0 mt-1 whitespace-nowrap text-xs text-destructive"
-        >
+        <p role="alert" className="absolute top-full right-0 mt-1 text-xs whitespace-nowrap text-destructive">
           {error}
         </p>
       ) : status !== null ? (
         <p
           aria-live="polite"
           title={detail ?? undefined}
-          className="absolute top-full right-0 mt-1 whitespace-nowrap text-xs text-muted-foreground tabular-nums"
+          className="absolute top-full right-0 mt-1 text-xs whitespace-nowrap text-muted-foreground tabular-nums"
         >
           {status}
         </p>

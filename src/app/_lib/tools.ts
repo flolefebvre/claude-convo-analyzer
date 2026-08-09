@@ -85,10 +85,7 @@ export function resolveToolSort(
  * The sort produced by clicking `field`'s header: flip direction if it is
  * already active, otherwise start at that column's default direction.
  */
-export function toggleToolSort(
-  field: ToolSortField,
-  current: ToolSortState,
-): ToolSortState {
+export function toggleToolSort(field: ToolSortField, current: ToolSortState): ToolSortState {
   if (current.sortBy === field) {
     return { sortBy: field, dir: current.dir === "asc" ? "desc" : "asc" };
   }
@@ -100,10 +97,7 @@ export function toggleToolSort(
  * Equal values fall back to the tool name (always ascending) so the order is
  * deterministic.
  */
-export function sortTools(
-  tools: readonly ToolStat[],
-  sort: ToolSortState,
-): ToolStat[] {
+export function sortTools(tools: readonly ToolStat[], sort: ToolSortState): ToolStat[] {
   const column = TOOL_COLUMNS[sort.sortBy];
   const sign = sort.dir === "asc" ? 1 : -1;
 
@@ -115,10 +109,7 @@ export function sortTools(
 }
 
 /** Active-sort arrow for a header, or "" when the column is not the active sort. */
-export function toolSortIndicator(
-  field: ToolSortField,
-  current: ToolSortState,
-): string {
+export function toolSortIndicator(field: ToolSortField, current: ToolSortState): string {
   if (current.sortBy !== field) return "";
   return current.dir === "asc" ? "↑" : "↓";
 }
@@ -140,10 +131,7 @@ function toolsHref(state: ToolsViewState): string {
 }
 
 /** Href for a sortable header link (toggles via {@link toggleToolSort}). */
-export function toolSortHref(
-  field: ToolSortField,
-  state: ToolsViewState,
-): string {
+export function toolSortHref(field: ToolSortField, state: ToolsViewState): string {
   return toolsHref({ ...state, sort: toggleToolSort(field, state.sort) });
 }
 

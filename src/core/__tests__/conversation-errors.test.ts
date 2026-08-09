@@ -22,10 +22,7 @@ describe("getConversationErrors", () => {
     });
 
     expect(errors.map((e) => e.messageUuid)).toEqual(["ea2", "ea3"]);
-    expect(errors.map((e) => e.timestamp)).toEqual([
-      "2026-06-21T08:00:10.000Z",
-      "2026-06-21T08:00:20.000Z",
-    ]);
+    expect(errors.map((e) => e.timestamp)).toEqual(["2026-06-21T08:00:10.000Z", "2026-06-21T08:00:20.000Z"]);
   });
 
   it("carries the API status verbatim, or null when the log omitted it", async () => {
@@ -45,9 +42,7 @@ describe("getConversationErrors", () => {
     expect(errors[0].excerpt).toBe("API Error: Overloaded");
     // The second failure's text runs well past the cap.
     expect(errors[1].excerpt.length).toBe(160);
-    expect(errors[1].excerpt.startsWith("API Error: the upstream request")).toBe(
-      true,
-    );
+    expect(errors[1].excerpt.startsWith("API Error: the upstream request")).toBe(true);
   });
 
   it("keys a main-thread failure to the agent its transcript is reached by", async () => {
@@ -91,14 +86,10 @@ describe("getConversationErrors", () => {
   });
 
   it("returns nothing for a conversation that never failed", async () => {
-    expect(
-      await getConversationErrors("sess-err-clean", { dbPath: db.dbPath }),
-    ).toEqual([]);
+    expect(await getConversationErrors("sess-err-clean", { dbPath: db.dbPath })).toEqual([]);
   });
 
   it("returns nothing for an unknown session id", async () => {
-    expect(
-      await getConversationErrors("sess-nope", { dbPath: db.dbPath }),
-    ).toEqual([]);
+    expect(await getConversationErrors("sess-nope", { dbPath: db.dbPath })).toEqual([]);
   });
 });

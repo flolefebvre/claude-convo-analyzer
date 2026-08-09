@@ -72,9 +72,7 @@ describe("batched list rollup == per-conversation detail rollup", () => {
     // Three model groups: opus (main), haiku (sub), <synthetic> (main, unpriced).
     expect(detail.perModel).toHaveLength(3);
     const opus = detail.perModel.find((p) => p.model === "claude-opus-4-8");
-    const haiku = detail.perModel.find(
-      (p) => p.model === "claude-haiku-4-5-20251001",
-    );
+    const haiku = detail.perModel.find((p) => p.model === "claude-haiku-4-5-20251001");
     const synth = detail.perModel.find((p) => p.model === "<synthetic>");
     expect(opus?.tokens.input).toBe(12);
     expect(opus?.tokens.output).toBe(18);
@@ -110,10 +108,7 @@ describe("batched list rollup == per-conversation detail rollup", () => {
     // sess-mix spans opus (main), haiku (sub), and <synthetic> (unpriced) — each
     // bucket is accumulated across every model at its OWN per-tier rate.
     const { input, output, cacheWrite, cacheRead } = summary.costByType;
-    expect(input + output + cacheWrite + cacheRead).toBeCloseTo(
-      summary.costUsd,
-      12,
-    );
+    expect(input + output + cacheWrite + cacheRead).toBeCloseTo(summary.costUsd, 12);
     // Real priced usage → real per-bucket cost (opus input/output drive these).
     expect(input).toBeGreaterThan(0);
     expect(output).toBeGreaterThan(0);

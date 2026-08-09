@@ -54,10 +54,7 @@ export function TranscriptMessageRow({
 /** The element id + highlight class for one row, given the `?msg=` target. */
 type MessageAnchor = { id?: string; anchored: boolean };
 
-function anchorProps(
-  message: TranscriptMessage,
-  anchoredMessage: string | undefined,
-): MessageAnchor {
+function anchorProps(message: TranscriptMessage, anchoredMessage: string | undefined): MessageAnchor {
   if (message.uuid === null) return { anchored: false };
   return {
     id: messageAnchorId(message.uuid),
@@ -67,27 +64,14 @@ function anchorProps(
 
 /** A human prompt. Rendered PLAIN (never markdown) — humans don't write reliable
  *  markdown — except an invoked slash command, shown as a command chip + args. */
-function PromptRow({
-  message,
-  time,
-  anchor,
-}: {
-  message: TranscriptMessage;
-  time: string;
-  anchor: MessageAnchor;
-}) {
+function PromptRow({ message, time, anchor }: { message: TranscriptMessage; time: string; anchor: MessageAnchor }) {
   const parsed = parseSlashCommand(message.text);
   const commandLabel =
-    parsed.commandName && !parsed.commandName.startsWith("/")
-      ? `/${parsed.commandName}`
-      : parsed.commandName;
+    parsed.commandName && !parsed.commandName.startsWith("/") ? `/${parsed.commandName}` : parsed.commandName;
   const args = parsed.commandArgs ?? parsed.rest;
 
   return (
-    <article
-      id={anchor.id}
-      className={anchor.anchored ? "prompt anchored" : "prompt"}
-    >
+    <article id={anchor.id} className={anchor.anchored ? "prompt anchored" : "prompt"}>
       <div className="prompt-head">
         <span className="microlabel">You</span>
         {time && <span className="call-meta num">{time}</span>}
@@ -126,10 +110,7 @@ function AssistantTurn({
   const errorOnly = message.isApiError && text.trim() === "";
 
   return (
-    <article
-      id={anchor.id}
-      className={anchor.anchored ? "turn anchored" : "turn"}
-    >
+    <article id={anchor.id} className={anchor.anchored ? "turn anchored" : "turn"}>
       <div className="turn-head">
         <span className="microlabel" style={{ color: "var(--agent)" }}>
           Assistant
@@ -137,9 +118,7 @@ function AssistantTurn({
         {message.model && <span className="model">{message.model}</span>}
         {/* Only on a turn that CHANGED effort (a mid-conversation `/effort`
             flip); the pane's header stat covers the steady state. */}
-        {effortChanged && message.effort && (
-          <span className="badge-effort">{message.effort} effort</span>
-        )}
+        {effortChanged && message.effort && <span className="badge-effort">{message.effort} effort</span>}
         {message.isApiError && <span className="badge-err">API error</span>}
         <span className="spacer" />
         {time && <span className="call-meta num">{time}</span>}
@@ -148,9 +127,7 @@ function AssistantTurn({
 
       <div className="turn-body">
         {errorOnly ? (
-          <p className="api-error-note">
-            turn failed{message.apiErrorMessage ? ` — ${message.apiErrorMessage}` : ""}
-          </p>
+          <p className="api-error-note">turn failed{message.apiErrorMessage ? ` — ${message.apiErrorMessage}` : ""}</p>
         ) : (
           <TurnMarkdown text={text} />
         )}

@@ -37,10 +37,7 @@ const SORT = { sortBy: "date", dir: "desc" } as const;
 describe("familyView", () => {
   it("keeps the core's order and depth, and links each member to its expanded row", () => {
     const view = familyView(
-      family([
-        member({ id: "a" }),
-        member({ id: "b", depth: 1, isCurrent: true }),
-      ]),
+      family([member({ id: "a" }), member({ id: "b", depth: 1, isCurrent: true })]),
       { sort: SORT },
       NOW,
     );
@@ -114,10 +111,7 @@ describe("familyView", () => {
 
   it("carries the lower-bound flag when any member is unpriced", () => {
     const view = familyView(
-      family([
-        member({ id: "a", isCurrent: true }),
-        member({ id: "b", unpriced: true, costUsd: 2 }),
-      ]),
+      family([member({ id: "a", isCurrent: true }), member({ id: "b", unpriced: true, costUsd: 2 })]),
       { sort: SORT },
       NOW,
     );

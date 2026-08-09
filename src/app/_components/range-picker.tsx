@@ -23,16 +23,8 @@ export function RangePicker({
   return (
     <nav aria-label="Range" className="flex items-center gap-1">
       {RANGE_PRESETS.map((preset) => (
-        <Button
-          key={preset.value}
-          asChild
-          size="sm"
-          variant={preset.value === active ? "secondary" : "ghost"}
-        >
-          <Link
-            href={hrefFor(preset.value)}
-            aria-current={preset.value === active ? "true" : undefined}
-          >
+        <Button key={preset.value} asChild size="sm" variant={preset.value === active ? "secondary" : "ghost"}>
+          <Link href={hrefFor(preset.value)} aria-current={preset.value === active ? "true" : undefined}>
             {preset.label}
           </Link>
         </Button>

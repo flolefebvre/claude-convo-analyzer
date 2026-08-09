@@ -66,15 +66,11 @@ function oneLine(text: string): string {
  * (+ `args`), Agent → `subagent_type: prompt`; anything else falls back to the
  * first string field. NEVER throws on malformed/empty JSON — returns "".
  */
-export function toolCallSnippet(call: {
-  name: string;
-  inputJson: string;
-}): string {
+export function toolCallSnippet(call: { name: string; inputJson: string }): string {
   const input = parseInput(call.inputJson);
   if (input === null) return "";
 
-  const str = (key: string): string =>
-    typeof input[key] === "string" ? (input[key] as string) : "";
+  const str = (key: string): string => (typeof input[key] === "string" ? (input[key] as string) : "");
 
   const kind = classifyToolCall(call);
   if (kind === "agent") {
@@ -99,15 +95,10 @@ export function toolCallSnippet(call: {
  * via {@link formatTokens}). `resultCharSize` may be unknown (`null`) — then only
  * the stored cap is shown.
  */
-export function truncationNote(call: {
-  resultTruncated: boolean;
-  resultCharSize: number | null;
-}): string | null {
+export function truncationNote(call: { resultTruncated: boolean; resultCharSize: number | null }): string | null {
   if (!call.resultTruncated) return null;
   const stored = `stored first ${formatTokens(RESULT_TRUNCATE_CHARS)}`;
-  return call.resultCharSize === null
-    ? stored
-    : `${formatTokens(call.resultCharSize)} chars total — ${stored}`;
+  return call.resultCharSize === null ? stored : `${formatTokens(call.resultCharSize)} chars total — ${stored}`;
 }
 
 /** A user prompt split into its optional slash-command parts, if any. */
@@ -169,9 +160,7 @@ export function findSpawnedNode(
   call: { toolUseId: string | null; messageId: number },
 ): TranscriptAgentNode | null {
   // Pre-order search of the descendants (the root itself is never a spawn).
-  const find = (
-    match: (node: TranscriptAgentNode) => boolean,
-  ): TranscriptAgentNode | null => {
+  const find = (match: (node: TranscriptAgentNode) => boolean): TranscriptAgentNode | null => {
     const walk = (node: TranscriptAgentNode): TranscriptAgentNode | null => {
       if (match(node)) return node;
       for (const child of node.children) {
@@ -190,10 +179,7 @@ export function findSpawnedNode(
   // The tool_use id is the precise correlation (a single turn may spawn several
   // agents, so the message id alone is ambiguous); only fall back to it when the
   // tool call has no recorded tool_use id.
-  const byToolUse =
-    call.toolUseId !== null
-      ? find((node) => node.spawnedByToolUseId === call.toolUseId)
-      : null;
+  const byToolUse = call.toolUseId !== null ? find((node) => node.spawnedByToolUseId === call.toolUseId) : null;
   if (byToolUse) return byToolUse;
   return find((node) => node.spawnedByMessageId === call.messageId);
 }
@@ -229,9 +215,7 @@ export type EffortSummary = {
  * strings and never validated, so a future level (`low`, `max`, …) flows
  * through to the UI verbatim.
  */
-export function effortSummary(
-  messages: { id: number; effort: string | null }[],
-): EffortSummary {
+export function effortSummary(messages: { id: number; effort: string | null }[]): EffortSummary {
   const changedIds = new Set<number>();
   let previous: string | null = null;
   let mixed = false;
@@ -256,10 +240,7 @@ export function effortSummary(
  * for the transcript pane's breadcrumb. Returns the path inclusive of both ends,
  * or `[]` when the id is not in the tree.
  */
-export function agentLineage(
-  tree: TranscriptAgentNode,
-  selectedId: string,
-): TranscriptAgentNode[] {
+export function agentLineage(tree: TranscriptAgentNode, selectedId: string): TranscriptAgentNode[] {
   const path: TranscriptAgentNode[] = [];
   const walk = (node: TranscriptAgentNode): boolean => {
     path.push(node);

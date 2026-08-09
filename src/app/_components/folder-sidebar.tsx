@@ -49,11 +49,7 @@ export function FolderSidebar({
   return (
     <nav aria-label="Folders" className="flex flex-col gap-1">
       <SidebarLink folder={null}>
-        <AllFoldersRow
-          count={totalCount}
-          cost={totalCost}
-          unpriced={totalUnpriced}
-        />
+        <AllFoldersRow count={totalCount} cost={totalCost} unpriced={totalUnpriced} />
       </SidebarLink>
       {folders.map((entry) => (
         <SidebarLink key={entry.folder} folder={entry.folder} title={entry.path}>
@@ -66,22 +62,12 @@ export function FolderSidebar({
 
 /** The "All folders" anchor: total count up top, total cost on a quiet second
  *  line labelled "Total" — visually distinct from the ranked per-folder rows. */
-function AllFoldersRow({
-  count,
-  cost,
-  unpriced,
-}: {
-  count: number;
-  cost: number;
-  unpriced: boolean;
-}) {
+function AllFoldersRow({ count, cost, unpriced }: { count: number; cost: number; unpriced: boolean }) {
   return (
     <>
       <div className="flex items-baseline justify-between gap-2">
         <span className="truncate font-medium">All folders</span>
-        <span className="shrink-0 tabular-nums text-xs text-muted-foreground">
-          {count}
-        </span>
+        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{count}</span>
       </div>
       <div className="mt-1.5 flex items-center justify-between text-xs text-muted-foreground">
         <span>Total</span>
@@ -102,16 +88,14 @@ function FolderRow({ entry, total }: { entry: FolderEntry; total: number }) {
     <>
       <div className="flex items-baseline justify-between gap-2">
         <span className="truncate">{entry.label}</span>
-        <span className="shrink-0 tabular-nums text-xs text-muted-foreground">
+        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
           {entry.unpriced ? "~" : ""}
           {formatGrandTotalCost(entry.costUsd)}
         </span>
       </div>
       <div className="mt-1.5 flex items-center gap-2">
         <CostBar value={entry.costUsd} max={total} className="min-w-0 flex-1" />
-        <span className="shrink-0 tabular-nums text-[10px] text-muted-foreground">
-          {entry.count}
-        </span>
+        <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">{entry.count}</span>
       </div>
     </>
   );

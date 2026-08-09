@@ -18,13 +18,7 @@ import { agentHref } from "@/app/_lib/transcript-url";
 
 /** Owns the per-group open/closed state. `sessionId` is threaded so each
  *  individual agent row can deep-link into its own transcript. */
-export function SubAgentBreakdown({
-  section,
-  sessionId,
-}: {
-  section: SubAgentSection;
-  sessionId: string;
-}) {
+export function SubAgentBreakdown({ section, sessionId }: { section: SubAgentSection; sessionId: string }) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   return (
     <CostList>
@@ -35,9 +29,7 @@ export function SubAgentBreakdown({
           sessionId={sessionId}
           max={section.totalCost}
           open={!!open[g.label]}
-          onToggle={() =>
-            setOpen((prev) => ({ ...prev, [g.label]: !prev[g.label] }))
-          }
+          onToggle={() => setOpen((prev) => ({ ...prev, [g.label]: !prev[g.label] }))}
         />
       ))}
     </CostList>
@@ -84,9 +76,7 @@ function SubAgentGroupRow({
           </span>
         </button>
         <CostBar value={group.costUsd} max={max} className="min-w-0 flex-1" />
-        <span className="w-20 shrink-0 text-right tabular-nums text-muted-foreground">
-          {formatCost(group.costUsd)}
-        </span>
+        <span className="w-20 shrink-0 text-right text-muted-foreground tabular-nums">{formatCost(group.costUsd)}</span>
       </div>
       {open && group.count > 1 && (
         <ul className="mt-1.5 ml-[1.125rem] flex flex-col gap-1 border-l border-border/60 pl-3">
@@ -104,9 +94,7 @@ function SubAgentGroupRow({
                 </span>
                 <span className="flex shrink-0 gap-4 tabular-nums">
                   <span>{formatTokens(a.tokens.total)}</span>
-                  <span className="w-16 text-right">
-                    {formatCost(a.costUsd)}
-                  </span>
+                  <span className="w-16 text-right">{formatCost(a.costUsd)}</span>
                 </span>
               </Link>
             </li>

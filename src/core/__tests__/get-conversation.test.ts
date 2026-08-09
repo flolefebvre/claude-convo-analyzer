@@ -39,9 +39,7 @@ describe("getConversation detail read API", () => {
 
     // perModel: opus (main) + haiku (sub).
     const opus = detail.perModel.find((p) => p.model === "claude-opus-4-8");
-    const haiku = detail.perModel.find(
-      (p) => p.model === "claude-haiku-4-5-20251001",
-    );
+    const haiku = detail.perModel.find((p) => p.model === "claude-haiku-4-5-20251001");
     expect(opus?.tokens.input).toBe(10);
     expect(opus?.tokens.output).toBe(15);
     expect(haiku?.tokens.input).toBe(50);

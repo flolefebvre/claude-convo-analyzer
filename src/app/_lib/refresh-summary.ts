@@ -59,14 +59,10 @@ export function formatRefreshSummary(summary: RefreshSummary): string {
  * actionable — the user needs the PATH of the stray file to delete it. Returns
  * null in the normal case (no duplicates) so the caller can skip rendering it.
  */
-export function formatDuplicateSessionDetail(
-  summary: RefreshSummary,
-): string | null {
+export function formatDuplicateSessionDetail(summary: RefreshSummary): string | null {
   if (summary.duplicateSessionsSkipped.length === 0) return null;
   return [
     "Two log files shared one session id; only one was ingested:",
-    ...summary.duplicateSessionsSkipped.map(
-      (d) => `${d.sessionId}: skipped ${d.skippedPath} (kept ${d.keptPath})`,
-    ),
+    ...summary.duplicateSessionsSkipped.map((d) => `${d.sessionId}: skipped ${d.skippedPath} (kept ${d.keptPath})`),
   ].join("\n");
 }

@@ -11,6 +11,7 @@ contains no implementation details. Architectural decisions live in
 ## Glossary
 
 ### Project
+
 A working directory in which Claude Code was used. On disk it is one folder
 under `~/.claude/projects/`, named after the directory path with `/` replaced
 by `-` (e.g. `-Users-me-Documents-dev-pvm2-0` ⇒ `/Users/me/Documents/dev/pvm2.0`).
@@ -27,12 +28,14 @@ it, and the dash-encoded folder name is the stable identity used to **scope**
 the conversation list to one Project.
 
 ### Conversation (Session)
+
 One continuous Claude Code session. On disk it is a single `<sessionId>.jsonl`
 file inside a Project folder. Each line is a typed Record. A Conversation is the
 unit shown as one row in the conversation list. Its human-readable name comes
 from an `ai-title` Record.
 
 ### Continuation family
+
 The set of Conversations that make up ONE piece of work spread over several
 sittings. Resuming a session (`--resume`) or forking it starts a **new**
 Conversation whose first Record points back into the previous one: that link is
@@ -42,17 +45,19 @@ connected component — walked in both directions, parents and continuations
 alike. Its **cumulative total** is the sum of its members' Costs, and is a lower
 bound whenever any member has unpriced usage.
 
-A family is a *view*, never a merge: every member stays its own Conversation
+A family is a _view_, never a merge: every member stays its own Conversation
 row with its own Cost, so per-conversation totals and the overview aggregate are
 unchanged by it (nothing is double-counted). Members can live in different
 Projects — resuming from a git worktree launches in another directory.
 
 ### Record
+
 One line of a Conversation's JSONL file, identified by a `type` (e.g.
 `assistant`, `user`, `ai-title`, `system`). Only some Record types carry token
 usage.
 
 ### Agent
+
 An autonomous Claude execution within a Conversation. There are two kinds:
 
 - **Main thread** (root agent): the primary conversation the user drives
@@ -65,7 +70,7 @@ An autonomous Claude execution within a Conversation. There are two kinds:
   per-turn `assistant` Records as a Main thread (marked `isSidechain: true`) —
   including, when it spawns, its own `Agent` calls and spawn ledger, which is
   where a grandchild's parentage is recorded. The spawning `Agent` call also
-  mirrors the sub-agent's *aggregated* token ledger into its tool result
+  mirrors the sub-agent's _aggregated_ token ledger into its tool result
   (`toolUseResult`) — the same tokens as the transcript, so the transcript is
   the source of truth and the aggregate is only a cross-check. A sub-agent may
   resolve to a different (often cheaper) model than the Main thread.
@@ -75,6 +80,7 @@ Claude doing work — differing only by location and lineage. They are parsed
 identically.
 
 ### Resolved model
+
 The concrete Anthropic model a unit of work actually ran on (e.g.
 `claude-opus-4-8`, `claude-haiku-4-5`). The Main thread reports it per turn as
 `message.model`; a sub-agent reports it once as `resolvedModel`. Some Records
@@ -82,6 +88,7 @@ carry coarse aliases (`opus`) or `<synthetic>` placeholders that must be
 normalized.
 
 ### Token types
+
 Usage is split into distinct types, each priced differently:
 
 - **Input** — fresh prompt tokens.
@@ -91,6 +98,7 @@ Usage is split into distinct types, each priced differently:
 - **Cache read** — tokens served from the prompt cache.
 
 ### Turn
+
 One model request/response within the Main thread. Usage is reported
 **per turn**, so a Conversation's Main-thread usage is the sum across turns.
 Multiple Records can describe the same turn (one per content block) and repeat
@@ -98,6 +106,7 @@ the same usage — turns are therefore deduplicated by their message id before
 summing.
 
 ### Message
+
 One logical message in a Conversation — a user message or an assistant turn.
 The unit of the `message` table: one row each, deduplicated by message id for
 assistant turns. An assistant Message carries token usage and Attribution; a
@@ -114,13 +123,15 @@ A user Message is one of three **kinds**, all sharing `role = user` in the log:
   system reminders), marked `isMeta` in the log.
 
 ### Transcript
+
 The ordered, message-by-message content of **one Agent**: its user and
 assistant Messages with their Tool calls. Every Agent (Main thread or
 Sub-agent) has exactly one Transcript. Distinct from the cost-aggregate
 **detail panel** (`ConversationDetail`) shown in the conversation list — the
-Transcript is *what was said and done*, not *what it cost*.
+Transcript is _what was said and done_, not _what it cost_.
 
 ### Attribution
+
 Per-turn labels on an assistant Message naming what drove it: `attribution_skill`
 (e.g. `tdd`, `orchestrate`), `attribution_agent` (e.g. `Explore`),
 `attribution_plugin`, `attribution_mcp_server`. Because Attribution and usage
@@ -128,6 +139,7 @@ sit on the same Message, **per-skill and per-agent-type token cost are exact**
 (unlike per-individual-Tool-call cost).
 
 ### Tool call
+
 A single invocation of a tool by an Agent, recorded as a `tool_use` content
 block in a turn and paired with a `tool_result`. Carries the tool `name` (e.g.
 `Bash`, `Read`, `Skill`, `Agent`) and a tool-specific `input` (e.g. Bash's
@@ -135,12 +147,14 @@ block in a turn and paired with a `tool_result`. Carries the tool `name` (e.g.
 Agent.
 
 ### Skill invocation
+
 A Tool call with `name = Skill`; its `input.skill` names the skill (possibly
 `plugin:skill`). This is the canonical signal that a skill ran. (User-typed
 slash commands like `/config` appear separately as `command-name` markers in
 user Records and are built-in commands, not skills.)
 
 ### Tool-call token cost
+
 Token usage is recorded only at Turn grain and per sub-agent — **never per
 individual Tool call**. Therefore:
 
@@ -153,11 +167,13 @@ individual Tool call**. Therefore:
   approximated by tool-result size.
 
 ### Cost
+
 The hypothetical price of a Conversation had it run on the Claude API, computed
 from its token usage and a per-model, per-token-type price list. Costs are
 attributed per Resolved model, so Main-thread and sub-agent costs can differ
 within one Conversation.
 
 ### Refresh
+
 The user-triggered action that re-reads the conversation logs from disk and
 updates the local SQLite database, so the UI does not re-parse on every view.

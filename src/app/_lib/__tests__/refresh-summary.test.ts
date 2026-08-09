@@ -2,11 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { RefreshSummary } from "@/core/refresh";
 
-import {
-  formatDuplicateSessionDetail,
-  formatDuration,
-  formatRefreshSummary,
-} from "@/app/_lib/refresh-summary";
+import { formatDuplicateSessionDetail, formatDuration, formatRefreshSummary } from "@/app/_lib/refresh-summary";
 
 describe("formatDuration", () => {
   it("renders sub-second durations in milliseconds", () => {
@@ -63,50 +59,34 @@ describe("formatRefreshSummary", () => {
   });
 
   it("singularizes the malformed-line phrase when exactly one", () => {
-    expect(
-      formatRefreshSummary(summary({ malformedLinesSkipped: 1, durationMs: 500 })),
-    ).toBe("Parsed 0 · Skipped 0 · Deleted 0 · 1 malformed line skipped · 500ms");
+    expect(formatRefreshSummary(summary({ malformedLinesSkipped: 1, durationMs: 500 }))).toBe(
+      "Parsed 0 · Skipped 0 · Deleted 0 · 1 malformed line skipped · 500ms",
+    );
   });
 
   it("omits the malformed-line segment when there are none", () => {
-    expect(
-      formatRefreshSummary(
-        summary({ conversationsParsed: 1, durationMs: 12_000 }),
-      ),
-    ).toBe("Parsed 1 · Skipped 0 · Deleted 0 · 12s");
+    expect(formatRefreshSummary(summary({ conversationsParsed: 1, durationMs: 12_000 }))).toBe(
+      "Parsed 1 · Skipped 0 · Deleted 0 · 12s",
+    );
   });
 
   it("reports duplicate session files, singularized at exactly one", () => {
-    expect(
-      formatRefreshSummary(
-        summary({ duplicateSessionsSkipped: duplicates(1), durationMs: 500 }),
-      ),
-    ).toBe(
+    expect(formatRefreshSummary(summary({ duplicateSessionsSkipped: duplicates(1), durationMs: 500 }))).toBe(
       "Parsed 0 · Skipped 0 · Deleted 0 · 1 duplicate session file skipped · 500ms",
     );
-    expect(
-      formatRefreshSummary(
-        summary({ duplicateSessionsSkipped: duplicates(2), durationMs: 500 }),
-      ),
-    ).toBe(
+    expect(formatRefreshSummary(summary({ duplicateSessionsSkipped: duplicates(2), durationMs: 500 }))).toBe(
       "Parsed 0 · Skipped 0 · Deleted 0 · 2 duplicate session files skipped · 500ms",
     );
   });
 
   it("omits the duplicate segment when there are none", () => {
-    expect(formatRefreshSummary(summary({ durationMs: 0 }))).toBe(
-      "Parsed 0 · Skipped 0 · Deleted 0 · 0ms",
-    );
+    expect(formatRefreshSummary(summary({ durationMs: 0 }))).toBe("Parsed 0 · Skipped 0 · Deleted 0 · 0ms");
   });
 });
 
 describe("formatDuplicateSessionDetail", () => {
   it("names the file that was skipped and the one that was kept for each session", () => {
-    expect(
-      formatDuplicateSessionDetail(
-        summary({ duplicateSessionsSkipped: duplicates(2) }),
-      ),
-    ).toBe(
+    expect(formatDuplicateSessionDetail(summary({ duplicateSessionsSkipped: duplicates(2) }))).toBe(
       [
         "Two log files shared one session id; only one was ingested:",
         "sess-0: skipped /logs/-b/sess-0.jsonl (kept /logs/-a/sess-0.jsonl)",

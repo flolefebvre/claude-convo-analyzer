@@ -32,9 +32,9 @@ describe("migration idempotency", () => {
 
     const db = new Database(dbPath);
     try {
-      const rows = db
-        .prepare("SELECT migration_name FROM _cca_migrations ORDER BY migration_name")
-        .all() as { migration_name: string }[];
+      const rows = db.prepare("SELECT migration_name FROM _cca_migrations ORDER BY migration_name").all() as {
+        migration_name: string;
+      }[];
       expect(rows.map((r) => r.migration_name)).toEqual(committedMigrations());
     } finally {
       db.close();
@@ -60,9 +60,7 @@ describe("migration idempotency", () => {
 
     const db = new Database(dbPath);
     try {
-      const count = db
-        .prepare("SELECT COUNT(*) AS c FROM _cca_migrations")
-        .get() as { c: number };
+      const count = db.prepare("SELECT COUNT(*) AS c FROM _cca_migrations").get() as { c: number };
       expect(count.c).toBe(committedMigrations().length);
     } finally {
       db.close();
@@ -97,9 +95,9 @@ describe("migration idempotency", () => {
         name: string;
       }[];
       expect(cols.some((c) => c.name === "external_agent_id")).toBe(true);
-      const applied = db
-        .prepare("SELECT COUNT(*) AS c FROM _cca_migrations WHERE migration_name = ?")
-        .get(target) as { c: number };
+      const applied = db.prepare("SELECT COUNT(*) AS c FROM _cca_migrations WHERE migration_name = ?").get(target) as {
+        c: number;
+      };
       expect(applied.c).toBe(1);
     } finally {
       db.close();

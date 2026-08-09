@@ -39,7 +39,7 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      <body className="flex min-h-full flex-col">
         {/* The theme provider is a client boundary wrapping the otherwise-server
             tree: pages stay server components and PPR is unaffected. */}
         <ThemeProvider>{children}</ThemeProvider>

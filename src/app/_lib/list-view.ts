@@ -98,10 +98,7 @@ const TOP_PROJECTS_LIMIT = 5;
  * Pure: no mutation of `rows`.
  */
 export function buildListView(rows: ConversationSummary[]): ListViewBase;
-export function buildListView(
-  rows: ConversationSummary[],
-  intent: ListViewIntent,
-): ListViewBase & ListViewTable;
+export function buildListView(rows: ConversationSummary[], intent: ListViewIntent): ListViewBase & ListViewTable;
 export function buildListView(
   rows: ConversationSummary[],
   intent?: ListViewIntent,
@@ -125,18 +122,13 @@ export function buildListView(
   const activeFolder = intent.folder ? intent.folder : undefined;
   // Both filters run BEFORE the sort and compose: folder scope narrows to one
   // Project, the errors filter to the conversations that actually failed.
-  const scopedRows = filterByErrors(
-    filterByFolder(rows, activeFolder),
-    intent.errorsOnly,
-  );
+  const scopedRows = filterByErrors(filterByFolder(rows, activeFolder), intent.errorsOnly);
   const sortedRows = sortConversations(scopedRows, intent.sort);
   return {
     ...base,
     rows: sortedRows,
     scoped: activeFolder !== undefined,
-    selectedFolder: activeFolder
-      ? folders.find((f) => f.folder === activeFolder)
-      : undefined,
+    selectedFolder: activeFolder ? folders.find((f) => f.folder === activeFolder) : undefined,
     grandTotal: grandTotal(sortedRows),
   };
 }
@@ -149,10 +141,7 @@ export function buildListView(
  * sort). All rows when `folder` is `undefined`/empty (no scope); the matching
  * rows for a known key; an empty array for a non-empty but unknown/stale key.
  */
-function filterByFolder(
-  summaries: ConversationSummary[],
-  folder: string | undefined,
-): ConversationSummary[] {
+function filterByFolder(summaries: ConversationSummary[], folder: string | undefined): ConversationSummary[] {
   if (!folder) return summaries;
   return summaries.filter((s) => s.project.folder === folder);
 }
@@ -163,10 +152,7 @@ function filterByFolder(
  * is off. The `errorCount` is the core's whole-conversation rollup, so a row
  * whose only failure happened inside a sub-agent survives the filter.
  */
-function filterByErrors(
-  summaries: ConversationSummary[],
-  errorsOnly: boolean | undefined,
-): ConversationSummary[] {
+function filterByErrors(summaries: ConversationSummary[], errorsOnly: boolean | undefined): ConversationSummary[] {
   if (!errorsOnly) return summaries;
   return summaries.filter((s) => s.errorCount > 0);
 }
@@ -263,9 +249,6 @@ function deriveOverview(summaries: ConversationSummary[]): Overview {
  * The `limit` highest-cost Projects, cost descending. Returns a new array — the
  * input order is preserved (the sidebar keeps its own newest-first ordering).
  */
-function topProjectsByCost(
-  entries: FolderEntry[],
-  limit: number,
-): FolderEntry[] {
+function topProjectsByCost(entries: FolderEntry[], limit: number): FolderEntry[] {
   return [...entries].sort((a, b) => b.costUsd - a.costUsd).slice(0, limit);
 }

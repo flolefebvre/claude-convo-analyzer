@@ -9,11 +9,8 @@
   --color-foreground: var(--foreground);
   /* Geist (variable, self-hosted by next/font in `app/layout.tsx`) is the app
      typeface; the system stack only ever shows during the font swap. */
-  --font-sans:
-    var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI",
-    sans-serif;
-  --font-mono:
-    var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, monospace;
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, monospace;
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -169,7 +166,9 @@
     @apply bg-background text-foreground;
     /* Geist ships ligatures + contextual alternates; keep them on, and let every
        figure line up in the cost tables. */
-    font-feature-settings: "liga" 1, "calt" 1;
+    font-feature-settings:
+      "liga" 1,
+      "calt" 1;
     font-variant-numeric: tabular-nums;
   }
   html {
@@ -196,7 +195,9 @@
   font-size: 14px;
   line-height: 1.55;
 }
-.tview .num { font-variant-numeric: tabular-nums; }
+.tview .num {
+  font-variant-numeric: tabular-nums;
+}
 .tview .cost {
   color: var(--cost);
   font-family: var(--font-mono);
@@ -221,7 +222,10 @@
   flex-direction: column;
   overflow-y: auto;
 }
-.tview .tree-header { padding: 16px 16px 12px; border-bottom: 1px solid var(--border); }
+.tview .tree-header {
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid var(--border);
+}
 .tview .back-link {
   display: inline-flex;
   align-items: center;
@@ -231,7 +235,9 @@
   text-decoration: none;
   margin-bottom: 10px;
 }
-.tview .back-link:hover { color: var(--foreground); }
+.tview .back-link:hover {
+  color: var(--foreground);
+}
 .tview .conv-title {
   font-size: 14px;
   font-weight: 600;
@@ -247,8 +253,15 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.tview .tree-caption { padding: 14px 16px 6px; }
-.tview .tree-nodes { padding: 0 8px 16px; display: flex; flex-direction: column; gap: 1px; }
+.tview .tree-caption {
+  padding: 14px 16px 6px;
+}
+.tview .tree-nodes {
+  padding: 0 8px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
 .tview .node {
   display: flex;
   align-items: center;
@@ -259,8 +272,13 @@
   color: var(--foreground);
   text-decoration: none;
 }
-.tview .node:hover { background: var(--sidebar-accent); }
-.tview .node[aria-current="true"] { background: var(--sidebar-accent); font-weight: 600; }
+.tview .node:hover {
+  background: var(--sidebar-accent);
+}
+.tview .node[aria-current="true"] {
+  background: var(--sidebar-accent);
+  font-weight: 600;
+}
 .tview .node-glyph {
   color: var(--muted-foreground);
   flex-shrink: 0;
@@ -268,7 +286,9 @@
   text-align: center;
   font-size: 11px;
 }
-.tview .node[aria-current="true"] .node-glyph { color: var(--agent); }
+.tview .node[aria-current="true"] .node-glyph {
+  color: var(--agent);
+}
 .tview .node-label {
   flex: 1;
   overflow: hidden;
@@ -276,7 +296,10 @@
   white-space: nowrap;
   font-size: 13px;
 }
-.tview .node-sub { color: var(--muted-foreground); font-weight: 400; }
+.tview .node-sub {
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
 .tview .node-err {
   width: 6px;
   height: 6px;
@@ -313,10 +336,14 @@
   background: var(--sidebar-accent);
 }
 @keyframes node-hint-in {
-  to { opacity: 1; }
+  to {
+    opacity: 1;
+  }
 }
 @keyframes node-hint-pulse {
-  50% { opacity: 0.3; }
+  50% {
+    opacity: 0.3;
+  }
 }
 .tview .tree-total {
   margin-top: auto;
@@ -326,10 +353,16 @@
   justify-content: space-between;
   align-items: baseline;
 }
-.tview .tree-total .cost { font-size: 13px; font-weight: 600; }
+.tview .tree-total .cost {
+  font-size: 13px;
+  font-weight: 600;
+}
 
 /* ---- Transcript pane ---- */
-.tview .pane { flex: 1; overflow-y: auto; }
+.tview .pane {
+  flex: 1;
+  overflow-y: auto;
+}
 .tview .pane-header {
   position: sticky;
   top: 0;
@@ -350,10 +383,20 @@
   flex: 1;
   min-width: 0;
 }
-.tview .crumb a { color: var(--muted-foreground); text-decoration: none; }
-.tview .crumb a:hover { color: var(--foreground); text-decoration: underline; }
-.tview .crumb .sep { color: var(--muted-foreground); }
-.tview .crumb .here { font-weight: 600; }
+.tview .crumb a {
+  color: var(--muted-foreground);
+  text-decoration: none;
+}
+.tview .crumb a:hover {
+  color: var(--foreground);
+  text-decoration: underline;
+}
+.tview .crumb .sep {
+  color: var(--muted-foreground);
+}
+.tview .crumb .here {
+  font-weight: 600;
+}
 .tview .pane-header .stats {
   display: flex;
   gap: 14px;
@@ -362,9 +405,15 @@
   font-size: 12px;
   color: var(--muted-foreground);
 }
-.tview .pane-header .cost { font-size: 13px; font-weight: 600; }
+.tview .pane-header .cost {
+  font-size: 13px;
+  font-weight: 600;
+}
 /* Effort stat: sits beside the model, in the same muted register as it. */
-.tview .pane-header .stats .effort { font-family: var(--font-mono); font-size: 11.5px; }
+.tview .pane-header .stats .effort {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
 
 /* Continuation banner (issue #46): the lineage line above the transcript —
    where this sitting was resumed from and what continues it. Quiet by default
@@ -382,8 +431,13 @@
   font-size: 12.5px;
   color: var(--muted-foreground);
 }
-.tview .family-banner a { color: var(--foreground); text-decoration: none; }
-.tview .family-banner a:hover { text-decoration: underline; }
+.tview .family-banner a {
+  color: var(--foreground);
+  text-decoration: none;
+}
+.tview .family-banner a:hover {
+  text-decoration: underline;
+}
 
 .tview .transcript {
   max-width: 46rem;
@@ -407,7 +461,10 @@
   align-items: baseline;
   margin-bottom: 4px;
 }
-.tview .prompt-body { white-space: pre-wrap; word-break: break-word; }
+.tview .prompt-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 .tview .slash {
   display: inline-flex;
   align-items: baseline;
@@ -423,17 +480,30 @@
   padding: 1px 7px;
   font-weight: 600;
 }
-.tview .slash-args { color: var(--muted-foreground); }
+.tview .slash-args {
+  color: var(--muted-foreground);
+}
 
 /* ---- Assistant turn ---- */
-.tview .turn-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+.tview .turn-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+}
 .tview .turn-head .model {
   font-family: var(--font-mono);
   font-size: 11.5px;
   color: var(--muted-foreground);
 }
-.tview .turn-head .spacer { flex: 1; }
-.tview .turn-cost { background: var(--cost-muted); border-radius: 999px; padding: 1px 9px; }
+.tview .turn-head .spacer {
+  flex: 1;
+}
+.tview .turn-cost {
+  background: var(--cost-muted);
+  border-radius: 999px;
+  padding: 1px 9px;
+}
 /* Reasoning-effort change marker: same pill as .badge-err but NEUTRAL — a
    mid-conversation /effort flip is information, not a problem. */
 .tview .badge-effort {
@@ -456,12 +526,26 @@
   border-radius: 999px;
   padding: 2px 9px;
 }
-.tview .turn-body { overflow-wrap: break-word; }
-.tview .turn-body > :first-child { margin-top: 0; }
-.tview .turn-body > :last-child { margin-bottom: 0; }
-.tview .turn-body p { margin: 0 0 10px; }
-.tview .turn-body ul, .tview .turn-body ol { margin: 0 0 10px; padding-left: 22px; }
-.tview .turn-body li { margin: 2px 0; }
+.tview .turn-body {
+  overflow-wrap: break-word;
+}
+.tview .turn-body > :first-child {
+  margin-top: 0;
+}
+.tview .turn-body > :last-child {
+  margin-bottom: 0;
+}
+.tview .turn-body p {
+  margin: 0 0 10px;
+}
+.tview .turn-body ul,
+.tview .turn-body ol {
+  margin: 0 0 10px;
+  padding-left: 22px;
+}
+.tview .turn-body li {
+  margin: 2px 0;
+}
 .tview .turn-body code {
   background: var(--muted);
   border: 1px solid var(--border);
@@ -477,8 +561,14 @@
   overflow-x: auto;
   margin: 0 0 10px;
 }
-.tview .turn-body pre code { background: none; border: none; padding: 0; }
-.tview .turn-body h1, .tview .turn-body h2, .tview .turn-body h3 {
+.tview .turn-body pre code {
+  background: none;
+  border: none;
+  padding: 0;
+}
+.tview .turn-body h1,
+.tview .turn-body h2,
+.tview .turn-body h3 {
   font-size: 14px;
   font-weight: 600;
   margin: 14px 0 6px;
@@ -489,9 +579,17 @@
   border-left: 3px solid var(--border);
   color: var(--muted-foreground);
 }
-.tview .turn-body a { color: var(--agent); text-decoration: underline; }
-.tview .turn-body table { border-collapse: collapse; margin: 0 0 10px; font-size: 13px; }
-.tview .turn-body th, .tview .turn-body td {
+.tview .turn-body a {
+  color: var(--agent);
+  text-decoration: underline;
+}
+.tview .turn-body table {
+  border-collapse: collapse;
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+.tview .turn-body th,
+.tview .turn-body td {
   border: 1px solid var(--border);
   padding: 4px 8px;
   text-align: left;
@@ -503,7 +601,12 @@
 }
 
 /* ---- Tool calls ---- */
-.tview .calls { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
+.tview .calls {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+}
 .tview details.call {
   border: 1px solid var(--border);
   border-radius: calc(var(--radius) * 0.8);
@@ -518,7 +621,9 @@
   padding: 7px 12px;
   cursor: pointer;
 }
-.tview details.call summary::-webkit-details-marker { display: none; }
+.tview details.call summary::-webkit-details-marker {
+  display: none;
+}
 /* The `?call=` deep-link target (a Tools-page drill-down): rendered open, and
    ringed in the accent hue so the eye finds it after the fragment scroll. Both
    themes read it correctly — the colours are semantic tokens. */
@@ -527,7 +632,9 @@
   box-shadow: 0 0 0 2px var(--cost-muted);
   scroll-margin-top: 96px;
 }
-.tview details.call summary:hover { background: var(--muted); }
+.tview details.call summary:hover {
+  background: var(--muted);
+}
 /* The `?msg=` deep-link target (a search-result drill-down): the matching
    message is ringed in the same accent hue as an anchored tool call, so both
    deep links read as one idiom. Semantic tokens → correct in both themes. */
@@ -544,7 +651,9 @@
   flex-shrink: 0;
   width: 10px;
 }
-.tview details[open] .chev { transform: rotate(90deg); }
+.tview details[open] .chev {
+  transform: rotate(90deg);
+}
 .tview .kind {
   font-size: 10.5px;
   font-weight: 600;
@@ -554,10 +663,23 @@
   padding: 2px 7px;
   flex-shrink: 0;
 }
-.tview .kind-tool { background: var(--muted); color: var(--muted-foreground); }
-.tview .kind-skill { background: var(--skill-muted); color: var(--skill); }
-.tview .kind-agent { background: var(--agent-muted); color: var(--agent); }
-.tview .call-name { font-weight: 600; font-size: 13px; flex-shrink: 0; }
+.tview .kind-tool {
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+.tview .kind-skill {
+  background: var(--skill-muted);
+  color: var(--skill);
+}
+.tview .kind-agent {
+  background: var(--agent-muted);
+  color: var(--agent);
+}
+.tview .call-name {
+  font-weight: 600;
+  font-size: 13px;
+  flex-shrink: 0;
+}
 .tview .call-snippet {
   font-family: var(--font-mono);
   font-size: 12px;
@@ -567,8 +689,17 @@
   white-space: nowrap;
   flex: 1;
 }
-.tview .call-meta { font-size: 11.5px; color: var(--muted-foreground); flex-shrink: 0; }
-.tview .call-err { color: var(--destructive); font-weight: 600; font-size: 11.5px; flex-shrink: 0; }
+.tview .call-meta {
+  font-size: 11.5px;
+  color: var(--muted-foreground);
+  flex-shrink: 0;
+}
+.tview .call-err {
+  color: var(--destructive);
+  font-weight: 600;
+  font-size: 11.5px;
+  flex-shrink: 0;
+}
 .tview .call-body {
   border-top: 1px solid var(--border);
   padding: 10px 12px 12px;
@@ -576,7 +707,10 @@
   flex-direction: column;
   gap: 10px;
 }
-.tview .io-block .microlabel { display: block; margin-bottom: 4px; }
+.tview .io-block .microlabel {
+  display: block;
+  margin-bottom: 4px;
+}
 .tview .io-block pre {
   margin: 0;
   background: var(--muted);
@@ -588,7 +722,10 @@
   white-space: pre;
   font-family: var(--font-mono);
 }
-.tview .io-block pre.err { background: var(--destructive-muted); color: var(--destructive); }
+.tview .io-block pre.err {
+  background: var(--destructive-muted);
+  color: var(--destructive);
+}
 .tview .trunc {
   display: flex;
   align-items: center;
@@ -609,7 +746,9 @@
   align-self: flex-start;
   text-decoration: none;
 }
-.tview .open-agent:hover { filter: brightness(1.08); }
+.tview .open-agent:hover {
+  filter: brightness(1.08);
+}
 
 /* ---- Meta divider ---- */
 .tview .meta-hidden {
@@ -619,7 +758,8 @@
   color: var(--muted-foreground);
   font-size: 11.5px;
 }
-.tview .meta-hidden::before, .tview .meta-hidden::after {
+.tview .meta-hidden::before,
+.tview .meta-hidden::after {
   content: "";
   flex: 1;
   border-top: 1px dashed var(--border);
@@ -638,14 +778,20 @@
 }
 
 @media (max-width: 760px) {
-  .tview { flex-direction: column; height: auto; }
+  .tview {
+    flex-direction: column;
+    height: auto;
+  }
   .tview .tree {
     width: 100%;
     border-right: none;
     border-bottom: 1px solid var(--border);
   }
-  .tview .tree-total { margin-top: 0; }
-  .tview .pane-header, .tview .transcript {
+  .tview .tree-total {
+    margin-top: 0;
+  }
+  .tview .pane-header,
+  .tview .transcript {
     padding-left: 16px;
     padding-right: 16px;
   }
