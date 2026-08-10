@@ -17,11 +17,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createPrismaClient } from "@/core/db";
 import { refresh } from "@/core/refresh";
 
 import { dropSearchIndex } from "./helpers/search-index";
-import { seededTempDb } from "./helpers/temp-db";
+import { applyPendingMigrations, seededTempDb } from "./helpers/temp-db";
 
 const FIXTURES_ROOT = path.join(import.meta.dirname, "fixtures", "logs");
 
@@ -248,8 +247,7 @@ describe("FTS search index — backfill on upgrade", () => {
     raw.close();
 
     // Re-opening applies the migration — which must BACKFILL the existing rows.
-    const prisma = createPrismaClient(dbPath);
-    await prisma.$disconnect();
+    await applyPendingMigrations(dbPath);
 
     expect(matchingUuids(dbPath, "transcript")).toContain("tu1");
     expect(matchingTitleSessions(dbPath, "kinds")).toContain("sess-transcript");

@@ -1,20 +1,20 @@
 // The expandable conversation row. A SERVER component: whether a row is
 // expanded is URL view state (`?expanded=<id>`), same as sort and folder scope,
 // so the page resolves it from `searchParams`, fetches the panel's detail
-// server-side, and hands both down as plain props. The expand toggle is a
-// `<Link>` to `expandHref(...)` — the same href-composition pattern as the
-// sortable headers and folder links — with `scroll={false}` so toggling a row
-// deep in the table never jumps the viewport. Expanded views are therefore
-// shareable and survive a reload.
+// server-side, and hands both down as plain props. The expand toggle is the
+// shared `ExpandToggle` pointed at `expandHref(...)` — the same href-composition
+// pattern as the sortable headers and folder links. Expanded views are
+// therefore shareable and survive a reload.
 //
 // ADR-0002 boundary: no client file touches core. The only client leaf left in
 // the panel is `SubAgentBreakdown` (ephemeral per-group open/closed state),
 // which receives plain serializable props.
 
-import { AlertTriangle, ChevronDown, ChevronRight, GitBranch } from "lucide-react";
+import { AlertTriangle, GitBranch } from "lucide-react";
 import Link from "next/link";
 
 import { CostList, CostRow } from "@/app/_components/cost-list";
+import { ExpandToggle } from "@/app/_components/expand-toggle";
 import { SubAgentBreakdown } from "@/app/_components/sub-agent-breakdown";
 import { columnCount } from "@/app/_lib/columns";
 import { detailSections, tokenComposition } from "@/app/_lib/detail";
@@ -72,20 +72,9 @@ export function ConversationRow({
         <TableCell {...(date.absolute ? { title: date.absolute } : {})} className="text-muted-foreground tabular-nums">
           {/* Expand toggle lives here so it works whether or not the Folder
               cell is rendered (it's hidden when scoped). */}
-          <Link
-            href={toggleHref}
-            scroll={false}
-            aria-expanded={expanded}
-            className="inline-flex items-center gap-1.5 rounded-sm text-left outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
-          >
-            {expanded ? (
-              <ChevronDown className="size-3.5 shrink-0" aria-hidden />
-            ) : (
-              <ChevronRight className="size-3.5 shrink-0" aria-hidden />
-            )}
-            <span className="sr-only">{expanded ? "Collapse" : "Expand"} conversation details</span>
+          <ExpandToggle href={toggleHref} expanded={expanded} label="conversation details">
             {date.label}
-          </Link>
+          </ExpandToggle>
         </TableCell>
         {/* When scoped to a single Project the Folder column is hidden (the page
             shows the path once as a breadcrumb). When unscoped, show the friendly

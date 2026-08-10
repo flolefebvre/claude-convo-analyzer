@@ -23,7 +23,7 @@ import { ToolRow } from "@/app/_components/tool-row";
 import { loadToolCallSamples, loadToolStats } from "@/app/_lib/conversations";
 import { formatChars } from "@/app/_lib/format";
 import { rangeDays, resolveRange } from "@/app/_lib/range";
-import { firstParam } from "@/app/_lib/search-params";
+import { type ViewSearchParams, firstParam } from "@/app/_lib/search-params";
 import { resolveExpanded } from "@/app/_lib/sort";
 import {
   type ToolSortField,
@@ -38,15 +38,7 @@ import {
 import type { ToolStats } from "@/core/tool-stats";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-type PageSearchParams = {
-  sortBy?: string | string[];
-  dir?: string | string[];
-  folder?: string | string[];
-  expanded?: string | string[];
-  range?: string | string[];
-};
-
-export default function Page({ searchParams }: { searchParams: Promise<PageSearchParams> }) {
+export default function Page({ searchParams }: { searchParams: Promise<ViewSearchParams> }) {
   return (
     <Suspense fallback={<p className="text-sm text-muted-foreground">Loading tools…</p>}>
       <ToolsSurface searchParams={searchParams} />
@@ -60,7 +52,7 @@ export default function Page({ searchParams }: { searchParams: Promise<PageSearc
  * separate from {@link Page} so the request-time fetch sits inside the page's
  * <Suspense> boundary (PPR).
  */
-async function ToolsSurface({ searchParams }: { searchParams: Promise<PageSearchParams> }) {
+async function ToolsSurface({ searchParams }: { searchParams: Promise<ViewSearchParams> }) {
   const params = await searchParams;
   // URL → resolved intent at the page edge; the seam takes intent, never raw
   // searchParams. Every axis defaults safely (30 days, all Projects, calls ↓).

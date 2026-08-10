@@ -33,12 +33,13 @@ const NOW = Date.parse("2026-07-01T12:00:00.000Z");
 describe("getDailySpend", () => {
   const db = seededTempDb({ prefix: "cca-daily-", logsRoot: FIXTURES_ROOT });
 
+  /** The Trends Project's all-time spend — the read almost every test starts from. */
+  function trendsSpend() {
+    return getDailySpend({ dbPath: db.dbPath, folder: TRENDS_FOLDER, now: NOW });
+  }
+
   it("buckets cost by local day and zero-fills days with no activity", async () => {
-    const spend = await getDailySpend({
-      dbPath: db.dbPath,
-      folder: TRENDS_FOLDER,
-      now: NOW,
-    });
+    const spend = await trendsSpend();
 
     const byDate = new Map(spend.days.map((d) => [d.date, d]));
     expect(byDate.get(localDay(DAY_ONE))?.costUsd).toBeGreaterThan(0);
@@ -72,11 +73,7 @@ describe("getDailySpend", () => {
   });
 
   it("spans from the earliest in-scope message day to today when no range is given", async () => {
-    const spend = await getDailySpend({
-      dbPath: db.dbPath,
-      folder: TRENDS_FOLDER,
-      now: NOW,
-    });
+    const spend = await trendsSpend();
 
     expect(spend.days[0]?.date).toBe(localDay(DAY_ONE));
     expect(spend.days.at(-1)?.date).toBe(localDay(new Date(NOW).toISOString()));
@@ -87,11 +84,7 @@ describe("getDailySpend", () => {
   });
 
   it("prices each day's models per tier, 5m and 1h cache writes apart", async () => {
-    const spend = await getDailySpend({
-      dbPath: db.dbPath,
-      folder: TRENDS_FOLDER,
-      now: NOW,
-    });
+    const spend = await trendsSpend();
 
     const dayOne = spend.days.find((d) => d.date === localDay(DAY_ONE));
     // opus-4-8: 100 in, 50 out, 200 cache-write 5m, 100 cache-write 1h, 20 read.
@@ -103,11 +96,7 @@ describe("getDailySpend", () => {
   });
 
   it("includes sub-agent usage as a band of the day it ran on", async () => {
-    const spend = await getDailySpend({
-      dbPath: db.dbPath,
-      folder: TRENDS_FOLDER,
-      now: NOW,
-    });
+    const spend = await trendsSpend();
 
     const dayTwo = spend.days.find((d) => d.date === localDay(DAY_TWO));
     // The haiku band comes ONLY from the sub-agent transcript (the main thread
@@ -119,11 +108,7 @@ describe("getDailySpend", () => {
   });
 
   it("ranks the range's priced models by cost — the stack and legend order", async () => {
-    const spend = await getDailySpend({
-      dbPath: db.dbPath,
-      folder: TRENDS_FOLDER,
-      now: NOW,
-    });
+    const spend = await trendsSpend();
 
     expect(spend.models.map((m) => m.model)).toEqual([
       "claude-opus-4-8",
@@ -139,11 +124,7 @@ describe("getDailySpend", () => {
   });
 
   it("gives unpriced usage $0 and no band, but keeps its tokens and flags it", async () => {
-    const spend = await getDailySpend({
-      dbPath: db.dbPath,
-      folder: TRENDS_FOLDER,
-      now: NOW,
-    });
+    const spend = await trendsSpend();
 
     const dayTwo = spend.days.find((d) => d.date === localDay(DAY_TWO));
     // The `<synthetic>` turn (7 in + 9 out) gets no band anywhere...
@@ -157,11 +138,7 @@ describe("getDailySpend", () => {
   });
 
   it("excludes a message with no timestamp and one with no model", async () => {
-    const spend = await getDailySpend({
-      dbPath: db.dbPath,
-      folder: TRENDS_FOLDER,
-      now: NOW,
-    });
+    const spend = await trendsSpend();
 
     // The fixture's two outliers carry 1000+1000 and 500+500 tokens; neither can
     // be bucketed (no timestamp) or priced (no model), so neither is counted.
@@ -169,11 +146,7 @@ describe("getDailySpend", () => {
   });
 
   it("scopes to one Project, or spans all Projects when unscoped", async () => {
-    const scoped = await getDailySpend({
-      dbPath: db.dbPath,
-      folder: TRENDS_FOLDER,
-      now: NOW,
-    });
+    const scoped = await trendsSpend();
     const all = await getDailySpend({ dbPath: db.dbPath, now: NOW });
     const other = await getDailySpend({
       dbPath: db.dbPath,

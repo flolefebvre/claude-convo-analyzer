@@ -4,39 +4,16 @@ import type { ConversationSummary } from "@/core/read";
 
 import { deriveFolders, type FolderEntry } from "@/app/_lib/folders";
 
-// Minimal ConversationSummary factory: each test states only the field(s) it
-// cares about (project folder/path and the two timestamps).
-function summary(over: {
-  id: string;
-  folder?: string;
-  path?: string;
-  startedAt?: string;
-  endedAt?: string;
-  costUsd?: number;
-  tokensTotal?: number;
-  unpriced?: boolean;
-}): ConversationSummary {
-  const path = over.path ?? "/Users/me/dev/demo";
-  // Dash-encode the path the way the core does, unless an explicit folder key
-  // is supplied (so tests can force a folder identity independent of path).
-  const folder = over.folder ?? path.replace(/\//g, "-");
-  const total = over.tokensTotal ?? 0;
-  return {
-    id: over.id,
-    title: `t-${over.id}`,
-    project: { folder, path },
-    startedAt: over.startedAt ?? "2026-01-01T00:00:00.000Z",
-    endedAt: over.endedAt ?? "2026-01-01T01:00:00.000Z",
-    models: { dominant: "opus", distinctCount: 1 },
-    tokens: { input: total, output: 0, cacheWrite: 0, cacheRead: 0, total },
-    costUsd: over.costUsd ?? 0,
-    costByType: { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 },
-    unpriced: over.unpriced ?? false,
-    subAgentCount: 0,
-    errorCount: 0,
-    continuedFromId: null,
-  };
-}
+import { summary } from "./helpers/summaries";
+
+/** One shared latest activity, so ordering is decided by the tiebreak, not time. */
+const TIE_AT = "2026-05-01T00:00:00.000Z";
+
+/** Two Projects whose paths share the basename `demo` — a label collision. */
+const COLLIDING_DEMOS = [
+  summary({ id: "a", folder: "f1", path: "/Users/me/dev/demo", endedAt: TIE_AT }),
+  summary({ id: "b", folder: "f2", path: "/Users/me/tmp/demo", endedAt: TIE_AT }),
+];
 
 function labels(rows: { label: string }[]): string[] {
   return rows.map((r) => r.label);
@@ -105,35 +82,26 @@ describe("deriveFolders", () => {
   });
 
   it("breaks latest-activity ties by friendly label ascending (deterministic)", () => {
-    const at = "2026-05-01T00:00:00.000Z";
     const rows = [
-      summary({ id: "a", folder: "fZ", path: "/p/zebra", endedAt: at }),
-      summary({ id: "b", folder: "fA", path: "/p/apple", endedAt: at }),
-      summary({ id: "c", folder: "fM", path: "/p/mango", endedAt: at }),
+      summary({ id: "a", folder: "fZ", path: "/p/zebra", endedAt: TIE_AT }),
+      summary({ id: "b", folder: "fA", path: "/p/apple", endedAt: TIE_AT }),
+      summary({ id: "c", folder: "fM", path: "/p/mango", endedAt: TIE_AT }),
     ];
     expect(labels(deriveFolders(rows))).toEqual(["apple", "mango", "zebra"]);
   });
 
   it("disambiguates a basename collision with the minimal unique trailing suffix", () => {
-    const at = "2026-05-01T00:00:00.000Z";
-    const rows = [
-      summary({ id: "a", folder: "f1", path: "/Users/me/dev/demo", endedAt: at }),
-      summary({ id: "b", folder: "f2", path: "/Users/me/tmp/demo", endedAt: at }),
-    ];
-    const ent = byKey(rows);
+    const ent = byKey(COLLIDING_DEMOS);
     // Both basenames are "demo"; one trailing segment more makes them unique.
     expect(ent.f1.label).toBe("dev/demo");
     expect(ent.f2.label).toBe("tmp/demo");
   });
 
   it("keeps a bare basename when it is already unique among Projects", () => {
-    const at = "2026-05-01T00:00:00.000Z";
-    const rows = [
-      summary({ id: "a", folder: "f1", path: "/Users/me/dev/demo", endedAt: at }),
-      summary({ id: "b", folder: "f2", path: "/Users/me/tmp/demo", endedAt: at }),
-      summary({ id: "c", folder: "f3", path: "/Users/me/work/unique", endedAt: at }),
-    ];
-    const ent = byKey(rows);
+    const ent = byKey([
+      ...COLLIDING_DEMOS,
+      summary({ id: "c", folder: "f3", path: "/Users/me/work/unique", endedAt: TIE_AT }),
+    ]);
     expect(ent.f1.label).toBe("dev/demo");
     expect(ent.f2.label).toBe("tmp/demo");
     // Not part of the collision -> stays a bare basename.
@@ -141,11 +109,10 @@ describe("deriveFolders", () => {
   });
 
   it("widens a 3-way collision to the depth that makes the WHOLE group unique", () => {
-    const at = "2026-05-01T00:00:00.000Z";
     const rows = [
-      summary({ id: "a", folder: "f1", path: "/a/x/app", endedAt: at }),
-      summary({ id: "b", folder: "f2", path: "/b/x/app", endedAt: at }),
-      summary({ id: "c", folder: "f3", path: "/a/y/app", endedAt: at }),
+      summary({ id: "a", folder: "f1", path: "/a/x/app", endedAt: TIE_AT }),
+      summary({ id: "b", folder: "f2", path: "/b/x/app", endedAt: TIE_AT }),
+      summary({ id: "c", folder: "f3", path: "/a/y/app", endedAt: TIE_AT }),
     ];
     const ent = byKey(rows);
     // Depth 2 gives x/app, x/app, y/app -> still colliding, so the group widens
@@ -156,10 +123,9 @@ describe("deriveFolders", () => {
   });
 
   it("appends the folder key as a last resort when two Projects share an identical path", () => {
-    const at = "2026-05-01T00:00:00.000Z";
     const rows = [
-      summary({ id: "a", folder: "f1", path: "/Users/me/dev/demo", endedAt: at }),
-      summary({ id: "b", folder: "f2", path: "/Users/me/dev/demo", endedAt: at }),
+      summary({ id: "a", folder: "f1", path: "/Users/me/dev/demo", endedAt: TIE_AT }),
+      summary({ id: "b", folder: "f2", path: "/Users/me/dev/demo", endedAt: TIE_AT }),
     ];
     const ent = byKey(rows);
     // Same path, distinct folder keys -> labels still unique + deterministic.
@@ -170,9 +136,9 @@ describe("deriveFolders", () => {
 
   it("sums costUsd and total tokens across each Project's conversations", () => {
     const rows = [
-      summary({ id: "a", folder: "fA", costUsd: 10, tokensTotal: 100 }),
-      summary({ id: "b", folder: "fA", costUsd: 5, tokensTotal: 50 }),
-      summary({ id: "c", folder: "fB", costUsd: 2, tokensTotal: 20 }),
+      summary({ id: "a", folder: "fA", costUsd: 10, tokens: { total: 100 } }),
+      summary({ id: "b", folder: "fA", costUsd: 5, tokens: { total: 50 } }),
+      summary({ id: "c", folder: "fB", costUsd: 2, tokens: { total: 20 } }),
     ];
     const ent = byKey(rows);
     expect(ent.fA.costUsd).toBeCloseTo(15);

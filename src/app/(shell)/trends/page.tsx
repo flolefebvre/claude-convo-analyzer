@@ -20,15 +20,10 @@ import { TrendsChart } from "@/app/_components/trends-chart";
 import { loadDailySpend } from "@/app/_lib/conversations";
 import { formatCompactTokens, formatGrandTotalCost, formatTokens } from "@/app/_lib/format";
 import { rangeDays, rangeHref, resolveRange } from "@/app/_lib/range";
-import { firstParam } from "@/app/_lib/search-params";
+import { type ViewSearchParams, firstParam } from "@/app/_lib/search-params";
 import { type TrendsView, buildTrendsView } from "@/app/_lib/trends";
 
-type PageSearchParams = {
-  range?: string | string[];
-  folder?: string | string[];
-};
-
-export default function Page({ searchParams }: { searchParams: Promise<PageSearchParams> }) {
+export default function Page({ searchParams }: { searchParams: Promise<ViewSearchParams> }) {
   return (
     <Suspense fallback={<p className="text-sm text-muted-foreground">Loading trends…</p>}>
       <TrendsSurface searchParams={searchParams} />
@@ -42,7 +37,7 @@ export default function Page({ searchParams }: { searchParams: Promise<PageSearc
  * {@link Page} so the request-time fetch sits inside the page's <Suspense>
  * boundary (PPR).
  */
-async function TrendsSurface({ searchParams }: { searchParams: Promise<PageSearchParams> }) {
+async function TrendsSurface({ searchParams }: { searchParams: Promise<ViewSearchParams> }) {
   const params = await searchParams;
   // URL → resolved intent at the page edge; the seam takes intent, never raw
   // searchParams. Both default safely (30 days, all Projects).

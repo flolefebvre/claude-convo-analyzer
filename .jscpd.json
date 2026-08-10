@@ -1,0 +1,7 @@
+{
+  "path": ["src", "scripts"],
+  "ignore": ["src/components/ui/**"],
+  "minTokens": 50,
+  "exitCode": 1,
+  "reporters": ["consoleFull"]
+}

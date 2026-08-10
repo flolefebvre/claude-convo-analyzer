@@ -36,10 +36,11 @@ public/         Static assets served at the root
 
 ```
 pnpm dev           Run the app (next dev) on :3000
-pnpm gate          Format check, lint, typecheck, test, build — the full check
+pnpm gate          Format check, lint, duplication, typecheck, test, build — the full check
 pnpm format        Prettier, rewriting files in place
 pnpm format:check  Prettier in check mode (fails on unformatted files)
 pnpm lint          ESLint (includes the core boundary, ADR-0002)
+pnpm duplication   jscpd copy-paste detection (config in .jscpd.json, fails on any clone)
 pnpm typecheck     Next route typegen, then TypeScript with no emit
 pnpm test          Vitest, once
 pnpm test:watch    Vitest in watch mode

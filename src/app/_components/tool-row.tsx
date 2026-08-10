@@ -1,16 +1,15 @@
 // The expandable Tools-table row (issue #42). A SERVER component, mirroring
 // `ConversationRow`: whether a row is expanded is URL view state
 // (`?expanded=<tool>`), so the page resolves it from `searchParams`, fetches the
-// drill-down server-side, and hands both down as plain props. The toggle is a
-// `<Link>` with `scroll={false}` so opening a row deep in the table never jumps
-// the viewport.
+// drill-down server-side, and hands both down as plain props. The toggle is the
+// shared `ExpandToggle`, the same chevron link the conversation list uses.
 //
 // ADR-0002 boundary: no client file touches core; core types are type-only
 // imports here.
 
-import { ChevronDown, ChevronRight } from "lucide-react";
 import Link from "next/link";
 
+import { ExpandToggle } from "@/app/_components/expand-toggle";
 import { formatChars, formatClock } from "@/app/_lib/format";
 import { toolLabel } from "@/app/_lib/tools";
 import { toolCallHref } from "@/app/_lib/transcript-url";
@@ -39,18 +38,7 @@ export function ToolRow({
     <>
       <TableRow>
         <TableCell className="font-medium">
-          <Link
-            href={toggleHref}
-            scroll={false}
-            aria-expanded={expanded}
-            className="inline-flex items-center gap-1.5 rounded-sm text-left outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
-          >
-            {expanded ? (
-              <ChevronDown className="size-3.5 shrink-0" aria-hidden />
-            ) : (
-              <ChevronRight className="size-3.5 shrink-0" aria-hidden />
-            )}
-            <span className="sr-only">{expanded ? "Collapse" : "Expand"} tool details</span>
+          <ExpandToggle href={toggleHref} expanded={expanded} label="tool details">
             {/* An MCP tool reads "server · tool", so a misbehaving server is
                 spottable by eye without grouping the table. */}
             {label.server !== null && (
@@ -60,7 +48,7 @@ export function ToolRow({
               </span>
             )}
             {label.tool}
-          </Link>
+          </ExpandToggle>
         </TableCell>
 
         <TableCell className="text-right tabular-nums">{tool.calls}</TableCell>

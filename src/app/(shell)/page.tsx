@@ -34,7 +34,7 @@ import { familyView } from "@/app/_lib/family-view";
 import { type FolderEntry } from "@/app/_lib/folders";
 import { formatDate, formatGrandTotalCost, formatTokens } from "@/app/_lib/format";
 import { buildListView } from "@/app/_lib/list-view";
-import { firstParam } from "@/app/_lib/search-params";
+import { type ViewSearchParams, firstParam } from "@/app/_lib/search-params";
 import {
   type ListLinkContext,
   type SortableField,
@@ -49,16 +49,7 @@ import {
 } from "@/app/_lib/sort";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-type PageSearchParams = {
-  sortBy?: string | string[];
-  dir?: string | string[];
-  folder?: string | string[];
-  expanded?: string | string[];
-  range?: string | string[];
-  errors?: string | string[];
-};
-
-export default function Page({ searchParams }: { searchParams: Promise<PageSearchParams> }) {
+export default function Page({ searchParams }: { searchParams: Promise<ViewSearchParams> }) {
   return (
     <>
       {/* The overview band: this surface's headline analysis, above its table.
@@ -97,7 +88,7 @@ async function Overview() {
  * from {@link Page} so the request-time data fetch sits inside the page's
  * <Suspense> boundary (PPR).
  */
-async function ConversationTable({ searchParams }: { searchParams: Promise<PageSearchParams> }) {
+async function ConversationTable({ searchParams }: { searchParams: Promise<ViewSearchParams> }) {
   const params = await searchParams;
   // URL → resolved intent at the page edge; the seam takes intent, never raw
   // searchParams.
