@@ -14,12 +14,7 @@ import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 import { formatCompactTokens, formatCost, formatTokens } from "@/app/_lib/format";
 import type { TrendsBand, TrendsPoint } from "@/app/_lib/trends";
-import {
-  type ChartConfig,
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-} from "@/components/ui/chart";
+import { type ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 
 export function TrendsChart({
   bands,
@@ -36,9 +31,7 @@ export function TrendsChart({
   // API but `anthropic.claude-…-v1:0` on Bedrock/Vertex, whose dots and colons
   // are invalid in a CSS identifier — those bands would render colorless. Each
   // band's color is applied directly from `band.color` below instead.
-  const config: ChartConfig = Object.fromEntries(
-    bands.map((band) => [band.model, { label: band.model }]),
-  );
+  const config: ChartConfig = Object.fromEntries(bands.map((band) => [band.model, { label: band.model }]));
 
   return (
     <ChartContainer config={config} className="h-[320px] w-full">
@@ -47,19 +40,8 @@ export function TrendsChart({
           the tooltip gets the whole point, token split included). */}
       <AreaChart data={points} accessibilityLayer margin={{ left: 4, right: 8 }}>
         <CartesianGrid vertical={false} />
-        <XAxis
-          dataKey="label"
-          tickLine={false}
-          axisLine={false}
-          tickMargin={8}
-          minTickGap={28}
-        />
-        <YAxis
-          tickLine={false}
-          axisLine={false}
-          width={64}
-          tickFormatter={(value: number) => formatCost(value)}
-        />
+        <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} minTickGap={28} />
+        <YAxis tickLine={false} axisLine={false} width={64} tickFormatter={(value: number) => formatCost(value)} />
         <ChartTooltip content={<TrendsTooltip bands={bands} />} />
         {bands.map((band) => (
           <Area
@@ -111,24 +93,14 @@ function TrendsTooltip({
         <div className="grid gap-1">
           {spent.map(({ band, costUsd }) => (
             <div key={band.model} className="flex items-center gap-2">
-              <span
-                aria-hidden
-                className="size-2.5 shrink-0 rounded-[2px]"
-                style={{ backgroundColor: band.color }}
-              />
-              <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                {band.model}
-              </span>
-              <span className="tabular-nums font-medium">
-                {formatCost(costUsd)}
-              </span>
+              <span aria-hidden className="size-2.5 shrink-0 rounded-[2px]" style={{ backgroundColor: band.color }} />
+              <span className="min-w-0 flex-1 truncate text-muted-foreground">{band.model}</span>
+              <span className="font-medium tabular-nums">{formatCost(costUsd)}</span>
             </div>
           ))}
           <div className="flex items-center gap-2 border-t pt-1">
             <span className="flex-1">Total</span>
-            <span className="tabular-nums font-semibold text-cost">
-              {formatCost(point.costUsd)}
-            </span>
+            <span className="font-semibold text-cost tabular-nums">{formatCost(point.costUsd)}</span>
           </div>
         </div>
       )}
@@ -141,10 +113,8 @@ function TrendsTooltip({
           </span>
         </div>
         <p className="tabular-nums">
-          {formatCompactTokens(point.tokens.input)} in ·{" "}
-          {formatCompactTokens(point.tokens.output)} out ·{" "}
-          {formatCompactTokens(point.tokens.cacheWrite)} write ·{" "}
-          {formatCompactTokens(point.tokens.cacheRead)} read
+          {formatCompactTokens(point.tokens.input)} in · {formatCompactTokens(point.tokens.output)} out ·{" "}
+          {formatCompactTokens(point.tokens.cacheWrite)} write · {formatCompactTokens(point.tokens.cacheRead)} read
         </p>
       </div>
     </div>

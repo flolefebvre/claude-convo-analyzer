@@ -76,26 +76,12 @@ describe("toggleToolSort", () => {
 });
 
 describe("sortTools", () => {
-  const tools = [
-    stat("Bash", 10, 0.1, 500),
-    stat("Read", 20, 0, 9000),
-    stat("Edit", 10, 0.5, 100),
-  ];
+  const tools = [stat("Bash", 10, 0.1, 500), stat("Read", 20, 0, 9000), stat("Edit", 10, 0.5, 100)];
 
   it("orders by the active column, ties broken by name", () => {
-    expect(sortTools(tools, { sortBy: "calls", dir: "desc" }).map((t) => t.name)).toEqual([
-      "Read",
-      "Bash",
-      "Edit",
-    ]);
-    expect(
-      sortTools(tools, { sortBy: "errorRate", dir: "desc" }).map((t) => t.name),
-    ).toEqual(["Edit", "Bash", "Read"]);
-    expect(sortTools(tools, { sortBy: "volume", dir: "asc" }).map((t) => t.name)).toEqual([
-      "Edit",
-      "Bash",
-      "Read",
-    ]);
+    expect(sortTools(tools, { sortBy: "calls", dir: "desc" }).map((t) => t.name)).toEqual(["Read", "Bash", "Edit"]);
+    expect(sortTools(tools, { sortBy: "errorRate", dir: "desc" }).map((t) => t.name)).toEqual(["Edit", "Bash", "Read"]);
+    expect(sortTools(tools, { sortBy: "volume", dir: "asc" }).map((t) => t.name)).toEqual(["Edit", "Bash", "Read"]);
   });
 
   it("returns a new array, leaving the input untouched", () => {
@@ -113,15 +99,11 @@ describe("tool table hrefs", () => {
   });
 
   it("keeps sort and scope when changing range", () => {
-    expect(toolRangeHref("all", STATE)).toBe(
-      "?sortBy=calls&dir=desc&folder=-Users-me-dev-app&range=all",
-    );
+    expect(toolRangeHref("all", STATE)).toBe("?sortBy=calls&dir=desc&folder=-Users-me-dev-app&range=all");
   });
 
   it("expands a row, and collapses the one already expanded", () => {
-    expect(toolExpandHref("Bash", STATE)).toBe(
-      "?sortBy=calls&dir=desc&folder=-Users-me-dev-app&range=7&expanded=Bash",
-    );
+    expect(toolExpandHref("Bash", STATE)).toBe("?sortBy=calls&dir=desc&folder=-Users-me-dev-app&range=7&expanded=Bash");
     expect(toolExpandHref("Bash", { ...STATE, expanded: "Bash" })).toBe(
       "?sortBy=calls&dir=desc&folder=-Users-me-dev-app&range=7",
     );

@@ -29,10 +29,7 @@ describe("getToolCallSamples", () => {
     // Edit errored at 09:01 and 09:02; its 09:03 call succeeded.
     const samples = await samplesFor("Edit");
 
-    expect(samples.recentErrors.map((c) => c.toolUseId)).toEqual([
-      "tt-edit-2",
-      "tt-edit-1",
-    ]);
+    expect(samples.recentErrors.map((c) => c.toolUseId)).toEqual(["tt-edit-2", "tt-edit-1"]);
     expect(samples.recentErrors.every((c) => c.isError)).toBe(true);
 
     const capped = await samplesFor("Edit", { limit: 1 });

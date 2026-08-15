@@ -59,13 +59,7 @@ export type TrendsView = {
  * The shadcn chart palette, cycled when a range holds more models than colors.
  * CSS variables (not literal colors) so both themes resolve at render time.
  */
-const BAND_COLORS = [
-  "var(--chart-1)",
-  "var(--chart-2)",
-  "var(--chart-3)",
-  "var(--chart-4)",
-  "var(--chart-5)",
-] as const;
+const BAND_COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"] as const;
 
 /**
  * Shape one `DailySpend` into the Trends view. Band order is the core's cost

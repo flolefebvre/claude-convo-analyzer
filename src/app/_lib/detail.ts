@@ -85,10 +85,7 @@ const BUCKETS: { key: keyof CostByType; label: string; token: keyof Tokens }[] =
  * zero). Unpriced handling (`~` prefix + lower-bound tooltip) stays in the
  * renderer, driven by the row's existing `unpriced` flag.
  */
-export function tokenComposition(
-  tokens: Tokens,
-  costByType: CostByType,
-): CompositionBucket[] {
+export function tokenComposition(tokens: Tokens, costByType: CostByType): CompositionBucket[] {
   const total = tokens.total || 1;
   return BUCKETS.map(({ key, label, token }) => ({
     key,
@@ -99,8 +96,7 @@ export function tokenComposition(
   }));
 }
 
-const byCostDesc = (a: { costUsd: number }, b: { costUsd: number }): number =>
-  b.costUsd - a.costUsd;
+const byCostDesc = (a: { costUsd: number }, b: { costUsd: number }): number => b.costUsd - a.costUsd;
 
 function zeroTokens(): Tokens {
   return { input: 0, output: 0, cacheWrite: 0, cacheRead: 0, total: 0 };

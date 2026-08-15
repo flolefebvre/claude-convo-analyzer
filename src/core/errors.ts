@@ -87,10 +87,7 @@ export async function getConversationErrors(
  * Order two errors: by moment (oldest first), undated ones last, and equal
  * moments in the insertion order the query already returned (a stable sort).
  */
-function byMomentThenOrder(
-  a: ConversationApiError,
-  b: ConversationApiError,
-): number {
+function byMomentThenOrder(a: ConversationApiError, b: ConversationApiError): number {
   if (a.timestamp === b.timestamp) return 0;
   if (a.timestamp === "") return 1;
   if (b.timestamp === "") return -1;
@@ -113,10 +110,7 @@ function toApiError(row: ErrorRow): ConversationApiError {
     agentId: row.agent.externalAgentId ?? String(row.agent.id),
     agentType: row.agent.agentType,
     messageUuid: row.uuid,
-    timestamp:
-      row.timestamp == null
-        ? ""
-        : new Date(Number(row.timestamp)).toISOString(),
+    timestamp: row.timestamp == null ? "" : new Date(Number(row.timestamp)).toISOString(),
     status: row.apiErrorMessage,
     excerpt: (row.text ?? "").slice(0, EXCERPT_CHARS),
   };

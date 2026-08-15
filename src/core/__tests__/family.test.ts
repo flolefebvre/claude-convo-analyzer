@@ -43,11 +43,7 @@ describe("buildFamily", () => {
 
     expect(family).not.toBeNull();
     if (family === null) return;
-    expect(family.members.slice(0, 3).map((m) => m.id)).toEqual([
-      "sess-fam-a",
-      "sess-fam-b",
-      "sess-fam-c",
-    ]);
+    expect(family.members.slice(0, 3).map((m) => m.id)).toEqual(["sess-fam-a", "sess-fam-b", "sess-fam-c"]);
     expect(family.members.slice(0, 3).map((m) => m.depth)).toEqual([0, 1, 2]);
     expect(family.parent?.id).toBe("sess-fam-b");
     expect(family.children).toEqual([]);
@@ -75,16 +71,11 @@ describe("buildFamily", () => {
       "sess-fam-e",
     ]);
     expect(family.members.map((m) => m.depth)).toEqual([0, 1, 2, 1, 2]);
-    expect(family.members.filter((m) => m.isCurrent).map((m) => m.id)).toEqual([
-      "sess-fam-c",
-    ]);
+    expect(family.members.filter((m) => m.isCurrent).map((m) => m.id)).toEqual(["sess-fam-c"]);
 
     // The fork's two branches are the root's direct continuations.
     const fromRoot = buildFamily(rows, "sess-fam-a");
-    expect(fromRoot?.children.map((c) => c.id)).toEqual([
-      "sess-fam-b",
-      "sess-fam-d",
-    ]);
+    expect(fromRoot?.children.map((c) => c.id)).toEqual(["sess-fam-b", "sess-fam-d"]);
 
     // A member resumed in a different Project keeps its own project label.
     const elsewhere = family.members.find((m) => m.id === "sess-fam-e");
@@ -103,9 +94,7 @@ describe("buildFamily", () => {
     expect(family.totalCostUsd).toBeGreaterThan(0);
     // Only sess-fam-e carries `<synthetic>` (unpriced) usage; the family total
     // is therefore a lower bound even though every other member is priced.
-    expect(family.members.filter((m) => m.unpriced).map((m) => m.id)).toEqual([
-      "sess-fam-e",
-    ]);
+    expect(family.members.filter((m) => m.unpriced).map((m) => m.id)).toEqual(["sess-fam-e"]);
     expect(family.hasUnpriced).toBe(true);
 
     // A fully priced conversation is not flagged.
@@ -121,9 +110,7 @@ describe("buildFamily", () => {
 
     // Same tolerance one level up: a pointer at a conversation MISSING from the
     // given rows makes that conversation a root, never a crash.
-    const dangling = rows
-      .filter((r) => r.id === "sess-fam-c")
-      .map((r) => ({ ...r, continuedFromId: "sess-vanished" }));
+    const dangling = rows.filter((r) => r.id === "sess-fam-c").map((r) => ({ ...r, continuedFromId: "sess-vanished" }));
     const family = buildFamily(dangling, "sess-fam-c");
     expect(family?.size).toBe(1);
     expect(family?.parent).toBeNull();
@@ -138,21 +125,14 @@ describe("buildFamily", () => {
     const rows = await listConversations({ dbPath: db.dbPath });
     // The loop fixtures resume EACH OTHER — a shape real logs cannot produce,
     // guarded against anyway (SetNull deletes plus re-parses).
-    expect(rows.find((r) => r.id === "sess-loop-a")?.continuedFromId).toBe(
-      "sess-loop-b",
-    );
-    expect(rows.find((r) => r.id === "sess-loop-b")?.continuedFromId).toBe(
-      "sess-loop-a",
-    );
+    expect(rows.find((r) => r.id === "sess-loop-a")?.continuedFromId).toBe("sess-loop-b");
+    expect(rows.find((r) => r.id === "sess-loop-b")?.continuedFromId).toBe("sess-loop-a");
 
     const family = buildFamily(rows, "sess-loop-a");
     expect(family).not.toBeNull();
     if (family === null) return;
     expect(family.size).toBe(2);
-    expect(family.members.map((m) => m.id).sort()).toEqual([
-      "sess-loop-a",
-      "sess-loop-b",
-    ]);
+    expect(family.members.map((m) => m.id).sort()).toEqual(["sess-loop-a", "sess-loop-b"]);
     expect(family.members.filter((m) => m.isCurrent)).toHaveLength(1);
   });
 });
@@ -165,13 +145,7 @@ describe("familySizes", () => {
     const sizes = familySizes(rows);
 
     // The whole connected component counts, seen from any of its members.
-    for (const id of [
-      "sess-fam-a",
-      "sess-fam-b",
-      "sess-fam-c",
-      "sess-fam-d",
-      "sess-fam-e",
-    ]) {
+    for (const id of ["sess-fam-a", "sess-fam-b", "sess-fam-c", "sess-fam-d", "sess-fam-e"]) {
       expect(sizes.get(id)).toBe(5);
     }
     expect(sizes.get("sess-loop-a")).toBe(2);

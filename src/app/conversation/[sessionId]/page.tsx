@@ -24,11 +24,7 @@ import { Suspense } from "react";
 import { TranscriptPane } from "@/app/_components/transcript/transcript-pane";
 import { TranscriptTree } from "@/app/_components/transcript/transcript-tree";
 import { loadFamily, loadTranscript } from "@/app/_lib/conversations";
-import {
-  resolveAgent,
-  resolveCall,
-  resolveMessage,
-} from "@/app/_lib/transcript-url";
+import { resolveAgent, resolveCall, resolveMessage } from "@/app/_lib/transcript-url";
 
 /** The route's URL view-state: which agent, and which anchored call/message. */
 type TranscriptSearchParams = {
@@ -105,16 +101,9 @@ function NotFoundState({ sessionId }: { sessionId: string }) {
     <div className="tview-empty">
       <h1 className="text-lg font-semibold">Conversation not found</h1>
       <p className="text-sm text-muted-foreground">
-        No conversation matches{" "}
-        <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
-          {sessionId}
-        </code>
-        .
+        No conversation matches <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{sessionId}</code>.
       </p>
-      <Link
-        href="/"
-        className="text-sm font-medium hover:underline"
-      >
+      <Link href="/" className="text-sm font-medium hover:underline">
         ← All conversations
       </Link>
     </div>

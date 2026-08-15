@@ -5,9 +5,7 @@ import { defineConfig } from "prisma/config";
 // here we only need a URL for `prisma migrate` / `prisma generate`. The
 // migration's DDL is what gets committed, so the concrete URL used at CLI
 // time is irrelevant to runtime (which uses the better-sqlite3 adapter).
-const databaseUrl =
-  process.env.DATABASE_URL ??
-  `file:${path.join(process.cwd(), "data", "analyzer.db")}`;
+const databaseUrl = process.env.DATABASE_URL ?? `file:${path.join(process.cwd(), "data", "analyzer.db")}`;
 
 export default defineConfig({
   schema: path.join("src", "core", "prisma", "schema.prisma"),

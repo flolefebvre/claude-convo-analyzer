@@ -14,9 +14,7 @@ import { firstParam } from "@/app/_lib/search-params";
  * value yields `undefined` — the core `getTranscript` then defaults to the main
  * (root) agent, so the caller never needs to know the root's id.
  */
-export function resolveAgent(
-  raw: string | string[] | undefined,
-): string | undefined {
+export function resolveAgent(raw: string | string[] | undefined): string | undefined {
   return firstParam(raw) || undefined;
 }
 
@@ -39,9 +37,7 @@ export function agentHref(sessionId: string, agentId?: string): string {
  * the scrolling. A fragment alone could not do the expanding: it never reaches
  * the server.
  */
-export function resolveCall(
-  raw: string | string[] | undefined,
-): string | undefined {
+export function resolveCall(raw: string | string[] | undefined): string | undefined {
   return firstParam(raw) || undefined;
 }
 
@@ -60,9 +56,7 @@ export function callAnchorId(toolUseId: string): string {
  * re-assigned on every re-parse, so an id-based link would silently rot (worse,
  * point at an unrelated message). An unknown uuid simply highlights nothing.
  */
-export function resolveMessage(
-  raw: string | string[] | undefined,
-): string | undefined {
+export function resolveMessage(raw: string | string[] | undefined): string | undefined {
   return firstParam(raw) || undefined;
 }
 
@@ -78,11 +72,7 @@ export function messageAnchorId(messageUuid: string): string {
  * Without a `messageUuid` (a record the log left unidentified) it degrades to
  * the plain agent link.
  */
-export function messageHref(
-  sessionId: string,
-  agentId: string | undefined,
-  messageUuid: string | null,
-): string {
+export function messageHref(sessionId: string, agentId: string | undefined, messageUuid: string | null): string {
   const base = agentHref(sessionId, agentId);
   if (messageUuid === null) return base;
   const separator = base.includes("?") ? "&" : "?";
@@ -95,11 +85,7 @@ export function messageHref(
  * `/conversation/<id>?agent=<agent>&call=<toolUse>#call-<toolUse>`. Without a
  * `toolUseId` (an unlogged block id) it degrades to the plain agent link.
  */
-export function toolCallHref(
-  sessionId: string,
-  agentId: string | undefined,
-  toolUseId: string | null,
-): string {
+export function toolCallHref(sessionId: string, agentId: string | undefined, toolUseId: string | null): string {
   const base = agentHref(sessionId, agentId);
   if (toolUseId === null) return base;
   const separator = base.includes("?") ? "&" : "?";

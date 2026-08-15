@@ -76,9 +76,7 @@ export type ToolStatsOptions = {
  * the value at index `ceil(k · n) - 1` — never interpolated, so a reported p95
  * is always a result size that actually occurred.
  */
-export async function getToolStats(
-  opts: ToolStatsOptions = {},
-): Promise<ToolStats> {
+export async function getToolStats(opts: ToolStatsOptions = {}): Promise<ToolStats> {
   const { prisma, owned } = readClient(opts.dbPath);
   try {
     const rows = await prisma.toolCall.findMany({
@@ -182,9 +180,7 @@ function scopeWhere(opts: ToolStatsOptions) {
         lt: BigInt(addLocalDays(today, 1).getTime()),
         ...(from === null ? {} : { gte: BigInt(from.getTime()) }),
       },
-      ...(opts.folder === undefined
-        ? {}
-        : { conversation: { project: { folderName: opts.folder } } }),
+      ...(opts.folder === undefined ? {} : { conversation: { project: { folderName: opts.folder } } }),
     },
   };
 }
@@ -263,10 +259,7 @@ export type ToolCallSamplesOptions = ToolStatsOptions & {
  *
  * Fetched only when a row is expanded, so the table itself never pays for it.
  */
-export async function getToolCallSamples(
-  name: string,
-  opts: ToolCallSamplesOptions = {},
-): Promise<ToolCallSamples> {
+export async function getToolCallSamples(name: string, opts: ToolCallSamplesOptions = {}): Promise<ToolCallSamples> {
   const limit = opts.limit ?? DEFAULT_SAMPLE_LIMIT;
   const { prisma, owned } = readClient(opts.dbPath);
   const where = { name, ...scopeWhere(opts) };
@@ -360,11 +353,7 @@ function toSample(row: SampleRow): ToolCallSample {
  * are read with a LIGHTWEIGHT selection (no result text), since the breakdown
  * genuinely needs every call in scope.
  */
-async function breakdownFor(
-  name: string,
-  prisma: BreakdownClient,
-  where: object,
-): Promise<ToolBreakdownEntry[]> {
+async function breakdownFor(name: string, prisma: BreakdownClient, where: object): Promise<ToolBreakdownEntry[]> {
   const field = BREAKDOWN_FIELD[name];
   if (field === undefined) return [];
 
@@ -385,9 +374,7 @@ async function breakdownFor(
     if (row.isError) entry.errors += 1;
   }
 
-  return [...byKey.values()].sort((a, b) =>
-    a.calls === b.calls ? a.key.localeCompare(b.key) : b.calls - a.calls,
-  );
+  return [...byKey.values()].sort((a, b) => (a.calls === b.calls ? a.key.localeCompare(b.key) : b.calls - a.calls));
 }
 
 /** Read one string field out of a stored tool input; null when absent/unparseable. */

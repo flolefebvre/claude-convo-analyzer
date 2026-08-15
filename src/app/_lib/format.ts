@@ -93,10 +93,7 @@ export function formatClock(iso: string | null): string {
  *   - same UTC calendar year -> "MMM d"        (e.g. "Jun 19")
  *   - earlier year           -> "MMM d yyyy"   (e.g. "Mar 4 2025")
  */
-export function formatDate(
-  iso: string | null,
-  now: Date = new Date(),
-): { label: string; absolute: string } {
+export function formatDate(iso: string | null, now: Date = new Date()): { label: string; absolute: string } {
   if (!iso) return { label: "—", absolute: "" };
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return { label: "—", absolute: "" };
@@ -186,27 +183,11 @@ function dayWithYear(date: Date): string {
   return `${dayNoYear(date)} ${date.getUTCFullYear()}`;
 }
 
-const MONTHS = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-] as const;
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 
 function relativeLabel(date: Date, now: Date): string {
   const sameYear = date.getUTCFullYear() === now.getUTCFullYear();
-  const sameDay =
-    sameYear &&
-    date.getUTCMonth() === now.getUTCMonth() &&
-    date.getUTCDate() === now.getUTCDate();
+  const sameDay = sameYear && date.getUTCMonth() === now.getUTCMonth() && date.getUTCDate() === now.getUTCDate();
 
   if (sameDay) {
     const diffMinutes = Math.floor((now.getTime() - date.getTime()) / 60_000);
@@ -238,7 +219,6 @@ function absoluteLabel(date: Date): string {
     timeZoneName: "short",
   }).format(date);
 }
-
 
 /**
  * A result size in characters, compactly (`8.2K`), with an em dash for "no

@@ -60,15 +60,11 @@ describe("formatDateRange", () => {
   });
 
   it("omits the repeated year within a same-year range", () => {
-    expect(
-      formatDateRange("2026-06-02T00:00:00.000Z", "2026-06-22T00:00:00.000Z"),
-    ).toBe("Jun 2 – Jun 22 2026");
+    expect(formatDateRange("2026-06-02T00:00:00.000Z", "2026-06-22T00:00:00.000Z")).toBe("Jun 2 – Jun 22 2026");
   });
 
   it("shows both years when the range spans a year boundary", () => {
-    expect(
-      formatDateRange("2025-12-30T00:00:00.000Z", "2026-06-22T00:00:00.000Z"),
-    ).toBe("Dec 30 2025 – Jun 22 2026");
+    expect(formatDateRange("2025-12-30T00:00:00.000Z", "2026-06-22T00:00:00.000Z")).toBe("Dec 30 2025 – Jun 22 2026");
   });
 });
 
@@ -80,30 +76,20 @@ describe("formatDuration", () => {
   });
 
   it("renders sub-minute spans in seconds", () => {
-    expect(formatDuration("2026-06-22T10:00:00Z", "2026-06-22T10:00:30Z")).toBe(
-      "30s",
-    );
+    expect(formatDuration("2026-06-22T10:00:00Z", "2026-06-22T10:00:30Z")).toBe("30s");
   });
 
   it("renders sub-hour spans in whole minutes", () => {
-    expect(formatDuration("2026-06-22T10:00:00Z", "2026-06-22T10:45:20Z")).toBe(
-      "45m",
-    );
+    expect(formatDuration("2026-06-22T10:00:00Z", "2026-06-22T10:45:20Z")).toBe("45m");
   });
 
   it("renders multi-hour spans as hours and minutes, dropping a zero minute", () => {
-    expect(formatDuration("2026-06-22T10:00:00Z", "2026-06-22T11:20:00Z")).toBe(
-      "1h 20m",
-    );
-    expect(formatDuration("2026-06-22T10:00:00Z", "2026-06-22T12:00:00Z")).toBe(
-      "2h",
-    );
+    expect(formatDuration("2026-06-22T10:00:00Z", "2026-06-22T11:20:00Z")).toBe("1h 20m");
+    expect(formatDuration("2026-06-22T10:00:00Z", "2026-06-22T12:00:00Z")).toBe("2h");
   });
 
   it("treats a non-positive span as zero seconds", () => {
-    expect(formatDuration("2026-06-22T10:00:05Z", "2026-06-22T10:00:00Z")).toBe(
-      "0s",
-    );
+    expect(formatDuration("2026-06-22T10:00:05Z", "2026-06-22T10:00:00Z")).toBe("0s");
   });
 });
 
@@ -170,9 +156,7 @@ describe("formatDate", () => {
   });
 
   it("returns a deterministic absolute timestamp in UTC for hover", () => {
-    expect(formatDate("2026-06-19T14:30:00Z", now).absolute).toBe(
-      "Jun 19, 2026, 14:30 UTC",
-    );
+    expect(formatDate("2026-06-19T14:30:00Z", now).absolute).toBe("Jun 19, 2026, 14:30 UTC");
   });
 });
 

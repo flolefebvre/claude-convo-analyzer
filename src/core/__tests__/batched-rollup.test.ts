@@ -1,11 +1,14 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
+import type { ConversationDetail, ConversationSummary } from "@/core/read";
 import { getConversation, listConversations } from "@/core/read";
-import { refresh } from "@/core/refresh";
+
+import { seededTempDb } from "./helpers/temp-db";
 
 const FIXTURES_ROOT = path.join(import.meta.dirname, "fixtures", "logs");
+
+/** The fixture conversation that mixes models, a sub-agent, and an unpriced turn. */
+const SESSION = "sess-mix";
 
 // Pins the Part B1 invariant: the BATCHED list rollup must equal the
 // per-conversation detail rollup for a conversation that has BOTH a sub-agent
@@ -13,29 +16,25 @@ const FIXTURES_ROOT = path.join(import.meta.dirname, "fixtures", "logs");
 // If batching mis-buckets by model, mishandles nulls (after dropping COALESCE),
 // or misattributes the cross-model sub-agent, these assertions diverge.
 describe("batched list rollup == per-conversation detail rollup", () => {
-  let tmpDir: string;
-  let dbPath: string;
+  const db = seededTempDb({ prefix: "cca-batched-", logsRoot: FIXTURES_ROOT });
 
-  beforeEach(() => {
-    tmpDir = mkdtempSync(path.join(tmpdir(), "cca-batched-"));
-    dbPath = path.join(tmpDir, "analyzer.db");
-  });
+  /** The mixed conversation as the LIST reads it (the batched rollup). */
+  async function listSummary(): Promise<ConversationSummary> {
+    const summary = (await listConversations({ dbPath: db.dbPath })).find((c) => c.id === SESSION);
+    if (!summary) throw new Error(`${SESSION} is missing from the list rollup`);
+    return summary;
+  }
 
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
-  });
+  /** The same conversation as the DETAIL reads it (the single-id rollup). */
+  async function detailOf(): Promise<ConversationDetail> {
+    const detail = await getConversation(SESSION, { dbPath: db.dbPath });
+    if (!detail) throw new Error(`${SESSION} is missing from the detail rollup`);
+    return detail;
+  }
 
   it("the list summary for sess-mix equals the detail's base summary", async () => {
-    await refresh({ logsRoot: FIXTURES_ROOT, dbPath });
-
-    const list = await listConversations({ dbPath });
-    const summary = list.find((c) => c.id === "sess-mix");
-    expect(summary).toBeDefined();
-    if (!summary) return;
-
-    const detail = await getConversation("sess-mix", { dbPath });
-    expect(detail).not.toBeNull();
-    if (!detail) return;
+    const summary = await listSummary();
+    const detail = await detailOf();
 
     // The detail's base fields must be byte-identical to the list summary —
     // both come from the same rollup, batched vs single-id.
@@ -58,11 +57,7 @@ describe("batched list rollup == per-conversation detail rollup", () => {
   });
 
   it("rolls up cross-model tokens, the unpriced flag, and sub-agent attribution", async () => {
-    await refresh({ logsRoot: FIXTURES_ROOT, dbPath });
-
-    const detail = await getConversation("sess-mix", { dbPath });
-    expect(detail).not.toBeNull();
-    if (!detail) return;
+    const detail = await detailOf();
 
     // unpriced model (<synthetic>) is in scope → the conversation is unpriced,
     // yet the priced models still contribute real cost.
@@ -72,9 +67,7 @@ describe("batched list rollup == per-conversation detail rollup", () => {
     // Three model groups: opus (main), haiku (sub), <synthetic> (main, unpriced).
     expect(detail.perModel).toHaveLength(3);
     const opus = detail.perModel.find((p) => p.model === "claude-opus-4-8");
-    const haiku = detail.perModel.find(
-      (p) => p.model === "claude-haiku-4-5-20251001",
-    );
+    const haiku = detail.perModel.find((p) => p.model === "claude-haiku-4-5-20251001");
     const synth = detail.perModel.find((p) => p.model === "<synthetic>");
     expect(opus?.tokens.input).toBe(12);
     expect(opus?.tokens.output).toBe(18);
@@ -100,28 +93,17 @@ describe("batched list rollup == per-conversation detail rollup", () => {
   });
 
   it("carries a per-bucket costByType that sums exactly to costUsd across models", async () => {
-    await refresh({ logsRoot: FIXTURES_ROOT, dbPath });
-
-    const list = await listConversations({ dbPath });
-    const summary = list.find((c) => c.id === "sess-mix");
-    expect(summary).toBeDefined();
-    if (!summary) return;
+    const summary = await listSummary();
 
     // sess-mix spans opus (main), haiku (sub), and <synthetic> (unpriced) — each
     // bucket is accumulated across every model at its OWN per-tier rate.
     const { input, output, cacheWrite, cacheRead } = summary.costByType;
-    expect(input + output + cacheWrite + cacheRead).toBeCloseTo(
-      summary.costUsd,
-      12,
-    );
+    expect(input + output + cacheWrite + cacheRead).toBeCloseTo(summary.costUsd, 12);
     // Real priced usage → real per-bucket cost (opus input/output drive these).
     expect(input).toBeGreaterThan(0);
     expect(output).toBeGreaterThan(0);
 
     // The detail path (ConversationDetail extends ConversationSummary) carries it too.
-    const detail = await getConversation("sess-mix", { dbPath });
-    expect(detail).not.toBeNull();
-    if (!detail) return;
-    expect(detail.costByType).toEqual(summary.costByType);
+    expect((await detailOf()).costByType).toEqual(summary.costByType);
   });
 });

@@ -28,10 +28,7 @@
 import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
-import {
-  createPrismaClient,
-  DEFAULT_DB_PATH,
-} from "@/core/db";
+import { createPrismaClient, DEFAULT_DB_PATH } from "@/core/db";
 import {
   decodeFolderName,
   DEFAULT_LOGS_ROOT,
@@ -39,11 +36,7 @@ import {
   discoverSessions,
   discoverSubAgents,
 } from "@/core/discovery";
-import {
-  type ParsedAgentSpawn,
-  parseSessionLines,
-  type ParsedSession,
-} from "@/core/parse";
+import { type ParsedAgentSpawn, parseSessionLines, type ParsedSession } from "@/core/parse";
 import type { PrismaClient } from "@/core/prisma/generated/client";
 
 /** The interactive-transaction client handle (a subset of PrismaClient). */
@@ -184,9 +177,7 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     // Two files may carry the same session id (a copied transcript). Resolve
     // that HERE, before the incremental compare, so every pass below sees one
     // file per session id (see `dedupeBySessionId`).
-    const { unique: discovered, duplicatesSkipped } = dedupeBySessionId(
-      discoverWithKeys(logsRoot),
-    );
+    const { unique: discovered, duplicatesSkipped } = dedupeBySessionId(discoverWithKeys(logsRoot));
     duplicateSessionsSkipped = duplicatesSkipped;
 
     // Existing rows, keyed by sessionId, for the skip/changed/delete decision.
@@ -328,9 +319,7 @@ function dedupeBySessionId(discovered: DiscoveredWithKey[]): {
   unique: DiscoveredWithKey[];
   duplicatesSkipped: DuplicateSessionSkip[];
 } {
-  const bySmallestPath = [...discovered].sort((a, b) =>
-    a.session.sourcePath < b.session.sourcePath ? -1 : 1,
-  );
+  const bySmallestPath = [...discovered].sort((a, b) => (a.session.sourcePath < b.session.sourcePath ? -1 : 1));
 
   const unique: DiscoveredWithKey[] = [];
   const duplicatesSkipped: DuplicateSessionSkip[] = [];
@@ -357,9 +346,10 @@ function discoverWithKeys(logsRoot: string): DiscoveredWithKey[] {
   const out: DiscoveredWithKey[] = [];
   for (const session of discoverSessions(logsRoot)) {
     const projectDir = path.dirname(session.sourcePath);
-    const subAgentPaths = discoverSubAgents(projectDir, session.sessionId).map(
-      (s) => ({ agentId: s.agentId, sourcePath: s.sourcePath }),
-    );
+    const subAgentPaths = discoverSubAgents(projectDir, session.sessionId).map((s) => ({
+      agentId: s.agentId,
+      sourcePath: s.sourcePath,
+    }));
 
     let compositeMtime = session.sourceMtime;
     let compositeSize = session.sourceSize;
@@ -380,11 +370,7 @@ function parseSession(sourcePath: string): ParsedSession {
 }
 
 /** Resolve (find-or-create) the project row for an on-disk folder. */
-async function upsertProject(
-  prisma: PrismaClient,
-  folder: string,
-  parsed: ParsedSession,
-): Promise<number> {
+async function upsertProject(prisma: PrismaClient, folder: string, parsed: ParsedSession): Promise<number> {
   const projectPath = parsed.cwd ?? decodeFolderName(folder);
   const existing = await prisma.project.findUnique({
     where: { path: projectPath },
@@ -397,11 +383,7 @@ async function upsertProject(
 }
 
 /** The message-row shape written by `createMany` (FK columns + accounting). */
-function messageData(
-  m: ParsedSession["messages"][number],
-  conversationId: number,
-  agentId: number,
-) {
+function messageData(m: ParsedSession["messages"][number], conversationId: number, agentId: number) {
   return {
     conversationId,
     agentId,
@@ -450,19 +432,16 @@ async function writeToolCalls(
     if (messageRowId === undefined) continue;
 
     for (const tu of msg.toolUses) {
-      const result =
-        tu.toolUseId === null ? undefined : parsed.toolResults.get(tu.toolUseId);
+      const result = tu.toolUseId === null ? undefined : parsed.toolResults.get(tu.toolUseId);
       const fullResult = result?.resultText ?? null;
-      const truncated =
-        fullResult !== null && fullResult.length > RESULT_TRUNCATE_CHARS;
+      const truncated = fullResult !== null && fullResult.length > RESULT_TRUNCATE_CHARS;
       rows.push({
         messageId: messageRowId,
         agentId,
         toolUseId: tu.toolUseId,
         name: tu.name,
         inputJson: tu.inputJson,
-        resultText:
-          fullResult === null ? null : fullResult.slice(0, RESULT_TRUNCATE_CHARS),
+        resultText: fullResult === null ? null : fullResult.slice(0, RESULT_TRUNCATE_CHARS),
         resultTruncated: truncated,
         resultCharSize: fullResult === null ? null : fullResult.length,
         isError: result?.isError ?? false,
@@ -505,10 +484,7 @@ async function writeAgentMessages(
  * another sub-agent (see `planSubAgents`); `agentType`/`resolvedModel` come from
  * that spawn ledger.
  */
-async function writeConversation(
-  prisma: PrismaClient,
-  convo: ParsedConversation,
-): Promise<void> {
+async function writeConversation(prisma: PrismaClient, convo: ParsedConversation): Promise<void> {
   const { session, parsed, subAgents } = convo;
   const projectId = await upsertProject(prisma, session.folder, parsed);
 
@@ -539,12 +515,7 @@ async function writeConversation(
       },
     });
 
-    const rootByMsgId = await writeAgentMessages(
-      tx,
-      parsed,
-      conversation.id,
-      rootAgent.id,
-    );
+    const rootByMsgId = await writeAgentMessages(tx, parsed, conversation.id, rootAgent.id);
     await writeToolCalls(tx, parsed, rootAgent.id, rootByMsgId);
 
     // Sub-agents: each transcript is its own agent row (single source of truth
@@ -561,18 +532,11 @@ async function writeConversation(
     };
 
     for (const plan of planSubAgents(parsed, subAgents)) {
-      const parent =
-        plan.parentExternalId === null
-          ? rootTarget
-          : (written.get(plan.parentExternalId) ?? rootTarget);
+      const parent = plan.parentExternalId === null ? rootTarget : (written.get(plan.parentExternalId) ?? rootTarget);
       const spawnedByMessageId =
         plan.spawn?.toolUseId == null
           ? null
-          : (toolUseToMessageRow(
-              parent.parsed,
-              plan.spawn.toolUseId,
-              parent.messageRowByMsgId,
-            ) ?? null);
+          : (toolUseToMessageRow(parent.parsed, plan.spawn.toolUseId, parent.messageRowByMsgId) ?? null);
 
       const subAgent = await tx.agent.create({
         data: {
@@ -585,12 +549,7 @@ async function writeConversation(
         },
       });
 
-      const subByMsgId = await writeAgentMessages(
-        tx,
-        plan.parsed,
-        conversation.id,
-        subAgent.id,
-      );
+      const subByMsgId = await writeAgentMessages(tx, plan.parsed, conversation.id, subAgent.id);
       await writeToolCalls(tx, plan.parsed, subAgent.id, subByMsgId);
       written.set(plan.agentId, {
         agentRowId: subAgent.id,
@@ -654,16 +613,10 @@ type SubAgentPlan = {
  * defensive nesting in `buildAgentTree` (read.ts). The leftover pass is what
  * makes a cycle terminate instead of looping forever.
  */
-function planSubAgents(
-  root: ParsedSession,
-  subAgents: { agentId: string; parsed: ParsedSession }[],
-): SubAgentPlan[] {
+function planSubAgents(root: ParsedSession, subAgents: { agentId: string; parsed: ParsedSession }[]): SubAgentPlan[] {
   // agentId → who spawned it (null = main thread) + its ledger entry. The root's
   // ledgers win over a sub-agent's on a (malformed) duplicate claim.
-  const ledger = new Map<
-    string,
-    { parentExternalId: string | null; spawn: ParsedAgentSpawn }
-  >();
+  const ledger = new Map<string, { parentExternalId: string | null; spawn: ParsedAgentSpawn }>();
   for (const [agentId, spawn] of root.agentSpawns) {
     ledger.set(agentId, { parentExternalId: null, spawn });
   }
@@ -680,7 +633,7 @@ function planSubAgents(
 
   // Repeatedly emit every sub-agent whose parent is the main thread or has
   // already been emitted, until a full sweep makes no progress.
-  for (let progress = true; progress; ) {
+  for (let progress = true; progress;) {
     progress = false;
     for (let i = pending.length - 1; i >= 0; i -= 1) {
       const sub = pending[i];
@@ -736,10 +689,7 @@ function toolUseToMessageRow(
  * a skipped parent still resolves. An unresolved/own-session parentUuid leaves
  * the link null.
  */
-async function resolveContinuedFrom(
-  prisma: PrismaClient,
-  conversations: ParsedConversation[],
-): Promise<void> {
+async function resolveContinuedFrom(prisma: PrismaClient, conversations: ParsedConversation[]): Promise<void> {
   for (const convo of conversations) {
     const first = convo.parsed.messages[0];
     if (first?.parentUuid == null) continue;
@@ -777,14 +727,10 @@ async function resolveContinuedFrom(
  * the table is touched, so the incremental cost stays proportional to the work
  * actually done, not to the size of the database.
  */
-async function stampParserVersion(
-  prisma: PrismaClient,
-  conversations: ParsedConversation[],
-): Promise<void> {
+async function stampParserVersion(prisma: PrismaClient, conversations: ParsedConversation[]): Promise<void> {
   if (conversations.length === 0) return;
   await prisma.conversation.updateMany({
     where: { sessionId: { in: conversations.map((c) => c.session.sessionId) } },
     data: { parserVersion: PARSER_VERSION },
   });
 }
-

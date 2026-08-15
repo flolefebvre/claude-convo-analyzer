@@ -53,21 +53,15 @@ describe("resolveCall", () => {
 
 describe("toolCallHref", () => {
   it("links to the agent's transcript, anchored on one tool call", () => {
-    expect(toolCallHref("sess-1", "sub1", "toolu-9")).toBe(
-      "/conversation/sess-1?agent=sub1&call=toolu-9#call-toolu-9",
-    );
+    expect(toolCallHref("sess-1", "sub1", "toolu-9")).toBe("/conversation/sess-1?agent=sub1&call=toolu-9#call-toolu-9");
   });
 
   it("anchors on the main agent's transcript too", () => {
-    expect(toolCallHref("sess-1", undefined, "toolu-9")).toBe(
-      "/conversation/sess-1?call=toolu-9#call-toolu-9",
-    );
+    expect(toolCallHref("sess-1", undefined, "toolu-9")).toBe("/conversation/sess-1?call=toolu-9#call-toolu-9");
   });
 
   it("degrades to the plain agent link when the call has no id", () => {
-    expect(toolCallHref("sess-1", "sub1", null)).toBe(
-      "/conversation/sess-1?agent=sub1",
-    );
+    expect(toolCallHref("sess-1", "sub1", null)).toBe("/conversation/sess-1?agent=sub1");
   });
 });
 
@@ -89,26 +83,18 @@ describe("messageAnchorId", () => {
 
 describe("messageHref", () => {
   it("links to the agent's transcript, anchored on one message", () => {
-    expect(messageHref("sess-1", "sub1", "uuid-9")).toBe(
-      "/conversation/sess-1?agent=sub1&msg=uuid-9#msg-uuid-9",
-    );
+    expect(messageHref("sess-1", "sub1", "uuid-9")).toBe("/conversation/sess-1?agent=sub1&msg=uuid-9#msg-uuid-9");
   });
 
   it("anchors on the main agent's transcript too", () => {
-    expect(messageHref("sess-1", undefined, "uuid-9")).toBe(
-      "/conversation/sess-1?msg=uuid-9#msg-uuid-9",
-    );
+    expect(messageHref("sess-1", undefined, "uuid-9")).toBe("/conversation/sess-1?msg=uuid-9#msg-uuid-9");
   });
 
   it("degrades to the plain agent link when the message has no uuid", () => {
-    expect(messageHref("sess-1", "sub1", null)).toBe(
-      "/conversation/sess-1?agent=sub1",
-    );
+    expect(messageHref("sess-1", "sub1", null)).toBe("/conversation/sess-1?agent=sub1");
   });
 
   it("url-encodes a uuid with reserved characters", () => {
-    expect(messageHref("sess-1", undefined, "a b")).toBe(
-      "/conversation/sess-1?msg=a+b#msg-a%20b",
-    );
+    expect(messageHref("sess-1", undefined, "a b")).toBe("/conversation/sess-1?msg=a+b#msg-a%20b");
   });
 });

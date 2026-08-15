@@ -44,14 +44,8 @@ describe("buildTrendsView", () => {
   it("keeps the core's cost ranking as the band order and assigns a color per band", () => {
     const view = buildTrendsView(spendFixture());
 
-    expect(view.bands.map((b) => b.model)).toEqual([
-      "claude-opus-4-8",
-      "claude-sonnet-4-6",
-    ]);
-    expect(view.bands.map((b) => b.color)).toEqual([
-      "var(--chart-1)",
-      "var(--chart-2)",
-    ]);
+    expect(view.bands.map((b) => b.model)).toEqual(["claude-opus-4-8", "claude-sonnet-4-6"]);
+    expect(view.bands.map((b) => b.color)).toEqual(["var(--chart-1)", "var(--chart-2)"]);
     // Each band knows its share of the range total (the legend's bar).
     expect(view.bands[0]?.share).toBeCloseTo(2 / 3, 12);
   });

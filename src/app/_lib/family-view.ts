@@ -56,17 +56,12 @@ export type FamilyLinkContext = ListLinkContext;
  * another Project, and the errors filter always — otherwise the click would land
  * on a filtered list that cannot show that row.
  */
-export function familyView(
-  family: ConversationFamily,
-  ctx: FamilyLinkContext,
-  now: Date = new Date(),
-): FamilyView {
+export function familyView(family: ConversationFamily, ctx: FamilyLinkContext, now: Date = new Date()): FamilyView {
   const currentFolder = family.members.find((m) => m.isCurrent)?.project.folder;
   return {
     rows: family.members.map((member) => {
       const date = formatDate(member.startedAt, now);
-      const inScope =
-        ctx.folder === undefined || ctx.folder === member.project.folder;
+      const inScope = ctx.folder === undefined || ctx.folder === member.project.folder;
       return {
         id: member.id,
         title: member.title,
@@ -76,10 +71,7 @@ export function familyView(
         dateAbsolute: date.absolute,
         costUsd: member.costUsd,
         unpriced: member.unpriced,
-        projectLabel:
-          member.project.folder === currentFolder
-            ? null
-            : friendlyFolderName(member.project.path),
+        projectLabel: member.project.folder === currentFolder ? null : friendlyFolderName(member.project.path),
         href: expandHref(
           member.id,
           // Never a toggle: clicking a member always EXPANDS it, even the one

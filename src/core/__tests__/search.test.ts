@@ -55,9 +55,7 @@ describe("searchConversations", () => {
     const { results } = await searchConversations("postgres", {
       dbPath: db.dbPath,
     });
-    const ours = results
-      .map((r) => r.sessionId)
-      .filter((s) => s.startsWith("sess-search-"));
+    const ours = results.map((r) => r.sessionId).filter((s) => s.startsWith("sess-search-"));
     // b (2026-06-27) → a (2026-06-25) → c (title-only, last activity 06-24).
     expect(ours).toEqual(["sess-search-b", "sess-search-a", "sess-search-c"]);
   });
@@ -126,9 +124,7 @@ describe("searchConversations", () => {
     const searchable = await searchConversations("inspect", {
       dbPath: db.dbPath,
     });
-    const uuids = searchable.results
-      .flatMap((r) => r.snippets)
-      .map((s) => s.messageUuid);
+    const uuids = searchable.results.flatMap((r) => r.snippets).map((s) => s.messageUuid);
     expect(uuids).not.toContain("qa1");
   });
 

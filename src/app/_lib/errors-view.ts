@@ -36,10 +36,7 @@ export type ErrorViewRow = {
  * message deep link. An error whose record carried no uuid still lists — its
  * link degrades to the agent's transcript rather than disappearing.
  */
-export function errorsView(
-  sessionId: string,
-  errors: readonly ConversationApiError[],
-): ErrorViewRow[] {
+export function errorsView(sessionId: string, errors: readonly ConversationApiError[]): ErrorViewRow[] {
   return errors.map((error, index) => ({
     key: `${index}-${error.agentId}-${error.messageUuid ?? ""}`,
     agentLabel: subAgentLabel({ agentType: error.agentType ?? "" }),

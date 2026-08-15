@@ -34,13 +34,21 @@ function family(members: FamilyMember[]): ConversationFamily {
 
 const SORT = { sortBy: "date", dir: "desc" } as const;
 
+/** A family whose second member sits in another Project than the current one. */
+function crossProjectFamily(): ConversationFamily {
+  return family([
+    member({ id: "a", isCurrent: true }),
+    member({
+      id: "b",
+      project: { folder: "-home-dev-app-wt", path: "/home/dev/app-wt" },
+    }),
+  ]);
+}
+
 describe("familyView", () => {
   it("keeps the core's order and depth, and links each member to its expanded row", () => {
     const view = familyView(
-      family([
-        member({ id: "a" }),
-        member({ id: "b", depth: 1, isCurrent: true }),
-      ]),
+      family([member({ id: "a" }), member({ id: "b", depth: 1, isCurrent: true })]),
       { sort: SORT },
       NOW,
     );
@@ -61,34 +69,14 @@ describe("familyView", () => {
   });
 
   it("labels only the members that live in another Project", () => {
-    const view = familyView(
-      family([
-        member({ id: "a", isCurrent: true }),
-        member({
-          id: "b",
-          project: { folder: "-home-dev-app-wt", path: "/home/dev/app-wt" },
-        }),
-      ]),
-      { sort: SORT },
-      NOW,
-    );
+    const view = familyView(crossProjectFamily(), { sort: SORT }, NOW);
 
     expect(view.rows[0].projectLabel).toBeNull();
     expect(view.rows[1].projectLabel).toBe("app-wt");
   });
 
   it("drops the folder scope for a member the scope would hide", () => {
-    const view = familyView(
-      family([
-        member({ id: "a", isCurrent: true }),
-        member({
-          id: "b",
-          project: { folder: "-home-dev-app-wt", path: "/home/dev/app-wt" },
-        }),
-      ]),
-      { sort: SORT, folder: "-home-dev-app", range: "30" },
-      NOW,
-    );
+    const view = familyView(crossProjectFamily(), { sort: SORT, folder: "-home-dev-app", range: "30" }, NOW);
 
     // The in-scope member keeps the active scope…
     expect(view.rows[0].href).toContain("folder=-home-dev-app");
@@ -114,10 +102,7 @@ describe("familyView", () => {
 
   it("carries the lower-bound flag when any member is unpriced", () => {
     const view = familyView(
-      family([
-        member({ id: "a", isCurrent: true }),
-        member({ id: "b", unpriced: true, costUsd: 2 }),
-      ]),
+      family([member({ id: "a", isCurrent: true }), member({ id: "b", unpriced: true, costUsd: 2 })]),
       { sort: SORT },
       NOW,
     );

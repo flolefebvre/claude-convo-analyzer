@@ -6,8 +6,8 @@ accepted
 
 ## Context
 
-A core feature is showing what each conversation *would have cost on the Claude
-API*. This is a hypothetical: the user runs on a flat-rate subscription, so
+A core feature is showing what each conversation _would have cost on the Claude
+API_. This is a hypothetical: the user runs on a flat-rate subscription, so
 their real marginal cost is ~$0. The number's purpose is comparison/awareness,
 not billing. Several judgement calls were needed about what price to apply and
 to which models.
@@ -38,5 +38,5 @@ to which models.
 - Costs are reproducible and deterministic (no live pricing dependency).
 - Because unpriced usage is flagged rather than dropped, the UI must surface the
   flag so users don't mistake a partial total for a complete one.
-- Token *counts* are always exact and unaffected by pricing gaps; only the
+- Token _counts_ are always exact and unaffected by pricing gaps; only the
   dollar figure is subject to the unpriced-model caveat.

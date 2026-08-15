@@ -34,7 +34,7 @@ import { familyView } from "@/app/_lib/family-view";
 import { type FolderEntry } from "@/app/_lib/folders";
 import { formatDate, formatGrandTotalCost, formatTokens } from "@/app/_lib/format";
 import { buildListView } from "@/app/_lib/list-view";
-import { firstParam } from "@/app/_lib/search-params";
+import { type ViewSearchParams, firstParam } from "@/app/_lib/search-params";
 import {
   type ListLinkContext,
   type SortableField,
@@ -47,30 +47,9 @@ import {
   sortHref,
   sortIndicator,
 } from "@/app/_lib/sort";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableFooter,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-type PageSearchParams = {
-  sortBy?: string | string[];
-  dir?: string | string[];
-  folder?: string | string[];
-  expanded?: string | string[];
-  range?: string | string[];
-  errors?: string | string[];
-};
-
-export default function Page({
-  searchParams,
-}: {
-  searchParams: Promise<PageSearchParams>;
-}) {
+export default function Page({ searchParams }: { searchParams: Promise<ViewSearchParams> }) {
   return (
     <>
       {/* The overview band: this surface's headline analysis, above its table.
@@ -81,11 +60,7 @@ export default function Page({
         <Overview />
       </Suspense>
 
-      <Suspense
-        fallback={
-          <p className="text-sm text-muted-foreground">Loading conversations…</p>
-        }
-      >
+      <Suspense fallback={<p className="text-sm text-muted-foreground">Loading conversations…</p>}>
         <ConversationTable searchParams={searchParams} />
       </Suspense>
     </>
@@ -113,11 +88,7 @@ async function Overview() {
  * from {@link Page} so the request-time data fetch sits inside the page's
  * <Suspense> boundary (PPR).
  */
-async function ConversationTable({
-  searchParams,
-}: {
-  searchParams: Promise<PageSearchParams>;
-}) {
+async function ConversationTable({ searchParams }: { searchParams: Promise<ViewSearchParams> }) {
   const params = await searchParams;
   // URL → resolved intent at the page edge; the seam takes intent, never raw
   // searchParams.
@@ -140,8 +111,12 @@ async function ConversationTable({
   // cache()); the seam owns the order-dependent pipeline (filter BEFORE sort,
   // one `deriveFolders` derive feeding the table breadcrumb + scope).
   const allRows = await loadConversations();
-  const { rows, scoped: isScoped, selectedFolder, grandTotal: total } =
-    buildListView(allRows, { folder: activeFolder, sort, errorsOnly });
+  const {
+    rows,
+    scoped: isScoped,
+    selectedFolder,
+    grandTotal: total,
+  } = buildListView(allRows, { folder: activeFolder, sort, errorsOnly });
 
   // Continuation-family size per conversation, walked ONCE over the same rows
   // (issue #46). Sizes come from the UNSCOPED set on purpose: a family spanning
@@ -151,18 +126,12 @@ async function ConversationTable({
   // Fetch the expanded row's panel detail server-side — only when that row is
   // actually visible in the current view (a stale/foreign `?expanded=` is
   // ignored). `null` detail still renders the panel with a graceful note.
-  const expandedRow = expandedId
-    ? rows.find((row) => row.id === expandedId)
-    : undefined;
-  const expandedDetail = expandedRow
-    ? await loadConversationDetail(expandedRow.id)
-    : null;
+  const expandedRow = expandedId ? rows.find((row) => row.id === expandedId) : undefined;
+  const expandedDetail = expandedRow ? await loadConversationDetail(expandedRow.id) : null;
 
   // The expanded row's failed turns, shaped for the panel's error list. Read
   // only for the open row — a collapsed table costs nothing.
-  const expandedErrors = expandedRow
-    ? errorsView(expandedRow.id, await loadConversationErrors(expandedRow.id))
-    : null;
+  const expandedErrors = expandedRow ? errorsView(expandedRow.id, await loadConversationErrors(expandedRow.id)) : null;
 
   // Format every row's relative Date label against ONE request-time `now` so
   // all rows agree on what "5m ago" means, and hand each row the resulting
@@ -171,12 +140,8 @@ async function ConversationTable({
 
   // The expanded row's continuation family, shaped for the panel's tree (member
   // links preserve the active sort/scope/range — see `familyView`).
-  const expandedFamily = expandedRow
-    ? await loadFamily(expandedRow.id)
-    : null;
-  const expandedFamilyView = expandedFamily
-    ? familyView(expandedFamily, links, now)
-    : null;
+  const expandedFamily = expandedRow ? await loadFamily(expandedRow.id) : null;
+  const expandedFamilyView = expandedFamily ? familyView(expandedFamily, links, now) : null;
 
   // Empty when there are genuinely no conversations OR when the active scope
   // matched nothing (unknown/stale `?folder=`, or a folder with zero rows).
@@ -197,45 +162,25 @@ async function ConversationTable({
         <Table>
           <TableHeader>
             <TableRow>
-              <SortableHead
-                field="date"
-                links={links}
-              >
+              <SortableHead field="date" links={links}>
                 Date
               </SortableHead>
               {/* The Folder column is hidden when scoped (redundant — see breadcrumb). */}
               {!isScoped && (
-                <SortableHead
-                  field="folder"
-                  links={links}
-                >
+                <SortableHead field="folder" links={links}>
                   Folder
                 </SortableHead>
               )}
-              <SortableHead
-                field="title"
-                links={links}
-              >
+              <SortableHead field="title" links={links}>
                 Title
               </SortableHead>
-              <SortableHead
-                field="model"
-                links={links}
-              >
+              <SortableHead field="model" links={links}>
                 Model(s)
               </SortableHead>
-              <SortableHead
-                field="total"
-                links={links}
-                className="text-right"
-              >
+              <SortableHead field="total" links={links} className="text-right">
                 Total
               </SortableHead>
-              <SortableHead
-                field="cost"
-                links={links}
-                className="text-right"
-              >
+              <SortableHead field="cost" links={links} className="text-right">
                 Cost
               </SortableHead>
             </TableRow>
@@ -266,14 +211,10 @@ async function ConversationTable({
               <TableCell colSpan={footerLabelColSpan(isScoped)} className="font-medium">
                 {rows.length} conversation{rows.length === 1 ? "" : "s"}
               </TableCell>
-              <TableCell className="text-right tabular-nums">
-                {formatTokens(total.tokens.total)}
-              </TableCell>
-              <TableCell className="text-right font-semibold tabular-nums text-cost">
+              <TableCell className="text-right tabular-nums">{formatTokens(total.tokens.total)}</TableCell>
+              <TableCell className="text-right font-semibold text-cost tabular-nums">
                 {total.hasUnpriced ? (
-                  <span
-                    title="Includes unpriced model usage — this total is a lower bound."
-                  >
+                  <span title="Includes unpriced model usage — this total is a lower bound.">
                     {"~"}
                     {formatGrandTotalCost(total.costUsd)}
                   </span>
@@ -355,29 +296,19 @@ function EmptyState({
           <p className="text-sm text-muted-foreground">
             No conversations with API errors{scoped ? " in this folder" : ""}.
           </p>
-          <Link
-            href={errorsHref(links)}
-            className="mt-3 inline-block text-sm font-medium hover:underline"
-          >
+          <Link href={errorsHref(links)} className="mt-3 inline-block text-sm font-medium hover:underline">
             Show all conversations
           </Link>
         </>
       ) : scoped ? (
         <>
-          <p className="text-sm text-muted-foreground">
-            No conversations in this folder.
-          </p>
-          <Link
-            href={folderHref(undefined, links)}
-            className="mt-3 inline-block text-sm font-medium hover:underline"
-          >
+          <p className="text-sm text-muted-foreground">No conversations in this folder.</p>
+          <Link href={folderHref(undefined, links)} className="mt-3 inline-block text-sm font-medium hover:underline">
             Clear filter — show all folders
           </Link>
         </>
       ) : (
-        <p className="text-sm text-muted-foreground">
-          No conversations yet. Click Refresh to scan your conversations.
-        </p>
+        <p className="text-sm text-muted-foreground">No conversations yet. Click Refresh to scan your conversations.</p>
       )}
     </div>
   );
@@ -397,14 +328,8 @@ function FolderBreadcrumb({
   links: ListLinkContext;
 }) {
   return (
-    <nav
-      aria-label="Folder scope"
-      className="flex flex-wrap items-center gap-2 text-sm"
-    >
-      <Link
-        href={folderHref(undefined, links)}
-        className="text-muted-foreground hover:underline"
-      >
+    <nav aria-label="Folder scope" className="flex flex-wrap items-center gap-2 text-sm">
+      <Link href={folderHref(undefined, links)} className="text-muted-foreground hover:underline">
         All folders
       </Link>
       <span aria-hidden className="text-muted-foreground">
@@ -433,11 +358,7 @@ function SortableHead({
   const sort = links.sort;
   const indicator = sortIndicator(field, sort);
   const isActive = sort.sortBy === field;
-  const ariaSort = isActive
-    ? sort.dir === "asc"
-      ? "ascending"
-      : "descending"
-    : "none";
+  const ariaSort = isActive ? (sort.dir === "asc" ? "ascending" : "descending") : "none";
   return (
     <TableHead className={className} aria-sort={ariaSort}>
       {/* Quiet uppercase labels echo the overview band's stat-card captions. The

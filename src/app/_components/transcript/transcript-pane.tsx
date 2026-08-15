@@ -43,10 +43,7 @@ export function TranscriptPane({
   const selected = lineage[lineage.length - 1] ?? view.tree;
 
   const turnCount = view.messages.filter((m) => m.role === "assistant").length;
-  const toolCount = view.messages.reduce(
-    (sum, m) => sum + m.toolCalls.length,
-    0,
-  );
+  const toolCount = view.messages.reduce((sum, m) => sum + m.toolCalls.length, 0);
   // Reasoning effort across this agent's turns: one stat here (the level, or
   // "mixed"), and a badge on each turn that changed it. Nothing at all when the
   // log recorded no effort.
@@ -66,11 +63,7 @@ export function TranscriptPane({
                   <span className="here">{label}</span>
                 ) : (
                   <>
-                    <Link
-                      href={agentHref(view.sessionId, i === 0 ? undefined : node.id)}
-                    >
-                      {label}
-                    </Link>
+                    <Link href={agentHref(view.sessionId, i === 0 ? undefined : node.id)}>{label}</Link>
                     <span className="sep" aria-hidden>
                       /
                     </span>
@@ -87,13 +80,9 @@ export function TranscriptPane({
           <span className="num">
             {toolCount} tool call{toolCount === 1 ? "" : "s"}
           </span>
-          {selected.resolvedModel && (
-            <span className="model">{selected.resolvedModel}</span>
-          )}
+          {selected.resolvedModel && <span className="model">{selected.resolvedModel}</span>}
           {effortLabel && <span className="effort">{effortLabel} effort</span>}
-          <span className="cost num turn-cost">
-            {formatCost(selected.costUsd)}
-          </span>
+          <span className="cost num turn-cost">{formatCost(selected.costUsd)}</span>
         </div>
         {/* Search is reachable from here too — "find that OTHER conversation"
             strikes precisely while reading one. */}
@@ -104,9 +93,7 @@ export function TranscriptPane({
         <RefreshButton variant="outline" size="sm" />
       </div>
 
-      {family && (
-        <FamilyBanner parent={family.parent} continuations={family.children} />
-      )}
+      {family && <FamilyBanner parent={family.parent} continuations={family.children} />}
 
       <div className="transcript">
         {view.messages.map((message) => (

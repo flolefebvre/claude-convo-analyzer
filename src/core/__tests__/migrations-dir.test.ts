@@ -23,9 +23,7 @@ describe("migrations directory resolution", () => {
       .map((e) => e.name);
 
     expect(migrationDirs.length).toBeGreaterThanOrEqual(1);
-    const hasSql = migrationDirs.some((name) =>
-      existsSync(path.join(dir, name, "migration.sql")),
-    );
+    const hasSql = migrationDirs.some((name) => existsSync(path.join(dir, name, "migration.sql")));
     expect(hasSql).toBe(true);
   });
 });

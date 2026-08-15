@@ -203,10 +203,7 @@ export function extractToolUseBlocks(content: unknown): ParsedToolUse[] {
  * Agent → the sub-agent ledger); we serialize it raw and keep the matching
  * `tool_use_id`/`is_error` from the content block.
  */
-function extractToolResult(
-  record: Record<string, unknown>,
-  content: unknown,
-): ParsedToolResult | null {
+function extractToolResult(record: Record<string, unknown>, content: unknown): ParsedToolResult | null {
   if (!Array.isArray(content)) return null;
   for (const block of content as ContentBlock[]) {
     if (block && block.type === "tool_result") {
@@ -232,10 +229,7 @@ function extractToolResult(
  * transcript; `toolUseId` links to the spawning `Agent` tool_use. `totalTokens`
  * is a CROSS-CHECK against the transcript sum (GOTCHA 3) — never added anywhere.
  */
-function extractAgentSpawn(
-  record: Record<string, unknown>,
-  toolUseId: string,
-): ParsedAgentSpawn | null {
+function extractAgentSpawn(record: Record<string, unknown>, toolUseId: string): ParsedAgentSpawn | null {
   const raw = record.toolUseResult;
   if (raw === null || typeof raw !== "object") return null;
   const tur = raw as Record<string, unknown>;
@@ -248,24 +242,14 @@ function extractAgentSpawn(
     agentType: asString(tur.agentType),
     resolvedModel: asString(tur.resolvedModel),
     totalTokens:
-      typeof tur.totalTokens === "number"
-        ? tur.totalTokens
-        : usage === undefined
-          ? null
-          : sumUsageTokens(usage),
+      typeof tur.totalTokens === "number" ? tur.totalTokens : usage === undefined ? null : sumUsageTokens(usage),
   };
 }
 
 /** Sum every token bucket of a raw `usage` (the parent-aggregate cross-check). */
 function sumUsageTokens(usage: RawUsage): number {
   const s = parseUsage(usage);
-  return (
-    s.inputTokens +
-    s.outputTokens +
-    s.cacheCreation5mTokens +
-    s.cacheCreation1hTokens +
-    s.cacheReadTokens
-  );
+  return s.inputTokens + s.outputTokens + s.cacheCreation5mTokens + s.cacheCreation1hTokens + s.cacheReadTokens;
 }
 
 /** Parse a `usage` object into the per-tier split (finding #3 cache math). */
@@ -495,10 +479,7 @@ export function pickDominantModel(messages: ParsedMessage[]): string | null {
   const outputByModel = new Map<string, number>();
   for (const m of messages) {
     if (m.model === null) continue;
-    outputByModel.set(
-      m.model,
-      (outputByModel.get(m.model) ?? 0) + (m.outputTokens ?? 0),
-    );
+    outputByModel.set(m.model, (outputByModel.get(m.model) ?? 0) + (m.outputTokens ?? 0));
   }
   let best: string | null = null;
   let bestOutput = -1;

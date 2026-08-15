@@ -19,13 +19,7 @@ export const DEFAULT_DB_PATH = path.join(process.cwd(), "data", "analyzer.db");
  * load and crashes the server render. cwd-relative is bundler-safe and stays
  * consistent with {@link DEFAULT_DB_PATH} above.
  */
-const MIGRATIONS_DIR = path.join(
-  process.cwd(),
-  "src",
-  "core",
-  "prisma",
-  "migrations",
-);
+const MIGRATIONS_DIR = path.join(process.cwd(), "src", "core", "prisma", "migrations");
 
 /** The resolved migrations directory. Exposed as a testable seam so the
  * cwd-relative resolution above stays correct (see `migrations-dir.test.ts`). */
@@ -66,11 +60,9 @@ function applyMigrations(dbPath: string): void {
     );
 
     const applied = new Set(
-      (
-        db
-          .prepare(`SELECT migration_name FROM "${MIGRATION_LEDGER}"`)
-          .all() as { migration_name: string }[]
-      ).map((r) => r.migration_name),
+      (db.prepare(`SELECT migration_name FROM "${MIGRATION_LEDGER}"`).all() as { migration_name: string }[]).map(
+        (r) => r.migration_name,
+      ),
     );
 
     const migrationDirs = readdirSync(MIGRATIONS_DIR, { withFileTypes: true })
@@ -78,9 +70,7 @@ function applyMigrations(dbPath: string): void {
       .map((entry) => entry.name)
       .sort();
 
-    const insertLedger = db.prepare(
-      `INSERT INTO "${MIGRATION_LEDGER}" (migration_name, applied_at) VALUES (?, ?)`,
-    );
+    const insertLedger = db.prepare(`INSERT INTO "${MIGRATION_LEDGER}" (migration_name, applied_at) VALUES (?, ?)`);
 
     for (const name of migrationDirs) {
       if (applied.has(name)) continue;

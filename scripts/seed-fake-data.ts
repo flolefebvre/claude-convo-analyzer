@@ -10,7 +10,7 @@
 // persist. Deterministic ids make re-running idempotent (refresh skips unchanged
 // conversations and re-writes changed ones — never duplicates).
 //
-// Run with:  pnpm dlx tsx scripts/seed-fake-data.ts
+// Run with:  pnpm exec tsx scripts/seed-fake-data.ts
 //
 // NOTE: clicking "Refresh" in the running app re-scans your REAL
 // ~/.claude/projects and will replace this fake data. That's expected — this
@@ -125,12 +125,7 @@ const SUB_AGENT_REPLIES = [
   "No session token is logged anywhere in the auth middleware.",
 ] as const;
 
-const MODELS = [
-  "claude-opus-4-8",
-  "claude-sonnet-4-6",
-  "claude-opus-4-7",
-  "claude-haiku-4-5-20251001",
-] as const;
+const MODELS = ["claude-opus-4-8", "claude-sonnet-4-6", "claude-opus-4-7", "claude-haiku-4-5-20251001"] as const;
 
 const SKILLS = ["tdd", "orchestrate", "commit", "code-review", "fresh-review"] as const;
 const SUBAGENT_TYPES = ["Explore", "Plan", "general-purpose"] as const;
@@ -237,12 +232,7 @@ const API_ERRORS = [
  * line of a `subagents/agent-<id>.jsonl` file has. A failed turn still bills a
  * little input, and no output.
  */
-function apiErrorTurn(
-  ms: number,
-  cwd: string,
-  model: string,
-  agent?: { agentId: string; agentType: string },
-): string {
+function apiErrorTurn(ms: number, cwd: string, model: string, agent?: { agentId: string; agentType: string }): string {
   const failure = pick(API_ERRORS);
   const rec: Record<string, unknown> = {
     type: "assistant",
@@ -361,9 +351,7 @@ function toolResult(
     cwd,
     message: {
       role: "user",
-      content: [
-        { type: "tool_result", tool_use_id: toolUseId, content: "ok", is_error: isError },
-      ],
+      content: [{ type: "tool_result", tool_use_id: toolUseId, content: "ok", is_error: isError }],
     },
     toolUseResult: result,
   };
@@ -385,20 +373,27 @@ const GREP_PATTERNS = ["TODO", "createUser", "useEffect\\(", "process.env", "asy
 const MCP_QUERIES = ["open bugs", "release blockers", "stale PRs"] as const;
 
 const TOOL_KINDS = [
-  { name: "Read", weight: 9, errorChance: 0.02, min: 400, max: 42_000,
-    input: () => ({ file_path: pick(READ_FILES) }) },
-  { name: "Bash", weight: 8, errorChance: 0.13, min: 40, max: 6_000,
-    input: () => ({ command: pick(BASH_CMDS) }) },
-  { name: "Edit", weight: 6, errorChance: 0.08, min: 30, max: 320,
-    input: () => ({ file_path: pick(READ_FILES) }) },
-  { name: "Grep", weight: 5, errorChance: 0.04, min: 80, max: 14_000,
-    input: () => ({ pattern: pick(GREP_PATTERNS) }) },
-  { name: "Skill", weight: 3, errorChance: 0.02, min: 600, max: 9_000,
-    input: () => ({ skill: pick(SKILLS) }) },
-  { name: "mcp__github__create_issue", weight: 2, errorChance: 0.17, min: 200, max: 1_400,
-    input: () => ({ title: pick(TITLES), repository: "acme/acme-api" }) },
-  { name: "mcp__linear__search_issues", weight: 2, errorChance: 0.09, min: 300, max: 22_000,
-    input: () => ({ query: pick(MCP_QUERIES) }) },
+  { name: "Read", weight: 9, errorChance: 0.02, min: 400, max: 42_000, input: () => ({ file_path: pick(READ_FILES) }) },
+  { name: "Bash", weight: 8, errorChance: 0.13, min: 40, max: 6_000, input: () => ({ command: pick(BASH_CMDS) }) },
+  { name: "Edit", weight: 6, errorChance: 0.08, min: 30, max: 320, input: () => ({ file_path: pick(READ_FILES) }) },
+  { name: "Grep", weight: 5, errorChance: 0.04, min: 80, max: 14_000, input: () => ({ pattern: pick(GREP_PATTERNS) }) },
+  { name: "Skill", weight: 3, errorChance: 0.02, min: 600, max: 9_000, input: () => ({ skill: pick(SKILLS) }) },
+  {
+    name: "mcp__github__create_issue",
+    weight: 2,
+    errorChance: 0.17,
+    min: 200,
+    max: 1_400,
+    input: () => ({ title: pick(TITLES), repository: "acme/acme-api" }),
+  },
+  {
+    name: "mcp__linear__search_issues",
+    weight: 2,
+    errorChance: 0.09,
+    min: 300,
+    max: 22_000,
+    input: () => ({ query: pick(MCP_QUERIES) }),
+  },
 ] as const;
 
 const TOTAL_TOOL_WEIGHT = TOOL_KINDS.reduce((sum, k) => sum + k.weight, 0);
@@ -413,8 +408,7 @@ function pickToolKind(): (typeof TOOL_KINDS)[number] {
   return TOOL_KINDS[0];
 }
 
-const RESULT_FILLER =
-  "export function handler(req: Request) { const user = await lookup(req); return json(user); }\n";
+const RESULT_FILLER = "export function handler(req: Request) { const user = await lookup(req); return json(user); }\n";
 
 const ERROR_MESSAGES = [
   "Error: command failed with exit code 1",
@@ -432,10 +426,7 @@ function toolResultText(kind: (typeof TOOL_KINDS)[number], isError: boolean): st
 }
 
 /** Build a sub-agent transcript file + the parent's spawn ledger tool_result. */
-function spawnSubAgent(
-  ms: number,
-  cwd: string,
-): { toolUse: object; ledgerResult: object; sub: SubAgent } {
+function spawnSubAgent(ms: number, cwd: string): { toolUse: object; ledgerResult: object; sub: SubAgent } {
   const agentId = uid("agent").replace("agent-", "");
   const toolUseId = uid("tu");
   const agentType = pick(SUBAGENT_TYPES);
@@ -459,11 +450,7 @@ function spawnSubAgent(
       ? { type: "tool_use", id: uid("tu"), name: subKind.name, input: subKind.input() }
       : null;
     const subText = pick(SUB_AGENT_REPLIES);
-    subTotal +=
-      u.input_tokens +
-      u.output_tokens +
-      u.cache_creation_input_tokens +
-      u.cache_read_input_tokens;
+    subTotal += u.input_tokens + u.output_tokens + u.cache_creation_input_tokens + u.cache_read_input_tokens;
     subLines.push(
       JSON.stringify({
         type: "assistant",
@@ -481,31 +468,21 @@ function spawnSubAgent(
           id: uid("smsg"),
           role: "assistant",
           model: subModel,
-          content: subToolUse === null
-            ? [{ type: "text", text: subText }]
-            : [{ type: "text", text: subText }, subToolUse],
+          content:
+            subToolUse === null ? [{ type: "text", text: subText }] : [{ type: "text", text: subText }, subToolUse],
           usage: u,
         },
       }),
     );
     // A sub-agent's turn can fail exactly like the main thread's.
     if (chance(0.06)) {
-      subLines.push(
-        apiErrorTurn(turnMs + 15_000, cwd, subModel, { agentId, agentType }),
-      );
+      subLines.push(apiErrorTurn(turnMs + 15_000, cwd, subModel, { agentId, agentType }));
     }
     // Sub-agents call tools too, and the Tools page counts them — same friction.
     if (subToolUse !== null) {
       const isError = chance(subKind.errorChance);
       subLines.push(
-        toolResult(
-          turnMs + 5_000,
-          cwd,
-          subToolUse.id,
-          toolResultText(subKind, isError),
-          isError,
-          { agentId },
-        ),
+        toolResult(turnMs + 5_000, cwd, subToolUse.id, toolResultText(subKind, isError), isError, { agentId }),
       );
     }
   }
@@ -605,9 +582,7 @@ function buildConversation(
       const { toolUse, ledgerResult, sub } = spawnSubAgent(t, cwd);
       lines.push(assistantTurn(t, cwd, dominant, { skill, toolUses: [toolUse] }));
       t += int(8_000, 40_000);
-      lines.push(
-        toolResult(t, cwd, (toolUse as { id: string }).id, ledgerResult),
-      );
+      lines.push(toolResult(t, cwd, (toolUse as { id: string }).id, ledgerResult));
       subAgents.push(sub);
     }
   }
@@ -703,15 +678,7 @@ function continuationFamilies(startIndex: number): Conversation[] {
     title: "Nightly export — finish the retry path",
   });
 
-  return [
-    root,
-    firstBranch,
-    secondBranch,
-    deeper,
-    inWorktree,
-    chainStart,
-    chainEnd,
-  ];
+  return [root, firstBranch, secondBranch, deeper, inWorktree, chainStart, chainEnd];
 }
 
 // ── Generate, write to a throwaway logs root, and ingest ─────────────────────
@@ -732,28 +699,20 @@ async function main(): Promise<void> {
   for (const convo of conversations) {
     const projectDir = path.join(logsRoot, convo.folder);
     mkdirSync(projectDir, { recursive: true });
-    writeFileSync(
-      path.join(projectDir, `${convo.sessionId}.jsonl`),
-      convo.mainLines.join("\n") + "\n",
-    );
+    writeFileSync(path.join(projectDir, `${convo.sessionId}.jsonl`), convo.mainLines.join("\n") + "\n");
 
     if (convo.subAgents.length > 0) {
       const subDir = path.join(projectDir, convo.sessionId, "subagents");
       mkdirSync(subDir, { recursive: true });
       for (const sub of convo.subAgents) {
-        writeFileSync(
-          path.join(subDir, `agent-${sub.agentId}.jsonl`),
-          sub.lines.join("\n") + "\n",
-        );
+        writeFileSync(path.join(subDir, `agent-${sub.agentId}.jsonl`), sub.lines.join("\n") + "\n");
         subAgentCount += 1;
       }
     }
     convoCount += 1;
   }
 
-  console.log(
-    `Wrote ${convoCount} conversations (${subAgentCount} sub-agents) across ${PROJECTS.length} projects.`,
-  );
+  console.log(`Wrote ${convoCount} conversations (${subAgentCount} sub-agents) across ${PROJECTS.length} projects.`);
   console.log(`Ingesting into ${DEFAULT_DB_PATH} …`);
 
   const summary = await refresh({ logsRoot, dbPath: DEFAULT_DB_PATH });

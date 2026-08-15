@@ -22,9 +22,6 @@ export type ThemeOption = (typeof THEME_OPTIONS)[number]["value"];
  * `false` for every option while unmounted so no pill is highlighted on the
  * server render / first paint (avoids a hydration-mismatched highlight).
  */
-export function isThemeActive(
-  option: ThemeOption,
-  theme: string | undefined,
-): boolean {
+export function isThemeActive(option: ThemeOption, theme: string | undefined): boolean {
   return theme === option;
 }

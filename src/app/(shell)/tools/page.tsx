@@ -23,7 +23,7 @@ import { ToolRow } from "@/app/_components/tool-row";
 import { loadToolCallSamples, loadToolStats } from "@/app/_lib/conversations";
 import { formatChars } from "@/app/_lib/format";
 import { rangeDays, resolveRange } from "@/app/_lib/range";
-import { firstParam } from "@/app/_lib/search-params";
+import { type ViewSearchParams, firstParam } from "@/app/_lib/search-params";
 import { resolveExpanded } from "@/app/_lib/sort";
 import {
   type ToolSortField,
@@ -36,33 +36,11 @@ import {
   toolSortIndicator,
 } from "@/app/_lib/tools";
 import type { ToolStats } from "@/core/tool-stats";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableFooter,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-type PageSearchParams = {
-  sortBy?: string | string[];
-  dir?: string | string[];
-  folder?: string | string[];
-  expanded?: string | string[];
-  range?: string | string[];
-};
-
-export default function Page({
-  searchParams,
-}: {
-  searchParams: Promise<PageSearchParams>;
-}) {
+export default function Page({ searchParams }: { searchParams: Promise<ViewSearchParams> }) {
   return (
-    <Suspense
-      fallback={<p className="text-sm text-muted-foreground">Loading tools…</p>}
-    >
+    <Suspense fallback={<p className="text-sm text-muted-foreground">Loading tools…</p>}>
       <ToolsSurface searchParams={searchParams} />
     </Suspense>
   );
@@ -74,11 +52,7 @@ export default function Page({
  * separate from {@link Page} so the request-time fetch sits inside the page's
  * <Suspense> boundary (PPR).
  */
-async function ToolsSurface({
-  searchParams,
-}: {
-  searchParams: Promise<PageSearchParams>;
-}) {
+async function ToolsSurface({ searchParams }: { searchParams: Promise<ViewSearchParams> }) {
   const params = await searchParams;
   // URL → resolved intent at the page edge; the seam takes intent, never raw
   // searchParams. Every axis defaults safely (30 days, all Projects, calls ↓).
@@ -95,12 +69,8 @@ async function ToolsSurface({
 
   // Fetch the expanded tool's drill-down server-side — only when that row is
   // actually visible in the current view (a stale `?expanded=` is ignored).
-  const expandedRow = state.expanded
-    ? rows.find((row) => row.name === state.expanded)
-    : undefined;
-  const expandedSamples = expandedRow
-    ? await loadToolCallSamples(expandedRow.name, state.folder, days)
-    : null;
+  const expandedRow = state.expanded ? rows.find((row) => row.name === state.expanded) : undefined;
+  const expandedSamples = expandedRow ? await loadToolCallSamples(expandedRow.name, state.folder, days) : null;
 
   return (
     <section aria-label="Tool calls" className="flex flex-col gap-5">
@@ -108,23 +78,17 @@ async function ToolsSurface({
         <div>
           <h2 className="text-lg font-semibold tracking-tight">Tool calls</h2>
           <p className="text-sm text-muted-foreground">
-            Which tools you use, which ones fail, and which ones flood your
-            context.
+            Which tools you use, which ones fail, and which ones flood your context.
           </p>
         </div>
-        <RangePicker
-          active={state.range}
-          hrefFor={(preset) => toolRangeHref(preset, state)}
-        />
+        <RangePicker active={state.range} hrefFor={(preset) => toolRangeHref(preset, state)} />
       </div>
 
       <StatsRow stats={stats} />
 
       {rows.length === 0 ? (
         <div className="rounded-xl border border-dashed bg-card p-16 text-center">
-          <p className="text-sm text-muted-foreground">
-            No tool calls in this range.
-          </p>
+          <p className="text-sm text-muted-foreground">No tool calls in this range.</p>
         </div>
       ) : (
         <div className="overflow-hidden rounded-xl border bg-card">
@@ -132,9 +96,7 @@ async function ToolsSurface({
             <TableHeader>
               <TableRow>
                 <TableHead>
-                  <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                    Tool
-                  </span>
+                  <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Tool</span>
                 </TableHead>
                 <SortableHead field="calls" state={state}>
                   Calls
@@ -158,9 +120,7 @@ async function ToolsSurface({
                   key={tool.name}
                   tool={tool}
                   expanded={tool.name === expandedRow?.name}
-                  samples={
-                    tool.name === expandedRow?.name ? expandedSamples : null
-                  }
+                  samples={tool.name === expandedRow?.name ? expandedSamples : null}
                   toggleHref={toolExpandHref(tool.name, state)}
                 />
               ))}
@@ -171,16 +131,10 @@ async function ToolsSurface({
                 <TableCell className="font-medium">
                   {rows.length} tool{rows.length === 1 ? "" : "s"}
                 </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {stats.totalCalls}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {stats.totalErrors}
-                </TableCell>
+                <TableCell className="text-right tabular-nums">{stats.totalCalls}</TableCell>
+                <TableCell className="text-right tabular-nums">{stats.totalErrors}</TableCell>
                 <TableCell colSpan={4} />
-                <TableCell className="text-right font-semibold tabular-nums">
-                  {formatChars(stats.totalSize)}
-                </TableCell>
+                <TableCell className="text-right font-semibold tabular-nums">{formatChars(stats.totalSize)}</TableCell>
               </TableRow>
             </TableFooter>
           </Table>
@@ -195,8 +149,7 @@ async function ToolsSurface({
  * many characters it poured into the context. Echoes the Trends stat cards.
  */
 function StatsRow({ stats }: { stats: ToolStats }) {
-  const errorRate =
-    stats.totalCalls === 0 ? 0 : (stats.totalErrors / stats.totalCalls) * 100;
+  const errorRate = stats.totalCalls === 0 ? 0 : (stats.totalErrors / stats.totalCalls) * 100;
   return (
     <div className="grid gap-3 lg:grid-cols-3">
       <StatCard label="Tool calls" value={stats.totalCalls.toLocaleString()}>
@@ -231,14 +184,8 @@ function StatCard({
 }) {
   return (
     <div className="rounded-xl border bg-card p-5">
-      <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-        {label}
-      </p>
-      <p
-        className={`mt-2 text-3xl font-semibold tabular-nums ${
-          tone === "error" ? "text-destructive" : ""
-        }`}
-      >
+      <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{label}</p>
+      <p className={`mt-2 text-3xl font-semibold tabular-nums ${tone === "error" ? "text-destructive" : ""}`}>
         {value}
       </p>
       <p className="mt-1 text-xs text-muted-foreground">{children}</p>
@@ -250,9 +197,7 @@ function StatCard({
 function PlainHead({ children }: { children: React.ReactNode }) {
   return (
     <TableHead className="text-right">
-      <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-        {children}
-      </span>
+      <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{children}</span>
     </TableHead>
   );
 }
@@ -269,11 +214,7 @@ function SortableHead({
 }) {
   const indicator = toolSortIndicator(field, state.sort);
   const isActive = state.sort.sortBy === field;
-  const ariaSort = isActive
-    ? state.sort.dir === "asc"
-      ? "ascending"
-      : "descending"
-    : "none";
+  const ariaSort = isActive ? (state.sort.dir === "asc" ? "ascending" : "descending") : "none";
   return (
     <TableHead className="text-right" aria-sort={ariaSort}>
       <Link

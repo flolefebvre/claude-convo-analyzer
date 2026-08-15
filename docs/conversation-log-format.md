@@ -42,24 +42,24 @@ Each `.jsonl` file is **one JSON object per line**, each with a `type`.
 
 Counts are from the snapshot (across main + sub-agent files combined).
 
-| `type` | ~count | What it is | Modeled? |
-|---|---|---|---|
-| `assistant` | 11808 | An assistant turn (see §3). Carries `message.usage`, `message.model`, content blocks, attribution. | **Yes** → `message` (+ `tool_call`) |
-| `user` | 7251 | A user message OR a `tool_result` carrier (see §4). | **Yes** → `message` / feeds `tool_call` |
-| `attachment` | 3105 | Pasted/attached content (images, files) tied to a user message via `parentUuid`. `attachment` is a dict. | **No** (see §6) |
-| `ai-title` | 1252 | `aiTitle`: AI-generated conversation title. | **Yes** → `conversation.title` |
-| `mode` | 1016 | `mode` (e.g. `normal`) state marker. | **No** (low value) |
-| `permission-mode` | 1013 | `permissionMode` (e.g. `default`, `plan`) state marker. Also present per-turn on `user` records. | **Partly** (per-turn field on `message`) |
-| `last-prompt` | 992 | `lastPrompt` text + `leafUuid`. Duplicates content already in `user` records. | **No** (redundant) |
-| `file-history-snapshot` | 798 | `snapshot` dict = file contents for undo/checkpoint, keyed to a `messageId`. Lets you reconstruct which files changed + diffs. | **No** (large; see §6) |
-| `queue-operation` | 632 | Queued user input (`operation: enqueue`, `content`). | **No** |
-| `system` | 522 | Meta events by `subtype`: `turn_duration` (`durationMs`, `messageCount`), compaction (`compactMetadata`), API retries (`retryAttempt`, `maxRetries`, `retryInMs`), errors. | **Partly** → `turn_duration` table only |
-| `pr-link` | 78 | `prNumber`, `prUrl`, `prRepository` — a PR surfaced in the session. | **Yes** → `pr_link` |
-| `bridge-session` | 58 | `bridgeSessionId` — links a CLI session to a web/bridge session. | **No** |
-| `agent-name` | 50 | `agentName` — a name assigned to a (sub)agent session. | **No** |
-| `agent-setting` | 23 | `agentSetting` (e.g. `claude`). | **No** |
-| `worktree-state` | 15 | `worktreeSession` dict — git worktree association. | **No** |
-| `custom-title` | 15 | `customTitle` — user-set conversation title. | **Consider** (overrides `ai-title`) |
+| `type`                  | ~count | What it is                                                                                                                                                                 | Modeled?                                 |
+| ----------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| `assistant`             | 11808  | An assistant turn (see §3). Carries `message.usage`, `message.model`, content blocks, attribution.                                                                         | **Yes** → `message` (+ `tool_call`)      |
+| `user`                  | 7251   | A user message OR a `tool_result` carrier (see §4).                                                                                                                        | **Yes** → `message` / feeds `tool_call`  |
+| `attachment`            | 3105   | Pasted/attached content (images, files) tied to a user message via `parentUuid`. `attachment` is a dict.                                                                   | **No** (see §6)                          |
+| `ai-title`              | 1252   | `aiTitle`: AI-generated conversation title.                                                                                                                                | **Yes** → `conversation.title`           |
+| `mode`                  | 1016   | `mode` (e.g. `normal`) state marker.                                                                                                                                       | **No** (low value)                       |
+| `permission-mode`       | 1013   | `permissionMode` (e.g. `default`, `plan`) state marker. Also present per-turn on `user` records.                                                                           | **Partly** (per-turn field on `message`) |
+| `last-prompt`           | 992    | `lastPrompt` text + `leafUuid`. Duplicates content already in `user` records.                                                                                              | **No** (redundant)                       |
+| `file-history-snapshot` | 798    | `snapshot` dict = file contents for undo/checkpoint, keyed to a `messageId`. Lets you reconstruct which files changed + diffs.                                             | **No** (large; see §6)                   |
+| `queue-operation`       | 632    | Queued user input (`operation: enqueue`, `content`).                                                                                                                       | **No**                                   |
+| `system`                | 522    | Meta events by `subtype`: `turn_duration` (`durationMs`, `messageCount`), compaction (`compactMetadata`), API retries (`retryAttempt`, `maxRetries`, `retryInMs`), errors. | **Partly** → `turn_duration` table only  |
+| `pr-link`               | 78     | `prNumber`, `prUrl`, `prRepository` — a PR surfaced in the session.                                                                                                        | **Yes** → `pr_link`                      |
+| `bridge-session`        | 58     | `bridgeSessionId` — links a CLI session to a web/bridge session.                                                                                                           | **No**                                   |
+| `agent-name`            | 50     | `agentName` — a name assigned to a (sub)agent session.                                                                                                                     | **No**                                   |
+| `agent-setting`         | 23     | `agentSetting` (e.g. `claude`).                                                                                                                                            | **No**                                   |
+| `worktree-state`        | 15     | `worktreeSession` dict — git worktree association.                                                                                                                         | **No**                                   |
+| `custom-title`          | 15     | `customTitle` — user-set conversation title.                                                                                                                               | **Consider** (overrides `ai-title`)      |
 
 ## 3. The `assistant` record (the heart of accounting)
 
@@ -69,12 +69,13 @@ Key fields: `message` (the Anthropic message), `requestId`, `uuid`,
 and error fields below.
 
 `message` contains:
+
 - `model` — resolved model string. Seen: `claude-opus-4-8`, `claude-sonnet-4-6`,
   `claude-opus-4-7`, `claude-haiku-4-5-20251001`, plus aliases `opus` and the
   placeholder `<synthetic>` (synthetic messages — treat as $0).
 - `usage` — `{ input_tokens, output_tokens, cache_creation_input_tokens,
-  cache_read_input_tokens, cache_creation: { ephemeral_5m_input_tokens,
-  ephemeral_1h_input_tokens }, ... }`. Reported **per request/turn**.
+cache_read_input_tokens, cache_creation: { ephemeral_5m_input_tokens,
+ephemeral_1h_input_tokens }, ... }`. Reported **per request/turn**.
 - `content` — array of blocks: `text`, `thinking`, `tool_use`. (May also be a
   plain string in some records.)
 
@@ -86,12 +87,14 @@ Error fields: `isApiErrorMessage`, `apiErrorStatus`, `error` (rare: ~3 in
 snapshot).
 
 ### GOTCHA 1 — deduplicate by message id before summing usage
+
 A single assistant turn can be written as **multiple `assistant` records** (one
 per content block), each repeating the **identical `usage`**. In the snapshot,
 37 assistant records collapsed to 20 distinct `requestId`/`message.id`. **Sum
 usage once per distinct `message.id` (or `requestId`)**, or you double-count.
 
 ### GOTCHA 2 — `usage` is per-turn, not cumulative
+
 Sum across the (deduplicated) turns to get a conversation total. It is not a
 running total.
 
@@ -107,6 +110,7 @@ running total.
   etc.).
 
 ### Sub-agent accounting (the `Agent` tool)
+
 When a `tool_use` is `Agent`, its `tool_result` record's `toolUseResult`
 contains an **aggregated ledger** for the spawned sub-agent:
 `agentId`, `agentType`, `resolvedModel`, `totalTokens`, `totalToolUseCount`,
@@ -114,6 +118,7 @@ contains an **aggregated ledger** for the spawned sub-agent:
 (`readCount`/`bashCount`/`editFileCount`/...).
 
 ### GOTCHA 3 — sub-agent tokens are recorded twice; count them once
+
 The sub-agent's aggregated `usage` in the parent's `toolUseResult` is the **same
 tokens** as the sub-agent's own transcript file (`subagents/agent-<id>.jsonl`).
 **The transcript file is the source of truth**; the parent aggregate is only a
@@ -122,6 +127,7 @@ spawning turn via `agentId` (it appears both in the file name and in the
 parent's `toolUseResult`).
 
 ### GOTCHA 4 — no per-tool-call token counts
+
 There is **no token field on `tool_use` blocks**. Tokens exist only per turn
 (`message.usage`) and per sub-agent. So an individual Bash/Read/Edit call has no
 exact token cost — only its turn does. The lone exception is `Agent`, whose cost
@@ -131,6 +137,7 @@ attribution — see §5 — because that's turn-level, and tokens are turn-level
 ## 5. Attribution (per-turn skill/agent/plugin/mcp labels)
 
 `assistant` records carry populated attribution fields. Snapshot examples:
+
 - `attributionSkill`: `orchestrate` (1441), `tdd` (1338), `fresh-review` (769),
   `commit` (333), `grill-with-docs` (130), `skill-creator:skill-creator` …
 - `attributionAgent`: `general-purpose` (3835), `Explore` (1292),
@@ -141,7 +148,7 @@ attribution — see §5 — because that's turn-level, and tokens are turn-level
 Because each turn has **both** usage and attribution, **per-skill / per-agent /
 per-plugin / per-mcp token cost is deterministic** — a key analytical capability
 worth preserving. (Skills also appear as `Skill` tool calls; attribution is the
-more complete signal because it tags *every* turn the skill drove, not just the
+more complete signal because it tags _every_ turn the skill drove, not just the
 invoking turn.)
 
 ## 6. What we deliberately did NOT model (and where it lives)
@@ -154,7 +161,7 @@ files without schema-breaking surprises — this section is the pointer.
   is no way to recover assistant reasoning from these logs. Do not promise it.
 - **File-history snapshots** (`file-history-snapshot.snapshot`): full file
   contents per checkpoint, keyed by `messageId`. This is how you'd reconstruct
-  *which files changed and their diffs*. Skipped for size/complexity.
+  _which files changed and their diffs_. Skipped for size/complexity.
 - **Attachments** (`attachment` records): pasted images/files. Skipped
   (large/binary).
 - **Compaction events** (`system` with `compactMetadata`): when a conversation
@@ -165,6 +172,7 @@ files without schema-breaking surprises — this section is the pointer.
   mode markers, last-prompt:** low analytical value; left on disk.
 
 ### Modeled subset (see ADR-0001 for the schema)
+
 Tokens/cost (per turn, deduped, per resolved model), tool calls (name + input +
 truncated result + size), sub-agent lineage, conversation title, project,
 per-turn attribution & timestamps, git branch, CC version, permission mode,

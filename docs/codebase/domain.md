@@ -17,8 +17,9 @@ This repo is **single-context**: one `CONTEXT.md` + `docs/adr/` at the repo root
 /
 ├── CONTEXT.md
 ├── docs/adr/
-│   ├── 0001-event-sourced-orders.md
-│   └── 0002-postgres-for-write-model.md
+│   ├── 0001-token-accounting-and-data-model.md
+│   ├── 0002-local-architecture-and-persistence.md
+│   └── 0003-cost-model-and-pricing-policy.md
 └── src/
 ```
 

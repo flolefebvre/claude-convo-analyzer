@@ -1,25 +1,20 @@
 // The expandable Tools-table row (issue #42). A SERVER component, mirroring
 // `ConversationRow`: whether a row is expanded is URL view state
 // (`?expanded=<tool>`), so the page resolves it from `searchParams`, fetches the
-// drill-down server-side, and hands both down as plain props. The toggle is a
-// `<Link>` with `scroll={false}` so opening a row deep in the table never jumps
-// the viewport.
+// drill-down server-side, and hands both down as plain props. The toggle is the
+// shared `ExpandToggle`, the same chevron link the conversation list uses.
 //
 // ADR-0002 boundary: no client file touches core; core types are type-only
 // imports here.
 
-import { ChevronDown, ChevronRight } from "lucide-react";
 import Link from "next/link";
 
+import { ExpandToggle } from "@/app/_components/expand-toggle";
 import { formatChars, formatClock } from "@/app/_lib/format";
 import { toolLabel } from "@/app/_lib/tools";
 import { toolCallHref } from "@/app/_lib/transcript-url";
 import { TableCell, TableRow } from "@/components/ui/table";
-import type {
-  ToolCallSample,
-  ToolCallSamples,
-  ToolStat,
-} from "@/core/tool-stats";
+import type { ToolCallSample, ToolCallSamples, ToolStat } from "@/core/tool-stats";
 
 /** How many columns the table has — the colspan of an expanded panel. */
 const TOOL_COLUMN_COUNT = 8;
@@ -43,20 +38,7 @@ export function ToolRow({
     <>
       <TableRow>
         <TableCell className="font-medium">
-          <Link
-            href={toggleHref}
-            scroll={false}
-            aria-expanded={expanded}
-            className="inline-flex items-center gap-1.5 rounded-sm text-left outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
-          >
-            {expanded ? (
-              <ChevronDown className="size-3.5 shrink-0" aria-hidden />
-            ) : (
-              <ChevronRight className="size-3.5 shrink-0" aria-hidden />
-            )}
-            <span className="sr-only">
-              {expanded ? "Collapse" : "Expand"} tool details
-            </span>
+          <ExpandToggle href={toggleHref} expanded={expanded} label="tool details">
             {/* An MCP tool reads "server · tool", so a misbehaving server is
                 spottable by eye without grouping the table. */}
             {label.server !== null && (
@@ -66,7 +48,7 @@ export function ToolRow({
               </span>
             )}
             {label.tool}
-          </Link>
+          </ExpandToggle>
         </TableCell>
 
         <TableCell className="text-right tabular-nums">{tool.calls}</TableCell>
@@ -79,28 +61,18 @@ export function ToolRow({
           ) : (
             <span className="font-medium text-destructive">
               {tool.errors}
-              <span className="ml-1.5 text-xs font-normal">
-                {formatRate(tool.errorRate)}
-              </span>
+              <span className="ml-1.5 text-xs font-normal">{formatRate(tool.errorRate)}</span>
             </span>
           )}
         </TableCell>
 
-        <TableCell className="text-right tabular-nums text-muted-foreground">
+        <TableCell className="text-right text-muted-foreground tabular-nums">
           {formatChars(tool.meanSize === null ? null : Math.round(tool.meanSize))}
         </TableCell>
-        <TableCell className="text-right tabular-nums text-muted-foreground">
-          {formatChars(tool.p50Size)}
-        </TableCell>
-        <TableCell className="text-right tabular-nums">
-          {formatChars(tool.p95Size)}
-        </TableCell>
-        <TableCell className="text-right tabular-nums text-muted-foreground">
-          {formatChars(tool.maxSize)}
-        </TableCell>
-        <TableCell className="text-right font-medium tabular-nums">
-          {formatChars(tool.totalSize)}
-        </TableCell>
+        <TableCell className="text-right text-muted-foreground tabular-nums">{formatChars(tool.p50Size)}</TableCell>
+        <TableCell className="text-right tabular-nums">{formatChars(tool.p95Size)}</TableCell>
+        <TableCell className="text-right text-muted-foreground tabular-nums">{formatChars(tool.maxSize)}</TableCell>
+        <TableCell className="text-right font-medium tabular-nums">{formatChars(tool.totalSize)}</TableCell>
       </TableRow>
 
       {expanded && (
@@ -125,19 +97,9 @@ function formatRate(rate: number): string {
  * two ways a tool hurts — plus, for `Skill`/`Agent`, what the calls were spent
  * on. Every sample deep-links into the Transcript, anchored on the call itself.
  */
-function DrillDown({
-  tool,
-  samples,
-}: {
-  tool: ToolStat;
-  samples: ToolCallSamples | null;
-}) {
+function DrillDown({ tool, samples }: { tool: ToolStat; samples: ToolCallSamples | null }) {
   if (samples === null) {
-    return (
-      <p className="px-6 py-5 text-sm text-muted-foreground">
-        No detail available for this tool.
-      </p>
-    );
+    return <p className="px-6 py-5 text-sm text-muted-foreground">No detail available for this tool.</p>;
   }
 
   return (
@@ -148,11 +110,7 @@ function DrillDown({
           empty={`No errors — ${tool.calls} clean call${tool.calls === 1 ? "" : "s"}.`}
           samples={samples.recentErrors}
         />
-        <Section
-          title="Largest results"
-          empty="No sized results in this range."
-          samples={samples.largestResults}
-        />
+        <Section title="Largest results" empty="No sized results in this range." samples={samples.largestResults} />
       </div>
 
       {samples.breakdown.length > 0 && (
@@ -164,11 +122,11 @@ function DrillDown({
             {samples.breakdown.map((entry) => (
               <li key={entry.key} className="flex items-baseline gap-2">
                 <span className="font-medium">{entry.key}</span>
-                <span className="tabular-nums text-muted-foreground">
+                <span className="text-muted-foreground tabular-nums">
                   {entry.calls} call{entry.calls === 1 ? "" : "s"}
                 </span>
                 {entry.errors > 0 && (
-                  <span className="tabular-nums text-destructive">
+                  <span className="text-destructive tabular-nums">
                     {entry.errors} error{entry.errors === 1 ? "" : "s"}
                   </span>
                 )}
@@ -182,20 +140,10 @@ function DrillDown({
 }
 
 /** One drill-down list (errors or largest results), or its empty note. */
-function Section({
-  title,
-  empty,
-  samples,
-}: {
-  title: string;
-  empty: string;
-  samples: ToolCallSample[];
-}) {
+function Section({ title, empty, samples }: { title: string; empty: string; samples: ToolCallSample[] }) {
   return (
     <div>
-      <p className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-        {title}
-      </p>
+      <p className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">{title}</p>
       {samples.length === 0 ? (
         <p className="text-sm text-muted-foreground">{empty}</p>
       ) : (
@@ -216,13 +164,11 @@ function SampleItem({ sample }: { sample: ToolCallSample }) {
     <li className="min-w-0 text-sm">
       <Link
         href={toolCallHref(sample.sessionId, sample.agentId, sample.toolUseId)}
-        className="block rounded-md border bg-card px-3 py-2 outline-none transition-colors hover:border-foreground/20 focus-visible:ring-2 focus-visible:ring-ring/50"
+        className="block rounded-md border bg-card px-3 py-2 transition-colors outline-none hover:border-foreground/20 focus-visible:ring-2 focus-visible:ring-ring/50"
       >
         <div className="flex items-baseline justify-between gap-3">
-          <span className="truncate font-medium">
-            {sample.conversationTitle ?? sample.sessionId}
-          </span>
-          <span className="shrink-0 tabular-nums text-xs text-muted-foreground">
+          <span className="truncate font-medium">{sample.conversationTitle ?? sample.sessionId}</span>
+          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
             {formatChars(sample.charSize)}
             {time && <span className="ml-2">{time}</span>}
           </span>

@@ -99,10 +99,7 @@ export type DiscoveredSubAgent = {
  * parent sessionId/agentId live in the PATH; the caller already holds the
  * session, so we return only the agentId + path. Missing dirs → empty list.
  */
-export function discoverSubAgents(
-  projectDir: string,
-  sessionId: string,
-): DiscoveredSubAgent[] {
+export function discoverSubAgents(projectDir: string, sessionId: string): DiscoveredSubAgent[] {
   const subagentsDir = path.join(projectDir, sessionId, "subagents");
   let entries;
   try {

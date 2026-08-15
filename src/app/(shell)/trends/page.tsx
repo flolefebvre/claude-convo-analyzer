@@ -18,29 +18,14 @@ import { CostBar } from "@/app/_components/cost-bar";
 import { RangePicker } from "@/app/_components/range-picker";
 import { TrendsChart } from "@/app/_components/trends-chart";
 import { loadDailySpend } from "@/app/_lib/conversations";
-import {
-  formatCompactTokens,
-  formatGrandTotalCost,
-  formatTokens,
-} from "@/app/_lib/format";
+import { formatCompactTokens, formatGrandTotalCost, formatTokens } from "@/app/_lib/format";
 import { rangeDays, rangeHref, resolveRange } from "@/app/_lib/range";
-import { firstParam } from "@/app/_lib/search-params";
+import { type ViewSearchParams, firstParam } from "@/app/_lib/search-params";
 import { type TrendsView, buildTrendsView } from "@/app/_lib/trends";
 
-type PageSearchParams = {
-  range?: string | string[];
-  folder?: string | string[];
-};
-
-export default function Page({
-  searchParams,
-}: {
-  searchParams: Promise<PageSearchParams>;
-}) {
+export default function Page({ searchParams }: { searchParams: Promise<ViewSearchParams> }) {
   return (
-    <Suspense
-      fallback={<p className="text-sm text-muted-foreground">Loading trends…</p>}
-    >
+    <Suspense fallback={<p className="text-sm text-muted-foreground">Loading trends…</p>}>
       <TrendsSurface searchParams={searchParams} />
     </Suspense>
   );
@@ -52,11 +37,7 @@ export default function Page({
  * {@link Page} so the request-time fetch sits inside the page's <Suspense>
  * boundary (PPR).
  */
-async function TrendsSurface({
-  searchParams,
-}: {
-  searchParams: Promise<PageSearchParams>;
-}) {
+async function TrendsSurface({ searchParams }: { searchParams: Promise<ViewSearchParams> }) {
   const params = await searchParams;
   // URL → resolved intent at the page edge; the seam takes intent, never raw
   // searchParams. Both default safely (30 days, all Projects).
@@ -70,23 +51,16 @@ async function TrendsSurface({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold tracking-tight">Daily spend</h2>
-          <p className="text-sm text-muted-foreground">
-            What Claude Code cost per day, split by model.
-          </p>
+          <p className="text-sm text-muted-foreground">What Claude Code cost per day, split by model.</p>
         </div>
-        <RangePicker
-          active={range}
-          hrefFor={(preset) => rangeHref(preset, folder)}
-        />
+        <RangePicker active={range} hrefFor={(preset) => rangeHref(preset, folder)} />
       </div>
 
       <StatsRow view={view} />
 
       <div className="rounded-xl border bg-card p-5">
         {view.isEmpty ? (
-          <p className="py-16 text-center text-sm text-muted-foreground">
-            No priced usage in this range.
-          </p>
+          <p className="py-16 text-center text-sm text-muted-foreground">No priced usage in this range.</p>
         ) : (
           <TrendsChart bands={view.bands} points={view.points} />
         )}
@@ -106,10 +80,8 @@ function StatsRow({ view }: { view: TrendsView }) {
   return (
     <div className="grid gap-3 lg:grid-cols-3">
       <div className="rounded-xl border bg-card p-5">
-        <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-          Range cost
-        </p>
-        <p className="mt-2 text-3xl font-semibold tabular-nums text-cost">
+        <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Range cost</p>
+        <p className="mt-2 text-3xl font-semibold text-cost tabular-nums">
           {view.isApproximate ? (
             <span
               title={
@@ -127,15 +99,9 @@ function StatsRow({ view }: { view: TrendsView }) {
       </div>
 
       <div className="rounded-xl border bg-card p-5">
-        <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-          Tokens
-        </p>
-        <p className="mt-2 text-3xl font-semibold tabular-nums">
-          {formatCompactTokens(view.totalTokens.total)}
-        </p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {formatTokens(view.totalTokens.total)} total
-        </p>
+        <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Tokens</p>
+        <p className="mt-2 text-3xl font-semibold tabular-nums">{formatCompactTokens(view.totalTokens.total)}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{formatTokens(view.totalTokens.total)} total</p>
       </div>
 
       <ModelLegend view={view} />
@@ -147,9 +113,7 @@ function StatsRow({ view }: { view: TrendsView }) {
 function ModelLegend({ view }: { view: TrendsView }) {
   return (
     <div className="rounded-xl border bg-card p-5 lg:col-span-1">
-      <p className="mb-3 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-        By model
-      </p>
+      <p className="mb-3 text-xs font-medium tracking-wide text-muted-foreground uppercase">By model</p>
       {view.bands.length === 0 ? (
         <p className="text-sm text-muted-foreground">No priced usage.</p>
       ) : (
@@ -169,15 +133,11 @@ function ModelLegend({ view }: { view: TrendsView }) {
                     {band.model}
                   </span>
                 </span>
-                <span className="shrink-0 tabular-nums text-muted-foreground">
+                <span className="shrink-0 text-muted-foreground tabular-nums">
                   {formatGrandTotalCost(band.costUsd)}
                 </span>
               </div>
-              <CostBar
-                value={band.costUsd}
-                max={view.totalCostUsd}
-                className="mt-1.5"
-              />
+              <CostBar value={band.costUsd} max={view.totalCostUsd} className="mt-1.5" />
             </li>
           ))}
         </ul>

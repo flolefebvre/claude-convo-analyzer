@@ -99,10 +99,7 @@ export function priceTokenSplit(split: TokenSplit, model: string): CostResult {
  * buckets sum exactly to `usd`. An unpriced model yields `$0` for every bucket
  * and the `usd` total, while still setting `unpriced` (ADR-0003).
  */
-export function priceSplitByType(
-  split: TokenSplit,
-  model: string,
-): SplitCostResult {
+export function priceSplitByType(split: TokenSplit, model: string): SplitCostResult {
   const { key, approximate, unpriced } = resolveModel(model);
   if (key === null) {
     return {

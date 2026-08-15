@@ -32,7 +32,7 @@ export function CostRow({
         {label}
       </span>
       <CostBar value={costUsd} max={max} className="min-w-0 flex-1" />
-      <span className="w-20 shrink-0 text-right tabular-nums text-muted-foreground">
+      <span className="w-20 shrink-0 text-right text-muted-foreground tabular-nums">
         {unpriced ? "~" : ""}
         {formatCost(costUsd)}
       </span>

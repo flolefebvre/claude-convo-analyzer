@@ -106,10 +106,7 @@ type SearchOptions = {
  * you). A query with no searchable term — empty, whitespace, pure punctuation —
  * returns no results without touching the database.
  */
-export async function searchConversations(
-  rawQuery: string,
-  opts: SearchOptions = {},
-): Promise<SearchResults> {
+export async function searchConversations(rawQuery: string, opts: SearchOptions = {}): Promise<SearchResults> {
   const limit = opts.limit ?? DEFAULT_LIMIT;
   const match = toFtsQuery(rawQuery);
   if (match === null) return { results: [], hasMore: false };
@@ -121,9 +118,7 @@ export async function searchConversations(
       titleHitConversationIds(prisma, match),
     ]);
 
-    const conversationIds = [
-      ...new Set([...messageHits.keys(), ...titleHitIds]),
-    ];
+    const conversationIds = [...new Set([...messageHits.keys(), ...titleHitIds])];
     if (conversationIds.length === 0) return { results: [], hasMore: false };
 
     // A title-only hit has no matching message to date it: fall back to the
@@ -163,12 +158,11 @@ export async function searchConversations(
         title: row.title,
         project: { folder: row.folder, path: row.path },
         lastMatchAt: lastMatchAt === null ? null : isoOf(lastMatchAt),
-        matchCount:
-          (messageHits.get(id)?.count ?? 0) + (titleHitIds.has(id) ? 1 : 0),
-        snippets: [
-          ...(titleSnippet === undefined ? [] : [titleSnippet]),
-          ...(snippets.get(id) ?? []),
-        ].slice(0, SNIPPETS_PER_RESULT),
+        matchCount: (messageHits.get(id)?.count ?? 0) + (titleHitIds.has(id) ? 1 : 0),
+        snippets: [...(titleSnippet === undefined ? [] : [titleSnippet]), ...(snippets.get(id) ?? [])].slice(
+          0,
+          SNIPPETS_PER_RESULT,
+        ),
       });
     }
 
@@ -207,9 +201,7 @@ async function messageHitsByConversation(
   prisma: PrismaClient,
   match: string,
 ): Promise<Map<number, { count: number; lastTs: number | null }>> {
-  const rows = await prisma.$queryRaw<
-    { cid: number | bigint; n: number | bigint; lastTs: number | bigint | null }[]
-  >`
+  const rows = await prisma.$queryRaw<{ cid: number | bigint; n: number | bigint; lastTs: number | bigint | null }[]>`
     SELECT m.conversation_id AS cid, COUNT(*) AS n, MAX(m.timestamp) AS lastTs
       FROM message_fts f JOIN message m ON m.id = f.rowid
      WHERE message_fts MATCH ${match}
@@ -226,10 +218,7 @@ async function messageHitsByConversation(
 }
 
 /** Conversation ids whose TITLE matches. */
-async function titleHitConversationIds(
-  prisma: PrismaClient,
-  match: string,
-): Promise<Set<number>> {
+async function titleHitConversationIds(prisma: PrismaClient, match: string): Promise<Set<number>> {
   const rows = await prisma.$queryRaw<{ cid: number | bigint }[]>`
     SELECT rowid AS cid FROM conversation_title_fts
      WHERE conversation_title_fts MATCH ${match}`;
@@ -247,21 +236,14 @@ async function lastActivityByConversation(
     where: { conversationId: { in: conversationIds } },
     _max: { timestamp: true },
   });
-  return new Map(
-    groups.map((g) => [
-      g.conversationId,
-      g._max.timestamp === null ? null : Number(g._max.timestamp),
-    ]),
-  );
+  return new Map(groups.map((g) => [g.conversationId, g._max.timestamp === null ? null : Number(g._max.timestamp)]));
 }
 
 /** Display fields of the matching conversations, keyed by row id. */
 async function conversationRows(
   prisma: PrismaClient,
   conversationIds: number[],
-): Promise<
-  Map<number, { sessionId: string; title: string | null; folder: string; path: string }>
-> {
+): Promise<Map<number, { sessionId: string; title: string | null; folder: string; path: string }>> {
   const rows = await prisma.conversation.findMany({
     where: { id: { in: conversationIds } },
     select: {
@@ -300,9 +282,7 @@ async function messageSnippets(
   if (conversationIds.length === 0) return out;
   const ids = Prisma.join(conversationIds);
 
-  const ranked = await prisma.$queryRaw<
-    { cid: number | bigint; rowid: number | bigint }[]
-  >`
+  const ranked = await prisma.$queryRaw<{ cid: number | bigint; rowid: number | bigint }[]>`
     SELECT cid, rowid FROM (
       SELECT m.conversation_id AS cid, f.rowid AS rowid,
              ROW_NUMBER() OVER (
@@ -338,9 +318,7 @@ async function messageSnippets(
   // Restore the bm25 order the ranking pass established (the render pass is
   // ordered by rowid, which is arbitrary as far as relevance goes).
   const rank = new Map(ranked.map((r, i) => [Number(r.rowid), i]));
-  for (const r of [...rows].sort(
-    (a, b) => (rank.get(Number(a.rowid)) ?? 0) - (rank.get(Number(b.rowid)) ?? 0),
-  )) {
+  for (const r of [...rows].sort((a, b) => (rank.get(Number(a.rowid)) ?? 0) - (rank.get(Number(b.rowid)) ?? 0))) {
     const cid = Number(r.cid);
     const list = out.get(cid) ?? [];
     list.push({
@@ -364,9 +342,7 @@ async function titleSnippetsFor(
   if (conversationIds.length === 0) return out;
   const ids = Prisma.join(conversationIds);
 
-  const rows = await prisma.$queryRaw<
-    { cid: number | bigint; extract: string }[]
-  >`
+  const rows = await prisma.$queryRaw<{ cid: number | bigint; extract: string }[]>`
     SELECT rowid AS cid,
            snippet(conversation_title_fts, 0, ${MARK_OPEN}, ${MARK_CLOSE}, '…', ${SNIPPET_TOKENS}) AS extract
       FROM conversation_title_fts

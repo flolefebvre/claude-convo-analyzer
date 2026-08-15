@@ -32,12 +32,9 @@ export default function ShellLayout({
     <main className="mx-auto w-full max-w-7xl px-6 py-10">
       <header className="mb-6 flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Claude Conversation Analyzer
-          </h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Claude Conversation Analyzer</h1>
           <p className="text-sm text-muted-foreground">
-            Every conversation from your local Claude Code logs, with token and
-            cost rollups.
+            Every conversation from your local Claude Code logs, with token and cost rollups.
           </p>
         </div>
         {/* Header controls: full-text search, the Light/Dark/Auto theme toggle
@@ -62,11 +59,7 @@ export default function ShellLayout({
           <Suspense fallback={null}>
             <SectionNav />
           </Suspense>
-          <Suspense
-            fallback={
-              <p className="text-sm text-muted-foreground">Loading folders…</p>
-            }
-          >
+          <Suspense fallback={<p className="text-sm text-muted-foreground">Loading folders…</p>}>
             <Sidebar />
           </Suspense>
         </aside>

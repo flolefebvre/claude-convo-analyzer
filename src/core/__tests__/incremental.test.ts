@@ -1,11 +1,4 @@
-import {
-  cpSync,
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  utimesSync,
-  writeFileSync,
-} from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -97,10 +90,7 @@ async function conversationRowIds(dbPath: string): Promise<Map<string, number>> 
 }
 
 /** The source file a conversation row is currently ingested from. */
-async function conversationSourcePath(
-  dbPath: string,
-  sessionId: string,
-): Promise<string | undefined> {
+async function conversationSourcePath(dbPath: string, sessionId: string): Promise<string | undefined> {
   const prisma = createPrismaClient(dbPath);
   try {
     return (
@@ -115,10 +105,7 @@ async function conversationSourcePath(
 }
 
 /** Rewrite the stored parser version of every conversation (upgrade sim). */
-async function setStoredParserVersion(
-  dbPath: string,
-  version: number,
-): Promise<void> {
+async function setStoredParserVersion(dbPath: string, version: number): Promise<void> {
   const prisma = createPrismaClient(dbPath);
   try {
     await prisma.conversation.updateMany({ data: { parserVersion: version } });
@@ -171,9 +158,7 @@ describe("incremental refresh", () => {
     const basicPath = path.join(logsRoot, "-Users-me-dev-demo", "sess-basic.jsonl");
     const extra =
       '{"type":"user","uuid":"x-extra","timestamp":"2026-06-20T10:02:00.000Z","cwd":"/Users/me/dev/demo","message":{"role":"user","content":"one more"}}\n';
-    const original = await import("node:fs").then((fs) =>
-      fs.readFileSync(basicPath, "utf8"),
-    );
+    const original = await import("node:fs").then((fs) => fs.readFileSync(basicPath, "utf8"));
     writeFileSync(basicPath, original + extra);
     touchLater(basicPath);
 
@@ -187,9 +172,7 @@ describe("incremental refresh", () => {
     expect(after.message).toBe(before.message + 1);
 
     // The conversation still reads correctly (tokens unchanged by a user turn).
-    const basic = (await listConversations({ dbPath })).find(
-      (c) => c.id === "sess-basic",
-    );
+    const basic = (await listConversations({ dbPath })).find((c) => c.id === "sess-basic");
     expect(basic?.tokens.output).toBe(550);
   });
 
@@ -219,9 +202,7 @@ describe("incremental refresh", () => {
 
   it("deletes a conversation whose source file disappeared (cascade)", async () => {
     await refresh({ logsRoot, dbPath });
-    expect(
-      (await listConversations({ dbPath })).some((c) => c.id === "sess-tools"),
-    ).toBe(true);
+    expect((await listConversations({ dbPath })).some((c) => c.id === "sess-tools")).toBe(true);
 
     // Remove the sess-tools transcript (it has tool_call/pr_link/turn_duration).
     rmSync(path.join(logsRoot, "-Users-me-dev-tools", "sess-tools.jsonl"));
@@ -258,9 +239,7 @@ describe("incremental refresh", () => {
     rmSync(path.join(resumeDir, "sess-resumed.jsonl"));
 
     await refresh({ logsRoot, dbPath });
-    const originBefore = (await listConversations({ dbPath })).find(
-      (c) => c.id === "sess-origin",
-    );
+    const originBefore = (await listConversations({ dbPath })).find((c) => c.id === "sess-origin");
     expect(originBefore).toBeDefined();
 
     // A brand-new child resuming from sess-origin's last message (orig-a1).
@@ -311,9 +290,7 @@ describe("incremental refresh", () => {
     );
 
     crash.armed = true;
-    await expect(refresh({ logsRoot, dbPath })).rejects.toThrow(
-      "simulated interruption",
-    );
+    await expect(refresh({ logsRoot, dbPath })).rejects.toThrow("simulated interruption");
     expect(crash.armed).toBe(false); // the injected fault really fired
 
     // The interruption happened AFTER the writes: the rows are there, unlinked.
@@ -325,9 +302,7 @@ describe("incremental refresh", () => {
     // The next refresh repairs what the interrupted run left behind.
     await refresh({ logsRoot, dbPath });
     const repaired = await listConversations({ dbPath });
-    expect(repaired.find((c) => c.id === "sess-child")?.continuedFromId).toBe(
-      "sess-origin",
-    );
+    expect(repaired.find((c) => c.id === "sess-child")?.continuedFromId).toBe("sess-origin");
     expect(repaired.find((c) => c.id === "sess-origin")?.continuedFromId).toBeNull();
 
     // Re-parsing the interrupted run's conversations rewrote them wholesale
@@ -381,13 +356,7 @@ describe("incremental refresh", () => {
 
     // Append an assistant turn to the SUB-AGENT file only; the main session file
     // is untouched. A main-file-only mtime/size check would miss this.
-    const subPath = path.join(
-      logsRoot,
-      "-Users-me-dev-sub",
-      "sess-sub",
-      "subagents",
-      "agent-sub1.jsonl",
-    );
+    const subPath = path.join(logsRoot, "-Users-me-dev-sub", "sess-sub", "subagents", "agent-sub1.jsonl");
     const extra =
       '{"type":"assistant","uuid":"sa3","isSidechain":true,"agentId":"sub1","requestId":"sreq-3","timestamp":"2026-06-20T08:00:30.000Z","cwd":"/Users/me/dev/sub","version":"2.1.180","attributionAgent":"Explore","message":{"id":"smsg-3","role":"assistant","model":"claude-haiku-4-5-20251001","content":[{"type":"text","text":"more"}],"usage":{"input_tokens":0,"output_tokens":11,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}}}\n';
     const fs = await import("node:fs");
@@ -425,9 +394,7 @@ describe("incremental refresh", () => {
     expect(dupes[0]?.title).toBe("The kept copy");
 
     // The skip is observable, and names the file the user should delete.
-    expect(summary.duplicateSessionsSkipped).toEqual([
-      { sessionId: "sess-copy", keptPath, skippedPath },
-    ]);
+    expect(summary.duplicateSessionsSkipped).toEqual([{ sessionId: "sess-copy", keptPath, skippedPath }]);
   });
 
   it("re-parses from the new winner when a smaller-path duplicate appears next to an ingested conversation", async () => {
@@ -435,33 +402,18 @@ describe("incremental refresh", () => {
     // is decided by the file set on disk, not by what happens to be in the
     // database already. A copy landing at a SMALLER path takes over the session
     // id, and the previously ingested file becomes the reported duplicate.
-    const strayPath = writeSessionCopy(
-      logsRoot,
-      "-Users-me-dev-copy-b",
-      "The stray copy",
-    );
+    const strayPath = writeSessionCopy(logsRoot, "-Users-me-dev-copy-b", "The stray copy");
     await refresh({ logsRoot, dbPath });
-    expect(
-      (await listConversations({ dbPath })).find((c) => c.id === "sess-copy")
-        ?.title,
-    ).toBe("The stray copy");
+    expect((await listConversations({ dbPath })).find((c) => c.id === "sess-copy")?.title).toBe("The stray copy");
 
-    const keptPath = writeSessionCopy(
-      logsRoot,
-      "-Users-me-dev-copy-a",
-      "The kept copy — appeared later",
-    );
+    const keptPath = writeSessionCopy(logsRoot, "-Users-me-dev-copy-a", "The kept copy — appeared later");
 
     const second = await refresh({ logsRoot, dbPath });
 
-    expect(second.duplicateSessionsSkipped).toEqual([
-      { sessionId: "sess-copy", keptPath, skippedPath: strayPath },
-    ]);
+    expect(second.duplicateSessionsSkipped).toEqual([{ sessionId: "sess-copy", keptPath, skippedPath: strayPath }]);
     const convos = await listConversations({ dbPath });
     expect(convos.filter((c) => c.id === "sess-copy")).toHaveLength(1);
-    expect(convos.find((c) => c.id === "sess-copy")?.title).toBe(
-      "The kept copy — appeared later",
-    );
+    expect(convos.find((c) => c.id === "sess-copy")?.title).toBe("The kept copy — appeared later");
   });
 
   it("re-parses when the winning duplicate has the same mtime and size as the ingested one", async () => {
@@ -472,30 +424,20 @@ describe("incremental refresh", () => {
     // summary just reported as skipped. The stored source path is part of the
     // change decision precisely so the winner switch is honoured.
     const sameTime = new Date(2026, 0, 1);
-    const strayPath = writeSessionCopy(
-      logsRoot,
-      "-Users-me-dev-copy-b",
-      "Same bytes either way",
-    );
+    const strayPath = writeSessionCopy(logsRoot, "-Users-me-dev-copy-b", "Same bytes either way");
     utimesSync(strayPath, sameTime, sameTime);
 
     await refresh({ logsRoot, dbPath });
     expect(await conversationSourcePath(dbPath, "sess-copy")).toBe(strayPath);
 
     // Byte-identical, same mtime: the stored (mtime, size) key still matches.
-    const keptPath = writeSessionCopy(
-      logsRoot,
-      "-Users-me-dev-copy-a",
-      "Same bytes either way",
-    );
+    const keptPath = writeSessionCopy(logsRoot, "-Users-me-dev-copy-a", "Same bytes either way");
     utimesSync(keptPath, sameTime, sameTime);
 
     const second = await refresh({ logsRoot, dbPath });
 
     expect(second.conversationsParsed).toBe(1);
-    expect(second.duplicateSessionsSkipped).toEqual([
-      { sessionId: "sess-copy", keptPath, skippedPath: strayPath },
-    ]);
+    expect(second.duplicateSessionsSkipped).toEqual([{ sessionId: "sess-copy", keptPath, skippedPath: strayPath }]);
     // The row now belongs to the file the summary reports as kept.
     expect(await conversationSourcePath(dbPath, "sess-copy")).toBe(keptPath);
   });
@@ -511,11 +453,7 @@ describe("incremental refresh", () => {
  * is the only difference between two copies, so an assertion on the ingested
  * title says exactly WHICH file won.
  */
-function writeSessionCopy(
-  logsRoot: string,
-  folder: string,
-  title: string,
-): string {
+function writeSessionCopy(logsRoot: string, folder: string, title: string): string {
   const dir = path.join(logsRoot, folder);
   mkdirSync(dir, { recursive: true });
   const filePath = path.join(dir, "sess-copy.jsonl");
