@@ -1,20 +1,3 @@
-// Conversation list — the app's single page (issue #3). A React Server
-// Component: it reads the active scope + sort + expanded row from
-// `searchParams`, fetches the rows (and the expanded row's detail) via the
-// cached app-zone readers, and renders a sortable shadcn table with a
-// grand-total footer. The persistent app shell (header + sidebar) lives in the
-// root layout (PR #13); the page renders ONLY the table region. Sorting,
-// scoping, and row expansion are all server-side via search-param links (no
-// front-end data filtering); the pure URL-state logic lives in `@/app/_lib/sort`.
-//
-// ADR-0002 boundary: the core read is reached through `loadConversations`
-// (app-zone), not a direct core import. The shadcn Table/Button + `next/link`
-// `<Link>` are client components but receive plain serializable props/children.
-//
-// `cacheComponents` (PPR) is on, so the request-time `searchParams` read is
-// wrapped in <Suspense>: the page shell prerenders, the data table streams in.
-// `loadConversations` defers the DB read out of prerendering (connection()).
-
 import { AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import { Suspense } from "react";
@@ -52,10 +35,6 @@ import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, Table
 export default function Page({ searchParams }: { searchParams: Promise<ViewSearchParams> }) {
   return (
     <>
-      {/* The overview band: this surface's headline analysis, above its table.
-          Global (scope-independent), so it needs no `searchParams` and gets its
-          own Suspense boundary — the request-time read is deferred out of
-          prerendering (PPR) while the page shell prerenders. */}
       <Suspense fallback={null}>
         <Overview />
       </Suspense>
@@ -67,49 +46,20 @@ export default function Page({ searchParams }: { searchParams: Promise<ViewSearc
   );
 }
 
-/**
- * The overview band's data: the headline aggregate plus the cost-ranked top
- * Projects, both derived from ALL conversations (scope-independent). Split out
- * so the request-time read sits inside its own <Suspense> boundary. The
- * `loadConversations()` read is deduped with the sidebar/table via React
- * `cache()`, so the band adds no extra DB work.
- */
 async function Overview() {
   const allRows = await loadConversations();
-  // No sort intent -> scope-independent slice only; one `deriveFolders` pass
-  // feeds both the overview aggregate and the cost-ranked top Projects.
   const { overview, topProjects } = buildListView(allRows);
   return <OverviewBand overview={overview} topProjects={topProjects} />;
 }
 
-/**
- * Reads the active sort + scope from `searchParams` and the rows from the cached
- * app-zone reader, then renders the table (or the empty state). Kept separate
- * from {@link Page} so the request-time data fetch sits inside the page's
- * <Suspense> boundary (PPR).
- */
 async function ConversationTable({ searchParams }: { searchParams: Promise<ViewSearchParams> }) {
   const params = await searchParams;
-  // URL → resolved intent at the page edge; the seam takes intent, never raw
-  // searchParams.
   const sort = resolveSort(params.sortBy, params.dir);
-  // The active scope, normalized: a non-empty key, or `undefined`/empty for
-  // "All folders". Threaded onto the header links so re-sorting keeps the scope.
   const activeFolder = firstParam(params.folder) || undefined;
-  // The expanded row's id, if any (`?expanded=<id>`). Row expansion is URL view
-  // state like sort/folder, so expanded panels are shareable and survive reload.
   const expandedId = resolveExpanded(params.expanded);
-  // The Trends range, carried verbatim through every link this page builds, so
-  // sorting/expanding here never resets the range the user picked on Trends.
   const range = firstParam(params.range) || undefined;
-  // The "only with errors" filter (`?errors=1`), off by default (issue #47).
   const errorsOnly = resolveErrorsOnly(params.errors);
-  // The one view-state value every link on this page carries forward, so the
-  // axes compose instead of clobbering each other (see `ListLinkContext`).
   const links: ListLinkContext = { sort, folder: activeFolder, range, errorsOnly };
-  // Fetch ALL rows once (deduped with the layout's sidebar read via React
-  // cache()); the seam owns the order-dependent pipeline (filter BEFORE sort,
-  // one `deriveFolders` derive feeding the table breadcrumb + scope).
   const allRows = await loadConversations();
   const {
     rows,
@@ -118,33 +68,18 @@ async function ConversationTable({ searchParams }: { searchParams: Promise<ViewS
     grandTotal: total,
   } = buildListView(allRows, { folder: activeFolder, sort, errorsOnly });
 
-  // Continuation-family size per conversation, walked ONCE over the same rows
-  // (issue #46). Sizes come from the UNSCOPED set on purpose: a family spanning
-  // two Projects still reports its true size while the list is scoped to one.
   const familySize = await loadFamilySizes();
 
-  // Fetch the expanded row's panel detail server-side — only when that row is
-  // actually visible in the current view (a stale/foreign `?expanded=` is
-  // ignored). `null` detail still renders the panel with a graceful note.
   const expandedRow = expandedId ? rows.find((row) => row.id === expandedId) : undefined;
   const expandedDetail = expandedRow ? await loadConversationDetail(expandedRow.id) : null;
 
-  // The expanded row's failed turns, shaped for the panel's error list. Read
-  // only for the open row — a collapsed table costs nothing.
   const expandedErrors = expandedRow ? errorsView(expandedRow.id, await loadConversationErrors(expandedRow.id)) : null;
 
-  // Format every row's relative Date label against ONE request-time `now` so
-  // all rows agree on what "5m ago" means, and hand each row the resulting
-  // strings as plain props.
   const now = new Date();
 
-  // The expanded row's continuation family, shaped for the panel's tree (member
-  // links preserve the active sort/scope/range — see `familyView`).
   const expandedFamily = expandedRow ? await loadFamily(expandedRow.id) : null;
   const expandedFamilyView = expandedFamily ? familyView(expandedFamily, links, now) : null;
 
-  // Empty when there are genuinely no conversations OR when the active scope
-  // matched nothing (unknown/stale `?folder=`, or a folder with zero rows).
   if (rows.length === 0) {
     return (
       <>
@@ -165,7 +100,6 @@ async function ConversationTable({ searchParams }: { searchParams: Promise<ViewS
               <SortableHead field="date" links={links}>
                 Date
               </SortableHead>
-              {/* The Folder column is hidden when scoped (redundant — see breadcrumb). */}
               {!isScoped && (
                 <SortableHead field="folder" links={links}>
                   Folder
@@ -188,9 +122,6 @@ async function ConversationTable({ searchParams }: { searchParams: Promise<ViewS
 
           <TableBody>
             {rows.map((row) => (
-              // `scoped` lets slice 3 hide the Folder column when a single
-              // Project is selected; presentation (two-line cell / breadcrumb)
-              // is slice 3's job — this only threads the flag through.
               <ConversationRow
                 key={row.id}
                 row={row}
@@ -230,19 +161,7 @@ async function ConversationTable({ searchParams }: { searchParams: Promise<ViewS
   );
 }
 
-/**
- * The strip above the table: the Project breadcrumb when scoped (left) and the
- * "only with errors" toggle (right). Rendered in BOTH states — with rows and
- * empty — so the toggle never disappears at the moment you want to turn it off.
- */
-function ListControls({
-  folder,
-  links,
-}: {
-  /** The selected Project, when a `?folder=` scope is active. */
-  folder: FolderEntry | undefined;
-  links: ListLinkContext;
-}) {
+function ListControls({ folder, links }: { folder: FolderEntry | undefined; links: ListLinkContext }) {
   return (
     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
       {folder ? <FolderBreadcrumb folder={folder} links={links} /> : <span />}
@@ -251,11 +170,6 @@ function ListControls({
   );
 }
 
-/**
- * The "only with errors" filter, a server-side link like every other list
- * control (`?errors=1`). Pressed state is the URL's, so it is shareable and
- * survives a reload; `aria-pressed` carries it to assistive tech.
- */
 function ErrorsFilterToggle({ links }: { links: ListLinkContext }) {
   const active = links.errorsOnly === true;
   return (
@@ -275,20 +189,7 @@ function ErrorsFilterToggle({ links }: { links: ListLinkContext }) {
   );
 }
 
-/**
- * The table-region empty state. When scoped, the `?folder=` matched nothing
- * (unknown/stale key or an empty Project) so we offer a clear-filter link back
- * to "All folders" (preserving sort). When unscoped, there are simply no
- * conversations yet.
- */
-function EmptyState({
-  scoped,
-  links,
-}: {
-  scoped: boolean;
-  /** The active view state, preserved by the clear-filter link. */
-  links: ListLinkContext;
-}) {
+function EmptyState({ scoped, links }: { scoped: boolean; links: ListLinkContext }) {
   return (
     <div className="rounded-xl border border-dashed bg-card p-16 text-center">
       {links.errorsOnly ? (
@@ -314,19 +215,7 @@ function EmptyState({
   );
 }
 
-/**
- * The scope breadcrumb shown above the table when a single Project is selected.
- * Shows the Project's full path once (replacing the now-hidden Folder column)
- * with a link back to "All folders" that preserves the active sort.
- */
-function FolderBreadcrumb({
-  folder,
-  links,
-}: {
-  folder: FolderEntry;
-  /** The active view state, preserved by the "All folders" link. */
-  links: ListLinkContext;
-}) {
+function FolderBreadcrumb({ folder, links }: { folder: FolderEntry; links: ListLinkContext }) {
   return (
     <nav aria-label="Folder scope" className="flex flex-wrap items-center gap-2 text-sm">
       <Link href={folderHref(undefined, links)} className="text-muted-foreground hover:underline">
@@ -342,7 +231,6 @@ function FolderBreadcrumb({
   );
 }
 
-/** A header cell that links to the toggled sort + shows the active arrow. */
 function SortableHead({
   field,
   links,
@@ -350,7 +238,6 @@ function SortableHead({
   children,
 }: {
   field: SortableField;
-  /** The active view state, threaded so re-sorting keeps every other axis. */
   links: ListLinkContext;
   className?: string;
   children: React.ReactNode;
@@ -361,8 +248,6 @@ function SortableHead({
   const ariaSort = isActive ? (sort.dir === "asc" ? "ascending" : "descending") : "none";
   return (
     <TableHead className={className} aria-sort={ariaSort}>
-      {/* Quiet uppercase labels echo the overview band's stat-card captions. The
-          active sort column lifts to full foreground; the rest stay muted. */}
       <Link
         href={sortHref(field, links)}
         className={`inline-flex items-center gap-1 text-xs font-medium tracking-wide uppercase transition-colors hover:text-foreground ${

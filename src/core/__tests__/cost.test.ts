@@ -10,8 +10,6 @@ import {
   type Tokens,
 } from "@/core/cost";
 
-// A Tokens value with every bucket set, so each test can zero out all but the
-// bucket it cares about and reason about one price at a time.
 function tokens(partial: Partial<Tokens>): Tokens {
   const input = partial.input ?? 0;
   const output = partial.output ?? 0;
@@ -28,7 +26,6 @@ function tokens(partial: Partial<Tokens>): Tokens {
 
 describe("computeCost — known resolved models", () => {
   it("prices claude-opus-4-8 input at $5/MTok", () => {
-    // 1,000,000 input tokens at $5/MTok = $5.
     const result = computeCost(tokens({ input: 1_000_000 }), "claude-opus-4-8");
     expect(result).toEqual({ usd: 5, unpriced: false, approximate: false });
   });
@@ -39,14 +36,11 @@ describe("computeCost — known resolved models", () => {
   });
 
   it("prices claude-sonnet-4-6 at its own (cheaper) rates", () => {
-    // 1M input @ $3 + 1M output @ $15 = $18.
     const result = computeCost(tokens({ input: 1_000_000, output: 1_000_000 }), "claude-sonnet-4-6");
     expect(result).toEqual({ usd: 18, unpriced: false, approximate: false });
   });
 
   it("prices claude-sonnet-5 at its own rates ($3/$15 per MTok)", () => {
-    // 1M input @ $3 + 1M output @ $15 = $18 (standard list rate, not the
-    // $2/$10 introductory rate — see ADR-0003 in pricing.ts).
     const result = computeCost(tokens({ input: 1_000_000, output: 1_000_000 }), "claude-sonnet-5");
     expect(result).toEqual({ usd: 18, unpriced: false, approximate: false });
   });
@@ -57,7 +51,6 @@ describe("computeCost — known resolved models", () => {
   });
 
   it("prices claude-fable-5 at $10/$50 per MTok (above Opus tier)", () => {
-    // 1M input @ $10 + 1M output @ $50 = $60.
     const result = computeCost(tokens({ input: 1_000_000, output: 1_000_000 }), "claude-fable-5");
     expect(result).toEqual({ usd: 60, unpriced: false, approximate: false });
   });
@@ -68,13 +61,11 @@ describe("computeCost — known resolved models", () => {
   });
 
   it("prices claude-opus-5 at Opus-tier rates ($5/$25 per MTok)", () => {
-    // 1M input @ $5 + 1M output @ $25 = $30.
     const result = computeCost(tokens({ input: 1_000_000, output: 1_000_000 }), "claude-opus-5");
     expect(result).toEqual({ usd: 30, unpriced: false, approximate: false });
   });
 
   it("prices claude-opus-5 cache tiers at the standard multipliers", () => {
-    // 5m write = 1.25x $5 = $6.25/MTok; read = 0.1x $5 = $0.50/MTok.
     expect(computeCost(tokens({ cacheWrite: 1_000_000 }), "claude-opus-5").usd).toBe(6.25);
     expect(computeCost(tokens({ cacheRead: 1_000_000 }), "claude-opus-5").usd).toBe(0.5);
   });
@@ -99,14 +90,12 @@ describe("priceTokenSplit — cache tiers are distinct", () => {
   it("prices a 1h cache write at 2x base input ($10/MTok on opus-4-8) — distinct from 5m", () => {
     const result = priceTokenSplit(split({ cacheWrite1h: 1_000_000 }), "claude-opus-4-8");
     expect(result).toEqual({ usd: 10, unpriced: false, approximate: false });
-    // The 5m and 1h tiers must price differently.
     expect(result.usd).not.toBe(6.25);
   });
 });
 
 describe("computeCost — merged cacheWrite is priced at the 5m tier", () => {
   it("prices merged cacheWrite at the 5m rate, not the 1h rate", () => {
-    // 1M merged cacheWrite → priced as 5m: 1M * $6.25/MTok = $6.25.
     const result = computeCost(tokens({ cacheWrite: 1_000_000 }), "claude-opus-4-8");
     expect(result).toEqual({ usd: 6.25, unpriced: false, approximate: false });
   });
@@ -152,10 +141,7 @@ describe("Tokens.total is the sum of all token buckets", () => {
       cacheWrite: 300,
       cacheRead: 400,
     });
-    // total auto-summed by the helper.
     expect(t.total).toBe(1000);
-    // Cost still computes over the individual buckets (opus-4-8, cacheWrite@5m):
-    //   100*$5 + 200*$25 + 300*$6.25 + 400*$0.50  (all /MTok)
     const perMTok = 1_000_000;
     const expected = (100 * 5 + 200 * 25 + 300 * 6.25 + 400 * 0.5) / perMTok;
     const result = computeCost(t, "claude-opus-4-8");
@@ -166,8 +152,6 @@ describe("Tokens.total is the sum of all token buckets", () => {
 
 describe("priceSplitByType — per-bucket cost split summing to the total", () => {
   it("splits each bucket at its own opus-4-8 rate, summing to usd", () => {
-    // 100 input @ $5, 200 output @ $25, 300 cw5m @ $6.25, 50 cw1h @ $10,
-    // 400 cacheRead @ $0.50 — all /MTok.
     const perMTok = 1_000_000;
     const result = priceSplitByType(
       split({
@@ -182,7 +166,6 @@ describe("priceSplitByType — per-bucket cost split summing to the total", () =
     const expected: CostByType = {
       input: (100 * 5) / perMTok,
       output: (200 * 25) / perMTok,
-      // cacheWrite combines 5m (1.25x) + 1h (2x), each at its own rate.
       cacheWrite: (300 * 6.25 + 50 * 10) / perMTok,
       cacheRead: (400 * 0.5) / perMTok,
     };
@@ -190,7 +173,6 @@ describe("priceSplitByType — per-bucket cost split summing to the total", () =
     expect(result.byType.output).toBeCloseTo(expected.output, 12);
     expect(result.byType.cacheWrite).toBeCloseTo(expected.cacheWrite, 12);
     expect(result.byType.cacheRead).toBeCloseTo(expected.cacheRead, 12);
-    // The four buckets sum exactly to the total usd.
     const summed = result.byType.input + result.byType.output + result.byType.cacheWrite + result.byType.cacheRead;
     expect(summed).toBeCloseTo(result.usd, 12);
     expect(result.usd).toBe(

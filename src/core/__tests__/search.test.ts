@@ -1,11 +1,3 @@
-// The search read path (issue #45): `searchConversations()` over the FTS5 index.
-//
-// Fixtures: `-Users-me-dev-search` holds three sessions built for this suite —
-// `sess-search-a` (four "postgres" messages across the main thread AND a
-// sub-agent, plus a matching title), `sess-search-b` (newer, one match), and
-// `sess-search-c` (title-only match). Their vocabulary is deliberately unique to
-// this project so assertions stay exact as other fixtures grow.
-
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { searchConversations } from "@/core/search";
@@ -14,7 +6,6 @@ import { seededTempDb } from "./helpers/temp-db";
 
 const FIXTURES_ROOT = path.join(import.meta.dirname, "fixtures", "logs");
 
-/** The plain text of a snippet — its segments concatenated. */
 function snippetText(segments: { text: string }[]): string {
   return segments.map((s) => s.text).join("");
 }
@@ -30,7 +21,6 @@ describe("searchConversations", () => {
     const sessions = results.map((r) => r.sessionId);
     expect(sessions).toContain("sess-search-a");
     expect(sessions).toContain("sess-search-b");
-    // One card per conversation, never one per matching message.
     expect(new Set(sessions).size).toBe(sessions.length);
 
     const a = results.find((r) => r.sessionId === "sess-search-a");
@@ -47,7 +37,6 @@ describe("searchConversations", () => {
       dbPath: db.dbPath,
     });
     const a = results.find((r) => r.sessionId === "sess-search-a");
-    // qu1 (prompt) + qa1, qa2 (assistant) + qsu1 (sub-agent prompt) + title.
     expect(a?.matchCount).toBe(5);
   });
 
@@ -56,7 +45,6 @@ describe("searchConversations", () => {
       dbPath: db.dbPath,
     });
     const ours = results.map((r) => r.sessionId).filter((s) => s.startsWith("sess-search-"));
-    // b (2026-06-27) → a (2026-06-25) → c (title-only, last activity 06-24).
     expect(ours).toEqual(["sess-search-b", "sess-search-a", "sess-search-c"]);
   });
 
@@ -76,8 +64,6 @@ describe("searchConversations", () => {
       for (const m of marked) {
         expect(m.text.toLowerCase()).toContain("postgres");
       }
-      // Segments reassemble into the readable extract (the title snippet keeps
-      // its original casing — matching is case-insensitive).
       expect(snippetText(snippet.segments).toLowerCase()).toContain("postgres");
     }
   });
@@ -93,7 +79,6 @@ describe("searchConversations", () => {
     const snippet = a.snippets[0];
     expect(snippet.source).toBe("message");
     expect(snippet.messageUuid).toBe("qsa1");
-    // The hit lives in the sub-agent's transcript, so the link must select it.
     expect(snippet.agentId).toBe("s1");
   });
 
@@ -119,8 +104,6 @@ describe("searchConversations", () => {
     const meta = await searchConversations("reminder", { dbPath: db.dbPath });
     expect(meta.results).toEqual([]);
 
-    // The Agent tool call's input prompt ("inspect the postgres schema") is
-    // machinery — the sub-agent's own transcript carries the searchable copy.
     const searchable = await searchConversations("inspect", {
       dbPath: db.dbPath,
     });
@@ -142,7 +125,6 @@ describe("searchConversations", () => {
     const phrase = await searchConversations('"cache invalidation"', {
       dbPath: db.dbPath,
     });
-    // Only `a` has the words adjacent; `b` has both words, apart.
     expect(phrase.results.map((r) => r.sessionId)).toEqual(["sess-search-a"]);
   });
 
@@ -178,12 +160,10 @@ describe("searchConversations", () => {
       "postgres:failover",
     ];
     for (const raw of hostile) {
-      // The contract is "never throws"; what it finds is secondary.
       const out = await searchConversations(raw, { dbPath: db.dbPath });
       expect(Array.isArray(out.results)).toBe(true);
     }
 
-    // …and the literal reading still finds the obvious thing.
     const starred = await searchConversations("postgres*", {
       dbPath: db.dbPath,
     });

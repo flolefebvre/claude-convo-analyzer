@@ -37,11 +37,9 @@ describe("core ingest spine", () => {
     expect(basic.project.folder).toBe("-Users-me-dev-demo");
     expect(basic.project.path).toBe("/Users/me/dev/demo");
 
-    // dominant = model with most OUTPUT tokens → sonnet (500 > 50)
     expect(basic.models.dominant).toBe("claude-sonnet-4-6");
     expect(basic.models.distinctCount).toBe(2);
 
-    // token rollup across both assistant turns (cacheWrite = 5m + 1h merged)
     expect(basic.tokens.input).toBe(110);
     expect(basic.tokens.output).toBe(550);
     expect(basic.tokens.cacheWrite).toBe(300);
@@ -64,7 +62,6 @@ describe("core ingest spine", () => {
     expect(dup).toBeDefined();
     if (!dup) return;
 
-    // Three records repeat the identical usage for one message.id → count once.
     expect(dup.tokens.input).toBe(1000);
     expect(dup.tokens.output).toBe(40);
     expect(dup.models.distinctCount).toBe(1);
@@ -77,8 +74,6 @@ describe("core ingest spine", () => {
     expect(str).toBeDefined();
     if (!str) return;
 
-    // No title record → falls back to first user prompt, whose content is a
-    // plain string. A non-null title proves string-form text was extracted.
     expect(str.title).toBe("a plain string prompt");
   });
 
@@ -103,7 +98,6 @@ describe("core ingest spine", () => {
     expect(mal).toBeDefined();
     if (!mal) return;
 
-    // The good lines around the garbage line still parsed.
     expect(mal.title).toBe("Has a bad line");
     expect(mal.tokens.output).toBe(4);
   });

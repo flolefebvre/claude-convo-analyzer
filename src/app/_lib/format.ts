@@ -1,23 +1,7 @@
-// Pure presentation helpers for the conversation list UI.
-//
-// This module is intentionally free of React, I/O, and any runtime dependency
-// on `src/core` (the only core touch is a type-only import of `Tokens`, which
-// is erased at compile time and so does not cross the ADR-0002 runtime
-// boundary). Everything here takes plain data and returns plain strings/objects
-// so it can be unit-tested in the node vitest environment.
-
-/** Integer token count rendered with locale thousands separators. */
 export function formatTokens(n: number): string {
   return Math.round(n).toLocaleString("en-US");
 }
 
-/**
- * Compact token count for the overview stat cards, where a full thousands-
- * separated number would dominate the card. Abbreviates with a K/M/B suffix at
- * one decimal place, dropping a trailing ".0" so round magnitudes stay clean:
- *   999 -> "999", 1_500 -> "1.5K", 2_000 -> "2K", 1_260_000_000 -> "1.3B".
- * Below 1,000 the plain integer is returned (no suffix).
- */
 export function formatCompactTokens(n: number): string {
   const abs = Math.abs(n);
   const units: { limit: number; suffix: string }[] = [
@@ -28,45 +12,22 @@ export function formatCompactTokens(n: number): string {
   for (const { limit, suffix } of units) {
     if (abs >= limit) {
       const scaled = n / limit;
-      // One decimal, then strip a trailing ".0" (e.g. "2.0K" -> "2K").
       return `${scaled.toFixed(1).replace(/\.0$/, "")}${suffix}`;
     }
   }
   return Math.round(n).toString();
 }
 
-/**
- * USD with adaptive precision so small costs stay legible.
- *
- * Rule:
- *   - exactly 0            -> "$0.00"
- *   - |value| >= 0.01      -> 2 decimal places ("$12.34", "$0.01")
- *   - 0 < |value| < 0.01   -> 4 decimal places ("$0.0042")
- *
- * The cutoff is 0.01 because that is the smallest value that renders
- * non-trivially at 2 dp; below it, 2 dp would collapse to "$0.00" and hide the
- * cost, so we widen to 4 dp.
- */
 export function formatCost(usd: number): string {
   if (usd === 0) return "$0.00";
   const decimals = Math.abs(usd) >= 0.01 ? 2 : 4;
   return `$${usd.toFixed(decimals)}`;
 }
 
-/**
- * Grand total in USD, always at 2 decimal places (per issue #3: "a grand total
- * at 2 dp"). Unlike {@link formatCost} this never widens precision — at the
- * aggregate level a sub-cent total rounds to "$0.00".
- */
 export function formatGrandTotalCost(usd: number): string {
   return `$${usd.toFixed(2)}`;
 }
 
-/**
- * Wall-clock `HH:MM` (UTC, 24-hour) for a transcript message's timestamp, or ""
- * for a missing/unparseable value. UTC keeps it deterministic regardless of host
- * timezone, matching the rest of this module's date reasoning.
- */
 export function formatClock(iso: string | null): string {
   if (!iso) return "";
   const date = new Date(iso);
@@ -76,23 +37,6 @@ export function formatClock(iso: string | null): string {
   return `${hh}:${mm}`;
 }
 
-/**
- * Render an ISO8601 timestamp for the conversation list's Date column,
- * returning both a compact `label` and a full `absolute` string for hover.
- *
- * Pure: output depends ONLY on `iso` and `now` (production omits `now`, which
- * defaults to the wall clock). All calendar reasoning ("same day", "same year")
- * and the absolute string are computed in **UTC** so results are deterministic
- * regardless of the host timezone — tests pass a fixed `now` and fixed ISO
- * inputs and get stable output.
- *
- * Label rules (relative to `now`):
- *   - null / empty / unparseable -> "—" (em dash), absolute ""
- *   - same UTC calendar day  -> "just now" (< 1 min), "Nm ago" (< 60 min),
- *                               else "Nh ago"
- *   - same UTC calendar year -> "MMM d"        (e.g. "Jun 19")
- *   - earlier year           -> "MMM d yyyy"   (e.g. "Mar 4 2025")
- */
 export function formatDate(iso: string | null, now: Date = new Date()): { label: string; absolute: string } {
   if (!iso) return { label: "—", absolute: "" };
   const date = new Date(iso);
@@ -101,20 +45,10 @@ export function formatDate(iso: string | null, now: Date = new Date()): { label:
   return { label: relativeLabel(date, now), absolute: absoluteLabel(date) };
 }
 
-/**
- * Compact activity-range label for the overview band header, formatted in UTC
- * so it is deterministic regardless of host timezone. Endpoints are ISO strings
- * (or `""` for unknown):
- *   - both empty                 -> ""
- *   - same UTC day / one empty   -> a single date  ("Jun 22 2026")
- *   - same year                  -> year shown once ("Jun 2 – Jun 22 2026")
- *   - spans years                -> both years      ("Dec 30 2025 – Jun 22 2026")
- */
 export function formatDateRange(earliest: string, latest: string): string {
   const start = parseUtc(earliest);
   const end = parseUtc(latest);
   if (!start && !end) return "";
-  // Tolerate a missing endpoint: collapse to whichever date we know.
   if (!start || !end) return dayWithYear((start ?? end) as Date);
 
   const sameDay =
@@ -124,19 +58,10 @@ export function formatDateRange(earliest: string, latest: string): string {
   if (sameDay) return dayWithYear(end);
 
   const sameYear = start.getUTCFullYear() === end.getUTCFullYear();
-  // Within one year the start omits the (repeated) year; the end always carries it.
   const startLabel = sameYear ? dayNoYear(start) : dayWithYear(start);
   return `${startLabel} – ${dayWithYear(end)}`;
 }
 
-/**
- * Elapsed wall-clock span between two ISO timestamps, for the detail panel's
- * summary line. Returns "" if either endpoint is missing/unparseable; otherwise
- * the coarsest readable form, clamping a negative span to zero:
- *   - < 1 min  -> "30s"
- *   - < 1 hour -> "45m" (whole minutes)
- *   - >= 1 hour-> "1h 20m", dropping a trailing zero minute ("2h")
- */
 export function formatDuration(startedAt: string, endedAt: string): string {
   const start = parseUtc(startedAt);
   const end = parseUtc(endedAt);
@@ -153,12 +78,6 @@ export function formatDuration(startedAt: string, endedAt: string): string {
   return remMinutes === 0 ? `${hours}h` : `${hours}h ${remMinutes}m`;
 }
 
-/**
- * Short label for a LOCAL calendar-day key (`YYYY-MM-DD`, as the daily-spend
- * read emits): "2026-06-10" -> "Jun 10". The key is already a local day, so it
- * is read as plain parts — never parsed as an instant, which would re-apply a
- * timezone shift. Returns the input unchanged if it is not a day key.
- */
 export function formatDayKey(dayKey: string): string {
   const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dayKey);
   if (parts === null) return dayKey;
@@ -166,19 +85,16 @@ export function formatDayKey(dayKey: string): string {
   return month === undefined ? dayKey : `${month} ${Number(parts[3])}`;
 }
 
-/** Parse an ISO string to a Date, or null for empty/unparseable input. */
 function parseUtc(iso: string): Date | null {
   if (!iso) return null;
   const date = new Date(iso);
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-/** "Jun 22" — month + day, UTC. */
 function dayNoYear(date: Date): string {
   return `${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}`;
 }
 
-/** "Jun 22 2026" — month + day + year, UTC. */
 function dayWithYear(date: Date): string {
   return `${dayNoYear(date)} ${date.getUTCFullYear()}`;
 }
@@ -202,11 +118,6 @@ function relativeLabel(date: Date, now: Date): string {
   return `${month} ${day} ${date.getUTCFullYear()}`;
 }
 
-/**
- * Deterministic absolute timestamp for the hover title, formatted in UTC via a
- * fixed Intl options object (e.g. "Jun 19, 2026, 14:30 UTC"). UTC + explicit
- * en-US locale keeps it independent of the host timezone/locale.
- */
 function absoluteLabel(date: Date): string {
   return new Intl.DateTimeFormat("en-US", {
     year: "numeric",
@@ -220,12 +131,6 @@ function absoluteLabel(date: Date): string {
   }).format(date);
 }
 
-/**
- * A result size in characters, compactly (`8.2K`), with an em dash for "no
- * size" — the Tools table's cell for a tool whose calls never paired a result
- * (NULL `result_char_size`), which is deliberately absent from the size stats
- * rather than shown as zero.
- */
 export function formatChars(n: number | null): string {
   if (n === null) return "—";
   return formatCompactTokens(n);

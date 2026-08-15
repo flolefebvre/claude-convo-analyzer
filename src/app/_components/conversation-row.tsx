@@ -1,15 +1,3 @@
-// The expandable conversation row. A SERVER component: whether a row is
-// expanded is URL view state (`?expanded=<id>`), same as sort and folder scope,
-// so the page resolves it from `searchParams`, fetches the panel's detail
-// server-side, and hands both down as plain props. The expand toggle is the
-// shared `ExpandToggle` pointed at `expandHref(...)` — the same href-composition
-// pattern as the sortable headers and folder links. Expanded views are
-// therefore shareable and survive a reload.
-//
-// ADR-0002 boundary: no client file touches core. The only client leaf left in
-// the panel is `SubAgentBreakdown` (ephemeral per-group open/closed state),
-// which receives plain serializable props.
-
 import { AlertTriangle, GitBranch } from "lucide-react";
 import Link from "next/link";
 
@@ -29,29 +17,13 @@ import type { ConversationDetail, ConversationSummary } from "@/core/read";
 
 export function ConversationRow({
   row,
-  // The Date cell's label/title, formatted by the page against a single
-  // request-time `now` so every row's relative label agrees (see page.tsx).
   date,
-  // `scoped` is true when the table is filtered to a single Project (an active
-  // `?folder=`). When scoped, every visible row shares that Project, so the
-  // Folder cell is redundant and hidden — the page shows the path once as a
-  // breadcrumb instead. The expand toggle therefore lives on the Date cell so
-  // rows stay expandable in BOTH states.
   scoped = false,
-  // True when this row is the URL's `?expanded=` target; `detail` is that
-  // row's server-fetched panel data (`null` when collapsed or unknown id).
   expanded = false,
   detail = null,
-  // Size of this row's continuation family (issue #46) — 1 for a standalone
-  // conversation, which renders no badge at all.
   familySize = 1,
-  // The expanded row's continuation family, already shaped for rendering by the
-  // page (`null` when standalone or collapsed).
   family = null,
-  // The expanded row's failed turns, already shaped by the page (`null` when
-  // collapsed; `[]` when the conversation never failed).
   errors = null,
-  // The row's expand/collapse toggle target (built by the page via expandHref).
   toggleHref,
 }: {
   row: ConversationSummary;
@@ -70,25 +42,15 @@ export function ConversationRow({
     <>
       <TableRow>
         <TableCell {...(date.absolute ? { title: date.absolute } : {})} className="text-muted-foreground tabular-nums">
-          {/* Expand toggle lives here so it works whether or not the Folder
-              cell is rendered (it's hidden when scoped). */}
           <ExpandToggle href={toggleHref} expanded={expanded} label="conversation details">
             {date.label}
           </ExpandToggle>
         </TableCell>
-        {/* When scoped to a single Project the Folder column is hidden (the page
-            shows the path once as a breadcrumb). When unscoped, show the friendly
-            basename; the full Project path is available on hover via the cell's
-            title (kept off-screen so long paths don't break the table — #14). */}
         {!scoped && (
           <TableCell title={row.project.path}>
             <span className="font-medium">{friendlyFolderName(row.project.path)}</span>
           </TableCell>
         )}
-        {/* The title deep-links into the Transcript view for this conversation
-            (`/conversation/<sessionId>`; `row.id` IS the stable sessionId). Bare
-            path → the main/root agent. Only the title is a link — the row's
-            `?expanded=` toggle (on the Date cell) and sorting are untouched. */}
         <TableCell className="max-w-xs font-medium">
           <span className="flex items-center gap-1.5">
             <Link
@@ -97,10 +59,6 @@ export function ConversationRow({
             >
               {row.title ?? <span className="text-muted-foreground">{row.id}</span>}
             </Link>
-            {/* API errors: turns the API failed on, anywhere in the
-                conversation (sub-agents included). Destructive tone, the same
-                alarm the Transcript's `badge-err` carries — expand the row for
-                the per-error list. */}
             {row.errorCount > 0 && (
               <span
                 className="inline-flex shrink-0 items-center gap-1 rounded bg-destructive/10 px-1.5 py-0.5 text-xs font-normal text-destructive tabular-nums dark:bg-destructive/20"
@@ -110,9 +68,6 @@ export function ConversationRow({
                 {row.errorCount} error{row.errorCount === 1 ? "" : "s"}
               </span>
             )}
-            {/* Continuation family: this conversation is one sitting of a piece
-                of work spread over several (`--resume`/fork). The badge counts
-                the WHOLE family, so every member shows the same number. */}
             {familySize > 1 && (
               <span
                 className="inline-flex shrink-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground tabular-nums"
@@ -133,8 +88,6 @@ export function ConversationRow({
             )}
           </span>
         </TableCell>
-        {/* Token total is secondary context → muted. Cost is the payload →
-            full-weight foreground, so the eye lands on spend first. */}
         <TableCell className="text-right text-muted-foreground tabular-nums">
           {formatTokens(row.tokens.total)}
         </TableCell>
@@ -158,12 +111,6 @@ export function ConversationRow({
   );
 }
 
-/**
- * Render the detail panel — the analysis surface for one conversation. The
- * summary strip and the token-composition bar come straight from the row
- * summary; the cost breakdowns (Model / Skill / Sub-agents) come from the
- * server-fetched detail, with a graceful note when the id is unknown.
- */
 function DetailPanel({
   detail,
   row,
@@ -178,16 +125,11 @@ function DetailPanel({
   return (
     <div className="space-y-6 px-6 py-5">
       <SummaryStrip row={row} detail={detail} />
-      {/* Failed turns lead the panel: a conversation that hit the API's limits
-          is the most urgent thing to know about it. Absent when nothing failed. */}
       {errors !== null && errors.length > 0 && (
         <Section title="API errors">
           <ErrorList errors={errors} />
         </Section>
       )}
-      {/* The family sits above the breakdowns (and below the failures): it
-          reframes every number under it as one sitting of a larger piece of
-          work. Absent for a standalone row. */}
       {family && family.size > 1 && (
         <Section title="Continuation family">
           <FamilyTree family={family} />
@@ -201,8 +143,6 @@ function DetailPanel({
           {detail === null ? (
             <p className="text-sm text-muted-foreground">No detail available for this conversation.</p>
           ) : (
-            // `row.id` is the stable sessionId — threaded so the sub-agent
-            // breakdown can deep-link each agent into its transcript.
             <Breakdowns detail={detail} sessionId={row.id} />
           )}
         </div>
@@ -211,11 +151,6 @@ function DetailPanel({
   );
 }
 
-/**
- * The orienting headline: the conversation's cost (the payload, in the cost
- * hue) followed by a quiet meta line of the facts you'd drill into. Most facts
- * come straight from the row summary; the Skill count needs the fetched detail.
- */
 function SummaryStrip({ row, detail }: { row: ConversationSummary; detail: ConversationDetail | null }) {
   const duration = formatDuration(row.startedAt, row.endedAt);
   const meta = [
@@ -242,13 +177,6 @@ function SummaryStrip({ row, detail }: { row: ConversationSummary; detail: Conve
   );
 }
 
-/** The four token buckets, each led by its DOLLAR cost — the payload, in
- *  full-weight foreground so the eye lands on spend first (matching the row
- *  total and the panel headline). The token count and its percent of the total
- *  are the demoted secondary facts (muted), so the shape of usage (almost always
- *  cache-dominated) still reads at a glance. When the conversation includes
- *  unpriced model usage every bucket's dollars are a lower bound: prefix `~` and
- *  reuse the same tooltip the row's total cost carries. */
 function TokenComposition({
   tokens,
   costByType,
@@ -281,15 +209,6 @@ function TokenComposition({
   );
 }
 
-/**
- * The continuation family as a tree: every sitting of this piece of work, in
- * chronological order, indented by fork structure — the same idiom as the
- * Transcript view's agent tree (16px per level). The current conversation is
- * highlighted ("you are here"), a member from another Project carries its
- * folder label, and each row links to that conversation's own expanded panel.
- * The family total closes the section, marked as a lower bound when a member
- * has unpriced usage.
- */
 function FamilyTree({ family }: { family: FamilyView }) {
   return (
     <div className="space-y-2">
@@ -353,11 +272,6 @@ function FamilyTree({ family }: { family: FamilyView }) {
   );
 }
 
-/**
- * The conversation's failed turns, oldest first: when it failed, which agent it
- * failed in, and what the API said. Each row links into that agent's Transcript,
- * anchored at the failing turn — the same `?msg=` deep link a search hit uses.
- */
 function ErrorList({ errors }: { errors: ErrorViewRow[] }) {
   return (
     <ol className="space-y-0.5">
@@ -385,7 +299,6 @@ function ErrorList({ errors }: { errors: ErrorViewRow[] }) {
   );
 }
 
-/** The cost breakdowns from the server-fetched detail: Model / Skill / Sub-agent. */
 function Breakdowns({ detail, sessionId }: { detail: ConversationDetail; sessionId: string }) {
   const sections = detailSections(detail);
   return (
@@ -431,8 +344,6 @@ function Breakdowns({ detail, sessionId }: { detail: ConversationDetail; session
   );
 }
 
-/** A section: a quiet uppercase label (the panel's only uppercase element) over
- *  its content — the same label treatment as the overview stat cards. */
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>

@@ -1,17 +1,3 @@
-// The FTS5 search index (issue #45) — the corpus it covers and its consistency
-// through `refresh()`.
-//
-// The index is maintained by SQLite triggers created in a raw-SQL migration
-// (Prisma cannot model virtual tables), so these tests drive the genuine
-// `refresh()` and then inspect the index itself with better-sqlite3 — the same
-// raw-inspection style as `migrations.test.ts`.
-//
-// HOW THE INDEX IS INSPECTED: `message_fts` is an EXTERNAL-CONTENT table, so a
-// plain `SELECT rowid FROM message_fts` scans the *content* table (`message`)
-// and would happily report rows the index never covered. `fts5vocab` reads the
-// index and nothing else, so `indexedMessageIds()` is exact evidence of what is
-// really indexed — which is what "the index stays consistent" has to mean.
-
 import { cpSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -24,22 +10,16 @@ import { applyPendingMigrations, seededTempDb } from "./helpers/temp-db";
 
 const FIXTURES_ROOT = path.join(import.meta.dirname, "fixtures", "logs");
 
-/** Open the database for raw inspection (the index is not a Prisma model). */
 function open(dbPath: string): Database.Database {
   return new Database(dbPath);
 }
 
-/**
- * The `message` row ids the FTS index actually holds, read from the index via
- * `fts5vocab` (never through the external content table).
- */
 function indexedMessageIds(db: Database.Database): Set<number> {
   db.exec("CREATE VIRTUAL TABLE IF NOT EXISTS temp.msg_vocab USING fts5vocab(main, message_fts, instance)");
   const rows = db.prepare("SELECT DISTINCT doc AS id FROM temp.msg_vocab").all() as { id: number }[];
   return new Set(rows.map((r) => r.id));
 }
 
-/** The `conversation` row ids the title index holds (same vocab technique). */
 function indexedTitleIds(db: Database.Database): Set<number> {
   db.exec(
     "CREATE VIRTUAL TABLE IF NOT EXISTS temp.title_vocab USING fts5vocab(main, conversation_title_fts, instance)",
@@ -48,11 +28,6 @@ function indexedTitleIds(db: Database.Database): Set<number> {
   return new Set(rows.map((r) => r.id));
 }
 
-/**
- * The corpus as the SPEC defines it, computed straight from the `message`
- * table: human prompts and assistant text — never meta records, tool-result
- * carriers, or text-less rows. The index must equal this set, always.
- */
 function expectedCorpusIds(db: Database.Database): Set<number> {
   const rows = db
     .prepare(
@@ -63,7 +38,6 @@ function expectedCorpusIds(db: Database.Database): Set<number> {
   return new Set(rows.map((r) => r.id));
 }
 
-/** Assert the index covers exactly the corpus — no orphans, no gaps. */
 function expectIndexMatchesCorpus(dbPath: string): void {
   const db = open(dbPath);
   try {
@@ -75,7 +49,6 @@ function expectIndexMatchesCorpus(dbPath: string): void {
   }
 }
 
-/** The message uuids matching an FTS query (the searchable corpus, observed). */
 function matchingUuids(dbPath: string, query: string): string[] {
   const db = open(dbPath);
   try {
@@ -93,7 +66,6 @@ function matchingUuids(dbPath: string, query: string): string[] {
   }
 }
 
-/** The session ids whose TITLE matches an FTS query. */
 function matchingTitleSessions(dbPath: string, query: string): string[] {
   const db = open(dbPath);
   try {
@@ -127,18 +99,15 @@ describe("FTS search index — corpus", () => {
   });
 
   it("never indexes meta records", () => {
-    // `tu3` is an isMeta skill-instruction record.
     expect(matchingUuids(db.dbPath, "skill")).not.toContain("tu3");
     expect(matchingUuids(db.dbPath, "directory")).toHaveLength(0);
   });
 
   it("never indexes tool-result carrier messages", () => {
-    // `tu2` carries the Bash result "done".
     expect(matchingUuids(db.dbPath, "done")).not.toContain("tu2");
   });
 
   it("never indexes tool inputs or tool results", () => {
-    // The Bash call's command/description live in tool_call, not the corpus.
     expect(matchingUuids(db.dbPath, "finish")).toHaveLength(0);
   });
 
@@ -153,7 +122,6 @@ describe("FTS search index — consistency through refresh()", () => {
   let dbPath: string;
   let sessionPath: string;
 
-  /** A private copy of the fixtures the test may rewrite/delete. */
   beforeEach(async () => {
     tmpDir = mkdtempSync(path.join(tmpdir(), "cca-fts-refresh-"));
     logsRoot = path.join(tmpDir, "logs");
@@ -167,7 +135,6 @@ describe("FTS search index — consistency through refresh()", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  /** Rewrite a session file's prompt text and make it look changed on disk. */
   function rewritePrompt(newText: string): void {
     const lines = [
       '{"type":"ai-title","aiTitle":"Retitled run"}',
@@ -186,12 +153,8 @@ describe("FTS search index — consistency through refresh()", () => {
     const summary = await refresh({ logsRoot, dbPath });
     expect(summary.conversationsParsed).toBeGreaterThanOrEqual(1);
 
-    // The old wording is gone from the index; the new wording is in it.
-    // (Other fixtures use the word too — what matters is that THIS message no
-    // longer matches its previous text.)
     expect(matchingUuids(dbPath, "kick")).not.toContain("tu1");
     expect(matchingUuids(dbPath, "flaky")).toContain("tu1");
-    // The old title went with it.
     expect(matchingTitleSessions(dbPath, "kinds")).toHaveLength(0);
     expect(matchingTitleSessions(dbPath, "retitled")).toContain("sess-transcript");
     expectIndexMatchesCorpus(dbPath);
@@ -208,8 +171,6 @@ describe("FTS search index — consistency through refresh()", () => {
   });
 
   it("stays consistent (no duplicates) through a parser-version re-parse", async () => {
-    // A parser upgrade: every stored row is stale, so the next refresh
-    // re-parses conversations whose files never changed.
     const db = open(dbPath);
     db.prepare("UPDATE conversation SET parser_version = 0").run();
     db.close();
@@ -218,7 +179,6 @@ describe("FTS search index — consistency through refresh()", () => {
     expect(summary.conversationsParsed).toBeGreaterThanOrEqual(1);
     expect(summary.conversationsSkipped).toBe(0);
 
-    // One hit per matching message — a stale index would double them.
     expect(matchingUuids(dbPath, "transcript")).toEqual(["tu1"]);
     expectIndexMatchesCorpus(dbPath);
   });
@@ -240,21 +200,16 @@ describe("FTS search index — backfill on upgrade", () => {
   it("indexes conversations that were already in the database, with no re-parse", async () => {
     const dbPath = db.dbPath;
 
-    // Simulate the pre-search database: drop the index + its ledger entry, as
-    // if the migration had never run, then re-open (which re-applies it).
     const raw = open(dbPath);
     dropSearchIndex(raw);
     raw.close();
 
-    // Re-opening applies the migration — which must BACKFILL the existing rows.
     await applyPendingMigrations(dbPath);
 
     expect(matchingUuids(dbPath, "transcript")).toContain("tu1");
     expect(matchingTitleSessions(dbPath, "kinds")).toContain("sess-transcript");
     expectIndexMatchesCorpus(dbPath);
 
-    // And a following refresh has nothing to re-parse: the backfill made the
-    // existing database searchable without paying for a re-parse.
     const summary = await refresh({ logsRoot: FIXTURES_ROOT, dbPath });
     expect(summary.conversationsParsed).toBe(0);
     expect(summary.conversationsSkipped).toBeGreaterThanOrEqual(1);

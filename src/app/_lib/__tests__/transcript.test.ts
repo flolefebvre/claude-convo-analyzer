@@ -13,7 +13,6 @@ import {
   truncationNote,
 } from "@/app/_lib/transcript";
 
-/** Build a minimal tool call; only `name`/`inputJson` matter for most helpers. */
 function call(partial: Partial<TranscriptToolCall> = {}): TranscriptToolCall {
   return {
     toolUseId: "tu_1",
@@ -157,7 +156,6 @@ describe("parseSlashCommand", () => {
   });
 
   it("is robust to a partial/unclosed command-name tag", () => {
-    // Missing closing tag must not throw; falls back to non-slash passthrough.
     const raw = "<command-name>/oops and then some free text";
     expect(() => parseSlashCommand(raw)).not.toThrow();
     const r = parseSlashCommand(raw);
@@ -240,7 +238,6 @@ describe("findSpawnedNode", () => {
   });
 
   it("prefers the tool_use id when a message spawned several agents", () => {
-    // Two agents share message 40; only the tool_use id disambiguates.
     const t = node("root", {}, [
       node("x1", { toolUseId: "tu_x", messageId: 40 }),
       node("x2", { toolUseId: "tu_y", messageId: 40 }),
@@ -257,15 +254,7 @@ describe("findSpawnedNode", () => {
   });
 });
 
-/**
- * `effortSummary` classifies a transcript's per-turn reasoning effort for the
- * pane: the uniform level (or `mixed`) for the header stat, plus the turns that
- * changed effort, which are the only ones badged. Turns carrying NO effort —
- * user prompts, and assistant turns from logs predating the field — are ignored
- * entirely: they neither make a transcript `mixed` nor mark a change.
- */
 describe("effortSummary", () => {
-  /** A transcript row reduced to what the classifier reads. */
   const turns = (...efforts: (string | null)[]) => efforts.map((effort, i) => ({ id: i + 1, effort }));
 
   it("reports the single level when every effort-carrying turn agrees", () => {
@@ -275,8 +264,6 @@ describe("effortSummary", () => {
   });
 
   it("still reports that level when other turns carry no effort", () => {
-    // Roughly half of real assistant lines have no effort; they must not make
-    // an otherwise-uniform transcript look mixed.
     const summary = effortSummary(turns(null, "high", null, "high", null));
     expect(summary.uniform).toBe("high");
     expect(summary.mixed).toBe(false);
@@ -302,8 +289,6 @@ describe("effortSummary", () => {
   });
 
   it("passes an unknown future level through unchanged", () => {
-    // The whole point of storing the raw string: a level this code has never
-    // heard of must reach the UI verbatim, with no enum to reject it.
     expect(effortSummary(turns("max", "max")).uniform).toBe("max");
     const flipped = effortSummary(turns("low", "ludicrous"));
     expect(flipped.mixed).toBe(true);
@@ -321,9 +306,7 @@ describe("effortSummary", () => {
   });
 
   it("ignores effort-free turns when comparing against the previous level", () => {
-    // The null between two `high` turns must not read as a change.
     expect(effortSummary(turns("high", null, "high")).changedIds.size).toBe(0);
-    // …nor mask a real one.
     expect([...effortSummary(turns("high", null, "xhigh")).changedIds]).toEqual([3]);
   });
 

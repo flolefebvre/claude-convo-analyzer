@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseSessionLines } from "@/core/parse";
 
-/**
- * `kind` classifies USER records for the transcript view: only genuine human
- * prompts render as user messages; tool-result carriers and machine-injected
- * meta records (skill instructions, command output, system reminders) are
- * excluded. Assistant rows have no meaningful kind (null).
- */
 describe("message kind derivation", () => {
   const promptRecord = JSON.stringify({
     type: "user",

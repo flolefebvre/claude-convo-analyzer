@@ -35,7 +35,6 @@ describe("resolveSort", () => {
   });
 
   it("ignores an unknown field and falls back to the default", () => {
-    // `tokens` / `costUsd` are core field names, not app column keys — rejected.
     expect(resolveSort("tokens", "asc")).toEqual(DEFAULT_SORT);
     expect(resolveSort("costUsd", "asc")).toEqual(DEFAULT_SORT);
     expect(resolveSort("bogus", "asc")).toEqual(DEFAULT_SORT);
@@ -48,12 +47,10 @@ describe("resolveSort", () => {
   });
 
   it("falls back to the field's default dir when dir is missing or invalid", () => {
-    // cost defaults to desc.
     expect(resolveSort("cost", undefined)).toEqual({
       sortBy: "cost",
       dir: "desc",
     });
-    // title defaults to asc.
     expect(resolveSort("title", "sideways")).toEqual({
       sortBy: "title",
       dir: "asc",
@@ -109,12 +106,10 @@ describe("toggleSort", () => {
   });
 
   it("starts an inactive field at its own default dir", () => {
-    // Active sort is title; clicking cost (default desc) starts at desc.
     expect(toggleSort("cost", { sortBy: "title", dir: "asc" })).toEqual({
       sortBy: "cost",
       dir: "desc",
     });
-    // Active sort is cost; clicking title (default asc) starts at asc.
     expect(toggleSort("title", { sortBy: "cost", dir: "desc" })).toEqual({
       sortBy: "title",
       dir: "asc",
@@ -203,7 +198,6 @@ describe("folderHref", () => {
     expect(folderHref("-Users-me-dev-demo", { sort: DEFAULT_SORT, range: "90" })).toBe(
       "?sortBy=date&dir=desc&folder=-Users-me-dev-demo&range=90",
     );
-    // No range in the URL (the conversation list) -> no range param.
     expect(folderHref("-Users-me-dev-demo", { sort: DEFAULT_SORT })).toBe(
       "?sortBy=date&dir=desc&folder=-Users-me-dev-demo",
     );
@@ -289,7 +283,6 @@ describe("modelLabel", () => {
   });
 
   it("reports the count of OTHER models as `extra` when there are several", () => {
-    // distinctCount 3 means the dominant + 2 others, so extra = 2 (+2 badge).
     expect(modelLabel({ dominant: "opus", distinctCount: 3 })).toEqual({
       dominant: "opus",
       extra: 2,
@@ -303,11 +296,6 @@ describe("modelLabel", () => {
     });
   });
 });
-
-// ---------------------------------------------------------------------------
-// sortConversations — the app-zone comparator. Build minimal summaries via a
-// factory so each test states only the field(s) under test.
-// ---------------------------------------------------------------------------
 
 function summary(over: {
   id: string;
@@ -366,7 +354,6 @@ describe("sortConversations", () => {
       summary({ id: "b", tokens: { total: 100 } }),
       summary({ id: "c", tokens: { total: 11 } }),
     ];
-    // Lexical order would put 100 < 11 < 9; numeric must put 9 < 11 < 100.
     expect(ids(sortConversations(rows, { sortBy: "total", dir: "asc" }))).toEqual(["a", "c", "b"]);
     expect(ids(sortConversations(rows, { sortBy: "total", dir: "desc" }))).toEqual(["b", "c", "a"]);
   });
@@ -377,9 +364,7 @@ describe("sortConversations", () => {
       summary({ id: "b", startedAt: "2026-01-01T00:00:00.000Z" }),
       summary({ id: "c", startedAt: "2026-02-01T00:00:00.000Z" }),
     ];
-    // asc = oldest first.
     expect(ids(sortConversations(rows, { sortBy: "date", dir: "asc" }))).toEqual(["b", "c", "a"]);
-    // desc = newest first.
     expect(ids(sortConversations(rows, { sortBy: "date", dir: "desc" }))).toEqual(["a", "c", "b"]);
   });
 
@@ -390,9 +375,7 @@ describe("sortConversations", () => {
       summary({ id: "c", startedAt: "2026-01-01T00:00:00.000Z" }),
       summary({ id: "d", startedAt: "2026-02-01T00:00:00.000Z" }),
     ];
-    // asc: dated rows oldest→newest, then the two undateable rows (id-tiebroken).
     expect(ids(sortConversations(rows, { sortBy: "date", dir: "asc" }))).toEqual(["c", "d", "a", "b"]);
-    // desc: dated rows newest→oldest, undateable rows still LAST (not flipped first).
     expect(ids(sortConversations(rows, { sortBy: "date", dir: "desc" }))).toEqual(["d", "c", "a", "b"]);
   });
 
@@ -402,8 +385,6 @@ describe("sortConversations", () => {
       summary({ id: "b", folder: "apple" }),
       summary({ id: "c", folder: "Mango" }),
     ];
-    // Case-sensitive ASCII would sort uppercase before lowercase (Z < a);
-    // case-insensitive must give apple < Mango < Zebra.
     expect(ids(sortConversations(rows, { sortBy: "folder", dir: "asc" }))).toEqual(["b", "c", "a"]);
   });
 
@@ -431,15 +412,12 @@ describe("sortConversations", () => {
       summary({ id: "b", title: "Beta" }),
       summary({ id: "c", title: "Alpha" }),
     ];
-    // asc: Alpha, Beta, then null.
     expect(ids(sortConversations(rows, { sortBy: "title", dir: "asc" }))).toEqual(["c", "b", "a"]);
-    // desc: Beta, Alpha, then null (null stays last, not flipped to first).
     expect(ids(sortConversations(rows, { sortBy: "title", dir: "desc" }))).toEqual(["b", "c", "a"]);
   });
 
   it("breaks ties by id so equal values keep a deterministic order", () => {
     const rows = [summary({ id: "c", costUsd: 5 }), summary({ id: "a", costUsd: 5 }), summary({ id: "b", costUsd: 5 })];
-    // All equal on cost -> tiebreak by id ascending, regardless of dir.
     expect(ids(sortConversations(rows, { sortBy: "cost", dir: "asc" }))).toEqual(["a", "b", "c"]);
     expect(ids(sortConversations(rows, { sortBy: "cost", dir: "desc" }))).toEqual(["a", "b", "c"]);
   });
@@ -480,7 +458,6 @@ describe("errorsHref", () => {
   });
 
   it("drops the expanded row: it may not survive the filter change", () => {
-    // No `expanded` axis is ever written by this link — compare with expandHref.
     expect(errorsHref({ sort: DEFAULT_SORT, range: "7" })).toBe("?sortBy=date&dir=desc&range=7&errors=1");
   });
 });

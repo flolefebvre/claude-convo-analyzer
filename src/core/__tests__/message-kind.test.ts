@@ -28,17 +28,12 @@ describe("message.kind persisted through refresh", () => {
       });
       const byUuid = new Map(rows.map((r) => [r.uuid, r.kind]));
 
-      // Genuine human prompt → prompt.
       expect(byUuid.get("tu1")).toBe("prompt");
-      // tool_result carrier → tool-result.
       expect(byUuid.get("tu2")).toBe("tool-result");
-      // isMeta machine-injected record → meta.
       expect(byUuid.get("tu3")).toBe("meta");
-      // Assistant turns carry no kind.
       expect(byUuid.get("ta1")).toBeNull();
       expect(byUuid.get("ta2")).toBeNull();
 
-      // The API-error assistant turn is preserved for the transcript's error state.
       const apiErr = rows.find((r) => r.uuid === "ta2");
       expect(apiErr).toBeDefined();
     } finally {
@@ -47,26 +42,18 @@ describe("message.kind persisted through refresh", () => {
   });
 
   it("forces a full re-parse of existing conversations on upgrade (backfills kind)", async () => {
-    // A pre-`kind` database: conversations already ingested at their real
-    // source_mtime, messages without a kind column.
     const dbPath = db.dbPath;
     const KIND_MIGRATION = "20260621040000_message_kind";
     let raw = new Database(dbPath);
-    // Undo the message_kind migration so re-opening re-applies it (mirrors the
-    // idempotency test's drop-and-re-run pattern for a directly observable effect).
     raw.prepare("DELETE FROM _cca_migrations WHERE migration_name = ?").run(KIND_MIGRATION);
-    // The search index's triggers read `message.kind`, so the index has to come
-    // down with the column; re-opening re-applies both migrations in order.
     dropSearchIndex(raw);
     raw.exec('ALTER TABLE "message" DROP COLUMN "kind"');
     const before = raw
       .prepare("SELECT source_mtime AS m FROM conversation WHERE session_id = 'sess-transcript'")
       .get() as { m: bigint | number };
-    expect(Number(before.m)).toBeGreaterThan(0); // a real stored mtime, not the sentinel
+    expect(Number(before.m)).toBeGreaterThan(0);
     raw.close();
 
-    // Re-open: applyMigrations re-runs message_kind → re-adds the column AND
-    // stamps every conversation's source_mtime to the -1 sentinel.
     await applyPendingMigrations(dbPath);
 
     raw = new Database(dbPath);
@@ -74,8 +61,6 @@ describe("message.kind persisted through refresh", () => {
     expect(stamped.every((r) => Number(r.m) === -1)).toBe(true);
     raw.close();
 
-    // The sentinel can never equal the file's real key, so refresh RE-PARSES
-    // (does not skip) and backfills kind.
     const summary = await refresh({ logsRoot: FIXTURES_ROOT, dbPath });
     expect(summary.conversationsParsed).toBeGreaterThanOrEqual(1);
 

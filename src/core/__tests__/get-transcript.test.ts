@@ -27,37 +27,31 @@ describe("getTranscript core reader", () => {
   it("builds a single main node with own-transcript cost for a solo session", async () => {
     const view = await getTranscript("sess-transcript", { dbPath: db.dbPath });
     const main = view?.tree;
-    // Node key convention = externalAgentId ?? String(id); main has no external id.
     expect(main?.id).toMatch(/^\d+$/);
-    expect(main?.agentType).toBeNull(); // main thread → app maps to "main"
+    expect(main?.agentType).toBeNull();
     expect(main?.children).toHaveLength(0);
-    // Own tokens: ta1 (10/12) + ta2 (3/0) = input 13, output 12.
     expect(main?.tokens.input).toBe(13);
     expect(main?.tokens.output).toBe(12);
     expect(main?.costUsd).toBeGreaterThan(0);
-    // Grand total = the single agent's own cost.
     expect(view?.totalCostUsd).toBeCloseTo(main?.costUsd ?? -1, 10);
     expect(view?.totalTokens.total).toBe(25);
   });
 
   it("carries each message's record uuid — the deep-link anchor", async () => {
     const view = await getTranscript("sess-transcript", { dbPath: db.dbPath });
-    // The uuid survives a re-parse (unlike the row id), so it is what a saved
-    // search link anchors on.
     expect(view?.messages.map((m) => m.uuid)).toEqual(["tu1", "ta1", "ta2"]);
   });
 
   it("flags the API-error dot and counts hidden meta on the node", async () => {
     const view = await getTranscript("sess-transcript", { dbPath: db.dbPath });
-    expect(view?.tree.hasError).toBe(true); // ta2 is an API-error turn
-    expect(view?.tree.metaCount).toBe(1); // tu3 is meta
+    expect(view?.tree.hasError).toBe(true);
+    expect(view?.tree.metaCount).toBe(1);
     expect(view?.metaHiddenCount).toBe(1);
   });
 
   it("renders only prompts + assistant turns, in order, excluding tool-result & meta", async () => {
     const view = await getTranscript("sess-transcript", { dbPath: db.dbPath });
     const msgs = view?.messages ?? [];
-    // tu1 (prompt), ta1 (assistant), ta2 (assistant) — tu2 tool-result & tu3 meta gone.
     expect(msgs.map((m) => `${m.role}:${m.kind ?? "-"}`)).toEqual(["user:prompt", "assistant:-", "assistant:-"]);
     const prompt = msgs[0];
     expect(prompt?.text).toBe("kick off the transcript run");
@@ -102,12 +96,12 @@ describe("getTranscript core reader", () => {
     const view = await getTranscript("sess-sub", { dbPath: db.dbPath });
     const main = view?.tree;
     expect(main?.agentType).toBeNull();
-    expect(main?.tokens.input).toBe(10); // opus own: ma1(5/10)+ma2(5/5)
+    expect(main?.tokens.input).toBe(10);
     expect(main?.tokens.output).toBe(15);
     expect(main?.children).toHaveLength(1);
 
     const sub = main?.children[0];
-    expect(sub?.id).toBe("sub1"); // externalAgentId is the node key
+    expect(sub?.id).toBe("sub1");
     expect(sub?.agentType).toBe("Explore");
     expect(sub?.resolvedModel).toBe("claude-haiku-4-5-20251001");
     expect(sub?.tokens.output).toBe(130);
@@ -116,17 +110,14 @@ describe("getTranscript core reader", () => {
     expect(sub?.spawnedByMessageId).not.toBeNull();
     expect(sub?.spawnedByToolUseId).toBe("toolu-agent-1");
 
-    // Own cost matches the detail panel's sub-agent breakdown exactly.
     const detail = await getConversation("sess-sub", { dbPath: db.dbPath });
     expect(sub?.costUsd).toBeCloseTo(detail?.subAgents[0]?.costUsd ?? -1, 10);
-    // Grand total = sum of every agent's own cost; total tokens = 225 (no double-count).
     expect(view?.totalCostUsd).toBeCloseTo((main?.costUsd ?? 0) + (sub?.costUsd ?? 0), 10);
     expect(view?.totalTokens.total).toBe(225);
   });
 
   it("correlates the Agent tool call to the spawned sub-agent node", async () => {
     const view = await getTranscript("sess-sub", { dbPath: db.dbPath });
-    // Default selection = main, whose transcript holds the Agent tool call.
     const agentCall = view?.messages.flatMap((m) => m.toolCalls).find((tc) => tc.name === "Agent");
     expect(agentCall?.toolUseId).toBe("toolu-agent-1");
     expect(view?.tree.children[0]?.spawnedByToolUseId).toBe(agentCall?.toolUseId);
@@ -134,8 +125,7 @@ describe("getTranscript core reader", () => {
 
   it("defaults to the main agent's transcript", async () => {
     const view = await getTranscript("sess-sub", { dbPath: db.dbPath });
-    expect(view?.selectedAgentId).toBe(view?.tree.id); // resolved to main's key
-    // Main transcript: mu1 prompt, ma1 assistant (Agent call), ma2 assistant.
+    expect(view?.selectedAgentId).toBe(view?.tree.id);
     expect(view?.messages.map((m) => m.role)).toEqual(["user", "assistant", "assistant"]);
   });
 
@@ -145,7 +135,6 @@ describe("getTranscript core reader", () => {
       agentId: "sub1",
     });
     expect(view?.selectedAgentId).toBe("sub1");
-    // sub1 transcript: su0 prompt, sa1 assistant (Bash), sa2 assistant.
     const msgs = view?.messages ?? [];
     expect(msgs.map((m) => m.role)).toEqual(["user", "assistant", "assistant"]);
     expect(msgs[0]?.text).toBe("look around");
@@ -157,9 +146,7 @@ describe("getTranscript core reader", () => {
   it("orders sibling sub-agents by spawn time (first-message ts), not id", async () => {
     const view = await getTranscript("sess-multi", { dbPath: db.dbPath });
     const kids = view?.tree.children ?? [];
-    expect(kids.map((k) => k.id)).toEqual(["beta", "alpha"]); // beta spawned earlier
-    // Each sub-agent correlates to the exact Agent tool call that launched it,
-    // even though they were spawned from different parent turns.
+    expect(kids.map((k) => k.id)).toEqual(["beta", "alpha"]);
     expect(kids[0]?.spawnedByToolUseId).toBe("toolu-beta");
     expect(kids[1]?.spawnedByToolUseId).toBe("toolu-alpha");
   });
@@ -167,7 +154,6 @@ describe("getTranscript core reader", () => {
   it("nests a grandchild under the sub-agent that spawned it, to any depth", async () => {
     const view = await getTranscript("sess-nested", { dbPath: db.dbPath });
     const main = view?.tree;
-    // Main's own children: suba (spawned by main) + orphan (no ledger anywhere).
     expect(main?.children.map((c) => c.id).sort()).toEqual(["orphan", "suba"]);
 
     const suba = main?.children.find((c) => c.id === "suba");
@@ -188,7 +174,6 @@ describe("getTranscript core reader", () => {
       dbPath: db.dbPath,
       agentId: "subb",
     });
-    // The Agent call that launched subc lives in subb's transcript, not main's.
     const agentCall = view?.messages.flatMap((m) => m.toolCalls).find((tc) => tc.name === "Agent");
     expect(agentCall?.toolUseId).toBe("toolu-agent-c");
 
@@ -210,7 +195,6 @@ describe("getTranscript core reader", () => {
   it("carries each assistant turn's effort, null where the log recorded none", async () => {
     const view = await getTranscript("sess-effort", { dbPath: db.dbPath });
     const msgs = view?.messages ?? [];
-    // eu1 prompt, then the four assistant turns: high, high, (none), xhigh.
     expect(msgs.map((m) => m.effort)).toEqual([null, "high", "high", null, "xhigh"]);
   });
 

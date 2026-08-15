@@ -1,12 +1,3 @@
-// The expandable Tools-table row (issue #42). A SERVER component, mirroring
-// `ConversationRow`: whether a row is expanded is URL view state
-// (`?expanded=<tool>`), so the page resolves it from `searchParams`, fetches the
-// drill-down server-side, and hands both down as plain props. The toggle is the
-// shared `ExpandToggle`, the same chevron link the conversation list uses.
-//
-// ADR-0002 boundary: no client file touches core; core types are type-only
-// imports here.
-
 import Link from "next/link";
 
 import { ExpandToggle } from "@/app/_components/expand-toggle";
@@ -16,7 +7,6 @@ import { toolCallHref } from "@/app/_lib/transcript-url";
 import { TableCell, TableRow } from "@/components/ui/table";
 import type { ToolCallSample, ToolCallSamples, ToolStat } from "@/core/tool-stats";
 
-/** How many columns the table has — the colspan of an expanded panel. */
 const TOOL_COLUMN_COUNT = 8;
 
 export function ToolRow({
@@ -26,9 +16,7 @@ export function ToolRow({
   toggleHref,
 }: {
   tool: ToolStat;
-  /** True when this row is the URL's `?expanded=` target. */
   expanded?: boolean;
-  /** The server-fetched drill-down (`null` while collapsed). */
   samples?: ToolCallSamples | null;
   toggleHref: string;
 }) {
@@ -39,8 +27,6 @@ export function ToolRow({
       <TableRow>
         <TableCell className="font-medium">
           <ExpandToggle href={toggleHref} expanded={expanded} label="tool details">
-            {/* An MCP tool reads "server · tool", so a misbehaving server is
-                spottable by eye without grouping the table. */}
             {label.server !== null && (
               <span className="text-muted-foreground">
                 {label.server}
@@ -53,8 +39,6 @@ export function ToolRow({
 
         <TableCell className="text-right tabular-nums">{tool.calls}</TableCell>
 
-        {/* Errors: the count with its rate underneath — the rate is what ranks a
-            tool, the count is what makes it credible. */}
         <TableCell className="text-right tabular-nums">
           {tool.errors === 0 ? (
             <span className="text-muted-foreground">0</span>
@@ -86,17 +70,11 @@ export function ToolRow({
   );
 }
 
-/** An error rate as a percentage, e.g. `12%` (one decimal below 10%). */
 function formatRate(rate: number): string {
   const pct = rate * 100;
   return `${pct >= 10 ? Math.round(pct) : Math.round(pct * 10) / 10}%`;
 }
 
-/**
- * The drill-down panel: the tool's most recent errors and biggest results — the
- * two ways a tool hurts — plus, for `Skill`/`Agent`, what the calls were spent
- * on. Every sample deep-links into the Transcript, anchored on the call itself.
- */
 function DrillDown({ tool, samples }: { tool: ToolStat; samples: ToolCallSamples | null }) {
   if (samples === null) {
     return <p className="px-6 py-5 text-sm text-muted-foreground">No detail available for this tool.</p>;
@@ -139,7 +117,6 @@ function DrillDown({ tool, samples }: { tool: ToolStat; samples: ToolCallSamples
   );
 }
 
-/** One drill-down list (errors or largest results), or its empty note. */
 function Section({ title, empty, samples }: { title: string; empty: string; samples: ToolCallSample[] }) {
   return (
     <div>
@@ -157,7 +134,6 @@ function Section({ title, empty, samples }: { title: string; empty: string; samp
   );
 }
 
-/** One sampled call: its input snippet, size/time meta, and the deep link. */
 function SampleItem({ sample }: { sample: ToolCallSample }) {
   const time = formatClock(sample.timestamp);
   return (

@@ -1,17 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseSessionLines } from "@/core/parse";
 
-/**
- * Claude Code writes ONE assistant turn (one `message.id`) across several JSONL
- * lines — one per content block (a `thinking` line, a `text` line, then a
- * `tool_use` line), each repeating the identical `usage`. The parser must MERGE
- * those records into a single assistant message: concatenated text, every
- * `tool_use` block collected, and usage counted exactly once. Keeping only the
- * first record (the old behaviour) dropped the body and tool calls of a
- * thinking-first turn, surfacing as empty "assistant" rows in the transcript.
- */
 describe("assistant content-block record merge", () => {
-  /** One assistant JSONL line carrying a single content block. */
   const line = (content: unknown, extra: Record<string, unknown> = {}) =>
     JSON.stringify({
       type: "assistant",
@@ -28,8 +18,6 @@ describe("assistant content-block record merge", () => {
       },
     });
 
-  // A tiny deterministic hash so distinct lines get distinct uuids without
-  // Math.random (banned) — uuid isn't asserted, only uniqueness matters.
   function hash(s: string): number {
     let h = 0;
     for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
@@ -46,9 +34,7 @@ describe("assistant content-block record merge", () => {
     expect(messages).toHaveLength(1);
     const m = messages[0];
     expect(m?.role).toBe("assistant");
-    // The body is the text block — not null, not the dropped thinking.
     expect(m?.text).toBe("Now let me create the plan tasks.");
-    // The tool_use block survives the merge.
     expect(m?.toolUses).toHaveLength(1);
     expect(m?.toolUses[0]?.name).toBe("Bash");
   });
@@ -80,7 +66,6 @@ describe("assistant content-block record merge", () => {
     ]);
     expect(messages).toHaveLength(1);
     expect(messages[0]?.text).toBe("first\nsecond");
-    // Usage is identical on all three lines → taken once, never summed.
     expect(messages[0]?.inputTokens).toBe(4098);
     expect(messages[0]?.outputTokens).toBe(277);
   });

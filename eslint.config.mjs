@@ -1,20 +1,24 @@
-import { defineConfig, globalIgnores } from "eslint/config";
+import { includeIgnoreFile } from "@eslint/compat";
+import noComments from "eslint-plugin-no-comments";
+import { defineConfig } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
+import { fileURLToPath } from "node:url";
+
+const gitignorePath = fileURLToPath(new URL(".gitignore", import.meta.url));
 
 const eslintConfig = defineConfig([
+  includeIgnoreFile(gitignorePath, "Ignore what git ignores"),
   ...nextVitals,
   ...nextTs,
-  // Override default ignores of eslint-config-next.
-  globalIgnores([
-    // Default ignores of eslint-config-next:
-    ".next/**",
-    "out/**",
-    "build/**",
-    "next-env.d.ts",
-  ]),
   {
-    // src/core is framework-free (ADR-0002): server-side domain logic only.
+    ignores: ["src/components/ui/**"],
+    plugins: { "no-comments": noComments },
+    rules: {
+      "no-comments/disallowComments": ["error", { allow: ["eslint", "global", "@ts-", "prettier-ignore"] }],
+    },
+  },
+  {
     files: ["src/core/**"],
     rules: {
       "no-restricted-imports": [

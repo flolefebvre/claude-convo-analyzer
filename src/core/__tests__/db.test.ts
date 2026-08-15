@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createPrismaClient } from "@/core/db";
 import type { PrismaClient } from "@/core/prisma/generated/client";
 
-/** The seven domain tables defined by ADR-0001. */
 const EXPECTED_TABLES = [
   "project",
   "conversation",

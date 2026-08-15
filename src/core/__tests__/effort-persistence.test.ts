@@ -8,12 +8,6 @@ import { seededTempDb } from "./helpers/temp-db";
 
 const FIXTURES_ROOT = path.join(import.meta.dirname, "fixtures", "logs");
 
-/**
- * The reasoning effort of an assistant turn is stored verbatim on its `message`
- * row (nullable — older Claude Code versions recorded none). The `sess-effort`
- * fixture flips from `high` to `xhigh` mid-conversation with one effort-free
- * turn in between, and spawns a sub-agent whose own turns are all `medium`.
- */
 describe("effort persistence", () => {
   const db = seededTempDb({ prefix: "cca-effort-", logsRoot: FIXTURES_ROOT });
 
@@ -51,9 +45,6 @@ describe("effort persistence", () => {
   });
 
   it("backfills effort into conversations ingested by an older parser", async () => {
-    // Simulate a pre-upgrade database: rows written by a parser that ignored
-    // effort, stamped with the version that preceded this one. The source files
-    // are untouched, so ONLY the parser-version bump can trigger the re-parse.
     const prisma = createPrismaClient(db.dbPath);
     try {
       await prisma.message.updateMany({ data: { effort: null } });

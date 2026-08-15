@@ -1,20 +1,3 @@
-// Tools — per-tool call analytics (issue #42). A React Server Component: it
-// reads the active range + folder scope + sort + expanded row from
-// `searchParams`, fetches the per-tool rollup through the cached app-zone
-// reader, and renders a sortable table. "Which tools do I use, which ones fail,
-// and which ones flood my context?" — one row per tool name, sub-agent calls
-// included.
-//
-// Range, scope, sort and row expansion are all URL state via links — no
-// front-end filtering, exactly like the conversation list and Trends. The pure
-// URL-state logic lives in `@/app/_lib/tools`.
-//
-// ADR-0002 boundary: the core reads are reached through `loadToolStats` /
-// `loadToolCallSamples` (app-zone), never a direct core import.
-//
-// `cacheComponents` (PPR) is on, so the request-time `searchParams` read is
-// wrapped in <Suspense>: the page shell prerenders, the table streams in.
-
 import Link from "next/link";
 import { Suspense } from "react";
 
@@ -46,16 +29,8 @@ export default function Page({ searchParams }: { searchParams: Promise<ViewSearc
   );
 }
 
-/**
- * Reads the active range/scope/sort/expanded row from `searchParams` and the
- * rollup from the cached app-zone reader, then renders the surface. Kept
- * separate from {@link Page} so the request-time fetch sits inside the page's
- * <Suspense> boundary (PPR).
- */
 async function ToolsSurface({ searchParams }: { searchParams: Promise<ViewSearchParams> }) {
   const params = await searchParams;
-  // URL → resolved intent at the page edge; the seam takes intent, never raw
-  // searchParams. Every axis defaults safely (30 days, all Projects, calls ↓).
   const state: ToolsViewState = {
     sort: resolveToolSort(params.sortBy, params.dir),
     folder: firstParam(params.folder) || undefined,
@@ -67,8 +42,6 @@ async function ToolsSurface({ searchParams }: { searchParams: Promise<ViewSearch
   const stats = await loadToolStats(state.folder, days);
   const rows = sortTools(stats.tools, state.sort);
 
-  // Fetch the expanded tool's drill-down server-side — only when that row is
-  // actually visible in the current view (a stale `?expanded=` is ignored).
   const expandedRow = state.expanded ? rows.find((row) => row.name === state.expanded) : undefined;
   const expandedSamples = expandedRow ? await loadToolCallSamples(expandedRow.name, state.folder, days) : null;
 
@@ -144,10 +117,6 @@ async function ToolsSurface({ searchParams }: { searchParams: Promise<ViewSearch
   );
 }
 
-/**
- * The range headline: how much tool work ran, how much of it failed, and how
- * many characters it poured into the context. Echoes the Trends stat cards.
- */
 function StatsRow({ stats }: { stats: ToolStats }) {
   const errorRate = stats.totalCalls === 0 ? 0 : (stats.totalErrors / stats.totalCalls) * 100;
   return (
@@ -169,7 +138,6 @@ function StatsRow({ stats }: { stats: ToolStats }) {
   );
 }
 
-/** One stat card of the headline row. */
 function StatCard({
   label,
   value,
@@ -178,7 +146,6 @@ function StatCard({
 }: {
   label: string;
   value: string;
-  /** `error` paints the number in the destructive hue. */
   tone?: "error";
   children: React.ReactNode;
 }) {
@@ -193,7 +160,6 @@ function StatCard({
   );
 }
 
-/** A right-aligned header cell for a column that is not sortable. */
 function PlainHead({ children }: { children: React.ReactNode }) {
   return (
     <TableHead className="text-right">
@@ -202,7 +168,6 @@ function PlainHead({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** A header cell that links to the toggled sort + shows the active arrow. */
 function SortableHead({
   field,
   state,

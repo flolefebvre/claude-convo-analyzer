@@ -10,7 +10,6 @@ import { summary } from "./helpers/summaries";
 const ASC_COST: SortState = { sortBy: "cost", dir: "asc" };
 const DESC_COST: SortState = { sortBy: "cost", dir: "desc" };
 
-/** Three Projects with distinct costs: beta ($30) > gamma ($12) > alpha ($5). */
 const THREE_PROJECTS = [
   summary({ id: "a", folder: "fA", path: "/p/alpha", costUsd: 5 }),
   summary({ id: "b", folder: "fB", path: "/p/beta", costUsd: 30 }),
@@ -30,7 +29,6 @@ describe("buildListView — scope-independent slice (no sort)", () => {
     expect(view.topProjects.length).toBeGreaterThan(0);
     expect(view.totals).toEqual({ count: 2, costUsd: 35, unpriced: false });
 
-    // The table slice is skipped — no wasted sort/filter work.
     expect("rows" in view).toBe(false);
     expect("scoped" in view).toBe(false);
     expect("selectedFolder" in view).toBe(false);
@@ -49,7 +47,6 @@ describe("buildListView — scope-independent slice (no sort)", () => {
 
   it("derives folders ONCE and feeds both topProjects and folders (topProjects ⊆ folders)", () => {
     const view = buildListView(THREE_PROJECTS);
-    // Every topProjects entry is the SAME object derived for the folder list.
     for (const top of view.topProjects) {
       expect(view.folders).toContain(top);
     }
@@ -142,9 +139,7 @@ describe("buildListView — topProjects (migrated from topProjectsByCost)", () =
       summary({ id: "b", folder: "fNew", path: "/p/new", endedAt: at, costUsd: 1 }),
     ];
     const { folders, topProjects } = buildListView(ordered);
-    // Sidebar: newest-first regardless of cost.
     expect(folders.map((f) => f.folder)).toEqual(["fNew", "fOld"]);
-    // topProjects: highest cost first.
     expect(topProjects.map((f) => f.folder)).toEqual(["fOld", "fNew"]);
   });
 });
@@ -158,7 +153,6 @@ describe("buildListView — table slice (with sort)", () => {
       summary({ id: "d", folder: "fA", costUsd: 5 }),
     ];
     const view = buildListView(rows, { folder: "fA", sort: ASC_COST });
-    // Only fA rows, ordered by cost ascending: c(1), d(5), a(9).
     expect(view.rows.map((r) => r.id)).toEqual(["c", "d", "a"]);
     expect(view.scoped).toBe(true);
   });
@@ -198,7 +192,6 @@ describe("buildListView — table slice (with sort)", () => {
     ];
     const view = buildListView(rows, { folder: "fA", sort: DESC_COST });
     expect(view.grandTotal.hasUnpriced).toBe(true);
-    // Overview is scope-independent: it still flags unpriced from row a.
     expect(view.overview.hasUnpriced).toBe(true);
   });
 
@@ -210,7 +203,6 @@ describe("buildListView — table slice (with sort)", () => {
     const view = buildListView(rows, { folder: "fA", sort: DESC_COST });
     expect(view.selectedFolder?.folder).toBe("fA");
     expect(view.selectedFolder?.label).toBe("alpha");
-    // The selected entry is the SAME object as in the folder list.
     expect(view.folders).toContain(view.selectedFolder);
   });
 
@@ -222,11 +214,7 @@ describe("buildListView — table slice (with sort)", () => {
   });
 });
 
-// grandTotal bucket-summing behavior, migrated from format.test.ts, exercised
-// through the scoped table slice (unscoped here so all rows count).
 describe("buildListView — grandTotal bucket sums (migrated from grandTotal)", () => {
-  // A row whose `total` defaults to the sum of its buckets, the way the core
-  // writes it — so the bucket sums here are asserted against a coherent row.
   function withTokens(id: string, t: Partial<Tokens>, costUsd: number, unpriced = false) {
     const total = t.total ?? (t.input ?? 0) + (t.output ?? 0) + (t.cacheWrite ?? 0) + (t.cacheRead ?? 0);
     return summary({ id, costUsd, unpriced, tokens: { ...t, total } });

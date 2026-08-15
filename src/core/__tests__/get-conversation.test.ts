@@ -32,12 +32,10 @@ describe("getConversation detail read API", () => {
     expect(detail).not.toBeNull();
     if (!detail) return;
 
-    // Base summary fields are present and match the summarizer.
     expect(detail.id).toBe("sess-sub");
     expect(detail.subAgentCount).toBe(1);
-    expect(detail.tokens.total).toBe(225); // no double-count
+    expect(detail.tokens.total).toBe(225);
 
-    // perModel: opus (main) + haiku (sub).
     const opus = detail.perModel.find((p) => p.model === "claude-opus-4-8");
     const haiku = detail.perModel.find((p) => p.model === "claude-haiku-4-5-20251001");
     expect(opus?.tokens.input).toBe(10);
@@ -48,7 +46,6 @@ describe("getConversation detail read API", () => {
     expect(opus?.costUsd).toBeGreaterThan(0);
     expect(opus?.unpriced).toBe(false);
 
-    // subAgents: one entry for the spawned Explore agent.
     expect(detail.subAgents).toHaveLength(1);
     const sa = detail.subAgents[0];
     expect(sa?.agentId).toBe("sub1");
@@ -64,7 +61,6 @@ describe("getConversation detail read API", () => {
     expect(detail).not.toBeNull();
     if (!detail) return;
 
-    // The single assistant turn is attributed to the `commit` skill.
     expect(detail.perSkill).toHaveLength(1);
     const commit = detail.perSkill[0];
     expect(commit?.skill).toBe("commit");

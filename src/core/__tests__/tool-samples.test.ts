@@ -7,15 +7,12 @@ import { seededTempDb } from "./helpers/temp-db";
 
 const FIXTURES_ROOT = path.join(import.meta.dirname, "fixtures", "logs");
 
-/** The Project the tool-stats fixture lives in (the `?folder=` scope key). */
 const TOOLS_FOLDER = "-Users-me-dev-toolstats";
-/** "Now" for every read — the day the fixture's tool calls ran. */
 const NOW = Date.parse("2026-06-20T18:00:00.000Z");
 
 describe("getToolCallSamples", () => {
   const db = seededTempDb({ prefix: "cca-samples-", logsRoot: FIXTURES_ROOT });
 
-  /** One tool's drill-down within the fixture's Project, over all time. */
   function samplesFor(name: string, opts: { limit?: number } = {}) {
     return getToolCallSamples(name, {
       dbPath: db.dbPath,
@@ -26,7 +23,6 @@ describe("getToolCallSamples", () => {
   }
 
   it("lists the most recent errors first, capped at the limit", async () => {
-    // Edit errored at 09:01 and 09:02; its 09:03 call succeeded.
     const samples = await samplesFor("Edit");
 
     expect(samples.recentErrors.map((c) => c.toolUseId)).toEqual(["tt-edit-2", "tt-edit-1"]);
@@ -37,7 +33,6 @@ describe("getToolCallSamples", () => {
   });
 
   it("lists the largest results first, capped at the limit", async () => {
-    // Edit result sizes: 3, 4, 5 — biggest first, errors included.
     const samples = await samplesFor("Edit");
     expect(samples.largestResults.map((c) => c.charSize)).toEqual([5, 4, 3]);
 
@@ -57,7 +52,6 @@ describe("getToolCallSamples", () => {
   });
 
   it("samples sub-agent calls too, naming the sub-agent to link into", async () => {
-    // The 100-char Bash result ran inside the Explore sub-agent.
     const samples = await samplesFor("Bash");
     const [biggest] = samples.largestResults;
 
@@ -66,7 +60,6 @@ describe("getToolCallSamples", () => {
   });
 
   it("breaks Skill calls down by skill name, with calls and errors", async () => {
-    // `commit` errored, `tdd` did not.
     const samples = await samplesFor("Skill");
 
     expect(samples.breakdown).toEqual([

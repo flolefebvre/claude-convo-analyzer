@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import type { DailySpend } from "@/core/read";
 import { buildTrendsView } from "@/app/_lib/trends";
 
-/** A `Tokens` value from its four buckets (total derived, as the core does). */
 function tokens(input: number, output: number, cacheWrite = 0, cacheRead = 0) {
   return {
     input,
@@ -14,7 +13,6 @@ function tokens(input: number, output: number, cacheWrite = 0, cacheRead = 0) {
   };
 }
 
-/** A minimal `DailySpend` — two days, one of them empty, two priced models. */
 function spendFixture(): DailySpend {
   return {
     days: [
@@ -46,7 +44,6 @@ describe("buildTrendsView", () => {
 
     expect(view.bands.map((b) => b.model)).toEqual(["claude-opus-4-8", "claude-sonnet-4-6"]);
     expect(view.bands.map((b) => b.color)).toEqual(["var(--chart-1)", "var(--chart-2)"]);
-    // Each band knows its share of the range total (the legend's bar).
     expect(view.bands[0]?.share).toBeCloseTo(2 / 3, 12);
   });
 
@@ -58,8 +55,6 @@ describe("buildTrendsView", () => {
       "claude-opus-4-8": 2,
       "claude-sonnet-4-6": 1,
     });
-    // The untouched day still carries every band at zero, so the stack is
-    // continuous instead of dropping to nothing.
     expect(view.points[1]?.models).toEqual({
       "claude-opus-4-8": 0,
       "claude-sonnet-4-6": 0,

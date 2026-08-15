@@ -13,16 +13,6 @@ import type { TranscriptView } from "@/core/read";
 import { FamilyBanner } from "./family-banner";
 import { TranscriptMessageRow } from "./transcript-message";
 
-/**
- * The right pane: the selected agent's transcript, topped by a sticky header
- * with the lineage breadcrumb (root → selected; ancestors are links), the
- * turn/tool/model/cost stats, and a Refresh control (re-scan the logs without
- * leaving an ongoing conversation). Below it, the agent's messages render in order,
- * with a trailing "N meta records hidden" divider when the reader dropped meta
- * rows for this agent. When the conversation belongs to a continuation family,
- * a one-line banner between the header and the transcript names the sitting
- * before and the sitting(s) after.
- */
 export function TranscriptPane({
   view,
   family,
@@ -30,13 +20,8 @@ export function TranscriptPane({
   anchoredMessage,
 }: {
   view: TranscriptView;
-  /** This conversation's continuation family (issue #46) — its DIRECT parent
-   *  and continuations head the pane as a banner. `null` when standalone. */
   family?: ConversationFamily | null;
-  /** The `?call=` deep-link target — that tool call renders open + highlighted. */
   anchoredCall?: string;
-  /** The `?msg=` deep-link target — that message renders highlighted (a search
-   *  result's landing spot). */
   anchoredMessage?: string;
 }) {
   const lineage = agentLineage(view.tree, view.selectedAgentId);
@@ -44,9 +29,6 @@ export function TranscriptPane({
 
   const turnCount = view.messages.filter((m) => m.role === "assistant").length;
   const toolCount = view.messages.reduce((sum, m) => sum + m.toolCalls.length, 0);
-  // Reasoning effort across this agent's turns: one stat here (the level, or
-  // "mixed"), and a badge on each turn that changed it. Nothing at all when the
-  // log recorded no effort.
   const effort = effortSummary(view.messages);
   const effortLabel = effort.mixed ? "mixed" : effort.uniform;
 
@@ -84,12 +66,7 @@ export function TranscriptPane({
           {effortLabel && <span className="effort">{effortLabel} effort</span>}
           <span className="cost num turn-cost">{formatCost(selected.costUsd)}</span>
         </div>
-        {/* Search is reachable from here too — "find that OTHER conversation"
-            strikes precisely while reading one. */}
         <SearchBox className="w-44" />
-        {/* Re-scan the logs without leaving an ongoing conversation. The action
-            revalidates the whole tree, so this page re-renders with the new
-            messages; compact variant to sit inside the sticky stats header. */}
         <RefreshButton variant="outline" size="sm" />
       </div>
 

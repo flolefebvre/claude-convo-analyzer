@@ -61,7 +61,6 @@ describe("tokenComposition", () => {
   it("pairs each of the four buckets, in display order, with its dollar cost", () => {
     const buckets = tokenComposition(tokens, costByType);
     expect(buckets.map((b) => b.label)).toEqual(["Input", "Output", "Cache-write", "Cache-read"]);
-    // The dollar figure is the payload — sourced per-bucket from costByType.
     expect(buckets.map((b) => formatCost(b.costUsd))).toEqual(["$0.0040", "$1.10", "$0.32", "$0.30"]);
   });
 
@@ -69,7 +68,7 @@ describe("tokenComposition", () => {
     const buckets = tokenComposition(tokens, costByType);
     const cacheRead = buckets.find((b) => b.key === "cacheRead")!;
     expect(cacheRead.tokens).toBe(1_400_000);
-    expect(cacheRead.percent).toBe(49); // 1.4M / 2.86M
+    expect(cacheRead.percent).toBe(49);
   });
 
   it("renders an empty conversation without dividing by zero (0% buckets)", () => {
@@ -141,13 +140,11 @@ describe("detailSections", () => {
       }),
     );
     expect(sections.subAgents.isEmpty).toBe(false);
-    // Groups ranked by summed cost desc: general-purpose ($8) before main ($1).
     expect(sections.subAgents.groups.map((g) => g.label)).toEqual(["general-purpose", "main"]);
     const gp = sections.subAgents.groups[0];
     expect(gp.count).toBe(2);
     expect(gp.costUsd).toBeCloseTo(8);
     expect(gp.tokens.total).toBe(250);
-    // Members within a group are ranked by cost desc.
     expect(gp.agents.map((a) => a.agentId)).toEqual(["a3", "a2"]);
     expect(sections.subAgents.totalCost).toBeCloseTo(9);
   });
