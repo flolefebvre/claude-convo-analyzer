@@ -1,8 +1,3 @@
-// Per-error detail of one Conversation (issue #47): every failed turn, whichever
-// agent it happened in, with what the detail panel shows (when, which agent,
-// what the API said) and what a Transcript deep link needs (the agent key and
-// the message uuid). Same `fixtures/error-logs` root as the count rollup.
-
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -40,7 +35,6 @@ describe("getConversationErrors", () => {
     });
 
     expect(errors[0].excerpt).toBe("API Error: Overloaded");
-    // The second failure's text runs well past the cap.
     expect(errors[1].excerpt.length).toBe(160);
     expect(errors[1].excerpt.startsWith("API Error: the upstream request")).toBe(true);
   });
@@ -53,10 +47,7 @@ describe("getConversationErrors", () => {
       dbPath: db.dbPath,
     });
 
-    // The `?agent=` key must be the tree's own key — otherwise the panel's deep
-    // link would land on no agent at all.
     expect(first.agentId).toBe(transcript?.tree.id);
-    // The main thread carries no agent type; the app renders it as "main".
     expect(first.agentType ?? "").toBe("");
   });
 
@@ -70,13 +61,10 @@ describe("getConversationErrors", () => {
     expect(errors[0].agentType).toBe("Explore");
     expect(errors[0].messageUuid).toBe("esa1");
     expect(errors[0].status).toBe("rate_limit_error");
-    // A failure with no text at all still lists — the status is the whole story.
     expect(errors[0].excerpt).toBe("");
   });
 
   it("puts a failure the log never timestamped LAST, not first", async () => {
-    // SQLite would sort a NULL timestamp before every real one; an undated
-    // failure must not jump ahead of the failures we know the moment of.
     const errors = await getConversationErrors("sess-err-undated", {
       dbPath: db.dbPath,
     });

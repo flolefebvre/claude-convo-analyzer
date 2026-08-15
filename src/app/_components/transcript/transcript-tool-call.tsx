@@ -6,7 +6,6 @@ import { classifyToolCall, findSpawnedNode, toolCallSnippet, truncationNote } fr
 import { agentHref, callAnchorId } from "@/app/_lib/transcript-url";
 import type { TranscriptToolCall, TranscriptView } from "@/core/read";
 
-/** Pretty-print a stored `inputJson` when it parses; otherwise show it verbatim. */
 function prettyJson(raw: string): string {
   try {
     return JSON.stringify(JSON.parse(raw) as unknown, null, 2);
@@ -15,17 +14,8 @@ function prettyJson(raw: string): string {
   }
 }
 
-/** UPPERCASE badge label per visual kind. */
 const KIND_LABEL = { agent: "Agent", skill: "Skill", tool: "Tool" } as const;
 
-/**
- * One collapsed-by-default tool call, rendered as a native `<details>` so the
- * disclosure needs no client JS (the page stays a server component). Three
- * visual kinds — generic tool, skill load, and Agent call — share the summary
- * shell but differ in the badge and body: an Agent call correlates to the
- * sub-agent it spawned to show that agent's exact cost and an "Open transcript"
- * deep-link.
- */
 export function TranscriptToolCallRow({
   call,
   messageId,
@@ -35,14 +25,10 @@ export function TranscriptToolCallRow({
   call: TranscriptToolCall;
   messageId: number;
   view: TranscriptView;
-  /** The `?call=` deep-link target: THIS call renders open and highlighted. */
   anchoredCall?: string;
 }) {
   const kind = classifyToolCall(call);
   const snippet = toolCallSnippet(call);
-  // A Tools-page drill-down links here as `?call=<id>#call-<id>`: the query
-  // opens + highlights the call server-side (a fragment never reaches the
-  // server), the fragment scrolls to the `id` below.
   const anchored = call.toolUseId !== null && call.toolUseId === anchoredCall;
   const anchorProps = call.toolUseId === null ? {} : { id: callAnchorId(call.toolUseId) };
 

@@ -5,7 +5,6 @@ import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createPrismaClient, migrationsDir } from "@/core/db";
 
-/** Every committed migration directory (timestamp-prefixed, sorted). */
 function committedMigrations(): string[] {
   return readdirSync(migrationsDir(), { withFileTypes: true })
     .filter((e) => e.isDirectory())
@@ -42,12 +41,9 @@ describe("migration idempotency", () => {
   });
 
   it("re-opening an existing DB is a no-op (each migration runs at most once)", async () => {
-    // First open applies all migrations.
     const first = createPrismaClient(dbPath);
     await first.$disconnect();
 
-    // Second open must NOT re-run any migration (idempotent) and must succeed
-    // even though every table already exists.
     const second = createPrismaClient(dbPath);
     try {
       const tables = await second.$queryRawUnsafe<{ name: string }[]>(
@@ -70,22 +66,17 @@ describe("migration idempotency", () => {
   it("applies a later migration to a DB stuck at an older migration state", async () => {
     const all = committedMigrations();
     expect(all.length).toBeGreaterThanOrEqual(2);
-    // Target the migration that adds `agent.external_agent_id` — re-applying it
-    // has a directly observable effect (the column reappears).
     const target = all.find((m) => m.endsWith("_agent_external_id"));
     expect(target).toBeDefined();
     if (target === undefined) return;
 
-    createPrismaClient(dbPath); // builds the schema + ledger
+    createPrismaClient(dbPath);
 
-    // Simulate an OLD DB that never got `target`: forget its ledger row AND drop
-    // the column it adds, then re-open to prove the migration is (re)applied.
     let db = new Database(dbPath);
     db.prepare("DELETE FROM _cca_migrations WHERE migration_name = ?").run(target);
     db.exec("ALTER TABLE agent DROP COLUMN external_agent_id");
     db.close();
 
-    // Re-open: the tracker sees `target` as unapplied and runs it again.
     const prisma = createPrismaClient(dbPath);
     await prisma.$disconnect();
 

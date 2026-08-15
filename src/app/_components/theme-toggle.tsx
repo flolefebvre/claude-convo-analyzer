@@ -1,18 +1,5 @@
 "use client";
 
-// The Light / Dark / Auto theme control (issue #9). A three-pill segmented
-// control in the page header: selecting a pill calls next-themes' `setTheme`,
-// which applies the choice immediately and persists it to localStorage; the
-// active pill is highlighted from the current `theme` value.
-//
-// next-themes' `theme` is `undefined` on the server render and the first client
-// paint, so we gate the active highlight on a `mounted` flag (the standard
-// next-themes pattern) to avoid a hydration-mismatched highlight. Until mounted,
-// the segmented control still renders (stable markup) with no pill highlighted.
-//
-// ADR-0002 boundary: no core import — this is pure UI. Styling reuses existing
-// design tokens (muted/background/foreground) only; no new colors (issue #9).
-
 import { Monitor, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useSyncExternalStore } from "react";
@@ -26,15 +13,11 @@ const ICONS = {
   system: Monitor,
 } as const;
 
-// A no-op store whose snapshot is `true` on the client and `false` on the
-// server — i.e. a lint-clean "are we mounted?" flag (no setState-in-effect).
 const subscribe = () => () => {};
 
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
 
-  // Only trust `theme` after mount; before that it is undefined on the client
-  // and would mismatch the server-rendered (no-highlight) markup.
   const mounted = useSyncExternalStore(
     subscribe,
     () => true,

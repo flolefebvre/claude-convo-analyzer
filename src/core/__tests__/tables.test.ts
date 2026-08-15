@@ -33,17 +33,14 @@ describe("Slice 4 side tables", () => {
       expect(skill).toBeDefined();
       if (!bash || !skill) return;
 
-      // Bash tool call: name + full input JSON (command/description preserved).
       expect(bash.name).toBe("Bash");
       const bashInput = JSON.parse(bash.inputJson) as { command: string };
       expect(bashInput.command).toBe("echo hi");
-      // Result paired from the FOLLOWING user record's toolUseResult.
       expect(bash.resultText).toContain("hi");
       expect(bash.isError).toBe(false);
       expect(bash.resultTruncated).toBe(false);
       expect(bash.resultCharSize).toBeGreaterThan(0);
 
-      // Skill invocation: input.skill preserved; result flagged as error.
       expect(skill.name).toBe("Skill");
       const skillInput = JSON.parse(skill.inputJson) as { skill: string };
       expect(skillInput.skill).toBe("commit");
@@ -85,21 +82,16 @@ describe("Slice 4 side tables", () => {
   it("ingests a sub-agent transcript without double-counting its tokens", async () => {
     await refresh({ logsRoot: FIXTURES_ROOT, dbPath });
 
-    // The transcript file is the single source of truth: the conversation total
-    // = main thread + sub-agent transcript, each counted ONCE (the parent
-    // Agent toolUseResult aggregate of 200 must NOT be added again).
     const convos = await listConversations({ dbPath });
     const sub = convos.find((c) => c.id === "sess-sub");
     expect(sub).toBeDefined();
     if (!sub) return;
 
-    // main: input 10, output 15; sub: input 50, output 130, cacheRead 20.
     expect(sub.tokens.input).toBe(60);
     expect(sub.tokens.output).toBe(145);
     expect(sub.tokens.cacheRead).toBe(20);
-    expect(sub.tokens.total).toBe(225); // NOT 425 (no double-count)
+    expect(sub.tokens.total).toBe(225);
     expect(sub.subAgentCount).toBe(1);
-    // two models present: opus (main) + haiku (sub).
     expect(sub.models.distinctCount).toBe(2);
 
     const prisma = createPrismaClient(dbPath);
@@ -109,7 +101,6 @@ describe("Slice 4 side tables", () => {
       });
       if (!convo) throw new Error("missing convo");
 
-      // The sub-agent agent row links back to the spawning Agent tool message.
       const subAgent = await prisma.agent.findFirst({
         where: { conversationId: convo.id, parentAgentId: { not: null } },
       });
@@ -121,11 +112,8 @@ describe("Slice 4 side tables", () => {
       const spawnMsg = await prisma.message.findUnique({
         where: { id: subAgent?.spawnedByMessageId ?? -1 },
       });
-      expect(spawnMsg?.messageId).toBe("mmsg-1"); // the Agent tool_use turn
+      expect(spawnMsg?.messageId).toBe("mmsg-1");
 
-      // Cross-check (GOTCHA 3): the sub-agent transcript's own summed tokens
-      // equal the parent Agent toolUseResult aggregate (200) — the same tokens.
-      // We persist the transcript only; the aggregate is never summed in.
       const subTotal = await prisma.$queryRawUnsafe<{ t: number | bigint }[]>(
         `SELECT SUM(COALESCE(input_tokens,0)+COALESCE(output_tokens,0)
                    +COALESCE(cache_creation_5m_tokens,0)+COALESCE(cache_creation_1h_tokens,0)
@@ -149,12 +137,9 @@ describe("Slice 4 side tables", () => {
     expect(resumed).toBeDefined();
     if (!origin || !resumed) return;
 
-    // The resumed session's first message parentUuid resolves into sess-origin.
     expect(resumed.continuedFromId).toBe("sess-origin");
-    // The origin started fresh — no continuation.
     expect(origin.continuedFromId).toBeNull();
 
-    // Both remain DISTINCT rows; tokens are NOT merged.
     expect(origin.tokens.output).toBe(10);
     expect(resumed.tokens.output).toBe(20);
   });

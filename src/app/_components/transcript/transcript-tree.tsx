@@ -7,12 +7,6 @@ import type { TranscriptAgentNode, TranscriptView } from "@/core/read";
 
 import { TreeNodeLink } from "./tree-node-link";
 
-/**
- * The always-visible left pane: the conversation header (title + back-link to
- * the list + session id), the lineage-nested agent tree, and the grand-total
- * footer. Each node links to its own transcript (`?agent=`); the selected node
- * carries `aria-current`. Even a solo conversation shows its single main node.
- */
 export function TranscriptTree({ view }: { view: TranscriptView }) {
   return (
     <aside className="tree" aria-label="Agent tree">
@@ -37,10 +31,8 @@ export function TranscriptTree({ view }: { view: TranscriptView }) {
   );
 }
 
-/** One agent node plus its descendants, indented by `--depth`. */
 function TreeNode({ node, depth, view }: { node: TranscriptAgentNode; depth: number; view: TranscriptView }) {
   const isCurrent = node.id === view.selectedAgentId;
-  // The root links to the bare route (clean URL); children carry `?agent=`.
   const href = agentHref(view.sessionId, depth === 0 ? undefined : node.id);
   return (
     <>

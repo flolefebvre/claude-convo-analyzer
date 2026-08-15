@@ -1,28 +1,11 @@
-// The overview band (the app's analysis surface): a full-width row of headline
-// stat cards plus a cost-ranked "top Projects" strip, shown above the
-// sidebar/table split. A SERVER component — it receives the already-derived
-// `Overview` + `FolderEntry[]` as plain props (ADR-0002: no core import here).
-//
-// This is where the app earns its name: the first thing you see is the analysis
-// (total cost/tokens, conversation count, cache efficiency, where the spend
-// concentrates), not the raw row table.
-
 import { CostBar } from "@/app/_components/cost-bar";
 import { type FolderEntry } from "@/app/_lib/folders";
 import { formatCompactTokens, formatDateRange, formatGrandTotalCost, formatTokens } from "@/app/_lib/format";
 import { type Overview } from "@/app/_lib/overview";
 
-export function OverviewBand({
-  overview,
-  topProjects,
-}: {
-  overview: Overview;
-  /** The highest-cost Projects (cost desc), for the spend strip. */
-  topProjects: FolderEntry[];
-}) {
+export function OverviewBand({ overview, topProjects }: { overview: Overview; topProjects: FolderEntry[] }) {
   const cost = formatGrandTotalCost(overview.totalCost);
   const range = formatDateRange(overview.earliest, overview.latest);
-  // "24 projects · Jun 2 – Jun 22 2026", dropping whichever half is unknown.
   const span = [`${overview.projectCount} project${overview.projectCount === 1 ? "" : "s"}`, range]
     .filter(Boolean)
     .join(" · ");
@@ -51,17 +34,7 @@ export function OverviewBand({
   );
 }
 
-/** A single headline metric: a quiet uppercase label above a large value. */
-function StatCard({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  /** Optional secondary line under the value (e.g. the exact token count). */
-  hint?: string;
-  children: React.ReactNode;
-}) {
+function StatCard({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div className="rounded-xl border bg-card p-5">
       <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{label}</p>
@@ -71,20 +44,7 @@ function StatCard({
   );
 }
 
-/**
- * The cost-ranked Project strip: each row pairs a cost bar (scaled to TOTAL
- * spend → its share of the whole) with its label and cost, so relative spend
- * reads at a glance — the same share-of-total scaling as the sidebar and the
- * conversation detail panel.
- */
-function TopProjects({
-  projects,
-  totalCost,
-}: {
-  projects: FolderEntry[];
-  /** Total spend across ALL Projects — the share-of-total denominator. */
-  totalCost: number;
-}) {
+function TopProjects({ projects, totalCost }: { projects: FolderEntry[]; totalCost: number }) {
   return (
     <div className="rounded-xl border bg-card p-5">
       <p className="mb-3 text-xs font-medium tracking-wide text-muted-foreground uppercase">Top projects by cost</p>

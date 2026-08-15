@@ -1,13 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseSessionLines } from "@/core/parse";
 
-/**
- * `effort` is the reasoning effort level Claude Code recorded for an assistant
- * turn (the user toggles it with `/effort`, so it can change mid-conversation).
- * It is a TOP-LEVEL field of the record — a sibling of `message`/`timestamp` —
- * and only newer Claude Code versions write it, so it is nullable. The raw
- * string is kept verbatim: no enum, so future levels flow through unchanged.
- */
 describe("assistant effort parsing", () => {
   const assistant = (fields: Record<string, unknown>) =>
     JSON.stringify({
@@ -51,8 +44,6 @@ describe("assistant effort parsing", () => {
   });
 
   it("takes effort from the first line of a turn split across content blocks", () => {
-    // Claude Code splits one turn into several lines sharing a message.id; the
-    // first line wins for usage/model/timestamp, and effort follows suit.
     const first = assistant({ effort: "high", uuid: "a1" });
     const second = assistant({ effort: "xhigh", uuid: "a2" });
     const parsed = parseSessionLines([first, second]);

@@ -6,10 +6,8 @@ import { deriveFolders, type FolderEntry } from "@/app/_lib/folders";
 
 import { summary } from "./helpers/summaries";
 
-/** One shared latest activity, so ordering is decided by the tiebreak, not time. */
 const TIE_AT = "2026-05-01T00:00:00.000Z";
 
-/** Two Projects whose paths share the basename `demo` — a label collision. */
 const COLLIDING_DEMOS = [
   summary({ id: "a", folder: "f1", path: "/Users/me/dev/demo", endedAt: TIE_AT }),
   summary({ id: "b", folder: "f2", path: "/Users/me/tmp/demo", endedAt: TIE_AT }),
@@ -19,7 +17,6 @@ function labels(rows: { label: string }[]): string[] {
   return rows.map((r) => r.label);
 }
 
-/** Index derived folder entries by their folder key for direct assertions. */
 function byKey(rows: ConversationSummary[]): Record<string, FolderEntry> {
   return Object.fromEntries(deriveFolders(rows).map((e) => [e.folder, e]));
 }
@@ -54,8 +51,6 @@ describe("deriveFolders", () => {
 
   it("falls back to startedAt when a row's endedAt is empty", () => {
     const rows = [
-      // Latest endedAt is Feb; but a row with empty endedAt started in April —
-      // its startedAt must be considered, making April the latest activity.
       summary({ id: "a", folder: "f", endedAt: "2026-02-01T00:00:00.000Z" }),
       summary({
         id: "b",
@@ -92,7 +87,6 @@ describe("deriveFolders", () => {
 
   it("disambiguates a basename collision with the minimal unique trailing suffix", () => {
     const ent = byKey(COLLIDING_DEMOS);
-    // Both basenames are "demo"; one trailing segment more makes them unique.
     expect(ent.f1.label).toBe("dev/demo");
     expect(ent.f2.label).toBe("tmp/demo");
   });
@@ -104,7 +98,6 @@ describe("deriveFolders", () => {
     ]);
     expect(ent.f1.label).toBe("dev/demo");
     expect(ent.f2.label).toBe("tmp/demo");
-    // Not part of the collision -> stays a bare basename.
     expect(ent.f3.label).toBe("unique");
   });
 
@@ -115,8 +108,6 @@ describe("deriveFolders", () => {
       summary({ id: "c", folder: "f3", path: "/a/y/app", endedAt: TIE_AT }),
     ];
     const ent = byKey(rows);
-    // Depth 2 gives x/app, x/app, y/app -> still colliding, so the group widens
-    // uniformly to depth 3 where all three become unique.
     expect(ent.f1.label).toBe("a/x/app");
     expect(ent.f2.label).toBe("b/x/app");
     expect(ent.f3.label).toBe("a/y/app");
@@ -128,7 +119,6 @@ describe("deriveFolders", () => {
       summary({ id: "b", folder: "f2", path: "/Users/me/dev/demo", endedAt: TIE_AT }),
     ];
     const ent = byKey(rows);
-    // Same path, distinct folder keys -> labels still unique + deterministic.
     expect(ent.f1.label).not.toBe(ent.f2.label);
     expect(ent.f1.label).toContain("f1");
     expect(ent.f2.label).toContain("f2");

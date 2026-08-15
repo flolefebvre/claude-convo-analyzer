@@ -61,11 +61,11 @@ Always reach for documentation rather than working from memory. Prioritize the f
 
 ## Comments and docs
 
-An exported symbol should have a one-line JSDoc comment, and an `@example` where one is applicable — a call the caller could actually write. Write as though what you just changed had always been that way. Assume the reader knows everything you know, and write only what that leaves out.
+Don't write comments in the code — `pnpm lint` fails on any that isn't a directive. The user will guide you if any addition to `docs/` is necessary.
 
 ## Language
 
-Prose in this repo — docs, comments, commit messages, issues — is written in English, regardless of the language used in conversation.
+Prose in this repo — docs, commit messages, issues — is written in English, regardless of the language used in conversation.
 
 ## Agent skills
 

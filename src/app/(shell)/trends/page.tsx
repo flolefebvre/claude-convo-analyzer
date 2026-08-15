@@ -1,17 +1,3 @@
-// Trends — daily spend, stacked by model (issue #41). A React Server Component:
-// it reads the active range + folder scope from `searchParams`, fetches the
-// per-day/per-model rollup through the cached app-zone reader, and renders the
-// stats row (which doubles as the chart legend) above the chart. Range and
-// scope are URL state via links — no front-end filtering, exactly like the
-// conversation list.
-//
-// ADR-0002 boundary: the core read is reached through `loadDailySpend`
-// (app-zone) and shaped by the pure `buildTrendsView`; the only client
-// component here is the chart leaf, which receives plain serializable props.
-//
-// `cacheComponents` (PPR) is on, so the request-time `searchParams` read is
-// wrapped in <Suspense>: the page shell prerenders, the chart streams in.
-
 import { Suspense } from "react";
 
 import { CostBar } from "@/app/_components/cost-bar";
@@ -31,16 +17,8 @@ export default function Page({ searchParams }: { searchParams: Promise<ViewSearc
   );
 }
 
-/**
- * Reads the active range + scope from `searchParams` and the daily rollup from
- * the cached app-zone reader, then renders the surface. Kept separate from
- * {@link Page} so the request-time fetch sits inside the page's <Suspense>
- * boundary (PPR).
- */
 async function TrendsSurface({ searchParams }: { searchParams: Promise<ViewSearchParams> }) {
   const params = await searchParams;
-  // URL → resolved intent at the page edge; the seam takes intent, never raw
-  // searchParams. Both default safely (30 days, all Projects).
   const range = resolveRange(params.range);
   const folder = firstParam(params.folder) || undefined;
 
@@ -69,12 +47,6 @@ async function TrendsSurface({ searchParams }: { searchParams: Promise<ViewSearc
   );
 }
 
-/**
- * The range stats: total cost and tokens, then one row per model — which IS the
- * chart legend (same color, same order), so the chart needs none of its own.
- * Echoes the overview band's stat-card language, including how an inexact total
- * is flagged as a lower bound.
- */
 function StatsRow({ view }: { view: TrendsView }) {
   const cost = formatGrandTotalCost(view.totalCostUsd);
   return (
@@ -109,7 +81,6 @@ function StatsRow({ view }: { view: TrendsView }) {
   );
 }
 
-/** Per-model totals for the range — the chart's legend, cost-ranked. */
 function ModelLegend({ view }: { view: TrendsView }) {
   return (
     <div className="rounded-xl border bg-card p-5 lg:col-span-1">
@@ -117,8 +88,6 @@ function ModelLegend({ view }: { view: TrendsView }) {
       {view.bands.length === 0 ? (
         <p className="text-sm text-muted-foreground">No priced usage.</p>
       ) : (
-        // Two lines per model — the full name never truncates, and the bar
-        // reads as its share of the range, as in the sidebar and detail panel.
         <ul className="flex flex-col gap-2.5">
           {view.bands.map((band) => (
             <li key={band.model} className="text-sm">

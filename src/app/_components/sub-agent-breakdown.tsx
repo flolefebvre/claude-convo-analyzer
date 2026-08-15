@@ -1,11 +1,5 @@
 "use client";
 
-// Sub-agents grouped by type: each group is a ranked cost bar that expands to
-// reveal its individual agents. The one client leaf left in the detail panel —
-// the per-group open/closed state is ephemeral local UI (not a view worth a
-// URL), unlike the row's own expansion which lives in `?expanded=`. Receives
-// only the plain serializable `SubAgentSection` (ADR-0002: no core import).
-
 import { ChevronDown, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
@@ -16,8 +10,6 @@ import type { SubAgentGroup, SubAgentSection } from "@/app/_lib/detail";
 import { formatCost, formatTokens } from "@/app/_lib/format";
 import { agentHref } from "@/app/_lib/transcript-url";
 
-/** Owns the per-group open/closed state. `sessionId` is threaded so each
- *  individual agent row can deep-link into its own transcript. */
 export function SubAgentBreakdown({ section, sessionId }: { section: SubAgentSection; sessionId: string }) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   return (
@@ -82,9 +74,6 @@ function SubAgentGroupRow({
         <ul className="mt-1.5 ml-[1.125rem] flex flex-col gap-1 border-l border-border/60 pl-3">
           {group.agents.map((a) => (
             <li key={a.agentId}>
-              {/* Deep-link into this agent's transcript. `a.agentId` is the
-                  `?agent=` key (`externalAgentId ?? String(id)`) the transcript
-                  route resolves — a direct pass-through, no re-derivation. */}
               <Link
                 href={agentHref(sessionId, a.agentId)}
                 className="flex items-center justify-between gap-4 rounded-sm text-xs text-muted-foreground outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"

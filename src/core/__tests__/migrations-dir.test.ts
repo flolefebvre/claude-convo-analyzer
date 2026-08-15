@@ -3,13 +3,6 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { migrationsDir } from "@/core/db";
 
-/**
- * Regression guard for the Turbopack `import.meta.dirname === undefined` crash
- * (bug: cwd-relative migrations resolution). Vitest resolves `import.meta`
- * correctly, so this CANNOT reproduce the Turbopack failure itself; its job is
- * to lock in that the resolved path is real and correct, so a future wrong
- * static path is caught immediately.
- */
 describe("migrations directory resolution", () => {
   it("resolves to a real directory on disk", () => {
     const dir = migrationsDir();

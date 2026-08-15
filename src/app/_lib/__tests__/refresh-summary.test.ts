@@ -34,7 +34,6 @@ function summary(partial: Partial<RefreshSummary> = {}): RefreshSummary {
   };
 }
 
-/** `n` distinct log files all claiming one session id, minus the winner. */
 function duplicates(n: number): RefreshSummary["duplicateSessionsSkipped"] {
   return Array.from({ length: n }, (_, i) => ({
     sessionId: `sess-${i}`,

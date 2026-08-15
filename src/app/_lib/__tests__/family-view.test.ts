@@ -34,7 +34,6 @@ function family(members: FamilyMember[]): ConversationFamily {
 
 const SORT = { sortBy: "date", dir: "desc" } as const;
 
-/** A family whose second member sits in another Project than the current one. */
 function crossProjectFamily(): ConversationFamily {
   return family([
     member({ id: "a", isCurrent: true }),
@@ -58,8 +57,6 @@ describe("familyView", () => {
       ["b", 1],
     ]);
     expect(view.rows.map((r) => r.isCurrent)).toEqual([false, true]);
-    // Even the member whose panel this is links to itself EXPANDED, never to a
-    // collapse — the link is navigation, not the row's toggle.
     for (const row of view.rows) {
       expect(row.href).toContain(`expanded=${row.id}`);
     }
@@ -78,11 +75,8 @@ describe("familyView", () => {
   it("drops the folder scope for a member the scope would hide", () => {
     const view = familyView(crossProjectFamily(), { sort: SORT, folder: "-home-dev-app", range: "30" }, NOW);
 
-    // The in-scope member keeps the active scope…
     expect(view.rows[0].href).toContain("folder=-home-dev-app");
-    // …the cross-project one drops it, so the click can actually reach the row.
     expect(view.rows[1].href).not.toContain("folder=");
-    // The Trends range is preserved either way.
     for (const row of view.rows) expect(row.href).toContain("range=30");
   });
 
@@ -95,7 +89,6 @@ describe("familyView", () => {
 
     for (const row of view.rows) {
       expect(row.href).not.toContain("errors=");
-      // Everything else the user chose still travels with the link.
       expect(row.href).toContain("range=30");
     }
   });

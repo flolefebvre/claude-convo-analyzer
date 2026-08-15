@@ -33,7 +33,7 @@ to which models.
 
 ## Consequences
 
-- Updating prices = editing one dated table + bumping its version comment; all
+- Updating prices = editing one dated table + bumping its `PRICE_TABLE_VERSION` constant; all
   historical conversations reprice instantly.
 - Costs are reproducible and deterministic (no live pricing dependency).
 - Because unpriced usage is flagged rather than dropped, the UI must surface the

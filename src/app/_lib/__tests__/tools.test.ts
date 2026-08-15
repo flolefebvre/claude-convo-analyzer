@@ -13,7 +13,6 @@ import {
   toggleToolSort,
 } from "@/app/_lib/tools";
 
-/** A `ToolStat` with only the fields the sort/labels care about. */
 function stat(name: string, calls: number, errorRate: number, totalSize: number): ToolStat {
   return {
     name,
@@ -29,7 +28,6 @@ function stat(name: string, calls: number, errorRate: number, totalSize: number)
   };
 }
 
-/** The view state a Tools page link is built from. */
 const STATE = {
   sort: DEFAULT_TOOL_SORT,
   folder: "-Users-me-dev-app",
@@ -39,8 +37,6 @@ const STATE = {
 describe("resolveToolSort", () => {
   it("defaults to calls descending when the URL carries no (valid) sort", () => {
     expect(resolveToolSort(undefined, undefined)).toEqual(DEFAULT_TOOL_SORT);
-    // A conversation-list column arriving from a shared sidebar link is not a
-    // Tools column: it falls back instead of throwing the table off.
     expect(resolveToolSort("date", "asc")).toEqual(DEFAULT_TOOL_SORT);
     expect(DEFAULT_TOOL_SORT).toEqual({ sortBy: "calls", dir: "desc" });
   });
@@ -54,7 +50,6 @@ describe("resolveToolSort", () => {
       sortBy: "volume",
       dir: "desc",
     });
-    // An invalid direction falls back to the column's own default.
     expect(resolveToolSort("volume", "sideways")).toEqual({
       sortBy: "volume",
       dir: "desc",
@@ -124,7 +119,6 @@ describe("toolLabel", () => {
       server: "github",
       tool: "create_issue",
     });
-    // A tool name containing the separator keeps its own tail intact.
     expect(toolLabel("mcp__ide__get__diagnostics")).toEqual({
       server: "ide",
       tool: "get__diagnostics",
@@ -133,7 +127,6 @@ describe("toolLabel", () => {
 
   it("leaves an ordinary tool name alone", () => {
     expect(toolLabel("Bash")).toEqual({ server: null, tool: "Bash" });
-    // Malformed MCP names are shown verbatim rather than mangled.
     expect(toolLabel("mcp__github")).toEqual({ server: null, tool: "mcp__github" });
   });
 });
