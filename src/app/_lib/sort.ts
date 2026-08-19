@@ -1,4 +1,4 @@
-// Pure URL-view-state (sort, folder scope, expanded row), comparator, and
+// Pure URL-view-state (sort, folder scope, expanded row, page), comparator, and
 // label helpers for the conversation list table.
 //
 // Sorting is done SERVER-SIDE BY THE APP, not by the core. The core's
@@ -88,6 +88,9 @@ const COLUMNS = {
 
 export type SortableField = keyof typeof COLUMNS;
 
+/** The first (and default) page of the list — `?page=` is 1-based. */
+export const FIRST_PAGE = 1;
+
 /** The single `?errors=` value that means "only conversations with errors". */
 const ERRORS_ON = "1";
 
@@ -150,6 +153,8 @@ export type ListLinkContext = {
   range?: string;
   /** True when the list is filtered to conversations WITH API errors (`?errors=1`). */
   errorsOnly?: boolean;
+  /** The active 1-based page. Absent (or {@link FIRST_PAGE}) means page 1. */
+  page?: number;
 };
 
 /**
@@ -166,45 +171,62 @@ function buildHref(ctx: ListLinkContext, expanded?: string): string {
   if (expanded) params.set("expanded", expanded);
   if (ctx.range) params.set("range", ctx.range);
   if (ctx.errorsOnly) params.set("errors", ERRORS_ON);
+  // Page 1 is the bare URL, so it is never written — `?page=1` still resolves
+  // to page 1 on the way in ({@link resolvePage}).
+  if (ctx.page !== undefined && ctx.page > FIRST_PAGE) params.set("page", String(ctx.page));
   return `?${params.toString()}`;
 }
 
 /**
  * Query-string href for a sortable header link (toggles via {@link toggleSort}),
- * preserving every other axis of {@link ListLinkContext}.
+ * preserving every other axis of {@link ListLinkContext} — except the page,
+ * which resets: a re-ordered list starts at the top.
  */
 export function sortHref(field: SortableField, ctx: ListLinkContext): string {
-  return buildHref({ ...ctx, sort: toggleSort(field, ctx.sort) });
+  return buildHref({ ...ctx, sort: toggleSort(field, ctx.sort), page: FIRST_PAGE });
 }
 
 /**
  * Query-string href for a sidebar folder link: scopes to `folder` (or clears
  * the scope, "All folders", when `undefined`/empty) while PRESERVING every other
  * axis, so changing folder composes with the current sort — and, since the
- * sidebar is shared with Trends, never resets the selected range.
+ * sidebar is shared with Trends, never resets the selected range. The page
+ * resets, though: page 7 of one Project says nothing about the next.
  */
 export function folderHref(folder: string | undefined, ctx: ListLinkContext): string {
-  return buildHref({ ...ctx, folder });
+  return buildHref({ ...ctx, folder, page: FIRST_PAGE });
 }
 
 /**
  * Query-string href for a row's expand/collapse toggle link. Clicking a
  * collapsed row expands it (`?expanded=<id>`); clicking the already-expanded
  * row collapses it (the param is dropped). Every other axis is preserved in
- * both directions so toggling a panel never changes the view.
+ * both directions — including the page — so toggling a panel never moves you.
  */
 export function expandHref(rowId: string, expanded: string | undefined, ctx: ListLinkContext): string {
   return buildHref(ctx, rowId === expanded ? undefined : rowId);
 }
 
 /**
+ * Query-string href for a pager link (Previous / Next): moves to `page` and
+ * keeps every other axis, so paging never changes the sort, scope, filter or
+ * Trends range.
+ *
+ * @example pageHref(ctx.page + 1, ctx) // "?sortBy=date&dir=desc&page=2"
+ */
+export function pageHref(page: number, ctx: ListLinkContext): string {
+  return buildHref({ ...ctx, page });
+}
+
+/**
  * Query-string href for the "only with errors" toggle: flips the filter and
- * keeps every other axis. `?expanded=` is deliberately NOT carried — the open
+ * keeps every other axis, except the page, which resets — the filtered list is
+ * a different (shorter) list. `?expanded=` is deliberately NOT carried — the open
  * row may not be in the filtered set, and an expanded panel for an invisible row
  * means nothing.
  */
 export function errorsHref(ctx: ListLinkContext): string {
-  return buildHref({ ...ctx, errorsOnly: !ctx.errorsOnly });
+  return buildHref({ ...ctx, errorsOnly: !ctx.errorsOnly, page: FIRST_PAGE });
 }
 
 /**
@@ -215,6 +237,17 @@ export function errorsHref(ctx: ListLinkContext): string {
  */
 export function resolveErrorsOnly(raw: string | string[] | undefined): boolean {
   return firstParam(raw) === ERRORS_ON;
+}
+
+/**
+ * Resolve the requested (1-based) page from the raw `?page=` search param.
+ */
+export function resolvePage(raw: string | string[] | undefined): number {
+  const value = firstParam(raw);
+  if (value === undefined) return FIRST_PAGE;
+  const page = Number(value);
+  if (!Number.isInteger(page) || page < FIRST_PAGE) return FIRST_PAGE;
+  return page;
 }
 
 /**
