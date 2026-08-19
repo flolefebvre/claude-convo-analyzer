@@ -3,7 +3,7 @@
 // to be wired inline across three RSC sites (the layout's Sidebar + Overview and
 // the page's ConversationTable):
 //
-//   deriveFolders → filterByFolder → sortConversations → grandTotal
+//   deriveFolders → filterByFolder → sortConversations → grandTotal → paginate
 //                 → deriveOverview → topProjectsByCost
 //
 // Collapsing it here guarantees the pipeline order (filter BEFORE sort, scope
@@ -23,7 +23,7 @@ import type { Tokens } from "@/core/cost";
 import type { ConversationSummary } from "@/core/read";
 
 import { deriveFolders, type FolderEntry } from "@/app/_lib/folders";
-import { sortConversations, type SortState } from "@/app/_lib/sort";
+import { FIRST_PAGE, sortConversations, type SortState } from "@/app/_lib/sort";
 import type { Overview } from "@/app/_lib/overview";
 
 /** Already-resolved scope + sort intent (parsed from the URL at the page edge). */
@@ -38,6 +38,12 @@ export type ListViewIntent = {
    * hides anything.
    */
   errorsOnly?: boolean;
+  /**
+   * The requested 1-based page, as read from the URL — trusted no further than
+   * that: it is clamped to the pages that exist ({@link clampPage}). Absent
+   * means the first page.
+   */
+  page?: number;
 };
 
 /** The "All folders" anchor aggregate the sidebar shows, summed from the
@@ -65,8 +71,14 @@ export type ListViewBase = {
 
 /** The scope-dependent table slice, built ONLY when `sort` intent is provided. */
 export type ListViewTable = {
-  /** The scoped + sorted rows for the table body. */
+  /** The rows of the CURRENT page, scoped + sorted — what the table body shows. */
   rows: ConversationSummary[];
+  /** The resolved (clamped) 1-based page these rows come from. */
+  page: number;
+  /** How many pages the scoped set spans; 1 for an empty set. */
+  pageCount: number;
+  /** How many rows the WHOLE scoped set holds — what the footer counts. */
+  rowCount: number;
   /** True when a (non-empty) `?folder=` scope is active. */
   scoped: boolean;
   /** The selected Project's entry for the breadcrumb, or `undefined` when
@@ -85,14 +97,31 @@ export type GrandTotal = {
 
 const TOP_PROJECTS_LIMIT = 5;
 
+/** How many conversations one page of the list shows. Fixed — there is no
+ *  `?size=` param. */
+export const PAGE_SIZE = 50;
+
+/**
+ * Clamp a requested (1-based) page into the pages that exist, so a hand-edited
+ * or stale `?page=` never renders an empty table: below the range reads as page
+ * 1, beyond the end as the last page, and an empty set is page 1 of 1.
+ *
+ * @example clampPage(99, 5) // 5
+ */
+export function clampPage(requested: number, pageCount: number): number {
+  const lastPage = Math.max(FIRST_PAGE, pageCount);
+  return Math.min(Math.max(FIRST_PAGE, requested), lastPage);
+}
+
 /**
  * Build the conversation-list view model from ALL rows + already-resolved intent.
  *
  * Always returns the scope-independent base (`folders`, `overview`,
  * `topProjects`, `totals`) — derived from one `deriveFolders` pass. When `intent`
  * (with a `sort`) is given, ALSO returns the table slice (`rows`, `scoped`,
- * `selectedFolder`, `grandTotal`), filtering by folder BEFORE sorting so scope
- * composes with sort. With no intent the table slice is skipped (no wasted
+ * `selectedFolder`, `grandTotal`, page metadata), filtering by folder BEFORE
+ * sorting so scope composes with sort, and paginating LAST so the footer's
+ * `rowCount`/`grandTotal` still cover the whole scoped set. With no intent the table slice is skipped (no wasted
  * filter/sort work) — the layout's scope-independent regions call it that way.
  *
  * Pure: no mutation of `rows`.
@@ -124,9 +153,17 @@ export function buildListView(
   // Project, the errors filter to the conversations that actually failed.
   const scopedRows = filterByErrors(filterByFolder(rows, activeFolder), intent.errorsOnly);
   const sortedRows = sortConversations(scopedRows, intent.sort);
+  // Paginate LAST: the footer's `rowCount` + `grandTotal` cover the whole
+  // scoped set, only the rendered slice is bounded.
+  const pageCount = Math.max(FIRST_PAGE, Math.ceil(sortedRows.length / PAGE_SIZE));
+  const page = clampPage(intent.page ?? FIRST_PAGE, pageCount);
+  const start = (page - 1) * PAGE_SIZE;
   return {
     ...base,
-    rows: sortedRows,
+    rows: sortedRows.slice(start, start + PAGE_SIZE),
+    page,
+    pageCount,
+    rowCount: sortedRows.length,
     scoped: activeFolder !== undefined,
     selectedFolder: activeFolder ? folders.find((f) => f.folder === activeFolder) : undefined,
     grandTotal: grandTotal(sortedRows),
