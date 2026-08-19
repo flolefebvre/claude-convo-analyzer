@@ -53,8 +53,8 @@ export type FamilyLinkContext = ListLinkContext;
  * this only formats: relative dates against ONE request-time `now`, the
  * cross-project label, and each member's expand link. A member link drops any
  * filter that could hide its target — the folder scope when the member lives in
- * another Project, and the errors filter always — otherwise the click would land
- * on a filtered list that cannot show that row.
+ * another Project, the errors filter always, and the page — otherwise the click
+ * would land on a list that cannot show that row.
  */
 export function familyView(family: ConversationFamily, ctx: FamilyLinkContext, now: Date = new Date()): FamilyView {
   const currentFolder = family.members.find((m) => m.isCurrent)?.project.folder;
@@ -87,6 +87,10 @@ export function familyView(family: ConversationFamily, ctx: FamilyLinkContext, n
             // family view does not know which members failed. Following a family
             // link always lands on the member, filter cleared.
             errorsOnly: false,
+            // And the page, for the same reason: a member 300 rows down is not
+            // on the page you are reading. With none pinned, the list opens on
+            // the page that HOLDS the member (see `buildListView`).
+            page: undefined,
           },
         ),
       };

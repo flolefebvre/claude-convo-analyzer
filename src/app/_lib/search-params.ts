@@ -21,6 +21,7 @@ export type ViewSearchParams = {
   expanded?: string | string[];
   range?: string | string[];
   errors?: string | string[];
+  page?: string | string[];
 };
 
 /**

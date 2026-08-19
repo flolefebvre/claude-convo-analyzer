@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Tokens } from "@/core/cost";
 
-import { buildListView } from "@/app/_lib/list-view";
+import { PAGE_SIZE, buildListView, clampPage } from "@/app/_lib/list-view";
 import type { SortState } from "@/app/_lib/sort";
 
 import { summary } from "./helpers/summaries";
@@ -300,5 +300,138 @@ describe("buildListView — errors-only filter (issue #47)", () => {
     expect(view.overview.conversationCount).toBe(3);
     expect(view.overview.totalCost).toBeCloseTo(110);
     expect(view.totals.count).toBe(3);
+  });
+});
+
+describe("clampPage", () => {
+  it("keeps a page that exists", () => {
+    expect(clampPage(3, 5)).toBe(3);
+  });
+
+  it("clamps a page beyond the end down to the last page", () => {
+    expect(clampPage(99, 5)).toBe(5);
+  });
+
+  it("clamps a page below the range up to page 1", () => {
+    expect(clampPage(0, 5)).toBe(1);
+    expect(clampPage(-3, 5)).toBe(1);
+  });
+
+  it("yields page 1 when there are no pages at all (an empty set is page 1 of 1)", () => {
+    expect(clampPage(1, 0)).toBe(1);
+    expect(clampPage(7, 0)).toBe(1);
+  });
+});
+
+/** `count` rows with descending cost, so `DESC_COST` keeps them in id order. */
+function costRankedRows(count: number) {
+  return Array.from({ length: count }, (_, i) => summary({ id: `r${String(i).padStart(3, "0")}`, costUsd: count - i }));
+}
+
+describe("buildListView — pagination (issue #63)", () => {
+  it("renders at most one page of rows, defaulting to the first page", () => {
+    const view = buildListView(costRankedRows(60), { sort: DESC_COST });
+    expect(view.rows).toHaveLength(PAGE_SIZE);
+    expect(view.rows[0].id).toBe("r000");
+    expect(view.page).toBe(1);
+    expect(view.pageCount).toBe(2);
+  });
+
+  it("serves the next slice, in sorted order, on page 2", () => {
+    const view = buildListView(costRankedRows(60), { sort: DESC_COST, page: 2 });
+    expect(view.rows.map((r) => r.id)).toEqual(
+      costRankedRows(60)
+        .slice(50)
+        .map((r) => r.id),
+    );
+  });
+
+  it("serves only the remainder on the last, partial page", () => {
+    const view = buildListView(costRankedRows(51), { sort: DESC_COST, page: 2 });
+    expect(view.rows).toHaveLength(1);
+    expect(view.rows[0].id).toBe("r050");
+    expect(view.pageCount).toBe(2);
+  });
+
+  it("keeps a full last page whole when the count divides exactly", () => {
+    const view = buildListView(costRankedRows(100), { sort: DESC_COST, page: 2 });
+    expect(view.rows).toHaveLength(PAGE_SIZE);
+    expect(view.pageCount).toBe(2);
+  });
+
+  it("clamps a page beyond the end to the last page instead of rendering nothing", () => {
+    const view = buildListView(costRankedRows(60), { sort: DESC_COST, page: 99 });
+    expect(view.page).toBe(2);
+    expect(view.rows).toHaveLength(10);
+  });
+
+  it("clamps a page below the range to the first page", () => {
+    const view = buildListView(costRankedRows(60), { sort: DESC_COST, page: 0 });
+    expect(view.page).toBe(1);
+    expect(view.rows).toHaveLength(PAGE_SIZE);
+  });
+
+  it("counts and totals the WHOLE scoped set, not the visible page", () => {
+    const view = buildListView(costRankedRows(60), { sort: DESC_COST });
+    expect(view.rowCount).toBe(60);
+    // 60 rows costing 60, 59, … 1.
+    expect(view.grandTotal.costUsd).toBeCloseTo((60 * 61) / 2);
+  });
+
+  it("is page 1 of 1 with no rows when the scoped set is empty", () => {
+    const view = buildListView([], { sort: DESC_COST, page: 3 });
+    expect(view.rows).toEqual([]);
+    expect(view.page).toBe(1);
+    expect(view.pageCount).toBe(1);
+    expect(view.rowCount).toBe(0);
+  });
+
+  it("paginates what the folder scope and the errors filter left, not the raw set", () => {
+    const rows = [
+      ...costRankedRows(60),
+      ...Array.from({ length: 5 }, (_, i) => summary({ id: `x${i}`, folder: "fOther", errorCount: 1 })),
+    ];
+    const scoped = buildListView(rows, { sort: DESC_COST, folder: "fOther" });
+    expect(scoped.rowCount).toBe(5);
+    expect(scoped.pageCount).toBe(1);
+    expect(scoped.rows).toHaveLength(5);
+
+    const failing = buildListView(rows, { sort: DESC_COST, errorsOnly: true });
+    expect(failing.rowCount).toBe(5);
+    expect(failing.rows).toHaveLength(5);
+  });
+});
+
+describe("buildListView — an expanded row decides the page when the URL asks for none", () => {
+  // 150 rows: r000-r049 on page 1, r050-r099 on page 2, r100-r149 on page 3.
+  const ROWS = costRankedRows(150);
+
+  it("opens the page that HOLDS the expanded row", () => {
+    const view = buildListView(ROWS, { sort: DESC_COST, expanded: "r120" });
+    expect(view.page).toBe(3);
+    expect(view.rows.map((r) => r.id)).toContain("r120");
+  });
+
+  it("lets an EXPLICIT page win over the expanded row, which is then ignored", () => {
+    const view = buildListView(ROWS, { sort: DESC_COST, page: 1, expanded: "r120" });
+    expect(view.page).toBe(1);
+    expect(view.rows.map((r) => r.id)).not.toContain("r120");
+  });
+
+  it("falls back to page 1 for an id that names no row in the scoped set", () => {
+    expect(buildListView(ROWS, { sort: DESC_COST, expanded: "ghost" }).page).toBe(1);
+    expect(buildListView(ROWS, { sort: DESC_COST }).page).toBe(1);
+  });
+
+  it("places the row by its position in the SCOPED, SORTED set, not the raw one", () => {
+    // Ascending cost reverses the ranking, so r120 sits on page 1 (index 29).
+    const view = buildListView(ROWS, { sort: ASC_COST, expanded: "r120" });
+    expect(view.page).toBe(1);
+    expect(view.rows.map((r) => r.id)).toContain("r120");
+  });
+
+  it("puts the FIRST row of a page on that page, not the previous one", () => {
+    expect(buildListView(ROWS, { sort: DESC_COST, expanded: "r050" }).page).toBe(2);
+    expect(buildListView(ROWS, { sort: DESC_COST, expanded: "r049" }).page).toBe(1);
   });
 });

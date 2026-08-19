@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Nested git worktrees carry their own build output.
+    ".claude/worktrees/**",
   ]),
   {
     // src/core is framework-free (ADR-0002): server-side domain logic only.

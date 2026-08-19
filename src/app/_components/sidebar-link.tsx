@@ -45,7 +45,7 @@ export function SidebarLink({
   // table's own sort (the layout can't read any of it to pass down). The href
   // stays a bare query string, so every surface re-scopes IN PLACE instead of
   // navigating away. Only `?expanded=` is dropped: a row opened under the old
-  // scope means nothing under the new one.
+  // scope means nothing under the new one, and the page count changes with it.
   const next = new URLSearchParams(params.toString());
   if (folder) {
     next.set("folder", folder);
@@ -53,6 +53,9 @@ export function SidebarLink({
     next.delete("folder");
   }
   next.delete("expanded");
+  // …and `?page=`: the new scope is a different (shorter) list, so it starts at
+  // page 1 — the server-side `folderHref` does the same (issue #63).
+  next.delete("page");
   const href = `?${next.toString()}`;
   return (
     <Link

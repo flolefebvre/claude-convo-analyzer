@@ -4,6 +4,7 @@ import type { ConversationSummary } from "@/core/read";
 
 import {
   DEFAULT_SORT,
+  type ListLinkContext,
   errorsHref,
   expandHref,
   folderHref,
@@ -11,6 +12,8 @@ import {
   modelLabel,
   resolveErrorsOnly,
   resolveExpanded,
+  pageHref,
+  resolvePage,
   resolveSort,
   sortConversations,
   sortHref,
@@ -501,5 +504,67 @@ describe("the errors filter travels with every other list link", () => {
 
   it("adds no param when the filter is off", () => {
     expect(sortHref("cost", { sort: DEFAULT_SORT, errorsOnly: false })).toBe("?sortBy=cost&dir=desc");
+  });
+});
+
+describe("resolvePage", () => {
+  it("reports NO requested page when the param is absent", () => {
+    // `undefined` means "the URL asked for nothing", which lets an
+    // `?expanded=<id>` link land on the page that actually holds its row.
+    expect(resolvePage(undefined)).toBeUndefined();
+  });
+
+  it("reads a valid 1-based page number", () => {
+    expect(resolvePage("3")).toBe(3);
+  });
+
+  it("reads an invalid page as no request at all", () => {
+    // A hand-edited URL never yields an empty table: 0, a negative, a
+    // fractional or a non-numeric page all read as "no page requested".
+    for (const raw of ["0", "-2", "1.5", "abc", "", " "]) {
+      expect(resolvePage(raw)).toBeUndefined();
+    }
+  });
+
+  it("takes the FIRST value of a repeated param, like every other resolver", () => {
+    expect(resolvePage(["4", "9"])).toBe(4);
+  });
+});
+
+describe("pageHref", () => {
+  it("links to another page while preserving sort, folder, range and the errors filter", () => {
+    expect(
+      pageHref(3, {
+        sort: { sortBy: "cost", dir: "desc" },
+        folder: "-Users-me-dev-demo",
+        range: "7",
+        errorsOnly: true,
+      }),
+    ).toBe("?sortBy=cost&dir=desc&folder=-Users-me-dev-demo&range=7&errors=1&page=3");
+  });
+
+  it("omits the param for page 1 — the bare URL IS page 1", () => {
+    expect(pageHref(1, { sort: DEFAULT_SORT, page: 4 })).toBe("?sortBy=date&dir=desc");
+  });
+});
+
+describe("the page axis resets on a filter change and travels with the rest", () => {
+  const ON_PAGE_4: ListLinkContext = { sort: DEFAULT_SORT, page: 4 };
+
+  it("sortHref drops the page: a re-sorted list starts at page 1", () => {
+    expect(sortHref("cost", ON_PAGE_4)).toBe("?sortBy=cost&dir=desc");
+  });
+
+  it("folderHref drops the page: a new scope starts at page 1", () => {
+    expect(folderHref("-Users-me-dev-demo", ON_PAGE_4)).toBe("?sortBy=date&dir=desc&folder=-Users-me-dev-demo");
+  });
+
+  it("errorsHref drops the page: a re-filtered list starts at page 1", () => {
+    expect(errorsHref(ON_PAGE_4)).toBe("?sortBy=date&dir=desc&errors=1");
+  });
+
+  it("expandHref keeps the page in BOTH directions — expanding never moves you", () => {
+    expect(expandHref("sess-a", undefined, ON_PAGE_4)).toBe("?sortBy=date&dir=desc&expanded=sess-a&page=4");
+    expect(expandHref("sess-a", "sess-a", ON_PAGE_4)).toBe("?sortBy=date&dir=desc&page=4");
   });
 });

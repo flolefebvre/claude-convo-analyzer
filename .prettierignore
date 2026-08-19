@@ -8,6 +8,9 @@ next-env.d.ts
 # Vendored skills, tracked by skills-lock.json
 .claude/skills
 
+# Nested git worktrees, carrying their own build output
+.claude/worktrees
+
 # Vendored by shadcn
 src/components/ui
 

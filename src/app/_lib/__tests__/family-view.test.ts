@@ -100,6 +100,20 @@ describe("familyView", () => {
     }
   });
 
+  it("drops the page, which could put a member on a slice the click never shows", () => {
+    const view = familyView(
+      family([member({ id: "a", isCurrent: true }), member({ id: "b" })]),
+      { sort: SORT, page: 4, range: "30" },
+      NOW,
+    );
+
+    for (const row of view.rows) {
+      // No page is pinned, so the server lands on the page holding the member.
+      expect(row.href).not.toContain("page=");
+      expect(row.href).toContain("range=30");
+    }
+  });
+
   it("carries the lower-bound flag when any member is unpriced", () => {
     const view = familyView(
       family([member({ id: "a", isCurrent: true }), member({ id: "b", unpriced: true, costUsd: 2 })]),
