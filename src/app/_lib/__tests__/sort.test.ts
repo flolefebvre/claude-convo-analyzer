@@ -508,19 +508,21 @@ describe("the errors filter travels with every other list link", () => {
 });
 
 describe("resolvePage", () => {
-  it("defaults to page 1 when the param is absent", () => {
-    expect(resolvePage(undefined)).toBe(1);
+  it("reports NO requested page when the param is absent", () => {
+    // `undefined` means "the URL asked for nothing", which lets an
+    // `?expanded=<id>` link land on the page that actually holds its row.
+    expect(resolvePage(undefined)).toBeUndefined();
   });
 
   it("reads a valid 1-based page number", () => {
     expect(resolvePage("3")).toBe(3);
   });
 
-  it("falls back to page 1 for anything that is not a whole page number", () => {
+  it("reads an invalid page as no request at all", () => {
     // A hand-edited URL never yields an empty table: 0, a negative, a
-    // fractional or a non-numeric page all read as page 1.
+    // fractional or a non-numeric page all read as "no page requested".
     for (const raw of ["0", "-2", "1.5", "abc", "", " "]) {
-      expect(resolvePage(raw)).toBe(1);
+      expect(resolvePage(raw)).toBeUndefined();
     }
   });
 

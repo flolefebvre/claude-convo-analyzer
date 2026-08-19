@@ -241,12 +241,19 @@ export function resolveErrorsOnly(raw: string | string[] | undefined): boolean {
 
 /**
  * Resolve the requested (1-based) page from the raw `?page=` search param.
+ *
+ * `undefined` means the URL requested NO page — absent, or invalid (`0`, a
+ * negative, a fraction, a non-number), which is never read as a page. That is
+ * distinct from page 1: with no page requested, a bare `?expanded=<id>` link
+ * lands on the page that holds its row (see `buildListView`).
+ *
+ * @example resolvePage(params.page) // 3, or undefined
  */
-export function resolvePage(raw: string | string[] | undefined): number {
+export function resolvePage(raw: string | string[] | undefined): number | undefined {
   const value = firstParam(raw);
-  if (value === undefined) return FIRST_PAGE;
+  if (value === undefined) return undefined;
   const page = Number(value);
-  if (!Number.isInteger(page) || page < FIRST_PAGE) return FIRST_PAGE;
+  if (!Number.isInteger(page) || page < FIRST_PAGE) return undefined;
   return page;
 }
 

@@ -39,11 +39,19 @@ export type ListViewIntent = {
    */
   errorsOnly?: boolean;
   /**
-   * The requested 1-based page, as read from the URL — trusted no further than
-   * that: it is clamped to the pages that exist ({@link clampPage}). Absent
-   * means the first page.
+   * The 1-based page the URL explicitly asked for — trusted no further than
+   * that: it is clamped to the pages that exist ({@link clampPage}). `undefined`
+   * means NO page was requested, and then {@link ListViewIntent.expanded}
+   * decides: an explicit `?page=` pins the page, while a bare `?expanded=<id>`
+   * link always lands on the page holding its row.
    */
   page?: number;
+  /**
+   * The id of the row whose panel is open (`?expanded=`). Only used to place
+   * the page when none was requested — a member link from the continuation
+   * family drops the page precisely so its target cannot be paged away.
+   */
+  expanded?: string;
 };
 
 /** The "All folders" anchor aggregate the sidebar shows, summed from the
@@ -121,8 +129,13 @@ export function clampPage(requested: number, pageCount: number): number {
  * (with a `sort`) is given, ALSO returns the table slice (`rows`, `scoped`,
  * `selectedFolder`, `grandTotal`, page metadata), filtering by folder BEFORE
  * sorting so scope composes with sort, and paginating LAST so the footer's
- * `rowCount`/`grandTotal` still cover the whole scoped set. With no intent the table slice is skipped (no wasted
- * filter/sort work) — the layout's scope-independent regions call it that way.
+ * `rowCount`/`grandTotal` still cover the whole scoped set. With no intent the
+ * table slice is skipped (no wasted filter/sort work) — the layout's
+ * scope-independent regions call it that way.
+ *
+ * The page comes from `intent.page` when the URL pinned one; otherwise from the
+ * row `intent.expanded` names, so a bare `?expanded=<id>` link always opens on
+ * the page holding its row.
  *
  * Pure: no mutation of `rows`.
  */
@@ -156,7 +169,7 @@ export function buildListView(
   // Paginate LAST: the footer's `rowCount` + `grandTotal` cover the whole
   // scoped set, only the rendered slice is bounded.
   const pageCount = Math.max(FIRST_PAGE, Math.ceil(sortedRows.length / PAGE_SIZE));
-  const page = clampPage(intent.page ?? FIRST_PAGE, pageCount);
+  const page = clampPage(intent.page ?? pageHolding(sortedRows, intent.expanded), pageCount);
   const start = (page - 1) * PAGE_SIZE;
   return {
     ...base,
@@ -192,6 +205,21 @@ function filterByFolder(summaries: ConversationSummary[], folder: string | undef
 function filterByErrors(summaries: ConversationSummary[], errorsOnly: boolean | undefined): ConversationSummary[] {
   if (!errorsOnly) return summaries;
   return summaries.filter((s) => s.errorCount > 0);
+}
+
+/**
+ * The page that holds `expanded`, or {@link FIRST_PAGE} when no row is open (or
+ * the id names none) — the fallback for a URL that requested no page.
+ */
+function pageHolding(rows: readonly ConversationSummary[], expanded: string | undefined): number {
+  if (expanded === undefined) return FIRST_PAGE;
+  const index = rows.findIndex((row) => row.id === expanded);
+  return index === -1 ? FIRST_PAGE : pageOf(index);
+}
+
+/** The 1-based page a row's index falls on. */
+function pageOf(index: number): number {
+  return Math.floor(index / PAGE_SIZE) + 1;
 }
 
 /** The minimal row shape {@link grandTotal} needs — a structural subset of the

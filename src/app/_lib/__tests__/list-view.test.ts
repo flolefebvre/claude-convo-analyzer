@@ -401,3 +401,37 @@ describe("buildListView — pagination (issue #63)", () => {
     expect(failing.rows).toHaveLength(5);
   });
 });
+
+describe("buildListView — an expanded row decides the page when the URL asks for none", () => {
+  // 150 rows: r000-r049 on page 1, r050-r099 on page 2, r100-r149 on page 3.
+  const ROWS = costRankedRows(150);
+
+  it("opens the page that HOLDS the expanded row", () => {
+    const view = buildListView(ROWS, { sort: DESC_COST, expanded: "r120" });
+    expect(view.page).toBe(3);
+    expect(view.rows.map((r) => r.id)).toContain("r120");
+  });
+
+  it("lets an EXPLICIT page win over the expanded row, which is then ignored", () => {
+    const view = buildListView(ROWS, { sort: DESC_COST, page: 1, expanded: "r120" });
+    expect(view.page).toBe(1);
+    expect(view.rows.map((r) => r.id)).not.toContain("r120");
+  });
+
+  it("falls back to page 1 for an id that names no row in the scoped set", () => {
+    expect(buildListView(ROWS, { sort: DESC_COST, expanded: "ghost" }).page).toBe(1);
+    expect(buildListView(ROWS, { sort: DESC_COST }).page).toBe(1);
+  });
+
+  it("places the row by its position in the SCOPED, SORTED set, not the raw one", () => {
+    // Ascending cost reverses the ranking, so r120 sits on page 1 (index 29).
+    const view = buildListView(ROWS, { sort: ASC_COST, expanded: "r120" });
+    expect(view.page).toBe(1);
+    expect(view.rows.map((r) => r.id)).toContain("r120");
+  });
+
+  it("puts the FIRST row of a page on that page, not the previous one", () => {
+    expect(buildListView(ROWS, { sort: DESC_COST, expanded: "r050" }).page).toBe(2);
+    expect(buildListView(ROWS, { sort: DESC_COST, expanded: "r049" }).page).toBe(1);
+  });
+});
