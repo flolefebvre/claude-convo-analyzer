@@ -20,6 +20,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 
 import { ConversationRow } from "@/app/_components/conversation-row";
+import { ListPager } from "@/app/_components/list-pager";
 import { OverviewBand } from "@/app/_components/overview-band";
 import {
   loadConversationDetail,
@@ -43,6 +44,7 @@ import {
   folderHref,
   resolveErrorsOnly,
   resolveExpanded,
+  resolvePage,
   resolveSort,
   sortHref,
   sortIndicator,
@@ -104,19 +106,28 @@ async function ConversationTable({ searchParams }: { searchParams: Promise<ViewS
   const range = firstParam(params.range) || undefined;
   // The "only with errors" filter (`?errors=1`), off by default (issue #47).
   const errorsOnly = resolveErrorsOnly(params.errors);
-  // The one view-state value every link on this page carries forward, so the
-  // axes compose instead of clobbering each other (see `ListLinkContext`).
-  const links: ListLinkContext = { sort, folder: activeFolder, range, errorsOnly };
+  // The requested page (`?page=`, 1-based). Only the URL's *intent* — the seam
+  // clamps it to the pages the scoped set actually has (issue #63).
+  const requestedPage = resolvePage(params.page);
   // Fetch ALL rows once (deduped with the layout's sidebar read via React
   // cache()); the seam owns the order-dependent pipeline (filter BEFORE sort,
-  // one `deriveFolders` derive feeding the table breadcrumb + scope).
+  // one `deriveFolders` derive feeding the table breadcrumb + scope, paginate
+  // LAST so the footer still totals the whole scoped set).
   const allRows = await loadConversations();
   const {
     rows,
+    page,
+    pageCount,
+    rowCount,
     scoped: isScoped,
     selectedFolder,
     grandTotal: total,
-  } = buildListView(allRows, { folder: activeFolder, sort, errorsOnly });
+  } = buildListView(allRows, { folder: activeFolder, sort, errorsOnly, page: requestedPage });
+  // The one view-state value every link on this page carries forward, so the
+  // axes compose instead of clobbering each other (see `ListLinkContext`). It
+  // carries the CLAMPED page, so a link never propagates a page that does not
+  // exist.
+  const links: ListLinkContext = { sort, folder: activeFolder, range, errorsOnly, page };
 
   // Continuation-family size per conversation, walked ONCE over the same rows
   // (issue #46). Sizes come from the UNSCOPED set on purpose: a family spanning
@@ -124,8 +135,8 @@ async function ConversationTable({ searchParams }: { searchParams: Promise<ViewS
   const familySize = await loadFamilySizes();
 
   // Fetch the expanded row's panel detail server-side — only when that row is
-  // actually visible in the current view (a stale/foreign `?expanded=` is
-  // ignored). `null` detail still renders the panel with a graceful note.
+  // actually visible in the current view: `rows` is the current PAGE, so an id
+  // from another page is ignored exactly like a stale/foreign one. `null` detail still renders the panel with a graceful note.
   const expandedRow = expandedId ? rows.find((row) => row.id === expandedId) : undefined;
   const expandedDetail = expandedRow ? await loadConversationDetail(expandedRow.id) : null;
 
@@ -209,7 +220,7 @@ async function ConversationTable({ searchParams }: { searchParams: Promise<ViewS
           <TableFooter>
             <TableRow>
               <TableCell colSpan={footerLabelColSpan(isScoped)} className="font-medium">
-                {rows.length} conversation{rows.length === 1 ? "" : "s"}
+                {rowCount} conversation{rowCount === 1 ? "" : "s"}
               </TableCell>
               <TableCell className="text-right tabular-nums">{formatTokens(total.tokens.total)}</TableCell>
               <TableCell className="text-right font-semibold text-cost tabular-nums">
@@ -226,6 +237,8 @@ async function ConversationTable({ searchParams }: { searchParams: Promise<ViewS
           </TableFooter>
         </Table>
       </div>
+
+      <ListPager page={page} pageCount={pageCount} links={links} />
     </>
   );
 }
