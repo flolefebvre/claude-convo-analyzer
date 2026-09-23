@@ -96,6 +96,22 @@ describe("computeCost — known resolved models", () => {
     expect(computeCost(tokens({ cacheWrite: 1_000_000 }), "claude-opus-5").usd).toBe(6.25);
     expect(computeCost(tokens({ cacheRead: 1_000_000 }), "claude-opus-5").usd).toBe(0.5);
   });
+
+  it("prices claude-opus-5-5 at $4/$20 per MTok (below the older Opus tier)", () => {
+    // 1M input @ $4 + 1M output @ $20 = $24.
+    const result = computeCost(tokens({ input: 1_000_000, output: 1_000_000 }), "claude-opus-5-5");
+    expect(result).toEqual({ usd: 24, unpriced: false, approximate: false });
+  });
+
+  it("prices claude-opus-5-5 cache reads at $0.20/MTok (0.05x input, not the standard 0.1x)", () => {
+    const result = computeCost(tokens({ cacheRead: 1_000_000 }), "claude-opus-5-5");
+    expect(result).toEqual({ usd: 0.2, unpriced: false, approximate: false });
+  });
+
+  it("prices claude-opus-5-5 cache writes at the standard multipliers ($5 5m / $8 1h per MTok)", () => {
+    expect(priceTokenSplit(split({ cacheWrite5m: 1_000_000 }), "claude-opus-5-5").usd).toBe(5);
+    expect(priceTokenSplit(split({ cacheWrite1h: 1_000_000 }), "claude-opus-5-5").usd).toBe(8);
+  });
 });
 
 function split(partial: Partial<TokenSplit>): TokenSplit {
@@ -131,9 +147,9 @@ describe("computeCost — merged cacheWrite is priced at the 5m tier", () => {
 });
 
 describe("computeCost — bare aliases price at family-latest, flagged approximate", () => {
-  it("prices `opus` at claude-opus-5 (family-latest) rates and flags approximate (still priced)", () => {
+  it("prices `opus` at claude-opus-5-5 (family-latest) rates and flags approximate (still priced)", () => {
     const alias = computeCost(tokens({ input: 1_000_000 }), "opus");
-    const resolved = computeCost(tokens({ input: 1_000_000 }), "claude-opus-5");
+    const resolved = computeCost(tokens({ input: 1_000_000 }), "claude-opus-5-5");
     expect(alias.usd).toBe(resolved.usd);
     expect(alias.unpriced).toBe(false);
     expect(alias.approximate).toBe(true);
@@ -253,7 +269,7 @@ describe("priceSplitByType — per-bucket cost split summing to the total", () =
 
   it("a bare alias prices at family-latest and flags approximate", () => {
     const result = priceSplitByType(split({ input: 1_000_000 }), "opus");
-    expect(result.byType.input).toBe(5);
+    expect(result.byType.input).toBe(4);
     expect(result.unpriced).toBe(false);
     expect(result.approximate).toBe(true);
   });
@@ -270,7 +286,7 @@ describe("resolveModel — shared resolution logic", () => {
 
   it("maps a bare alias to family-latest and flags approximate", () => {
     expect(resolveModel("opus")).toEqual({
-      key: "claude-opus-5",
+      key: "claude-opus-5-5",
       approximate: true,
       unpriced: false,
     });

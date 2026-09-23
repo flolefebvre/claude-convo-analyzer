@@ -9,32 +9,34 @@
 // UNITS: every rate below is USD per *single* token (USD/MTok ÷ 1_000_000).
 // Storing per-token keeps computeCost a plain multiply with no scaling factor.
 //
-// SOURCE & DATE: Anthropic list prices as of 2026-09-01, read from
+// SOURCE & DATE: Anthropic list prices as of 2026-09-23, read from
 //   platform.claude.com/docs/en/about-claude/pricing (model pricing table).
 //   - Base input/output USD/MTok:
-//       fable-5-1 $10 / $50,  fable-5 $10 / $50,  opus-5 $5 / $25,
-//       opus-4-8 $5 / $25,  opus-4-7 $5 / $25,  opus-4-6 $5 / $25,
+//       fable-5-1 $10 / $50,  fable-5 $10 / $50,  opus-5-5 $4 / $20,
+//       opus-5 $5 / $25,  opus-4-8 $5 / $25,  opus-4-7 $5 / $25,  opus-4-6 $5 / $25,
 //       sonnet-5 $2 / $10,  sonnet-4-6 $3 / $15,  haiku-4-5 $1 / $5.
 //   - sonnet-5: the $2 / $10 rate announced at launch as introductory (through
 //       2026-08-31) is now the standard list price; the increase to $3 / $15 that
 //       was scheduled for 2026-09-01 was cancelled. So $2 / $10 IS the list rate
 //       ADR-0003 asks for, not a discount.
-//   - Fast mode (opus-5 / opus-4-8 at $10 / $50) is a per-request premium, not a
-//       distinct model id in the logs, so it gets no row here — same reasoning as
-//       the Batch API's 50% discount (ADR-0003: price at standard list rate).
+//   - Fast mode (opus-5-5 at $8 / $40, opus-5 / opus-4-8 at $10 / $50) is a
+//       per-request premium, not a distinct model id in the logs, so it gets no
+//       row here — same reasoning as the Batch API's 50% discount (ADR-0003:
+//       price at standard list rate).
 //   - Cache-tier multipliers vs base input (platform.claude.com prompt-caching docs):
 //       cache write 5m = 1.25x base input,  cache write 1h = 2x base input,
 //       cache read = 0.1x base input — EXCEPT fable-5-1, whose cache read is
-//       0.025x base input ($0.25 / MTok). Cache writes on fable-5-1 keep the
-//       standard multipliers ($12.50 / $20 per MTok).
+//       0.025x base input ($0.25 / MTok), and opus-5-5, whose cache read is
+//       0.05x base input ($0.20 / MTok). Cache writes on both keep the standard
+//       multipliers (fable-5-1 $12.50 / $20, opus-5-5 $5 / $8 per MTok).
 //   Cache tiers are kept DISTINCT here (not derived by a shared multiplier at call
 //   time) so a model with atypical cache pricing stays correct — ADR-0003.
 //
-// PRICE TABLE VERSION: 2026-09-01.1
+// PRICE TABLE VERSION: 2026-09-23.1
 
 const PER_MTOK = 1_000_000;
 
-/** Cache-read multiplier vs base input on every model except fable-5-1. */
+/** Cache-read multiplier vs base input on every model except fable-5-1 and opus-5-5. */
 const STANDARD_CACHE_READ_MULTIPLIER = 0.1;
 
 /** Explicit per-token (USD) rates for one resolved model. Cache tiers distinct. */
@@ -72,6 +74,7 @@ function priceRow(
 export const PRICES: Record<string, ModelPrices> = {
   "claude-fable-5-1": priceRow(10, 50, 0.025),
   "claude-fable-5": priceRow(10, 50),
+  "claude-opus-5-5": priceRow(4, 20, 0.05),
   "claude-opus-5": priceRow(5, 25),
   "claude-opus-4-8": priceRow(5, 25),
   "claude-opus-4-7": priceRow(5, 25),
@@ -87,7 +90,7 @@ export const PRICES: Record<string, ModelPrices> = {
  * resolver flags it. `unpriced` stays false — aliases ARE priced.
  */
 export const ALIAS_TO_LATEST: Record<string, string> = {
-  opus: "claude-opus-5",
+  opus: "claude-opus-5-5",
   sonnet: "claude-sonnet-5",
   haiku: "claude-haiku-4-5-20251001",
 };
