@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -37,4 +37,37 @@ describe("seedEnvironment", () => {
     );
     expect(familyRoots).toHaveLength(2);
   });
+
+  it("writes byte-identical logs for the same anchor", async () => {
+    const first = await seedEnvironment({ dir: path.join(tmpDir, "first"), now: NOW });
+    const second = await seedEnvironment({ dir: path.join(tmpDir, "second"), now: NOW });
+
+    const files = readTree(first.logsRoot);
+    expect(Object.keys(files)).toHaveLength(first.generated.conversations + first.generated.subAgents);
+    expect(readTree(second.logsRoot)).toEqual(files);
+  });
+
+  it("rebuilds from a clean slate, leaving nothing from a previous run", async () => {
+    const dir = path.join(tmpDir, "seed");
+    const before = await seedEnvironment({ dir, now: NOW });
+    const leftover = path.join(before.logsRoot, "-home-dev-stale", "stale-session.jsonl");
+    mkdirSync(path.dirname(leftover), { recursive: true });
+    writeFileSync(leftover, "{}\n");
+
+    const after = await seedEnvironment({ dir, now: NOW });
+
+    expect(existsSync(leftover)).toBe(false);
+    expect(await listConversations({ dbPath: after.dbPath })).toHaveLength(37);
+  });
 });
+
+/** Every file under `root`, by relative path, with its contents. */
+function readTree(root: string): Record<string, string> {
+  const files = readdirSync(root, { recursive: true, withFileTypes: true }).filter((e) => e.isFile());
+  return Object.fromEntries(
+    files.map((e) => {
+      const file = path.join(e.parentPath, e.name);
+      return [path.relative(root, file), readFileSync(file, "utf8")];
+    }),
+  );
+}
