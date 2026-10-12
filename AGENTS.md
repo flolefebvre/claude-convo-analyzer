@@ -51,6 +51,12 @@ pnpm build         next build
 
 **Before considering a change done:** run `pnpm gate`. It passed only if the output ends with `--gate OK--` — anything else is a failure, whatever the rest of the output says. The sequence is the `gate` line in package.json; add a check by adding its script name there.
 
+## Worktrees
+
+- Create and leave worktrees with the `EnterWorktree` and `ExitWorktree` tools, never with `git worktree add`.
+- Run `git fetch` before creating one: a worktree starts from `origin/main`, not local `main`.
+- In a new worktree, run `pnpm install` before anything else; it also generates the Prisma client.
+
 ## Testing
 
 This project uses TDD. Build features test-first via the `tdd` skill (red → green → refactor, one vertical slice at a time), exercising public interfaces — `src/core`'s exported functions against small sanitized JSONL fixtures — never internals. See `docs/codebase/testing.md` before writing tests.
