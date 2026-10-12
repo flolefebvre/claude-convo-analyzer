@@ -108,7 +108,7 @@ pnpm dev
 ```
 
 Two environment variables move what the app reads and writes; a relative value
-resolves against the directory you launch from:
+resolves against the process working directory (the repo root under `pnpm`):
 
 - `CCA_DB_PATH` — the SQLite file (default `./data/analyzer.db`), created and
   migrated on first use.
