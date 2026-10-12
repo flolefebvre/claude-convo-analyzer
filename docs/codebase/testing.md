@@ -15,6 +15,8 @@ This project uses TDD, via the `tdd` skill. The rules that matter here:
   UI is tested pragmatically (a few behavior checks), not exhaustively.
 - Tests live in `src/core/__tests__/`, one `.test.ts` file per behavior area,
   named in the vocabulary of `CONTEXT.md`.
+- Tests of `scripts/` live beside the script they test, as `*.test.ts`
+  (e.g. `scripts/seed/seed.test.ts`).
 
 ## Fixtures
 

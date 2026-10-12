@@ -163,6 +163,18 @@ pnpm gate
 See [`docs/codebase/testing.md`](docs/codebase/testing.md) for the testing
 approach and fixtures.
 
+For demo data, `pnpm seed` builds a self-contained seed environment in
+`data/seed/`: invented logs in `data/seed/projects/`, ingested into
+`data/seed/seed.db`. Each run wipes and rebuilds that directory; your real
+database and logs are never read or written. The seeded activity ends now, or
+at `--now=<ISO>` — the same `--now` always yields the same data, which is what
+screenshots want. Point the app at it with the two variables above:
+
+```bash
+pnpm seed --now=2026-06-22T17:00:00Z
+CCA_DB_PATH=data/seed/seed.db CCA_LOGS_ROOT=data/seed/projects pnpm dev
+```
+
 ## Was this made with AI?
 
 Yes.

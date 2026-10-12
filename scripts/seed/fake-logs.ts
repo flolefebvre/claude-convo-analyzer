@@ -1,43 +1,50 @@
-// Seed the local SQLite DB with realistic FAKE data — for screenshots / demos.
+// The fake-log generator behind `pnpm seed`: realistic, obviously invented
+// Claude Code JSONL transcripts, written under a logs root in the real on-disk
+// layout (`<project folder>/<session>.jsonl` + `<session>/subagents/…`), so the
+// genuine `refresh()` parses them like any other log.
 //
-// Strategy (faithful to the real pipeline): generate fake Claude Code JSONL
-// transcripts into a throwaway logs root, then run the genuine `refresh()` into
-// `defaultDbPath()` (`./data/analyzer.db` unless `CCA_DB_PATH` redirects it).
-// This routes every byte through the actual parser + cost engine, so the seeded
-// rows are guaranteed consistent with what the app reads — no hand-poked SQLite
-// rows that could drift from the schema.
-//
-// The fake logs go to a temp dir that is removed afterwards; only the DB rows
-// persist. Deterministic ids make re-running idempotent (refresh skips unchanged
-// conversations and re-writes changed ones — never duplicates).
-//
-// Run with:  pnpm exec tsx scripts/seed-fake-data.ts
-//
-// NOTE: clicking "Refresh" in the running app re-scans your REAL
-// ~/.claude/projects and will replace this fake data. That's expected — this
-// seed is only for producing demo screenshots.
+// Re-entrant by construction: every call builds its own generator state (the
+// PRNG, the id counter, the timeline anchor), so two calls with the same `now`
+// write byte-identical files, in one process or across runs.
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import { defaultDbPath } from "@/core/db";
-import { refresh } from "@/core/refresh";
+/** One call's generator state: a deterministic PRNG (LCG), an id counter, and
+ *  the instant the seeded timeline ends at. */
+type Gen = {
+  readonly now: number;
+  rand(): number;
+  int(min: number, max: number): number;
+  pick<T>(arr: readonly T[]): T;
+  chance(p: number): boolean;
+  uid(prefix: string): string;
+};
 
-// ── Deterministic PRNG (LCG) so the seed is reproducible run-to-run ──────────
-let _seed = 0x2f6e2b1;
-function rand(): number {
-  _seed = (_seed * 1103515245 + 12345) & 0x7fffffff;
-  return _seed / 0x7fffffff;
-}
-function int(min: number, max: number): number {
-  return Math.floor(min + rand() * (max - min + 1));
-}
-function pick<T>(arr: readonly T[]): T {
-  return arr[int(0, arr.length - 1)];
-}
-function chance(p: number): boolean {
-  return rand() < p;
+function createGen(now: number): Gen {
+  let seed = 0x2f6e2b1;
+  let idCounter = 0;
+  const gen: Gen = {
+    now,
+    rand() {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      return seed / 0x7fffffff;
+    },
+    int(min, max) {
+      return Math.floor(min + gen.rand() * (max - min + 1));
+    },
+    pick(arr) {
+      return arr[gen.int(0, arr.length - 1)];
+    },
+    chance(p) {
+      return gen.rand() < p;
+    },
+    uid(prefix) {
+      idCounter += 1;
+      return `${prefix}-${idCounter.toString(36)}`;
+    },
+  };
+  return gen;
 }
 
 // ── Generic demo content (safe for a public README) ──────────────────────────
@@ -148,37 +155,23 @@ const READ_FILES = ["src/index.ts", "src/server.ts", "README.md", "src/db.ts", "
 
 const CC_VERSION = "2.1.185";
 
-// Base "now" for the demo timeline. Fixed by default (deterministic — never an
-// implicit `Date.now()`), but slidable with `--now=<ISO>` or `--now=today` so
-// the seeded three weeks can be made to land inside a range that ends today —
-// the Trends page's default 30-day window shows nothing otherwise.
-const NOW = resolveNow();
-
-function resolveNow(): number {
-  const flag = "--now=";
-  const arg = process.argv.find((a) => a.startsWith(flag))?.slice(flag.length);
-  if (arg === undefined) return Date.parse("2026-06-22T17:00:00.000Z");
-  if (arg === "today") {
-    const today = new Date();
-    today.setHours(17, 0, 0, 0);
-    return today.getTime();
-  }
-  const parsed = Date.parse(arg);
-  if (Number.isNaN(parsed)) {
-    throw new Error(`--now: expected an ISO instant or "today", got "${arg}"`);
-  }
-  return parsed;
-}
 const DAY = 86_400_000;
-
-let uuidCounter = 0;
-function uid(prefix: string): string {
-  uuidCounter += 1;
-  return `${prefix}-${uuidCounter.toString(36)}`;
-}
 
 function iso(ms: number): string {
   return new Date(ms).toISOString();
+}
+
+/** The fields every main-thread assistant record opens with, ids drawn in log order. */
+function assistantEnvelope(g: Gen, ms: number, cwd: string): Record<string, unknown> {
+  return {
+    type: "assistant",
+    uuid: g.uid("a"),
+    requestId: g.uid("req"),
+    timestamp: iso(ms),
+    cwd,
+    gitBranch: "main",
+    version: CC_VERSION,
+  };
 }
 
 type Usage = {
@@ -192,19 +185,19 @@ type Usage = {
   };
 };
 
-function makeUsage(scale: number): Usage {
+function makeUsage(g: Gen, scale: number): Usage {
   // Real Claude Code logs always carry integer token counts, so a non-integer
   // `scale` must not leak fractions into the output. Round the component, then
   // derive the sum from it — that keeps `cache_creation_input_tokens` exactly
   // equal to the ephemeral breakdown, which rounding the sum separately would
   // not.
-  const create5m = Math.round(int(800, 18_000) * scale);
-  const create1h = chance(0.3) ? int(0, 4_000) : 0;
+  const create5m = Math.round(g.int(800, 18_000) * scale);
+  const create1h = g.chance(0.3) ? g.int(0, 4_000) : 0;
   return {
-    input_tokens: int(150, 2_200),
-    output_tokens: int(300, 4_500),
+    input_tokens: g.int(150, 2_200),
+    output_tokens: g.int(300, 4_500),
     cache_creation_input_tokens: create5m + create1h,
-    cache_read_input_tokens: int(4_000, 160_000),
+    cache_read_input_tokens: g.int(4_000, 160_000),
     cache_creation: {
       ephemeral_5m_input_tokens: create5m,
       ephemeral_1h_input_tokens: create1h,
@@ -233,28 +226,28 @@ const API_ERRORS = [
  * line of a `subagents/agent-<id>.jsonl` file has. A failed turn still bills a
  * little input, and no output.
  */
-function apiErrorTurn(ms: number, cwd: string, model: string, agent?: { agentId: string; agentType: string }): string {
-  const failure = pick(API_ERRORS);
+function apiErrorTurn(
+  g: Gen,
+  ms: number,
+  cwd: string,
+  model: string,
+  agent?: { agentId: string; agentType: string },
+): string {
+  const failure = g.pick(API_ERRORS);
   const rec: Record<string, unknown> = {
-    type: "assistant",
-    uuid: uid("a"),
-    requestId: uid("req"),
-    timestamp: iso(ms),
-    cwd,
-    gitBranch: "main",
-    version: CC_VERSION,
+    ...assistantEnvelope(g, ms, cwd),
     isApiErrorMessage: true,
     apiErrorStatus: failure.status,
     message: {
-      id: uid("msg"),
+      id: g.uid("msg"),
       role: "assistant",
       model,
       content: [{ type: "text", text: failure.text }],
       usage: {
-        input_tokens: int(80, 900),
+        input_tokens: g.int(80, 900),
         output_tokens: 0,
         cache_creation_input_tokens: 0,
-        cache_read_input_tokens: int(2_000, 40_000),
+        cache_read_input_tokens: g.int(2_000, 40_000),
         cache_creation: {
           ephemeral_5m_input_tokens: 0,
           ephemeral_1h_input_tokens: 0,
@@ -272,27 +265,22 @@ function apiErrorTurn(ms: number, cwd: string, model: string, agent?: { agentId:
 
 /** Build one main-thread assistant turn (optionally with tool_use blocks). */
 function assistantTurn(
+  g: Gen,
   ms: number,
   cwd: string,
   model: string,
   opts: { skill?: string; toolUses?: object[]; scale?: number } = {},
 ): string {
-  const content: object[] = [{ type: "text", text: pick(ASSISTANT_REPLIES) }];
+  const content: object[] = [{ type: "text", text: g.pick(ASSISTANT_REPLIES) }];
   if (opts.toolUses) content.push(...opts.toolUses);
   const rec: Record<string, unknown> = {
-    type: "assistant",
-    uuid: uid("a"),
-    requestId: uid("req"),
-    timestamp: iso(ms),
-    cwd,
-    gitBranch: "main",
-    version: CC_VERSION,
+    ...assistantEnvelope(g, ms, cwd),
     message: {
-      id: uid("msg"),
+      id: g.uid("msg"),
       role: "assistant",
       model,
       content,
-      usage: makeUsage(opts.scale ?? 1),
+      usage: makeUsage(g, opts.scale ?? 1),
     },
   };
   if (opts.skill) rec.attributionSkill = opts.skill;
@@ -306,6 +294,7 @@ function assistantTurn(
  * `agentId`) and no `permissionMode`, which only a main-thread prompt carries.
  */
 function userPrompt(
+  g: Gen,
   ms: number,
   cwd: string,
   text: string,
@@ -316,7 +305,7 @@ function userPrompt(
 ): string {
   const rec: Record<string, unknown> = {
     type: "user",
-    uuid: uid("u"),
+    uuid: g.uid("u"),
     timestamp: iso(ms),
     cwd,
     gitBranch: "main",
@@ -338,6 +327,7 @@ function userPrompt(
  * `subagents/agent-<id>.jsonl` file has — same as {@link apiErrorTurn}.
  */
 function toolResult(
+  g: Gen,
   ms: number,
   cwd: string,
   toolUseId: string,
@@ -347,7 +337,7 @@ function toolResult(
 ): string {
   const rec: Record<string, unknown> = {
     type: "user",
-    uuid: uid("u"),
+    uuid: g.uid("u"),
     timestamp: iso(ms),
     cwd,
     message: {
@@ -374,18 +364,46 @@ const GREP_PATTERNS = ["TODO", "createUser", "useEffect\\(", "process.env", "asy
 const MCP_QUERIES = ["open bugs", "release blockers", "stale PRs"] as const;
 
 const TOOL_KINDS = [
-  { name: "Read", weight: 9, errorChance: 0.02, min: 400, max: 42_000, input: () => ({ file_path: pick(READ_FILES) }) },
-  { name: "Bash", weight: 8, errorChance: 0.13, min: 40, max: 6_000, input: () => ({ command: pick(BASH_CMDS) }) },
-  { name: "Edit", weight: 6, errorChance: 0.08, min: 30, max: 320, input: () => ({ file_path: pick(READ_FILES) }) },
-  { name: "Grep", weight: 5, errorChance: 0.04, min: 80, max: 14_000, input: () => ({ pattern: pick(GREP_PATTERNS) }) },
-  { name: "Skill", weight: 3, errorChance: 0.02, min: 600, max: 9_000, input: () => ({ skill: pick(SKILLS) }) },
+  {
+    name: "Read",
+    weight: 9,
+    errorChance: 0.02,
+    min: 400,
+    max: 42_000,
+    input: (g: Gen) => ({ file_path: g.pick(READ_FILES) }),
+  },
+  {
+    name: "Bash",
+    weight: 8,
+    errorChance: 0.13,
+    min: 40,
+    max: 6_000,
+    input: (g: Gen) => ({ command: g.pick(BASH_CMDS) }),
+  },
+  {
+    name: "Edit",
+    weight: 6,
+    errorChance: 0.08,
+    min: 30,
+    max: 320,
+    input: (g: Gen) => ({ file_path: g.pick(READ_FILES) }),
+  },
+  {
+    name: "Grep",
+    weight: 5,
+    errorChance: 0.04,
+    min: 80,
+    max: 14_000,
+    input: (g: Gen) => ({ pattern: g.pick(GREP_PATTERNS) }),
+  },
+  { name: "Skill", weight: 3, errorChance: 0.02, min: 600, max: 9_000, input: (g: Gen) => ({ skill: g.pick(SKILLS) }) },
   {
     name: "mcp__github__create_issue",
     weight: 2,
     errorChance: 0.17,
     min: 200,
     max: 1_400,
-    input: () => ({ title: pick(TITLES), repository: "acme/acme-api" }),
+    input: (g: Gen) => ({ title: g.pick(TITLES), repository: "acme/acme-api" }),
   },
   {
     name: "mcp__linear__search_issues",
@@ -393,15 +411,15 @@ const TOOL_KINDS = [
     errorChance: 0.09,
     min: 300,
     max: 22_000,
-    input: () => ({ query: pick(MCP_QUERIES) }),
+    input: (g: Gen) => ({ query: g.pick(MCP_QUERIES) }),
   },
 ] as const;
 
 const TOTAL_TOOL_WEIGHT = TOOL_KINDS.reduce((sum, k) => sum + k.weight, 0);
 
 /** Pick a tool kind by weight, so built-ins dominate as they do in real logs. */
-function pickToolKind(): (typeof TOOL_KINDS)[number] {
-  let roll = rand() * TOTAL_TOOL_WEIGHT;
+function pickToolKind(g: Gen): (typeof TOOL_KINDS)[number] {
+  let roll = g.rand() * TOTAL_TOOL_WEIGHT;
   for (const kind of TOOL_KINDS) {
     roll -= kind.weight;
     if (roll <= 0) return kind;
@@ -420,18 +438,18 @@ const ERROR_MESSAGES = [
 ] as const;
 
 /** A result payload of roughly the kind's size band (or a short error message). */
-function toolResultText(kind: (typeof TOOL_KINDS)[number], isError: boolean): string {
-  if (isError) return pick(ERROR_MESSAGES);
-  const size = int(kind.min, kind.max);
+function toolResultText(g: Gen, kind: (typeof TOOL_KINDS)[number], isError: boolean): string {
+  if (isError) return g.pick(ERROR_MESSAGES);
+  const size = g.int(kind.min, kind.max);
   return RESULT_FILLER.repeat(Math.ceil(size / RESULT_FILLER.length)).slice(0, size);
 }
 
 /** Build a sub-agent transcript file + the parent's spawn ledger tool_result. */
-function spawnSubAgent(ms: number, cwd: string): { toolUse: object; ledgerResult: object; sub: SubAgent } {
-  const agentId = uid("agent").replace("agent-", "");
-  const toolUseId = uid("tu");
-  const agentType = pick(SUBAGENT_TYPES);
-  const subModel = pick(MODELS);
+function spawnSubAgent(g: Gen, ms: number, cwd: string): { toolUse: object; ledgerResult: object; sub: SubAgent } {
+  const agentId = g.uid("agent").replace("agent-", "");
+  const toolUseId = g.uid("tu");
+  const agentType = g.pick(SUBAGENT_TYPES);
+  const subModel = g.pick(MODELS);
 
   // The sub-agent's own transcript — the source of truth for its tokens. Every
   // record in it carries the real sidechain shape (`isSidechain` + `agentId`),
@@ -440,23 +458,23 @@ function spawnSubAgent(ms: number, cwd: string): { toolUse: object; ledgerResult
   // It OPENS with the prompt the sub-agent was handed (issue #56), exactly as a
   // real file does, then replies from five seconds later on.
   const prompt = SUBAGENT_PROMPTS[agentType];
-  const subLines: string[] = [userPrompt(ms, cwd, prompt, undefined, { agentId })];
+  const subLines: string[] = [userPrompt(g, ms, cwd, prompt, undefined, { agentId })];
   let subTotal = 0;
-  const turns = int(2, 5);
+  const turns = g.int(2, 5);
   for (let i = 0; i < turns; i++) {
     const turnMs = ms + 5_000 + i * 30_000;
-    const u = makeUsage(0.6);
-    const subKind = pickToolKind();
-    const subToolUse = chance(0.6)
-      ? { type: "tool_use", id: uid("tu"), name: subKind.name, input: subKind.input() }
+    const u = makeUsage(g, 0.6);
+    const subKind = pickToolKind(g);
+    const subToolUse = g.chance(0.6)
+      ? { type: "tool_use", id: g.uid("tu"), name: subKind.name, input: subKind.input(g) }
       : null;
-    const subText = pick(SUB_AGENT_REPLIES);
+    const subText = g.pick(SUB_AGENT_REPLIES);
     subTotal += u.input_tokens + u.output_tokens + u.cache_creation_input_tokens + u.cache_read_input_tokens;
     subLines.push(
       JSON.stringify({
         type: "assistant",
-        uuid: uid("sa"),
-        requestId: uid("sreq"),
+        uuid: g.uid("sa"),
+        requestId: g.uid("sreq"),
         timestamp: iso(turnMs),
         cwd,
         gitBranch: "main",
@@ -466,7 +484,7 @@ function spawnSubAgent(ms: number, cwd: string): { toolUse: object; ledgerResult
         attributionAgent: agentType,
         resolvedModel: subModel,
         message: {
-          id: uid("smsg"),
+          id: g.uid("smsg"),
           role: "assistant",
           model: subModel,
           content:
@@ -476,14 +494,14 @@ function spawnSubAgent(ms: number, cwd: string): { toolUse: object; ledgerResult
       }),
     );
     // A sub-agent's turn can fail exactly like the main thread's.
-    if (chance(0.06)) {
-      subLines.push(apiErrorTurn(turnMs + 15_000, cwd, subModel, { agentId, agentType }));
+    if (g.chance(0.06)) {
+      subLines.push(apiErrorTurn(g, turnMs + 15_000, cwd, subModel, { agentId, agentType }));
     }
     // Sub-agents call tools too, and the Tools page counts them — same friction.
     if (subToolUse !== null) {
-      const isError = chance(subKind.errorChance);
+      const isError = g.chance(subKind.errorChance);
       subLines.push(
-        toolResult(turnMs + 5_000, cwd, subToolUse.id, toolResultText(subKind, isError), isError, { agentId }),
+        toolResult(g, turnMs + 5_000, cwd, subToolUse.id, toolResultText(g, subKind, isError), isError, { agentId }),
       );
     }
   }
@@ -499,9 +517,9 @@ function spawnSubAgent(ms: number, cwd: string): { toolUse: object; ledgerResult
     agentType,
     resolvedModel: subModel,
     totalTokens: subTotal,
-    totalToolUseCount: int(2, 8),
-    totalDurationMs: int(8_000, 60_000),
-    usage: makeUsage(0.6),
+    totalToolUseCount: g.int(2, 8),
+    totalDurationMs: g.int(8_000, 60_000),
+    usage: makeUsage(g, 0.6),
   };
   return { toolUse, ledgerResult, sub: { agentId, lines: subLines } };
 }
@@ -520,6 +538,7 @@ type Conversation = {
 };
 
 function buildConversation(
+  g: Gen,
   project: (typeof PROJECTS)[number],
   index: number,
   opts: {
@@ -537,76 +556,76 @@ function buildConversation(
 
   const start =
     opts.resumeFrom === undefined
-      ? NOW - int(0, 21) * DAY - int(0, 18) * 3_600_000
-      : opts.resumeFrom.ms + int(1, 8) * 3_600_000;
+      ? g.now - g.int(0, 21) * DAY - g.int(0, 18) * 3_600_000
+      : opts.resumeFrom.ms + g.int(1, 8) * 3_600_000;
   let t = start;
   const lines: string[] = [];
   const subAgents: SubAgent[] = [];
 
-  const title = opts.title ?? pick(TITLES);
+  const title = opts.title ?? g.pick(TITLES);
   lines.push(JSON.stringify({ type: "ai-title", aiTitle: title }));
-  lines.push(userPrompt(t, cwd, pick(PROMPTS), opts.resumeFrom?.uuid));
+  lines.push(userPrompt(g, t, cwd, g.pick(PROMPTS), opts.resumeFrom?.uuid));
 
   // Most conversations have a dominant model; some are mixed.
-  const dominant = pick(MODELS);
-  const mixed = chance(0.35);
-  const usesSkill = chance(0.6);
-  const skill = usesSkill ? pick(SKILLS) : undefined;
+  const dominant = g.pick(MODELS);
+  const mixed = g.chance(0.35);
+  const usesSkill = g.chance(0.6);
+  const skill = usesSkill ? g.pick(SKILLS) : undefined;
 
-  const turns = int(3, 9);
+  const turns = g.int(3, 9);
   for (let i = 0; i < turns; i++) {
-    t += int(20_000, 240_000);
-    const model = mixed && chance(0.4) ? pick(MODELS) : dominant;
+    t += g.int(20_000, 240_000);
+    const model = mixed && g.chance(0.4) ? g.pick(MODELS) : dominant;
     const toolUses: object[] = [];
 
-    if (chance(0.7)) {
-      const tuId = uid("tu");
-      const kind = pickToolKind();
-      const isError = chance(kind.errorChance);
-      toolUses.push({ type: "tool_use", id: tuId, name: kind.name, input: kind.input() });
-      lines.push(assistantTurn(t, cwd, model, { skill, toolUses }));
-      t += int(2_000, 20_000);
-      lines.push(toolResult(t, cwd, tuId, toolResultText(kind, isError), isError));
+    if (g.chance(0.7)) {
+      const tuId = g.uid("tu");
+      const kind = pickToolKind(g);
+      const isError = g.chance(kind.errorChance);
+      toolUses.push({ type: "tool_use", id: tuId, name: kind.name, input: kind.input(g) });
+      lines.push(assistantTurn(g, t, cwd, model, { skill, toolUses }));
+      t += g.int(2_000, 20_000);
+      lines.push(toolResult(g, t, cwd, tuId, toolResultText(g, kind, isError), isError));
     } else {
-      lines.push(assistantTurn(t, cwd, model, { skill }));
+      lines.push(assistantTurn(g, t, cwd, model, { skill }));
     }
 
     // The API occasionally fails a turn; Claude Code retries on the next one.
-    if (chance(0.05)) {
-      t += int(3_000, 15_000);
-      lines.push(apiErrorTurn(t, cwd, model));
+    if (g.chance(0.05)) {
+      t += g.int(3_000, 15_000);
+      lines.push(apiErrorTurn(g, t, cwd, model));
     }
 
     // Occasionally spawn a sub-agent.
-    if (chance(0.22)) {
-      t += int(10_000, 30_000);
-      const { toolUse, ledgerResult, sub } = spawnSubAgent(t, cwd);
-      lines.push(assistantTurn(t, cwd, dominant, { skill, toolUses: [toolUse] }));
-      t += int(8_000, 40_000);
-      lines.push(toolResult(t, cwd, (toolUse as { id: string }).id, ledgerResult));
+    if (g.chance(0.22)) {
+      t += g.int(10_000, 30_000);
+      const { toolUse, ledgerResult, sub } = spawnSubAgent(g, t, cwd);
+      lines.push(assistantTurn(g, t, cwd, dominant, { skill, toolUses: [toolUse] }));
+      t += g.int(8_000, 40_000);
+      lines.push(toolResult(g, t, cwd, (toolUse as { id: string }).id, ledgerResult));
       subAgents.push(sub);
     }
   }
 
   // A PR link on some conversations.
-  if (chance(0.4)) {
+  if (g.chance(0.4)) {
     lines.push(
       JSON.stringify({
         type: "pr-link",
-        prNumber: int(10, 480),
-        prUrl: `https://github.com/${project.repo}/pull/${int(10, 480)}`,
+        prNumber: g.int(10, 480),
+        prUrl: `https://github.com/${project.repo}/pull/${g.int(10, 480)}`,
         prRepository: project.repo,
       }),
     );
   }
 
   // A turn-duration system record on most conversations.
-  if (chance(0.7)) {
+  if (g.chance(0.7)) {
     lines.push(
       JSON.stringify({
         type: "system",
         subtype: "turn_duration",
-        durationMs: int(45_000, 1_800_000),
+        durationMs: g.int(45_000, 1_800_000),
         messageCount: turns * 2,
       }),
     );
@@ -643,38 +662,38 @@ function lastAssistantUuid(lines: readonly string[]): string {
  * Indices continue after the standalone conversations so their session ids —
  * and therefore the whole seed — stay deterministic run to run.
  */
-function continuationFamilies(startIndex: number): Conversation[] {
+function continuationFamilies(g: Gen, startIndex: number): Conversation[] {
   const forkProject = PROJECTS[0];
   const chainProject = PROJECTS[1];
   let i = startIndex;
 
-  const root = buildConversation(forkProject, i++, {
+  const root = buildConversation(g, forkProject, i++, {
     title: "Split the billing service out of the monolith",
   });
-  const firstBranch = buildConversation(forkProject, i++, {
+  const firstBranch = buildConversation(g, forkProject, i++, {
     resumeFrom: root.resumePoint,
     title: "Billing split — extract the invoice writer",
   });
-  const secondBranch = buildConversation(forkProject, i++, {
+  const secondBranch = buildConversation(g, forkProject, i++, {
     resumeFrom: root.resumePoint,
     title: "Billing split — try the event-sourced angle instead",
   });
-  const deeper = buildConversation(forkProject, i++, {
+  const deeper = buildConversation(g, forkProject, i++, {
     resumeFrom: firstBranch.resumePoint,
     title: "Billing split — migrate the last caller and delete the shim",
   });
 
   // Resumed from a git worktree of the same repo: Claude Code launches there in
   // its own directory, so the sitting belongs to a DIFFERENT Project (CONTEXT.md).
-  const inWorktree = buildConversation(PROJECTS[2], i++, {
+  const inWorktree = buildConversation(g, PROJECTS[2], i++, {
     resumeFrom: secondBranch.resumePoint,
     title: "Billing split — event-sourced spike, in a worktree",
   });
 
-  const chainStart = buildConversation(chainProject, i++, {
+  const chainStart = buildConversation(g, chainProject, i++, {
     title: "Make the nightly export idempotent",
   });
-  const chainEnd = buildConversation(chainProject, i++, {
+  const chainEnd = buildConversation(g, chainProject, i++, {
     resumeFrom: chainStart.resumePoint,
     title: "Nightly export — finish the retry path",
   });
@@ -682,23 +701,57 @@ function continuationFamilies(startIndex: number): Conversation[] {
   return [root, firstBranch, secondBranch, deeper, inWorktree, chainStart, chainEnd];
 }
 
-// ── Generate, write to a throwaway logs root, and ingest ─────────────────────
-async function main(): Promise<void> {
-  const logsRoot = mkdtempSync(path.join(tmpdir(), "cca-seed-"));
-  console.log(`Generating fake logs in ${logsRoot}`);
-
-  let convoCount = 0;
-  let subAgentCount = 0;
-  // Spread ~30 conversations across the 6 projects.
+/** Every seeded Conversation, its conversations starting up to three weeks before `anchor`. */
+function buildCorpus(anchor: number): Conversation[] {
+  const g = createGen(anchor);
   const total = 30;
   const conversations: Conversation[] = [];
   for (let i = 0; i < total; i++) {
-    conversations.push(buildConversation(PROJECTS[i % PROJECTS.length], i));
+    conversations.push(buildConversation(g, PROJECTS[i % PROJECTS.length], i));
   }
-  conversations.push(...continuationFamilies(total));
+  conversations.push(...continuationFamilies(g, total));
+  return conversations;
+}
 
+/** The newest record timestamp, main threads and sub-agents alike, in epoch ms. */
+function latestTimestamp(conversations: readonly Conversation[]): number {
+  const lines = conversations.flatMap((c) => [...c.mainLines, ...c.subAgents.flatMap((s) => s.lines)]);
+  return Math.max(
+    ...lines.map((line) => {
+      const { timestamp } = JSON.parse(line) as { timestamp?: string };
+      return timestamp === undefined ? -Infinity : Date.parse(timestamp);
+    }),
+  );
+}
+
+/** What {@link generateFakeLogs} wrote. */
+export type FakeLogsCounts = {
+  /** Main session files (Conversations), continuations included. */
+  conversations: number;
+  /** Sub-agent transcripts, across every Conversation. */
+  subAgents: number;
+  /** Distinct Projects (log folders) the Conversations span. */
+  projects: number;
+};
+
+/**
+ * Write the fake logs under `logsRoot`, their timeline ending at `now`: 30
+ * standalone Conversations across six Projects plus two continuation families
+ * (seven more). The same `now` always writes the same bytes.
+ *
+ * @example
+ * const counts = generateFakeLogs({ logsRoot: "data/seed/projects", now: new Date() });
+ */
+export function generateFakeLogs(opts: { logsRoot: string; now: Date }): FakeLogsCounts {
+  // Conversations START at random offsets before the anchor, so the newest
+  // record falls short of it. The draws never depend on the anchor, so a
+  // draft measures that gap and the real pass moves the anchor forward by it.
+  const now = opts.now.getTime();
+  const conversations = buildCorpus(now + (now - latestTimestamp(buildCorpus(now))));
+
+  let subAgents = 0;
   for (const convo of conversations) {
-    const projectDir = path.join(logsRoot, convo.folder);
+    const projectDir = path.join(opts.logsRoot, convo.folder);
     mkdirSync(projectDir, { recursive: true });
     writeFileSync(path.join(projectDir, `${convo.sessionId}.jsonl`), convo.mainLines.join("\n") + "\n");
 
@@ -707,25 +760,14 @@ async function main(): Promise<void> {
       mkdirSync(subDir, { recursive: true });
       for (const sub of convo.subAgents) {
         writeFileSync(path.join(subDir, `agent-${sub.agentId}.jsonl`), sub.lines.join("\n") + "\n");
-        subAgentCount += 1;
+        subAgents += 1;
       }
     }
-    convoCount += 1;
   }
 
-  console.log(`Wrote ${convoCount} conversations (${subAgentCount} sub-agents) across ${PROJECTS.length} projects.`);
-  const dbPath = defaultDbPath();
-  console.log(`Ingesting into ${dbPath} …`);
-
-  const summary = await refresh({ logsRoot, dbPath });
-  console.log("Refresh summary:", summary);
-
-  // Clean up the throwaway logs — the DB rows persist on their own.
-  rmSync(logsRoot, { recursive: true, force: true });
-  console.log("Done. Temp logs removed; data is in the DB.");
+  return {
+    conversations: conversations.length,
+    subAgents,
+    projects: new Set(conversations.map((c) => c.folder)).size,
+  };
 }
-
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
