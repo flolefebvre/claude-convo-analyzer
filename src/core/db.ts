@@ -11,7 +11,7 @@ import { PrismaClient } from "@/core/prisma/generated/client";
  * whenever it was set before the call.
  *
  * @example
- * // CCA_DB_PATH=data/seed.db → "<cwd>/data/seed.db"
+ * // CCA_DB_PATH=data/seed/seed.db → "<cwd>/data/seed/seed.db"
  * const dbPath = defaultDbPath();
  */
 export function defaultDbPath(): string {
