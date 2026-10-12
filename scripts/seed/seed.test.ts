@@ -40,6 +40,17 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     expect(familyRoots).toHaveLength(2);
   });
 
+  it("ends the seeded activity at the anchor", async () => {
+    const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
+
+    const conversations = await listConversations({ dbPath: seed.dbPath });
+    const latest = conversations
+      .map((c) => c.endedAt)
+      .sort()
+      .at(-1);
+    expect(latest).toBe(NOW.toISOString());
+  });
+
   it("writes byte-identical logs for the same anchor", async () => {
     const first = await seedEnvironment({ dir: path.join(tmpDir, "first"), now: NOW });
     const second = await seedEnvironment({ dir: path.join(tmpDir, "second"), now: NOW });

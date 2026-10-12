@@ -701,6 +701,29 @@ function continuationFamilies(g: Gen, startIndex: number): Conversation[] {
   return [root, firstBranch, secondBranch, deeper, inWorktree, chainStart, chainEnd];
 }
 
+/** Every seeded Conversation, its conversations starting up to three weeks before `anchor`. */
+function buildCorpus(anchor: number): Conversation[] {
+  const g = createGen(anchor);
+  const total = 30;
+  const conversations: Conversation[] = [];
+  for (let i = 0; i < total; i++) {
+    conversations.push(buildConversation(g, PROJECTS[i % PROJECTS.length], i));
+  }
+  conversations.push(...continuationFamilies(g, total));
+  return conversations;
+}
+
+/** The newest record timestamp, main threads and sub-agents alike, in epoch ms. */
+function latestTimestamp(conversations: readonly Conversation[]): number {
+  const lines = conversations.flatMap((c) => [...c.mainLines, ...c.subAgents.flatMap((s) => s.lines)]);
+  return Math.max(
+    ...lines.map((line) => {
+      const { timestamp } = JSON.parse(line) as { timestamp?: string };
+      return timestamp === undefined ? -Infinity : Date.parse(timestamp);
+    }),
+  );
+}
+
 /** What {@link generateFakeLogs} wrote. */
 export type FakeLogsCounts = {
   /** Main session files (Conversations), continuations included. */
@@ -720,13 +743,11 @@ export type FakeLogsCounts = {
  * const counts = generateFakeLogs({ logsRoot: "data/seed/projects", now: new Date() });
  */
 export function generateFakeLogs(opts: { logsRoot: string; now: Date }): FakeLogsCounts {
-  const g = createGen(opts.now.getTime());
-  const total = 30;
-  const conversations: Conversation[] = [];
-  for (let i = 0; i < total; i++) {
-    conversations.push(buildConversation(g, PROJECTS[i % PROJECTS.length], i));
-  }
-  conversations.push(...continuationFamilies(g, total));
+  // Conversations START at random offsets before the anchor, so the newest
+  // record falls short of it. The draws never depend on the anchor, so a
+  // draft measures that gap and the real pass moves the anchor forward by it.
+  const now = opts.now.getTime();
+  const conversations = buildCorpus(now + (now - latestTimestamp(buildCorpus(now))));
 
   let subAgents = 0;
   for (const convo of conversations) {
