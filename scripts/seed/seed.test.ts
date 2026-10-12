@@ -9,7 +9,9 @@ import { seedEnvironment } from "./environment";
 
 const NOW = new Date("2026-06-22T17:00:00.000Z");
 
-describe("seedEnvironment", () => {
+// A full seed is a real ingest of 81 files (~2s); two per test outrun the 5s
+// default when the suite runs in parallel.
+describe("seedEnvironment", { timeout: 30_000 }, () => {
   let tmpDir = "";
 
   beforeEach(() => {

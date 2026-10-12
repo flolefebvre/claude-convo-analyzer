@@ -161,6 +161,19 @@ function iso(ms: number): string {
   return new Date(ms).toISOString();
 }
 
+/** The fields every main-thread assistant record opens with, ids drawn in log order. */
+function assistantEnvelope(g: Gen, ms: number, cwd: string): Record<string, unknown> {
+  return {
+    type: "assistant",
+    uuid: g.uid("a"),
+    requestId: g.uid("req"),
+    timestamp: iso(ms),
+    cwd,
+    gitBranch: "main",
+    version: CC_VERSION,
+  };
+}
+
 type Usage = {
   input_tokens: number;
   output_tokens: number;
@@ -213,16 +226,16 @@ const API_ERRORS = [
  * line of a `subagents/agent-<id>.jsonl` file has. A failed turn still bills a
  * little input, and no output.
  */
-function apiErrorTurn(g: Gen, ms: number, cwd: string, model: string, agent?: { agentId: string; agentType: string }): string {
+function apiErrorTurn(
+  g: Gen,
+  ms: number,
+  cwd: string,
+  model: string,
+  agent?: { agentId: string; agentType: string },
+): string {
   const failure = g.pick(API_ERRORS);
   const rec: Record<string, unknown> = {
-    type: "assistant",
-    uuid: g.uid("a"),
-    requestId: g.uid("req"),
-    timestamp: iso(ms),
-    cwd,
-    gitBranch: "main",
-    version: CC_VERSION,
+    ...assistantEnvelope(g, ms, cwd),
     isApiErrorMessage: true,
     apiErrorStatus: failure.status,
     message: {
@@ -251,7 +264,8 @@ function apiErrorTurn(g: Gen, ms: number, cwd: string, model: string, agent?: { 
 }
 
 /** Build one main-thread assistant turn (optionally with tool_use blocks). */
-function assistantTurn(g: Gen, 
+function assistantTurn(
+  g: Gen,
   ms: number,
   cwd: string,
   model: string,
@@ -260,13 +274,7 @@ function assistantTurn(g: Gen,
   const content: object[] = [{ type: "text", text: g.pick(ASSISTANT_REPLIES) }];
   if (opts.toolUses) content.push(...opts.toolUses);
   const rec: Record<string, unknown> = {
-    type: "assistant",
-    uuid: g.uid("a"),
-    requestId: g.uid("req"),
-    timestamp: iso(ms),
-    cwd,
-    gitBranch: "main",
-    version: CC_VERSION,
+    ...assistantEnvelope(g, ms, cwd),
     message: {
       id: g.uid("msg"),
       role: "assistant",
@@ -285,7 +293,8 @@ function assistantTurn(g: Gen,
  * `subagents/agent-<id>.jsonl` file: sidechain shape (`isSidechain` +
  * `agentId`) and no `permissionMode`, which only a main-thread prompt carries.
  */
-function userPrompt(g: Gen, 
+function userPrompt(
+  g: Gen,
   ms: number,
   cwd: string,
   text: string,
@@ -317,7 +326,8 @@ function userPrompt(g: Gen,
  * carrying the real log shape (`isSidechain` + `agentId`) every line of a
  * `subagents/agent-<id>.jsonl` file has — same as {@link apiErrorTurn}.
  */
-function toolResult(g: Gen, 
+function toolResult(
+  g: Gen,
   ms: number,
   cwd: string,
   toolUseId: string,
@@ -354,10 +364,38 @@ const GREP_PATTERNS = ["TODO", "createUser", "useEffect\\(", "process.env", "asy
 const MCP_QUERIES = ["open bugs", "release blockers", "stale PRs"] as const;
 
 const TOOL_KINDS = [
-  { name: "Read", weight: 9, errorChance: 0.02, min: 400, max: 42_000, input: (g: Gen) => ({ file_path: g.pick(READ_FILES) }) },
-  { name: "Bash", weight: 8, errorChance: 0.13, min: 40, max: 6_000, input: (g: Gen) => ({ command: g.pick(BASH_CMDS) }) },
-  { name: "Edit", weight: 6, errorChance: 0.08, min: 30, max: 320, input: (g: Gen) => ({ file_path: g.pick(READ_FILES) }) },
-  { name: "Grep", weight: 5, errorChance: 0.04, min: 80, max: 14_000, input: (g: Gen) => ({ pattern: g.pick(GREP_PATTERNS) }) },
+  {
+    name: "Read",
+    weight: 9,
+    errorChance: 0.02,
+    min: 400,
+    max: 42_000,
+    input: (g: Gen) => ({ file_path: g.pick(READ_FILES) }),
+  },
+  {
+    name: "Bash",
+    weight: 8,
+    errorChance: 0.13,
+    min: 40,
+    max: 6_000,
+    input: (g: Gen) => ({ command: g.pick(BASH_CMDS) }),
+  },
+  {
+    name: "Edit",
+    weight: 6,
+    errorChance: 0.08,
+    min: 30,
+    max: 320,
+    input: (g: Gen) => ({ file_path: g.pick(READ_FILES) }),
+  },
+  {
+    name: "Grep",
+    weight: 5,
+    errorChance: 0.04,
+    min: 80,
+    max: 14_000,
+    input: (g: Gen) => ({ pattern: g.pick(GREP_PATTERNS) }),
+  },
   { name: "Skill", weight: 3, errorChance: 0.02, min: 600, max: 9_000, input: (g: Gen) => ({ skill: g.pick(SKILLS) }) },
   {
     name: "mcp__github__create_issue",
@@ -499,7 +537,8 @@ type Conversation = {
   resumePoint: ResumePoint;
 };
 
-function buildConversation(g: Gen, 
+function buildConversation(
+  g: Gen,
   project: (typeof PROJECTS)[number],
   index: number,
   opts: {
