@@ -56,6 +56,7 @@ pnpm build         next build
 - Create and leave worktrees with the `EnterWorktree` and `ExitWorktree` tools, never with `git worktree add`.
 - Run `git fetch` before creating one: a worktree starts from `origin/main`, not local `main`.
 - In a new worktree, run `pnpm install` before anything else; it also generates the Prisma client.
+- When a change touches the UI, check it in a browser against the seeded app, as `docs/codebase/ui-checks.md` describes.
 
 ## Testing
 
