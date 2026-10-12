@@ -1,0 +1,40 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import { listConversations } from "@/core/read";
+
+import { seedEnvironment } from "./environment";
+
+const NOW = new Date("2026-06-22T17:00:00.000Z");
+
+describe("seedEnvironment", () => {
+  let tmpDir = "";
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(tmpdir(), "cca-seed-test-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("ingests every seeded Conversation, sub-agent and continuation family without a malformed line", async () => {
+    const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
+
+    expect(seed.summary.malformedLinesSkipped).toBe(0);
+    expect(seed.summary.duplicateSessionsSkipped).toEqual([]);
+
+    const conversations = await listConversations({ dbPath: seed.dbPath });
+    expect(conversations).toHaveLength(37);
+    expect(conversations.reduce((sum, c) => sum + c.subAgentCount, 0)).toBe(44);
+
+    const continued = conversations.filter((c) => c.continuedFromId !== null);
+    expect(continued).toHaveLength(5);
+    const familyRoots = conversations.filter(
+      (c) => c.continuedFromId === null && continued.some((d) => d.continuedFromId === c.id),
+    );
+    expect(familyRoots).toHaveLength(2);
+  });
+});
