@@ -46,6 +46,9 @@ next-env.d.ts
 # generated Prisma client (commit schema + migrations only)
 /src/core/prisma/generated/
 
+# playwright-cli session output: snapshots, screenshots, console logs
+/.playwright-cli/
+
 # local agent dev tooling (vendored skills are personal, not part of the app)
 /.agents/
 /.claude/
