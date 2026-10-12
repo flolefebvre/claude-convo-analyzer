@@ -28,7 +28,7 @@
 import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
-import { createPrismaClient, DEFAULT_DB_PATH } from "@/core/db";
+import { createPrismaClient, defaultDbPath } from "@/core/db";
 import {
   decodeFolderName,
   DEFAULT_LOGS_ROOT,
@@ -162,7 +162,7 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
   // never goes back.
   const start = performance.now();
   const logsRoot = opts.logsRoot ?? DEFAULT_LOGS_ROOT;
-  const dbPath = opts.dbPath ?? DEFAULT_DB_PATH;
+  const dbPath = opts.dbPath ?? defaultDbPath();
   const prisma = createPrismaClient(dbPath);
 
   let conversationsParsed = 0;

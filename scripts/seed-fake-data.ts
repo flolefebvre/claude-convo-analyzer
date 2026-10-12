@@ -20,7 +20,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { DEFAULT_DB_PATH } from "@/core/db";
+import { defaultDbPath } from "@/core/db";
 import { refresh } from "@/core/refresh";
 
 // ── Deterministic PRNG (LCG) so the seed is reproducible run-to-run ──────────
@@ -713,9 +713,10 @@ async function main(): Promise<void> {
   }
 
   console.log(`Wrote ${convoCount} conversations (${subAgentCount} sub-agents) across ${PROJECTS.length} projects.`);
-  console.log(`Ingesting into ${DEFAULT_DB_PATH} …`);
+  const dbPath = defaultDbPath();
+  console.log(`Ingesting into ${dbPath} …`);
 
-  const summary = await refresh({ logsRoot, dbPath: DEFAULT_DB_PATH });
+  const summary = await refresh({ logsRoot, dbPath });
   console.log("Refresh summary:", summary);
 
   // Clean up the throwaway logs — the DB rows persist on their own.
