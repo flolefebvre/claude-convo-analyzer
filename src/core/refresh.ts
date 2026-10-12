@@ -31,7 +31,7 @@ import { performance } from "node:perf_hooks";
 import { createPrismaClient, defaultDbPath } from "@/core/db";
 import {
   decodeFolderName,
-  DEFAULT_LOGS_ROOT,
+  defaultLogsRoot,
   type DiscoveredSession,
   discoverSessions,
   discoverSubAgents,
@@ -161,7 +161,7 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
   // nonsensical NEGATIVE durationMs in the refresh digest. `performance.now()`
   // never goes back.
   const start = performance.now();
-  const logsRoot = opts.logsRoot ?? DEFAULT_LOGS_ROOT;
+  const logsRoot = opts.logsRoot ?? defaultLogsRoot();
   const dbPath = opts.dbPath ?? defaultDbPath();
   const prisma = createPrismaClient(dbPath);
 
