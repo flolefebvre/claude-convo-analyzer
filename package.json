@@ -10,6 +10,7 @@
   },
   "scripts": {
     "dev": "next dev",
+    "seed": "tsx scripts/seed.ts",
     "gate": "tsx scripts/gate.ts format:check,lint,duplication,typecheck,test,build",
     "build": "next build",
     "start": "next start",
