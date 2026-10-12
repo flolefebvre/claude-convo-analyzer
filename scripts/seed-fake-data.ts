@@ -2,9 +2,10 @@
 //
 // Strategy (faithful to the real pipeline): generate fake Claude Code JSONL
 // transcripts into a throwaway logs root, then run the genuine `refresh()` into
-// the real `./data/analyzer.db`. This routes every byte through the actual
-// parser + cost engine, so the seeded rows are guaranteed consistent with what
-// the app reads — no hand-poked SQLite rows that could drift from the schema.
+// `defaultDbPath()` (`./data/analyzer.db` unless `CCA_DB_PATH` redirects it).
+// This routes every byte through the actual parser + cost engine, so the seeded
+// rows are guaranteed consistent with what the app reads — no hand-poked SQLite
+// rows that could drift from the schema.
 //
 // The fake logs go to a temp dir that is removed afterwards; only the DB rows
 // persist. Deterministic ids make re-running idempotent (refresh skips unchanged
@@ -20,7 +21,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { DEFAULT_DB_PATH } from "@/core/db";
+import { defaultDbPath } from "@/core/db";
 import { refresh } from "@/core/refresh";
 
 // ── Deterministic PRNG (LCG) so the seed is reproducible run-to-run ──────────
@@ -713,9 +714,10 @@ async function main(): Promise<void> {
   }
 
   console.log(`Wrote ${convoCount} conversations (${subAgentCount} sub-agents) across ${PROJECTS.length} projects.`);
-  console.log(`Ingesting into ${DEFAULT_DB_PATH} …`);
+  const dbPath = defaultDbPath();
+  console.log(`Ingesting into ${dbPath} …`);
 
-  const summary = await refresh({ logsRoot, dbPath: DEFAULT_DB_PATH });
+  const summary = await refresh({ logsRoot, dbPath });
   console.log("Refresh summary:", summary);
 
   // Clean up the throwaway logs — the DB rows persist on their own.

@@ -5,10 +5,18 @@ import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { PrismaClient } from "@/core/prisma/generated/client";
 
 /**
- * Default on-disk database location (`./data/analyzer.db`, gitignored).
- * Resolved against the process cwd so it is stable across the app and tests.
+ * The database the app, `refresh()`, and the reads use when given no path:
+ * `CCA_DB_PATH` (empty counts as unset) resolved against the process cwd, else
+ * `./data/analyzer.db` (gitignored). Read at call time, so the env is honoured
+ * whenever it was set before the call.
+ *
+ * @example
+ * // CCA_DB_PATH=data/seed.db → "<cwd>/data/seed.db"
+ * const dbPath = defaultDbPath();
  */
-export const DEFAULT_DB_PATH = path.join(process.cwd(), "data", "analyzer.db");
+export function defaultDbPath(): string {
+  return path.resolve(process.env.CCA_DB_PATH || path.join("data", "analyzer.db"));
+}
 
 /**
  * On-disk location of the committed Prisma migrations.
@@ -17,7 +25,7 @@ export const DEFAULT_DB_PATH = path.join(process.cwd(), "data", "analyzer.db");
  * location): Turbopack sets `import.meta.dirname` to `undefined` in the Next.js
  * server bundle, so a module-relative resolve throws `ERR_INVALID_ARG_TYPE` at
  * load and crashes the server render. cwd-relative is bundler-safe and stays
- * consistent with {@link DEFAULT_DB_PATH} above.
+ * consistent with {@link defaultDbPath} above.
  */
 const MIGRATIONS_DIR = path.join(process.cwd(), "src", "core", "prisma", "migrations");
 
@@ -96,7 +104,7 @@ function applyMigrations(dbPath: string): void {
  * first creation for that file. Callers that need an isolated database (tests,
  * later `refresh({ dbPath })`) use this directly rather than the singleton.
  */
-export function createPrismaClient(dbPath: string = DEFAULT_DB_PATH): PrismaClient {
+export function createPrismaClient(dbPath: string = defaultDbPath()): PrismaClient {
   applyMigrations(dbPath);
   const adapter = new PrismaBetterSqlite3({ url: `file:${dbPath}` });
   return new PrismaClient({ adapter });
@@ -107,17 +115,23 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 /**
- * Process-wide singleton client for the default database. Guards against
- * duplicate clients under dev hot-reload by stashing the instance on
- * `globalThis`. For non-default paths, use {@link createPrismaClient}.
+ * Process-wide singleton client for the {@link defaultDbPath} database. Guards
+ * against duplicate clients under dev hot-reload by stashing the instance on
+ * `globalThis`. It is bound to the path resolved on first use: changing
+ * `CCA_DB_PATH` later in the same process does not rebind it. For other paths,
+ * use {@link createPrismaClient}.
+ *
+ * @example
+ * const conversations = await getPrismaClient().conversation.count();
  */
 export function getPrismaClient(): PrismaClient {
-  globalForPrisma.__ccaPrisma ??= createPrismaClient(DEFAULT_DB_PATH);
+  globalForPrisma.__ccaPrisma ??= createPrismaClient(defaultDbPath());
   return globalForPrisma.__ccaPrisma;
 }
 
 /**
- * Resolve the client a read should use. The default database goes through the
+ * Resolve the client a read should use. The default database ({@link defaultDbPath},
+ * whether omitted or passed explicitly) goes through the
  * process-wide {@link getPrismaClient} singleton — reused across requests, so a
  * navigation never re-opens the sqlite file or re-checks migrations — and MUST
  * NOT be disconnected (`owned: false`). An explicit non-default `dbPath` (tests,
@@ -127,7 +141,7 @@ export function readClient(dbPath?: string): {
   prisma: PrismaClient;
   owned: boolean;
 } {
-  if (dbPath === undefined || dbPath === DEFAULT_DB_PATH) {
+  if (dbPath === undefined || dbPath === defaultDbPath()) {
     return { prisma: getPrismaClient(), owned: false };
   }
   return { prisma: createPrismaClient(dbPath), owned: true };

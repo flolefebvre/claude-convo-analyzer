@@ -12,8 +12,18 @@ import { readdirSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-/** Default logs root: `~/.claude/projects`. */
-export const DEFAULT_LOGS_ROOT = path.join(os.homedir(), ".claude", "projects");
+/**
+ * The logs root `refresh()` scans when given none: `CCA_LOGS_ROOT` (empty counts
+ * as unset) resolved against the process cwd, else `~/.claude/projects`. Read at
+ * call time, so the env is honoured whenever it was set before the call.
+ *
+ * @example
+ * // CCA_LOGS_ROOT=seed/logs → "<cwd>/seed/logs"
+ * const sessions = discoverSessions(defaultLogsRoot());
+ */
+export function defaultLogsRoot(): string {
+  return path.resolve(process.env.CCA_LOGS_ROOT || path.join(os.homedir(), ".claude", "projects"));
+}
 
 /** A discovered top-level session file plus its on-disk change keys. */
 export type DiscoveredSession = {

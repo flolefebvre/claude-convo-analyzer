@@ -6,8 +6,8 @@ per-conversation token usage and cost — broken down by project, model, skill,
 and sub-agent.
 
 **Everything stays on your machine.** The app only reads `~/.claude/projects`
-and writes a local SQLite file (`./data/analyzer.db`). Nothing is ever sent
-anywhere.
+and writes a local SQLite file (`./data/analyzer.db`); both paths are
+configurable. Nothing is ever sent anywhere.
 
 > **About the cost figure:** the cost shown is always _"what these tokens would
 > cost through the public API"_. If you're on a Pro or Max subscription you
@@ -105,6 +105,18 @@ For live development instead of a production build:
 
 ```bash
 pnpm dev
+```
+
+Two environment variables move what the app reads and writes; a relative value
+resolves against the process working directory (the repo root under `pnpm`):
+
+- `CCA_DB_PATH` — the SQLite file (default `./data/analyzer.db`), created and
+  migrated on first use.
+- `CCA_LOGS_ROOT` — the logs root that **Refresh** scans (default
+  `~/.claude/projects`).
+
+```bash
+CCA_DB_PATH=data/demo.db CCA_LOGS_ROOT=/tmp/demo-logs pnpm dev
 ```
 
 ## How it works
