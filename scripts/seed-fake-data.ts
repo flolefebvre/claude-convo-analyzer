@@ -2,9 +2,10 @@
 //
 // Strategy (faithful to the real pipeline): generate fake Claude Code JSONL
 // transcripts into a throwaway logs root, then run the genuine `refresh()` into
-// the real `./data/analyzer.db`. This routes every byte through the actual
-// parser + cost engine, so the seeded rows are guaranteed consistent with what
-// the app reads — no hand-poked SQLite rows that could drift from the schema.
+// `defaultDbPath()` (`./data/analyzer.db` unless `CCA_DB_PATH` redirects it).
+// This routes every byte through the actual parser + cost engine, so the seeded
+// rows are guaranteed consistent with what the app reads — no hand-poked SQLite
+// rows that could drift from the schema.
 //
 // The fake logs go to a temp dir that is removed afterwards; only the DB rows
 // persist. Deterministic ids make re-running idempotent (refresh skips unchanged
