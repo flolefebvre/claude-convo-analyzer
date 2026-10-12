@@ -37,6 +37,7 @@ public/         Static assets served at the root
 ```
 pnpm dev           Run the app (next dev) on :3000
 pnpm seed          Rebuild the fake-data seed environment in data/seed/ (seed.db + projects/); --now=<ISO> pins it
+pnpm dev:seed      Seed, then run next dev on it; prints `Seeded app: http://localhost:<port>` (first free from 3001, or $PORT)
 pnpm gate          Format check, lint, duplication, typecheck, test, build — the full check
 pnpm format        Prettier, rewriting files in place
 pnpm format:check  Prettier in check mode (fails on unformatted files)
