@@ -444,8 +444,16 @@ function toolResultText(g: Gen, kind: (typeof TOOL_KINDS)[number], isError: bool
   return RESULT_FILLER.repeat(Math.ceil(size / RESULT_FILLER.length)).slice(0, size);
 }
 
-/** Build a sub-agent transcript file + the parent's spawn ledger tool_result. */
-function spawnSubAgent(g: Gen, ms: number, cwd: string): { toolUse: object; ledgerResult: object; sub: SubAgent } {
+/**
+ * Build a sub-agent transcript file + the parent's spawn ledger tool_result.
+ * `canFail: false` rules out its failed turns, without drawing for them.
+ */
+function spawnSubAgent(
+  g: Gen,
+  ms: number,
+  cwd: string,
+  canFail = true,
+): { toolUse: object; ledgerResult: object; sub: SubAgent } {
   const agentId = g.uid("agent").replace("agent-", "");
   const toolUseId = g.uid("tu");
   const agentType = g.pick(SUBAGENT_TYPES);
@@ -494,7 +502,7 @@ function spawnSubAgent(g: Gen, ms: number, cwd: string): { toolUse: object; ledg
       }),
     );
     // A sub-agent's turn can fail exactly like the main thread's.
-    if (g.chance(0.06)) {
+    if (canFail && g.chance(0.06)) {
       subLines.push(apiErrorTurn(g, turnMs + 15_000, cwd, subModel, { agentId, agentType }));
     }
     // Sub-agents call tools too, and the Tools page counts them — same friction.
@@ -548,6 +556,11 @@ function buildConversation(
     resumeFrom?: ResumePoint;
     /** Overrides the random title — used so a family reads as one piece of work. */
     title?: string;
+    /** Puts the first turn on this Resolved model; the rest stay on priced ones. */
+    unpricedModel?: string;
+    /** `"forced"`: the first turn is followed by an API error, whatever the draws.
+     *  `"none"`: no turn fails, main thread or sub-agent. Unset: the usual odds. */
+    apiErrors?: "forced" | "none";
   } = {},
 ): Conversation {
   const cwd = project.path;
@@ -575,7 +588,8 @@ function buildConversation(
   const turns = g.int(3, 9);
   for (let i = 0; i < turns; i++) {
     t += g.int(20_000, 240_000);
-    const model = mixed && g.chance(0.4) ? g.pick(MODELS) : dominant;
+    const drawn = mixed && g.chance(0.4) ? g.pick(MODELS) : dominant;
+    const model = i === 0 && opts.unpricedModel !== undefined ? opts.unpricedModel : drawn;
     const toolUses: object[] = [];
 
     if (g.chance(0.7)) {
@@ -591,7 +605,7 @@ function buildConversation(
     }
 
     // The API occasionally fails a turn; Claude Code retries on the next one.
-    if (g.chance(0.05)) {
+    if ((opts.apiErrors === "forced" && i === 0) || (opts.apiErrors !== "none" && g.chance(0.05))) {
       t += g.int(3_000, 15_000);
       lines.push(apiErrorTurn(g, t, cwd, model));
     }
@@ -599,7 +613,7 @@ function buildConversation(
     // Occasionally spawn a sub-agent.
     if (g.chance(0.22)) {
       t += g.int(10_000, 30_000);
-      const { toolUse, ledgerResult, sub } = spawnSubAgent(g, t, cwd);
+      const { toolUse, ledgerResult, sub } = spawnSubAgent(g, t, cwd, opts.apiErrors !== "none");
       lines.push(assistantTurn(g, t, cwd, dominant, { skill, toolUses: [toolUse] }));
       t += g.int(8_000, 40_000);
       lines.push(toolResult(g, t, cwd, (toolUse as { id: string }).id, ledgerResult));
@@ -701,6 +715,35 @@ function continuationFamilies(g: Gen, startIndex: number): Conversation[] {
   return [root, firstBranch, secondBranch, deeper, inWorktree, chainStart, chainEnd];
 }
 
+/**
+ * The UI states the corpus must show by construction (issue #71): enough
+ * standalone Conversations to spill the list onto a second page, one
+ * Conversation with unpriced usage, and another with API errors. Each dedicated
+ * Conversation shows exactly one of the two states.
+ *
+ * Drawn after the families, so every earlier Conversation keeps its draws.
+ */
+function coverageConversations(g: Gen, startIndex: number): Conversation[] {
+  const filler = 21;
+  const conversations: Conversation[] = [];
+  let i = startIndex;
+  for (let n = 0; n < filler; n++, i++) {
+    conversations.push(buildConversation(g, PROJECTS[i % PROJECTS.length], i));
+  }
+  conversations.push(
+    buildConversation(g, PROJECTS[3], i++, {
+      title: "Investigate a model the price table does not know",
+      unpricedModel: "<synthetic>",
+      apiErrors: "none",
+    }),
+    buildConversation(g, PROJECTS[4], i++, {
+      title: "Finish the release while the API keeps failing",
+      apiErrors: "forced",
+    }),
+  );
+  return conversations;
+}
+
 /** Every seeded Conversation, its conversations starting up to three weeks before `anchor`. */
 function buildCorpus(anchor: number): Conversation[] {
   const g = createGen(anchor);
@@ -709,7 +752,9 @@ function buildCorpus(anchor: number): Conversation[] {
   for (let i = 0; i < total; i++) {
     conversations.push(buildConversation(g, PROJECTS[i % PROJECTS.length], i));
   }
-  conversations.push(...continuationFamilies(g, total));
+  const families = continuationFamilies(g, total);
+  conversations.push(...families);
+  conversations.push(...coverageConversations(g, total + families.length));
   return conversations;
 }
 
@@ -736,8 +781,9 @@ export type FakeLogsCounts = {
 
 /**
  * Write the fake logs under `logsRoot`, their timeline ending at `now`: 30
- * standalone Conversations across six Projects plus two continuation families
- * (seven more). The same `now` always writes the same bytes.
+ * standalone Conversations across six Projects, two continuation families
+ * (seven more), then 23 covering pagination, unpriced usage and API errors —
+ * 60 in all. The same `now` always writes the same bytes.
  *
  * @example
  * const counts = generateFakeLogs({ logsRoot: "data/seed/projects", now: new Date() });
