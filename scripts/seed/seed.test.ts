@@ -3,13 +3,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { PAGE_SIZE } from "@/app/_lib/list-view";
 import { listConversations } from "@/core/read";
 
 import { seedEnvironment } from "./environment";
 
 const NOW = new Date("2026-06-22T17:00:00.000Z");
 
-// A full seed is a real ingest of 81 files (~2s); two per test outrun the 5s
+// A full seed is a real ingest of 133 files (~3s); two per test outrun the 5s
 // default when the suite runs in parallel.
 describe("seedEnvironment", { timeout: 30_000 }, () => {
   let tmpDir = "";
@@ -29,8 +30,8 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     expect(seed.summary.duplicateSessionsSkipped).toEqual([]);
 
     const conversations = await listConversations({ dbPath: seed.dbPath });
-    expect(conversations).toHaveLength(37);
-    expect(conversations.reduce((sum, c) => sum + c.subAgentCount, 0)).toBe(44);
+    expect(conversations).toHaveLength(60);
+    expect(conversations.reduce((sum, c) => sum + c.subAgentCount, 0)).toBe(73);
 
     const continued = conversations.filter((c) => c.continuedFromId !== null);
     expect(continued).toHaveLength(5);
@@ -38,6 +39,21 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
       (c) => c.continuedFromId === null && continued.some((d) => d.continuedFromId === c.id),
     );
     expect(familyRoots).toHaveLength(2);
+  });
+
+  it("seeds a second page of Conversations, one with unpriced usage and another with API errors", async () => {
+    const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
+
+    const conversations = await listConversations({ dbPath: seed.dbPath });
+    expect(conversations.length).toBeGreaterThan(PAGE_SIZE);
+
+    const unpriced = conversations.find((c) => c.title === "Investigate a model the price table does not know");
+    expect(unpriced).toMatchObject({ unpriced: true, errorCount: 0 });
+    expect(unpriced?.costUsd).toBeGreaterThan(0);
+
+    const failing = conversations.find((c) => c.title === "Finish the release while the API keeps failing");
+    expect(failing).toMatchObject({ unpriced: false });
+    expect(failing?.errorCount).toBeGreaterThan(0);
   });
 
   it("ends the seeded activity at the anchor", async () => {
@@ -70,7 +86,7 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     const after = await seedEnvironment({ dir, now: NOW });
 
     expect(existsSync(leftover)).toBe(false);
-    expect(await listConversations({ dbPath: after.dbPath })).toHaveLength(37);
+    expect(await listConversations({ dbPath: after.dbPath })).toHaveLength(60);
   });
 });
 
