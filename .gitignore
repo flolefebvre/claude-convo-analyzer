@@ -49,10 +49,11 @@ next-env.d.ts
 # playwright-cli session output: snapshots, screenshots, console logs
 /.playwright-cli/
 
-# local agent dev tooling (vendored skills are personal, not part of the app)
-/.agents/
-/.claude/
-/skills-lock.json
+# local agent dev tooling; skills are shared and committed
+/.agents/*
+!/.agents/skills/
+/.claude/*
+!/.claude/skills
 
 # editor
 /.vscode/

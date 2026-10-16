@@ -60,7 +60,7 @@ pnpm build         next build
 
 ## Testing
 
-This project uses TDD. Build features test-first via the `tdd` skill (red → green → refactor, one vertical slice at a time), exercising public interfaces — `src/core`'s exported functions against small sanitized JSONL fixtures — never internals. See `docs/codebase/testing.md` before writing tests.
+This project uses TDD. Build features test-first (red → green → refactor, one vertical slice at a time), exercising public interfaces — `src/core`'s exported functions against small sanitized JSONL fixtures — never internals. See `docs/codebase/testing.md` before writing tests.
 
 ## Documentation
 

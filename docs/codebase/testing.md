@@ -1,6 +1,6 @@
 # Testing
 
-This project uses TDD, via the `tdd` skill. The rules that matter here:
+This project uses TDD. The rules that matter here:
 
 - **Vertical slices, not horizontal.** One test → its implementation → repeat.
   Never write all tests then all code — that produces tests of imagined shape
