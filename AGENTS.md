@@ -67,6 +67,7 @@ This project uses TDD. Build features test-first (red → green → refactor, on
 Always reach for documentation rather than working from memory. Prioritize the files below first, and then ctx7. Repo conventions live in `docs/codebase/`, linked from the section they govern; the sources below are external reference.
 
 - `node_modules/next/dist/docs/01-app/` — when writing anything under `src/app/`. This Next.js has breaking changes your training data predates — read the relevant page first rather than recalling an older API. `03-api-reference/` is the per-feature reference.
+- `node_modules/@flefebvre/next-pipe/docs/for-agents.md` — when writing a server action, route handler, or piped page. It matches the installed next-pipe and links the per-pipe pages.
 
 ## Comments and docs
 

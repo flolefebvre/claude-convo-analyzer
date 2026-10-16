@@ -26,7 +26,7 @@
     "format:check": "prettier --check ."
   },
   "dependencies": {
-    "@flefebvre/next-pipe": "^0.2.0",
+    "@flefebvre/next-pipe": "^2.0.0",
     "@prisma/adapter-better-sqlite3": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "better-sqlite3": "^12.11.1",

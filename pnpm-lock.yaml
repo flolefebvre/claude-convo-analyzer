@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@flefebvre/next-pipe':
-        specifier: ^0.2.0
-        version: 0.2.0(next@16.3.0(@babel/core@7.29.7(supports-color@7.2.0))(@types/node@20.19.43)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)(typescript@5.9.3)(zod@4.4.3)
+        specifier: ^2.0.0
+        version: 2.0.0(next@16.3.0(@babel/core@7.29.7(supports-color@7.2.0))(@types/node@20.19.43)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)(typescript@5.9.3)(zod@4.4.3)
       '@prisma/adapter-better-sqlite3':
         specifier: ^7.8.0
         version: 7.8.0
@@ -481,8 +481,8 @@ packages:
     resolution: {integrity: sha512-43/qtrDUokr7LJqoF2c3+RInu/t4zfrpYdoSDfYyhg52rwLV6TnOvdG4fXm7IkSB3wErkcmJS9iEhjVtOSEjjA==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
 
-  '@flefebvre/next-pipe@0.2.0':
-    resolution: {integrity: sha512-RQNRFkpLM6Zgfgqeu9Rjeuiid74i+ghbc58MEYvgW1zY/+rONRWOU7nzhBu/dbzn4LgWowfr8vnLrpT0tw1TZw==}
+  '@flefebvre/next-pipe@2.0.0':
+    resolution: {integrity: sha512-3gDz/TJND4sTCdPPKW/ULx2keqj4w7oMBw0Qo7AECVeO+43TfPShlC1TCg335uY61ZMM9Pi6RiQkZ4MESMcxlQ==}
     engines: {node: '>=22.0.0'}
     hasBin: true
     peerDependencies:
@@ -5709,7 +5709,7 @@ snapshots:
       '@eslint/core': 0.17.0
       levn: 0.4.1
 
-  '@flefebvre/next-pipe@0.2.0(next@16.3.0(@babel/core@7.29.7(supports-color@7.2.0))(@types/node@20.19.43)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)(typescript@5.9.3)(zod@4.4.3)':
+  '@flefebvre/next-pipe@2.0.0(next@16.3.0(@babel/core@7.29.7(supports-color@7.2.0))(@types/node@20.19.43)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)(typescript@5.9.3)(zod@4.4.3)':
     dependencies:
       next: 16.3.0(@babel/core@7.29.7(supports-color@7.2.0))(@types/node@20.19.43)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react: 19.2.8
