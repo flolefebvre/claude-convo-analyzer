@@ -76,8 +76,15 @@ export function ToolCallDisclosure({
     if (event.currentTarget.open && (state.status === "idle" || state.status === "failed")) void load();
   }
 
+  // A call opened before hydration fired its one `toggle` with no listener
+  // attached: load it now. The anchored call starts `loaded` and never does.
+  function detailsRef(details: HTMLDetailsElement | null) {
+    if (details?.open && state.status === "idle") void load();
+  }
+
   return (
     <details
+      ref={detailsRef}
       id={anchorId}
       open={anchored || undefined}
       className={anchored ? "call anchored" : "call"}
