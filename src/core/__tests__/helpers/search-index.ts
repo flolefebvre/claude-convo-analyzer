@@ -13,11 +13,14 @@ import type Database from "better-sqlite3";
 /** The migration that creates the search index (its `_cca_migrations` name). */
 export const SEARCH_INDEX_MIGRATION = "20260804000000_search_fts5";
 
+/** The later migration that recreates the index's message triggers with a wider corpus. */
+const SEARCH_CORPUS_MIGRATIONS = [SEARCH_INDEX_MIGRATION, "20261017010000_search_inter_agent"];
+
 /**
- * Drop the search index — triggers, virtual tables, and its ledger entry — so
- * the database looks like one from before search existed. Re-opening the
- * database through `createPrismaClient` re-applies the migration (and its
- * backfill).
+ * Drop the search index — triggers, virtual tables, and the ledger entries of
+ * the migrations that build it — so the database looks like one from before
+ * search existed. Re-opening the database through `createPrismaClient`
+ * re-applies them in order (and their backfills).
  */
 export function dropSearchIndex(db: Database.Database): void {
   for (const stmt of [
@@ -32,5 +35,7 @@ export function dropSearchIndex(db: Database.Database): void {
   ]) {
     db.exec(stmt);
   }
-  db.prepare("DELETE FROM _cca_migrations WHERE migration_name = ?").run(SEARCH_INDEX_MIGRATION);
+  for (const name of SEARCH_CORPUS_MIGRATIONS) {
+    db.prepare("DELETE FROM _cca_migrations WHERE migration_name = ?").run(name);
+  }
 }

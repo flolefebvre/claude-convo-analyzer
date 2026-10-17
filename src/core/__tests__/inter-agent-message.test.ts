@@ -1,6 +1,11 @@
+import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 
-import { mainSession, messageByUuid, parseLine, subAgentSession } from "./helpers/agent-messages";
+import { getTranscript } from "@/core/read";
+import { searchConversations } from "@/core/search";
+
+import { AGENT_MESSAGE_LOGS, mainSession, messageByUuid, parseLine, subAgentSession } from "./helpers/agent-messages";
+import { seededTempDb } from "./helpers/temp-db";
 
 /**
  * An Inter-agent message is text another Agent addressed to this one
@@ -67,5 +72,57 @@ describe("Inter-agent message parsing", () => {
       message: { role: "user", content: "wrapped hello" },
     });
     expect(title).toBeNull();
+  });
+});
+
+describe("Inter-agent messages in the Transcript", () => {
+  const db = seededTempDb({ prefix: "cca-inter-agent-", logsRoot: AGENT_MESSAGE_LOGS });
+
+  it("renders a sub-agent's message with its sender resolved to that sub-agent", async () => {
+    const view = await getTranscript("sess-agents", { dbPath: db.dbPath });
+    const m = view?.messages.find((x) => x.uuid === "p1");
+    expect(m?.kind).toBe("inter-agent");
+    expect(m?.text).toBe("Item 1 is **done**; starting item 2.");
+    expect(m?.origin?.senderAgentId).toBe("a1f00d");
+    expect(m?.origin?.senderName).toBe("general-purpose");
+  });
+
+  it("renders a cross-session message with its session name and no agent to link", async () => {
+    const view = await getTranscript("sess-agents", { dbPath: db.dbPath });
+    const m = view?.messages.find((x) => x.uuid === "p4");
+    expect(m?.origin?.senderName).toBe("docs session");
+    expect(m?.origin?.senderAgentId).toBeNull();
+  });
+
+  it("resolves a coordinator message's sender to the parent agent", async () => {
+    const view = await getTranscript("sess-agents", { dbPath: db.dbPath, agentId: "a1f00d" });
+    const m = view?.messages.find((x) => x.uuid === "c1");
+    expect(m?.kind).toBe("inter-agent");
+    expect(m?.origin?.coordinator).toBe(true);
+    expect(m?.origin?.senderAgentId).toBe(view?.tree.id);
+  });
+
+  it("renders without extras, never failing, when the stored origin is unreadable", async () => {
+    const raw = new Database(db.dbPath);
+    raw.prepare("UPDATE message SET origin = ? WHERE uuid = 'p1'").run('{"senderName":5}');
+    raw.prepare("UPDATE message SET origin = ? WHERE uuid = 'p4'").run("not json");
+    raw.close();
+    const view = await getTranscript("sess-agents", { dbPath: db.dbPath });
+    for (const uuid of ["p1", "p4"]) {
+      const m = view?.messages.find((x) => x.uuid === uuid);
+      expect(m?.kind).toBe("inter-agent");
+      expect(m?.origin).toBeNull();
+    }
+  });
+
+  it("no longer counts Inter-agent messages among the hidden meta records", async () => {
+    const view = await getTranscript("sess-agents", { dbPath: db.dbPath });
+    // Only hm2 (skill instructions) and pl2 (command caveat) are true Meta.
+    expect(view?.metaHiddenCount).toBe(2);
+  });
+
+  it("is found by search, by its body", async () => {
+    const { results } = await searchConversations("frozen", { dbPath: db.dbPath });
+    expect(results.map((r) => r.sessionId)).toEqual(["sess-agents"]);
   });
 });

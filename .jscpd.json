@@ -1,6 +1,6 @@
 {
   "path": ["src", "scripts", "e2e"],
-  "ignore": ["src/components/ui/**"],
+  "ignore": ["src/components/ui/**", "src/core/prisma/migrations/**"],
   "minTokens": 50,
   "exitCode": 1,
   "reporters": ["consoleFull"]

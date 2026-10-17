@@ -19,6 +19,7 @@ import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { refresh } from "@/core/refresh";
 
+import { AGENT_MESSAGE_LOGS } from "./helpers/agent-messages";
 import { dropSearchIndex } from "./helpers/search-index";
 import { applyPendingMigrations, seededTempDb } from "./helpers/temp-db";
 
@@ -50,14 +51,15 @@ function indexedTitleIds(db: Database.Database): Set<number> {
 
 /**
  * The corpus as the SPEC defines it, computed straight from the `message`
- * table: human prompts and assistant text — never meta records, tool-result
- * carriers, or text-less rows. The index must equal this set, always.
+ * table: Prompts, Inter-agent messages and assistant text — never Task
+ * notifications, meta records, tool-result carriers, or text-less rows. The
+ * index must equal this set, always.
  */
 function expectedCorpusIds(db: Database.Database): Set<number> {
   const rows = db
     .prepare(
       `SELECT id FROM message
-        WHERE text IS NOT NULL AND (role = 'assistant' OR kind = 'prompt')`,
+        WHERE text IS NOT NULL AND (role = 'assistant' OR kind IN ('prompt', 'inter-agent'))`,
     )
     .all() as { id: number }[];
   return new Set(rows.map((r) => r.id));
@@ -258,5 +260,24 @@ describe("FTS search index — backfill on upgrade", () => {
     const summary = await refresh({ logsRoot: FIXTURES_ROOT, dbPath });
     expect(summary.conversationsParsed).toBe(0);
     expect(summary.conversationsSkipped).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("FTS search index — Inter-agent messages and Task notifications", () => {
+  const db = seededTempDb({ prefix: "cca-fts-agents-", logsRoot: AGENT_MESSAGE_LOGS });
+
+  it("indexes Inter-agent messages and leaves Task notifications out", () => {
+    expect(matchingUuids(db.dbPath, "frozen")).toEqual(["q2"]);
+    expect(matchingUuids(db.dbPath, "generics")).toEqual([]);
+    expectIndexMatchesCorpus(db.dbPath);
+  });
+
+  it("keeps them indexed when the index is rebuilt on upgrade", async () => {
+    const raw = open(db.dbPath);
+    dropSearchIndex(raw);
+    raw.close();
+    await applyPendingMigrations(db.dbPath);
+    expect(matchingUuids(db.dbPath, "frozen")).toEqual(["q2"]);
+    expectIndexMatchesCorpus(db.dbPath);
   });
 });

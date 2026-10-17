@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { mainSession, messageByUuid, subAgentSession } from "./helpers/agent-messages";
+import { getTranscript } from "@/core/read";
+
+import { AGENT_MESSAGE_LOGS, mainSession, messageByUuid, subAgentSession } from "./helpers/agent-messages";
+import { seededTempDb } from "./helpers/temp-db";
 
 /**
  * A Prompt or Inter-agent message can arrive while the Agent is working: it
@@ -9,6 +12,7 @@ import { mainSession, messageByUuid, subAgentSession } from "./helpers/agent-mes
 describe("Mid-turn message parsing", () => {
   const main = mainSession();
   const sub = subAgentSession();
+  const db = seededTempDb({ prefix: "cca-mid-turn-", logsRoot: AGENT_MESSAGE_LOGS });
 
   it("turns a human record in the exact mid-turn wrapper into a mid-turn Prompt", () => {
     const m = messageByUuid(main, "hm1");
@@ -68,6 +72,14 @@ describe("Mid-turn message parsing", () => {
     expect(uuids).not.toContain("q1dup"); // same `source_uuid` as q1
     expect(uuids).not.toContain("q2dup"); // same `origin.msg_id` as the p4 record
     expect(uuids).toContain("p4");
+  });
+
+  it("renders in the Transcript in timestamp order, flagged mid-turn", async () => {
+    const view = await getTranscript("sess-agents", { dbPath: db.dbPath });
+    const uuids = view?.messages.map((m) => m.uuid) ?? [];
+    expect(uuids.indexOf("q1")).toBeGreaterThan(uuids.indexOf("p4"));
+    expect(uuids.indexOf("q1")).toBeLessThan(uuids.indexOf("q2"));
+    expect(view?.messages.find((m) => m.uuid === "q1")?.origin?.midTurn).toBe(true);
   });
 
   it("skips an attachment without a prompt and every other attachment type", () => {

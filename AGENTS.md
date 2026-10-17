@@ -47,7 +47,7 @@ pnpm gate          Format check, lint, duplication, typecheck, then test and bui
 pnpm format        Prettier, rewriting files in place
 pnpm format:check  Prettier in check mode (fails on unformatted files)
 pnpm lint          ESLint (includes the core boundary, ADR-0002)
-pnpm duplication   jscpd copy-paste detection (config in .jscpd.json, fails on any clone)
+pnpm duplication   jscpd copy-paste detection (config in .jscpd.json, fails on any clone; skips migrations, which are immutable once applied)
 pnpm typecheck     Next route typegen, then TypeScript with no emit
 pnpm test          Vitest, once
 pnpm test:changed  Vitest, once, only the tests affected since $CHECK_BASE (default origin/main)

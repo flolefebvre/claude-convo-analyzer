@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { mainSession, messageByUuid, parseLine } from "./helpers/agent-messages";
+import { getTranscript } from "@/core/read";
+import { searchConversations } from "@/core/search";
+
+import { AGENT_MESSAGE_LOGS, mainSession, messageByUuid, parseLine } from "./helpers/agent-messages";
+import { seededTempDb } from "./helpers/temp-db";
 
 /**
  * A Task notification (`origin.kind: task-notification`) announces that a
@@ -56,5 +60,29 @@ describe("Task notification parsing", () => {
     expect(messages[0]?.kind).toBe("task-notification");
     expect(messages[0]?.origin).toBeNull();
     expect(messages[0]?.text).toBeNull();
+  });
+});
+
+describe("Task notifications in the Transcript", () => {
+  const db = seededTempDb({ prefix: "cca-task-notification-", logsRoot: AGENT_MESSAGE_LOGS });
+
+  it("links a notification about a sub-agent to that sub-agent", async () => {
+    const view = await getTranscript("sess-agents", { dbPath: db.dbPath });
+    const m = view?.messages.find((x) => x.uuid === "n1");
+    expect(m?.kind).toBe("task-notification");
+    expect(m?.origin?.taskStatus).toBe("completed");
+    expect(m?.origin?.taskAgentId).toBe("a1f00d");
+  });
+
+  it("leaves a notification about a background command unlinked", async () => {
+    const view = await getTranscript("sess-agents", { dbPath: db.dbPath });
+    const m = view?.messages.find((x) => x.uuid === "n2");
+    expect(m?.origin?.taskStatus).toBe("failed");
+    expect(m?.origin?.taskAgentId).toBeNull();
+  });
+
+  it("is not indexed for search", async () => {
+    const { results } = await searchConversations("generics", { dbPath: db.dbPath });
+    expect(results).toEqual([]);
   });
 });
