@@ -4,7 +4,7 @@
 
 ## Stack
 
-- Next.js 16.4 (App Router, Cache Components), React 19.2 with the React Compiler
+- Next.js 16.4 (App Router, Cache Components), React 19.3 with the React Compiler
 - TypeScript 5, `strict`
 - Tailwind CSS v4, shadcn/ui (Radix + lucide)
 - Next-pipe (`@flefebvre/next-pipe`) for server entry points, zod 4 for validation
