@@ -3,16 +3,18 @@ import { type AgentLabel, parseSlashCommand } from "@/app/_lib/transcript";
 import { messageAnchorId } from "@/app/_lib/transcript-url";
 import type { TranscriptMessage, TranscriptView } from "@/core/read";
 
-import { CostFigure, ErrorBadge } from "./transcript-parts";
+import { InterAgentMessageRow } from "./transcript-inter-agent-message";
+import { CostFigure, ErrorBadge, type MessageAnchor, MidTurnBadge, RowHead, labelledBy } from "./transcript-parts";
+import { TaskNotificationRow } from "./transcript-task-notification";
 import { TranscriptToolCallRow } from "./transcript-tool-call";
 import { TurnMarkdown } from "./turn-markdown";
 
 /**
- * One transcript row: a prompt (plain text, or a pretty slash command) or an
- * assistant turn (markdown body + per-turn cost, with its tool calls nested and
- * collapsed). Which branch is chosen by `role` — the reader only emits
- * `user`(=prompt) and `assistant` messages. Each row is an `<article>` named
- * by its speaker and time.
+ * One transcript row: a prompt (plain text, or a pretty slash command), an
+ * Inter-agent message, a Task notification, or an assistant turn (markdown
+ * body + per-turn cost, with its tool calls nested and collapsed). Which
+ * branch is chosen by `kind`, then `role`. Each row is an `<article>` named by
+ * its speaker and time.
  */
 export function TranscriptMessageRow({
   message,
@@ -51,6 +53,30 @@ export function TranscriptMessageRow({
   // fragment scrolls to the id. Same idiom as `?call=` for tool calls.
   const anchor = anchorProps(message, anchoredMessage);
 
+  if (message.kind === "inter-agent") {
+    return (
+      <InterAgentMessageRow
+        message={message}
+        time={time}
+        anchor={anchor}
+        sessionId={view.sessionId}
+        rootAgentId={view.tree.id}
+        labels={labels}
+        listReturn={listReturn}
+      />
+    );
+  }
+  if (message.kind === "task-notification") {
+    return (
+      <TaskNotificationRow
+        message={message}
+        time={time}
+        anchor={anchor}
+        sessionId={view.sessionId}
+        listReturn={listReturn}
+      />
+    );
+  }
   if (message.role === "user") {
     return <PromptRow message={message} time={time} anchor={anchor} author={promptAuthor} />;
   }
@@ -71,8 +97,6 @@ export function TranscriptMessageRow({
 
 /** The element id + highlight flag for one row, given the `?msg=` target, and
  *  the id prefix of its speaker/time labels. */
-type MessageAnchor = { id?: string; anchored: boolean; labelId: string };
-
 function anchorProps(message: TranscriptMessage, anchoredMessage: string | undefined): MessageAnchor {
   const labelId = `turn-${message.id}`;
   if (message.uuid === null) return { anchored: false, labelId };
@@ -83,52 +107,12 @@ function anchorProps(message: TranscriptMessage, anchoredMessage: string | undef
   };
 }
 
-/** The speaker label and clock time that head a row and name its article. */
-function RowHead({
-  speaker,
-  speakerClass,
-  time,
-  timestamp,
-  labelId,
-  children,
-  trailing,
-}: {
-  speaker: string;
-  speakerClass: string;
-  time: string;
-  timestamp: string | null;
-  labelId: string;
-  /** Badges after the speaker. */
-  children?: React.ReactNode;
-  /** Figures after the time, at the row's right edge. */
-  trailing?: React.ReactNode;
-}) {
-  return (
-    <div className="row-head">
-      <span id={`${labelId}-who`} className={speakerClass}>
-        {speaker}
-      </span>
-      {children}
-      <span className="spacer" />
-      {time && (
-        <time id={`${labelId}-at`} className="row-time" dateTime={timestamp ?? undefined}>
-          {time}
-        </time>
-      )}
-      {trailing}
-    </div>
-  );
-}
-
-/** The `aria-labelledby` of a row: its speaker, then its time when it has one. */
-function labelledBy(anchor: MessageAnchor, time: string): string {
-  return time ? `${anchor.labelId}-who ${anchor.labelId}-at` : `${anchor.labelId}-who`;
-}
-
 /** A prompt. Rendered PLAIN (never markdown) — humans don't write reliable
  *  markdown — except an invoked slash command, shown as a command chip + args.
  *  In a sub-agent's transcript the prompt comes from the parent agent: it is
- *  labelled with that agent's name and ruled in the agent accent. */
+ *  labelled with that agent's name and ruled in the agent accent. A plugin's
+ *  prompt says which plugin sent it; one that arrived while the agent was
+ *  working says so. */
 function PromptRow({
   message,
   time,
@@ -154,7 +138,10 @@ function PromptRow({
         time={time}
         timestamp={message.timestamp}
         labelId={anchor.labelId}
-      />
+      >
+        {message.origin?.plugin && <span className="badge-note">via {message.origin.plugin}</span>}
+        {message.origin?.midTurn && <MidTurnBadge />}
+      </RowHead>
       {parsed.isSlashCommand ? (
         <div className="slash">
           <span className="slash-cmd">{commandLabel}</span>

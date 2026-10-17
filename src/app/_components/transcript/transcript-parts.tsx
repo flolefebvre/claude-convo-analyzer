@@ -56,6 +56,79 @@ export function ErrorBadge({
   );
 }
 
+/** A row's element id and `?msg=` highlight, and the id prefix of its speaker/time labels. */
+export type MessageAnchor = { id?: string; anchored: boolean; labelId: string };
+
+/**
+ * The speaker label and clock time that head a row and name its article.
+ *
+ * @example <RowHead speaker="You" speakerClass="speaker" time={time} timestamp={message.timestamp} labelId={anchor.labelId} />
+ */
+export function RowHead({
+  speaker,
+  speakerClass,
+  time,
+  timestamp,
+  labelId,
+  children,
+  trailing,
+}: {
+  speaker: React.ReactNode;
+  speakerClass: string;
+  time: string;
+  timestamp: string | null;
+  labelId: string;
+  /** Badges after the speaker. */
+  children?: React.ReactNode;
+  /** Figures after the time, at the row's right edge. */
+  trailing?: React.ReactNode;
+}) {
+  return (
+    <div className="row-head">
+      <span id={`${labelId}-who`} className={speakerClass}>
+        {speaker}
+      </span>
+      {children}
+      <span className="spacer" />
+      <RowTime time={time} timestamp={timestamp} labelId={labelId} />
+      {trailing}
+    </div>
+  );
+}
+
+/**
+ * A row's clock time, the second half of its accessible name.
+ *
+ * @example <RowTime time={time} timestamp={message.timestamp} labelId={anchor.labelId} />
+ */
+export function RowTime({ time, timestamp, labelId }: { time: string; timestamp: string | null; labelId: string }) {
+  if (!time) return null;
+  return (
+    <time id={`${labelId}-at`} className="row-time" dateTime={timestamp ?? undefined}>
+      {time}
+    </time>
+  );
+}
+
+/**
+ * The `aria-labelledby` of a row: its speaker, then its time when it has one.
+ *
+ * @example <article aria-labelledby={labelledBy(anchor, time)}>
+ */
+export function labelledBy(anchor: MessageAnchor, time: string): string {
+  return time ? `${anchor.labelId}-who ${anchor.labelId}-at` : `${anchor.labelId}-who`;
+}
+
+/**
+ * The marker on a Prompt or Inter-agent message that arrived while the agent
+ * was working, landing mid-turn.
+ *
+ * @example {message.origin?.midTurn && <MidTurnBadge />}
+ */
+export function MidTurnBadge() {
+  return <span className="badge-note">sent while working</span>;
+}
+
 /** Hover text on a cost that leaves out unpriced usage — the list's wording. */
 const LOWER_BOUND_TITLE = "Cost excludes unpriced model usage — lower bound.";
 
