@@ -18,7 +18,11 @@
 //
 // A Tools-page drill-down can deep-link into ONE tool call here
 // (`?agent=<id>&call=<toolUseId>#call-<toolUseId>`): `?call=` opens and
-// highlights that call server-side, the fragment does the scrolling.
+// highlights that call server-side, and the pane's `ScrollToAnchor` scrolls to
+// it once it streams in. The fragment stays for copied links and no-JS.
+//
+// The pane shows one Transcript page (`?page=`, page 1 the bare URL). A
+// deep link carries no page: core opens the page holding its anchor.
 //
 // The transcript read goes through the cached/`connection()`-gated
 // `loadTranscript` seam (ADR-0002 — the component never touches core/DB
@@ -32,14 +36,16 @@ import { LoadingRegion } from "@/app/_components/loading-region";
 import { TranscriptPane } from "@/app/_components/transcript/transcript-pane";
 import { BackLink, TranscriptTree } from "@/app/_components/transcript/transcript-tree";
 import { loadConversations, loadFamily, loadTranscript } from "@/app/_lib/conversations";
+import { resolvePage } from "@/app/_lib/search-params";
 import { agentLabels, hasUnpricedAgent } from "@/app/_lib/transcript";
 import { resolveAgent, resolveCall, resolveListReturn, resolveMessage } from "@/app/_lib/transcript-url";
 import { Skeleton } from "@/components/ui/skeleton";
 
-/** The route's URL view-state: which agent, which anchored call/message, and
- *  the list view it was opened from. */
+/** The route's URL view-state: which agent, which Transcript page, which
+ *  anchored call/message, and the list view it was opened from. */
 type TranscriptSearchParams = {
   agent?: string | string[];
+  page?: string | string[];
   call?: string | string[];
   msg?: string | string[];
   from?: string | string[];
@@ -88,14 +94,17 @@ export default function ConversationPage({ params, searchParams }: RouteProps) {
  */
 async function readRoute({ params, searchParams }: RouteProps) {
   const { sessionId } = await params;
-  const { agent, call, msg, from } = await searchParams;
-  const view = await loadTranscript(sessionId, resolveAgent(agent));
+  const { agent, page, call, msg, from } = await searchParams;
+  const anchoredCall = resolveCall(call);
+  const anchoredMessage = resolveMessage(msg);
+  // With no `?page=`, core opens the Transcript page holding the anchor.
+  const view = await loadTranscript(sessionId, resolveAgent(agent), resolvePage(page), anchoredMessage, anchoredCall);
   if (view === null) notFound();
   // Both panes name agents the same way ("Plan #2" when siblings share a type).
   const labels = agentLabels(view.tree);
   // A transcript opened from the list carries that list view (`?from=`): every
   // link to another transcript passes it on.
-  return { view, labels, call, msg, listReturn: resolveListReturn(from).from };
+  return { view, labels, anchoredCall, anchoredMessage, listReturn: resolveListReturn(from).from };
 }
 
 /** The back link restores the list view the transcript was opened from (`?from=`). */
@@ -112,21 +121,21 @@ async function TreeRegion(props: RouteProps) {
 }
 
 async function PaneRegion(props: RouteProps) {
-  const { view, labels, call, msg, listReturn } = await readRoute(props);
+  const { view, labels, anchoredCall, anchoredMessage, listReturn } = await readRoute(props);
   // The continuation lineage of this session (issue #46): the pane shows its
   // DIRECT parent/continuations as a banner. Standalone sessions get `size === 1`
   // and no banner at all.
   const family = await loadFamily(view.sessionId);
   // `?call=` is how a Tools-page drill-down points at ONE tool call: the pane
-  // renders it open and highlighted, and the matching `#call-<id>` fragment
-  // scrolls to it. Server-side, because a fragment never reaches the server.
+  // renders it open and highlighted (server-side, because a fragment never
+  // reaches the server), and its `ScrollToAnchor` scrolls to it.
   return (
     <TranscriptPane
       view={view}
       labels={labels}
       family={family}
-      anchoredCall={resolveCall(call)}
-      anchoredMessage={resolveMessage(msg)}
+      anchoredCall={anchoredCall}
+      anchoredMessage={anchoredMessage}
       listReturn={listReturn}
     />
   );

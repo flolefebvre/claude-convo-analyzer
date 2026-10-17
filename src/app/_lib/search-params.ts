@@ -33,3 +33,25 @@ export type ViewSearchParams = {
 export function firstParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
+
+/** The first (and default) page of a paged view — `?page=` is 1-based. */
+export const FIRST_PAGE = 1;
+
+/**
+ * Resolve the requested (1-based) page from the raw `?page=` search param.
+ *
+ * `undefined` means the URL requested NO page — absent, or invalid (`0`, a
+ * negative, a fraction, a non-number), which is never read as a page. That is
+ * distinct from page 1: with no page requested, a bare `?expanded=<id>` link
+ * lands on the list page that holds its row, and a `?msg=`/`?call=` link on the
+ * transcript page that holds its anchor.
+ *
+ * @example resolvePage(params.page) // 3, or undefined
+ */
+export function resolvePage(raw: string | string[] | undefined): number | undefined {
+  const value = firstParam(raw);
+  if (value === undefined) return undefined;
+  const page = Number(value);
+  if (!Number.isInteger(page) || page < FIRST_PAGE) return undefined;
+  return page;
+}

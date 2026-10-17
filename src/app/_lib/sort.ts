@@ -14,7 +14,7 @@
 
 import type { ConversationSummary } from "@/core/read";
 
-import { firstParam } from "@/app/_lib/search-params";
+import { FIRST_PAGE, firstParam } from "@/app/_lib/search-params";
 
 export type SortDir = "asc" | "desc";
 
@@ -87,9 +87,6 @@ const COLUMNS = {
 } as const satisfies Record<string, ColumnSpec>;
 
 export type SortableField = keyof typeof COLUMNS;
-
-/** The first (and default) page of the list — `?page=` is 1-based. */
-export const FIRST_PAGE = 1;
 
 /** The single `?errors=` value that means "only conversations with errors". */
 const ERRORS_ON = "1";
@@ -248,24 +245,6 @@ export function listReturnQuery(ctx: ListLinkContext, expanded?: string): string
  */
 export function resolveErrorsOnly(raw: string | string[] | undefined): boolean {
   return firstParam(raw) === ERRORS_ON;
-}
-
-/**
- * Resolve the requested (1-based) page from the raw `?page=` search param.
- *
- * `undefined` means the URL requested NO page — absent, or invalid (`0`, a
- * negative, a fraction, a non-number), which is never read as a page. That is
- * distinct from page 1: with no page requested, a bare `?expanded=<id>` link
- * lands on the page that holds its row (see `buildListView`).
- *
- * @example resolvePage(params.page) // 3, or undefined
- */
-export function resolvePage(raw: string | string[] | undefined): number | undefined {
-  const value = firstParam(raw);
-  if (value === undefined) return undefined;
-  const page = Number(value);
-  if (!Number.isInteger(page) || page < FIRST_PAGE) return undefined;
-  return page;
 }
 
 /**

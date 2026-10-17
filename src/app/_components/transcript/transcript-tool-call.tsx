@@ -50,7 +50,7 @@ export function TranscriptToolCallRow({
   const snippet = toolCallSnippet(call);
   // A Tools-page drill-down links here as `?call=<id>#call-<id>`: the query
   // opens + highlights the call server-side (a fragment never reaches the
-  // server), the fragment scrolls to the `id` below.
+  // server), and the pane's `ScrollToAnchor` scrolls to the `id` below.
   const anchored = call.toolUseId !== null && call.toolUseId === anchoredCall;
   const anchorProps = call.toolUseId === null ? {} : { id: callAnchorId(call.toolUseId) };
   const className = anchored ? "call anchored" : "call";

@@ -943,6 +943,66 @@ function agentMessagesConversation(g: Gen, index: number): Conversation {
   };
 }
 
+/** The seeded Conversation whose main agent spans three Transcript pages (issue #82). */
+export const LONG_TITLE = "Port every report to the new rendering engine";
+
+/** A prompt only the long Conversation holds, on its main agent's SECOND Transcript page. */
+export const LONG_PAGE_TWO_TEXT = "Now port the quarterly heatmap export the same way.";
+
+/** Follow-up prompts between the long Conversation's turns. */
+const LONG_FOLLOW_UPS = [
+  "Next report, same pattern.",
+  "Looks right — keep going.",
+  "Carry on with the next one.",
+  "Good. Move to the following report.",
+] as const;
+
+/**
+ * A Conversation whose main agent renders 450 messages — an opening prompt,
+ * then 225 rounds of an assistant turn and a follow-up prompt, minus the last
+ * prompt — so at 200 messages a page it spans three Transcript pages and both
+ * "next" and "last" mean something. Its 150th follow-up, message 301, is
+ * {@link LONG_PAGE_TWO_TEXT}.
+ */
+function longConversation(g: Gen, index: number): Conversation {
+  const project = PROJECTS[4];
+  const cwd = project.path;
+  const folder = cwd.replace(/\//g, "-");
+  const sessionId = `seed-${folder.slice(1)}-${index}`;
+  const model = g.pick(MODELS);
+  const rounds = 225;
+  let t = g.now - 9 * DAY;
+  const lines = [JSON.stringify({ type: "ai-title", aiTitle: LONG_TITLE }), userPrompt(g, t, cwd, g.pick(PROMPTS))];
+  for (let round = 1; round <= rounds; round++) {
+    t += g.int(20_000, 90_000);
+    if (g.chance(0.5)) {
+      const tuId = g.uid("tu");
+      const kind = pickToolKind(g);
+      const isError = g.chance(kind.errorChance);
+      lines.push(
+        assistantTurn(g, t, cwd, model, {
+          toolUses: [{ type: "tool_use", id: tuId, name: kind.name, input: kind.input(g) }],
+          scale: 0.2,
+        }),
+      );
+      t += g.int(2_000, 10_000);
+      lines.push(toolResult(g, t, cwd, tuId, toolResultText(g, kind, isError), isError));
+    } else {
+      lines.push(assistantTurn(g, t, cwd, model, { scale: 0.2 }));
+    }
+    if (round === rounds) break;
+    t += g.int(10_000, 60_000);
+    lines.push(userPrompt(g, t, cwd, round === 150 ? LONG_PAGE_TWO_TEXT : g.pick(LONG_FOLLOW_UPS)));
+  }
+  return {
+    folder,
+    sessionId,
+    mainLines: lines,
+    subAgents: [],
+    resumePoint: { uuid: lastAssistantUuid(lines), ms: t },
+  };
+}
+
 /** Every seeded Conversation, its conversations starting up to three weeks before `anchor`. */
 function buildCorpus(anchor: number): Conversation[] {
   const g = createGen(anchor);
@@ -956,6 +1016,7 @@ function buildCorpus(anchor: number): Conversation[] {
   const coverage = coverageConversations(g, total + families.length);
   conversations.push(...coverage);
   conversations.push(agentMessagesConversation(g, total + families.length + coverage.length));
+  conversations.push(longConversation(g, conversations.length));
   return conversations;
 }
 
@@ -983,8 +1044,9 @@ export type FakeLogsCounts = {
 /**
  * Write the fake logs under `logsRoot`, their timeline ending at `now`: 30
  * standalone Conversations across six Projects, two continuation families
- * (seven more), 23 covering pagination, unpriced usage and API errors, then one
- * where agents message each other — 61 in all. The same `now` always writes the
+ * (seven more), 23 covering pagination, unpriced usage and API errors, one
+ * where agents message each other, then one long enough to span three
+ * Transcript pages — 62 in all. The same `now` always writes the
  * same bytes.
  *
  * @example

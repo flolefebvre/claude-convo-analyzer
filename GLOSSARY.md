@@ -141,6 +141,12 @@ Sub-agent) has exactly one Transcript. Distinct from the cost-aggregate
 **detail panel** (`ConversationDetail`) shown in the conversation list — the
 Transcript is _what was said and done_, not _what it cost_.
 
+A long Transcript is read one **Transcript page** at a time: a fixed-size
+window of its rendered Messages, in order. A page is only a view: what is said
+about the Agent as a whole (its turn and Tool-call counts, its effort) always
+describes the whole Transcript, never the page. A link to one Message opens the
+page that holds it.
+
 ### Attribution
 
 Per-turn labels on an assistant Message naming what drove it: `attribution_skill`

@@ -7,6 +7,9 @@ import { type RouteShell, expectData, expectInstantLoad, expectShell } from "./r
 const TITLE = "Split the billing service out of the monolith";
 // The seeded conversation where agents message each other (issue #96).
 const AGENT_MESSAGES_TITLE = "Coordinate the search rewrite across agents";
+// The seeded conversation spanning three Transcript pages, and a prompt on its second (issue #82).
+const LONG_TITLE = "Port every report to the new rendering engine";
+const PAGE_TWO_TEXT = "Now port the quarterly heatmap export the same way.";
 
 const titleLink = (page: Page) => page.getByRole("link", { name: TITLE, exact: true });
 
@@ -60,6 +63,35 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     const notification = page.getByRole("article", { name: /Agent "rewrite ranking" finished/ });
     await expect(notification).toBeVisible();
     await expect(notification).toContainText("completed");
+  });
+
+  test("pages a long transcript, and a deep link opens the page holding its message", async ({ page }) => {
+    // A Search result links to the message with no page: the server finds it.
+    await page.goto(`/search?q=${encodeURIComponent("quarterly heatmap")}`);
+    const deepLink = await page.getByRole("link", { name: /heatmap export/ }).getAttribute("href");
+    expect(deepLink).toMatch(/[?&]msg=/);
+    expect(deepLink).not.toMatch(/[?&]page=/);
+
+    await page.getByRole("link", { name: LONG_TITLE, exact: true }).click();
+    await page.waitForURL((url) => url.pathname.startsWith("/conversation/"));
+    // Role locators skip the hidden Search page the router keeps around.
+    const pageTwoPrompt = page.getByRole("main").getByRole("article").filter({ hasText: PAGE_TWO_TEXT });
+    const pager = page.getByRole("navigation", { name: "Transcript pages" });
+    await expect(pager).toContainText("1–200 of 450 messages");
+    await expect(pageTwoPrompt).toHaveCount(0);
+
+    await pager.getByRole("link", { name: "Next" }).click();
+    await page.waitForURL((url) => url.searchParams.get("page") === "2");
+    await expect(pager).toContainText("201–400 of 450 messages");
+    await expect(pageTwoPrompt).toBeVisible();
+
+    // Following that link lands on page 2, the prompt highlighted and scrolled to.
+    await page.goto(`/search?q=${encodeURIComponent("quarterly heatmap")}`);
+    await page.getByRole("link", { name: /heatmap export/ }).click();
+    await page.waitForURL((url) => url.searchParams.has("msg"));
+    await expect(pager).toContainText("201–400 of 450 messages");
+    await expect(pageTwoPrompt).toHaveClass(/\banchored\b/);
+    await expect(pageTwoPrompt).toBeInViewport();
   });
 
   test("renders the not-found page for an unknown session id", async ({ page }) => {

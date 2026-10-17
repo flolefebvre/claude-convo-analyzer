@@ -11,7 +11,7 @@ import { type CostByType, priceSplitByType, resolveModel, type TokenSplit, type 
 import { readClient } from "@/core/db";
 import { addLocalDays, localDayKey, startOfLocalDay } from "@/core/local-day";
 import { type MessageOrigin, messageOriginSchema } from "@/core/parse";
-import type { PrismaClient } from "@/core/prisma/generated/client";
+import type { Prisma, PrismaClient } from "@/core/prisma/generated/client";
 
 export type ConversationSummary = {
   id: string;
@@ -169,11 +169,34 @@ export type TranscriptView = {
   totalTokens: Tokens;
   /** The resolved selected-agent key actually rendered in `messages`. */
   selectedAgentId: string;
-  /** The selected agent's transcript, in timestamp/id order. */
+  /** One Transcript page of the selected agent's transcript, in timestamp/id order. */
   messages: TranscriptMessage[];
-  /** Meta user records hidden from `messages` for the selected agent. */
+  /** The 1-based Transcript page `messages` is, clamped to the pages that exist. */
+  page: number;
+  /** How many Transcript pages the selected agent's transcript spans; 1 when empty. */
+  pageCount: number;
+  /** How many rendered messages a full Transcript page holds. */
+  pageSize: number;
+  /** Rendered messages in the selected agent's WHOLE transcript, across every page. */
+  messageCount: number;
+  /** Assistant turns in the selected agent's whole transcript. */
+  turnCount: number;
+  /** Tool calls in the selected agent's whole transcript. */
+  toolCallCount: number;
+  /** The distinct reasoning-effort levels of the selected agent's whole transcript, sorted. */
+  effortLevels: string[];
+  /**
+   * Effort of the last effort-carrying message on an EARLIER page — the
+   * baseline this page's first effort change is measured against. Null on
+   * page 1, or when no earlier message carries effort.
+   */
+  effortBefore: string | null;
+  /** Meta user records hidden from the selected agent's whole transcript. */
   metaHiddenCount: number;
 };
+
+/** How many rendered messages one Transcript page holds. */
+export const TRANSCRIPT_PAGE_SIZE = 200;
 
 type ListOptions = {
   sortBy?: keyof ConversationSummary;
@@ -453,6 +476,14 @@ type TranscriptOptions = {
   dbPath?: string;
   /** Selected agent (the `?agent=` key: `externalAgentId ?? String(id)`); defaults to main. */
   agentId?: string;
+  /** The 1-based Transcript page asked for (`?page=`), clamped to the pages that exist; wins over the anchors. */
+  page?: number;
+  /** A message `uuid` (`?msg=`): with no `page`, the view opens the page holding it. */
+  anchoredMessage?: string;
+  /** A `tool_use` id (`?call=`): with no `page`, the view opens the page holding its turn. */
+  anchoredCall?: string;
+  /** Test-only (non-seam) opt, like `dbPath`: overrides {@link TRANSCRIPT_PAGE_SIZE} so a tiny fixture spans pages. */
+  pageSize?: number;
 };
 
 /** An agent row as read for the tree. */
@@ -534,7 +565,9 @@ export async function getTranscript(id: string, opts: TranscriptOptions = {}): P
     const selected =
       (opts.agentId === undefined ? undefined : agents.find((a) => agentKey(a) === opts.agentId)) ?? mainAgent;
 
-    const messages = selected === undefined ? [] : await readAgentTranscript(prisma, selected, agents);
+    const pageSize = opts.pageSize ?? TRANSCRIPT_PAGE_SIZE;
+    const transcriptPage =
+      selected === undefined ? emptyTranscriptPage(pageSize) : await readTranscriptPage(prisma, selected, agents, opts);
 
     return {
       sessionId: convo.sessionId,
@@ -543,7 +576,7 @@ export async function getTranscript(id: string, opts: TranscriptOptions = {}): P
       totalCostUsd,
       totalTokens,
       selectedAgentId: selected === undefined ? "" : agentKey(selected),
-      messages,
+      ...transcriptPage,
       metaHiddenCount: selected === undefined ? 0 : (metaByAgent.get(selected.id) ?? 0),
     };
   } finally {
@@ -957,23 +990,166 @@ function emptyMainNode(): TranscriptAgentNode {
 /** The user Message kinds a transcript renders (tool-result carriers and meta are hidden). */
 const RENDERED_USER_KINDS = ["prompt", "inter-agent", "task-notification"];
 
+/** The selected-agent half of a {@link TranscriptView}: one Transcript page plus the whole agent's figures. */
+type TranscriptPage = Pick<
+  TranscriptView,
+  | "messages"
+  | "page"
+  | "pageCount"
+  | "pageSize"
+  | "messageCount"
+  | "turnCount"
+  | "toolCallCount"
+  | "effortLevels"
+  | "effortBefore"
+>;
+
+/** The page of a conversation with no agent rows (should not occur). */
+function emptyTranscriptPage(pageSize: number): TranscriptPage {
+  return {
+    messages: [],
+    page: 1,
+    pageCount: 1,
+    pageSize,
+    messageCount: 0,
+    turnCount: 0,
+    toolCallCount: 0,
+    effortLevels: [],
+    effortBefore: null,
+  };
+}
+
+/** The rows of one agent's rendered transcript (what {@link readAgentTranscript} shows). */
+function renderedMessages(agentId: number): Prisma.MessageWhereInput {
+  return {
+    agentId,
+    OR: [{ role: "assistant" }, { role: "user", kind: { in: RENDERED_USER_KINDS } }],
+  };
+}
+
+/** The transcript order: timestamp, then id; SQLite sorts null timestamps first. */
+const TRANSCRIPT_ORDER: Prisma.MessageOrderByWithRelationInput[] = [{ timestamp: "asc" }, { id: "asc" }];
+
 /**
- * Read one agent's rendered transcript: assistant turns + user rows of the
- * {@link RENDERED_USER_KINDS}, in timestamp/id order, each assistant turn
- * carrying its per-turn cost and nested tool calls, each user row its extras
- * with their agent links resolved against `agents`.
+ * The messages that come before `row` in {@link TRANSCRIPT_ORDER}. An undated
+ * row follows only the undated rows logged before it; a dated one follows
+ * every undated row, every earlier timestamp, and its own timestamp's
+ * earlier-logged rows.
+ */
+function orderedBefore(row: { id: number; timestamp: bigint | null }): Prisma.MessageWhereInput {
+  if (row.timestamp === null) return { timestamp: null, id: { lt: row.id } };
+  return {
+    OR: [{ timestamp: null }, { timestamp: { lt: row.timestamp } }, { timestamp: row.timestamp, id: { lt: row.id } }],
+  };
+}
+
+/**
+ * Read the selected agent's Transcript page and the figures of its whole
+ * transcript. The page is the explicit `opts.page` when given, else the one
+ * holding the `?msg=`/`?call=` anchor, else the first; it is clamped to the
+ * pages that exist. Every figure is a batched count/groupBy — the window is the
+ * only full read.
+ */
+async function readTranscriptPage(
+  prisma: PrismaClient,
+  agent: AgentRow,
+  agents: AgentRow[],
+  opts: TranscriptOptions,
+): Promise<TranscriptPage> {
+  const pageSize = opts.pageSize ?? TRANSCRIPT_PAGE_SIZE;
+  const rendered = renderedMessages(agent.id);
+  const [messageCount, turnCount, toolCallCount, effortRows, anchorIndex] = await Promise.all([
+    prisma.message.count({ where: rendered }),
+    prisma.message.count({ where: { agentId: agent.id, role: "assistant" } }),
+    prisma.toolCall.count({ where: { agentId: agent.id } }),
+    prisma.message.groupBy({
+      by: ["effort"],
+      where: { agentId: agent.id, role: "assistant", effort: { not: null } },
+      orderBy: { effort: "asc" },
+    }),
+    opts.page === undefined ? anchorPosition(prisma, agent.id, opts) : Promise.resolve(undefined),
+  ]);
+
+  const pageCount = Math.max(1, Math.ceil(messageCount / pageSize));
+  const requested = opts.page ?? (anchorIndex === undefined ? 1 : Math.floor(anchorIndex / pageSize) + 1);
+  const page = Math.min(Math.max(1, requested), pageCount);
+
+  const messages = await readAgentTranscript(prisma, agent, agents, { skip: (page - 1) * pageSize, take: pageSize });
+  const first = messages[0];
+  const effortBefore = page === 1 || first === undefined ? null : await effortBeforeMessage(prisma, rendered, first);
+
+  return {
+    messages,
+    page,
+    pageCount,
+    pageSize,
+    messageCount,
+    turnCount,
+    toolCallCount,
+    effortLevels: effortRows.flatMap((r) => (r.effort === null ? [] : [r.effort])),
+    effortBefore,
+  };
+}
+
+/** Effort of the last effort-carrying rendered message before `message`, or null when none. */
+async function effortBeforeMessage(
+  prisma: PrismaClient,
+  rendered: Prisma.MessageWhereInput,
+  message: TranscriptMessage,
+): Promise<string | null> {
+  const timestamp = message.timestamp === null ? null : BigInt(Date.parse(message.timestamp));
+  const row = await prisma.message.findFirst({
+    where: { AND: [rendered, { effort: { not: null } }, orderedBefore({ id: message.id, timestamp })] },
+    orderBy: [{ timestamp: "desc" }, { id: "desc" }],
+    select: { effort: true },
+  });
+  return row?.effort ?? null;
+}
+
+/**
+ * The 0-based position, in the agent's rendered transcript, of the message a
+ * `?msg=` uuid names — or, failing that, of the turn holding the `?call=` tool
+ * call. Undefined when neither names a rendered message of this agent.
+ */
+async function anchorPosition(
+  prisma: PrismaClient,
+  agentId: number,
+  opts: Pick<TranscriptOptions, "anchoredMessage" | "anchoredCall">,
+): Promise<number | undefined> {
+  const rendered = renderedMessages(agentId);
+  const select = { id: true, timestamp: true } as const;
+  let anchor =
+    opts.anchoredMessage === undefined
+      ? null
+      : await prisma.message.findFirst({ where: { AND: [rendered, { uuid: opts.anchoredMessage }] }, select });
+  if (anchor === null && opts.anchoredCall !== undefined) {
+    const call = await prisma.toolCall.findFirst({
+      where: { toolUseId: opts.anchoredCall, message: rendered },
+      select: { message: { select } },
+    });
+    anchor = call?.message ?? null;
+  }
+  if (anchor === null) return undefined;
+  return prisma.message.count({ where: { AND: [rendered, orderedBefore(anchor)] } });
+}
+
+/**
+ * Read one window of an agent's rendered transcript: assistant turns + user
+ * rows of the {@link RENDERED_USER_KINDS}, in timestamp/id order, each
+ * assistant turn carrying its per-turn cost and nested tool calls, each user
+ * row its extras with their agent links resolved against `agents`.
  */
 async function readAgentTranscript(
   prisma: PrismaClient,
   agent: AgentRow,
   agents: AgentRow[],
+  window: { skip: number; take: number },
 ): Promise<TranscriptMessage[]> {
   const rows = await prisma.message.findMany({
-    where: {
-      agentId: agent.id,
-      OR: [{ role: "assistant" }, { role: "user", kind: { in: RENDERED_USER_KINDS } }],
-    },
-    orderBy: [{ timestamp: "asc" }, { id: "asc" }],
+    where: renderedMessages(agent.id),
+    orderBy: TRANSCRIPT_ORDER,
+    skip: window.skip,
+    take: window.take,
     select: {
       id: true,
       uuid: true,

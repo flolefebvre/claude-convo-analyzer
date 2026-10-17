@@ -6,7 +6,7 @@
 //
 // React-free + I/O-free so it unit-tests in the node vitest environment.
 
-import { firstParam } from "@/app/_lib/search-params";
+import { FIRST_PAGE, firstParam } from "@/app/_lib/search-params";
 
 /**
  * Resolve the selected agent id from the raw `?agent=` search param. Mirrors
@@ -31,11 +31,31 @@ export function agentHref(sessionId: string, agentId?: string): string {
 }
 
 /**
+ * Link to one Transcript page of an agent: its {@link agentHref} with `?page=`
+ * set — never for page 1, the bare link — and the `?from=` list view carried
+ * on. It names no `?msg=`/`?call=` anchor: paging leaves the deep-link target.
+ *
+ * @example transcriptPageHref(view.sessionId, "a7", 2, listReturn) // "/conversation/<id>?agent=a7&page=2"
+ */
+export function transcriptPageHref(
+  sessionId: string,
+  agentId: string | undefined,
+  page: number,
+  listReturn: string | undefined,
+): string {
+  const base = agentHref(sessionId, agentId);
+  if (page <= FIRST_PAGE) return withListReturn(base, listReturn);
+  const separator = base.includes("?") ? "&" : "?";
+  return withListReturn(`${base}${separator}${new URLSearchParams({ page: String(page) }).toString()}`, listReturn);
+}
+
+/**
  * Resolve the anchored tool call from the raw `?call=` search param — the
  * `tool_use` id a Tools-page drill-down link points at. The transcript renders
- * that call EXPANDED and highlighted; the matching `#call-<id>` fragment does
- * the scrolling. A fragment alone could not do the expanding: it never reaches
- * the server.
+ * that call EXPANDED and highlighted, and the pane's `ScrollToAnchor` scrolls
+ * to it. A fragment alone could not do the expanding — it never reaches the
+ * server — nor reliably the scrolling: the call streams in after the fragment
+ * was tried. The `#call-<id>` fragment stays for copied links and no-JS.
  */
 export function resolveCall(raw: string | string[] | undefined): string | undefined {
   return firstParam(raw) || undefined;
@@ -49,8 +69,8 @@ export function callAnchorId(toolUseId: string): string {
 /**
  * Resolve the anchored message from the raw `?msg=` search param — the message
  * `uuid` a search result points at. Same idiom as {@link resolveCall}: the query
- * param highlights the message server-side, the `#msg-<uuid>` fragment scrolls
- * to it.
+ * param highlights the message server-side, the pane's `ScrollToAnchor` scrolls
+ * to it, and the `#msg-<uuid>` fragment stays for copied links and no-JS.
  *
  * The anchor is the log record's `uuid`, NOT the database row id: row ids are
  * re-assigned on every re-parse, so an id-based link would silently rot (worse,

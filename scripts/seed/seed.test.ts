@@ -7,11 +7,11 @@ import { PAGE_SIZE } from "@/app/_lib/list-view";
 import { getTranscript, listConversations } from "@/core/read";
 
 import { seedEnvironment } from "./environment";
-import { AGENT_MESSAGES_TITLE } from "./fake-logs";
+import { AGENT_MESSAGES_TITLE, LONG_PAGE_TWO_TEXT, LONG_TITLE } from "./fake-logs";
 
 const NOW = new Date("2026-06-22T17:00:00.000Z");
 
-// A full seed is a real ingest of 136 files (~3s); two per test outrun the 5s
+// A full seed is a real ingest of 137 files (~3s); two per test outrun the 5s
 // default when the suite runs in parallel.
 describe("seedEnvironment", { timeout: 30_000 }, () => {
   let tmpDir = "";
@@ -31,7 +31,7 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     expect(seed.summary.duplicateSessionsSkipped).toEqual([]);
 
     const conversations = await listConversations({ dbPath: seed.dbPath });
-    expect(conversations).toHaveLength(61);
+    expect(conversations).toHaveLength(62);
     expect(conversations.reduce((sum, c) => sum + c.subAgentCount, 0)).toBe(75);
 
     const continued = conversations.filter((c) => c.continuedFromId !== null);
@@ -85,6 +85,18 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     expect(coordinator.every((m) => m.origin?.senderAgentId === main?.tree.id && m.origin?.midTurn)).toBe(true);
   });
 
+  it("seeds a Conversation whose main agent spans three Transcript pages, a known prompt on the second", async () => {
+    const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
+
+    const convo = (await listConversations({ dbPath: seed.dbPath })).find((c) => c.title === LONG_TITLE);
+    expect(convo).toBeDefined();
+    const first = await getTranscript(convo?.id ?? "", { dbPath: seed.dbPath });
+    expect(first?.pageCount).toBe(3);
+    expect(first?.messages.some((m) => m.text === LONG_PAGE_TWO_TEXT)).toBe(false);
+    const second = await getTranscript(convo?.id ?? "", { dbPath: seed.dbPath, page: 2 });
+    expect(second?.messages.some((m) => m.text === LONG_PAGE_TWO_TEXT)).toBe(true);
+  });
+
   it("ends the seeded activity at the anchor", async () => {
     const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
 
@@ -115,7 +127,7 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     const after = await seedEnvironment({ dir, now: NOW });
 
     expect(existsSync(leftover)).toBe(false);
-    expect(await listConversations({ dbPath: after.dbPath })).toHaveLength(61);
+    expect(await listConversations({ dbPath: after.dbPath })).toHaveLength(62);
   });
 });
 
