@@ -1,24 +1,26 @@
 "use client";
 
-// The Light / Dark / Auto theme control (issue #9). A three-pill segmented
-// control in the page header: selecting a pill calls next-themes' `setTheme`,
-// which applies the choice immediately and persists it to localStorage; the
-// active pill is highlighted from the current `theme` value.
+// The Light / Dark / System theme control (issue #9): an icon-only segmented
+// radiogroup in the app bar. Selecting an option calls next-themes' `setTheme`,
+// which applies the choice immediately and persists it to localStorage.
 //
-// next-themes' `theme` is `undefined` on the server render and the first client
-// paint, so we gate the active highlight on a `mounted` flag (the standard
-// next-themes pattern) to avoid a hydration-mismatched highlight. Until mounted,
-// the segmented control still renders (stable markup) with no pill highlighted.
+// Keyboard: one Tab stop (the checked option); the arrows move and select, Home
+// and End jump to the ends — the ARIA radio pattern.
 //
-// ADR-0002 boundary: no core import — this is pure UI. Styling reuses existing
-// design tokens (muted/background/foreground) only; no new colors (issue #9).
+// The highlight is painted by CSS from `<html data-theme-choice>` (globals.css),
+// not from React state: next-themes' `theme` is unknown until the client
+// mounts, but the root layout's inline script sets the attribute from
+// localStorage before first paint, so the checked option is right from the first
+// frame. This component keeps the attribute in sync once mounted. `aria-checked`
+// and the roving tab stop still come from `theme` after mount.
+//
+// ADR-0002 boundary: no core import — this is pure UI.
 
 import { Monitor, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 
-import { THEME_OPTIONS, isThemeActive } from "@/app/_lib/theme";
-import { cn } from "@/lib/utils-cn";
+import { THEME_OPTIONS, type ThemeOption, isThemeActive, stepThemeOption } from "@/app/_lib/theme";
 
 const ICONS = {
   light: Sun,
@@ -30,42 +32,69 @@ const ICONS = {
 // server — i.e. a lint-clean "are we mounted?" flag (no setState-in-effect).
 const subscribe = () => () => {};
 
+function isThemeOption(value: string | undefined): value is ThemeOption {
+  return THEME_OPTIONS.some((option) => option.value === value);
+}
+
+/**
+ * The app bar's theme switcher: three 32px icon radios (Light, Dark, System).
+ *
+ * @example <ThemeToggle />
+ */
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
+  const buttons = useRef(new Map<ThemeOption, HTMLButtonElement>());
 
   // Only trust `theme` after mount; before that it is undefined on the client
-  // and would mismatch the server-rendered (no-highlight) markup.
+  // and would mismatch the server-rendered markup.
   const mounted = useSyncExternalStore(
     subscribe,
     () => true,
     () => false,
   );
+  const current: ThemeOption = mounted && isThemeOption(theme) ? theme : "system";
+
+  // Mirror the choice onto <html> for the CSS highlight (also catches a change
+  // made in another tab, which next-themes syncs into `theme`).
+  useEffect(() => {
+    if (isThemeOption(theme)) document.documentElement.dataset.themeChoice = theme;
+  }, [theme]);
+
+  function handleKeyDown(event: React.KeyboardEvent) {
+    const next = stepThemeOption(current, event.key);
+    if (next === null) return;
+    event.preventDefault();
+    setTheme(next);
+    buttons.current.get(next)?.focus();
+  }
 
   return (
     <div
       role="radiogroup"
       aria-label="Theme"
-      className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-muted/50 p-0.5"
+      onKeyDown={handleKeyDown}
+      className="inline-flex h-8 shrink-0 items-center rounded-lg bg-muted/60 ring-1 ring-border ring-inset"
     >
       {THEME_OPTIONS.map(({ value, label }) => {
         const Icon = ICONS[value];
-        const active = mounted && isThemeActive(value, theme);
         return (
           <button
             key={value}
+            ref={(node) => {
+              if (node) buttons.current.set(value, node);
+              else buttons.current.delete(value);
+            }}
             type="button"
             role="radio"
-            aria-checked={active}
+            aria-checked={mounted && isThemeActive(value, theme)}
             aria-label={label}
             title={label}
+            tabIndex={value === current ? 0 : -1}
+            data-theme-option={value}
             onClick={() => setTheme(value)}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-              active ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
-            )}
+            className="theme-option inline-flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:text-foreground"
           >
-            <Icon className="size-3.5" aria-hidden />
-            {label}
+            <Icon className="size-4" aria-hidden />
           </button>
         );
       })}

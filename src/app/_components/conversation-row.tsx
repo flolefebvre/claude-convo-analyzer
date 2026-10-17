@@ -21,12 +21,36 @@ import { detailSections, tokenComposition } from "@/app/_lib/detail";
 import type { ErrorViewRow } from "@/app/_lib/errors-view";
 import type { FamilyView } from "@/app/_lib/family-view";
 import { friendlyFolderName } from "@/app/_lib/folders";
-import { formatCompactTokens, formatCost, formatDuration, formatTokens } from "@/app/_lib/format";
+import { PendingLink } from "@/app/_components/pending-link";
+import { formatCompactTokens, formatCost, formatDuration, formatModelName, formatTokens } from "@/app/_lib/format";
 import { modelLabel } from "@/app/_lib/sort";
-import { agentHref } from "@/app/_lib/transcript-url";
+import { agentHref, withListReturn } from "@/app/_lib/transcript-url";
 import { TableCell, TableRow } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ConversationDetail, ConversationSummary } from "@/core/read";
 
+/**
+ * Width and visibility of each conversation-table column, shared by the page's
+ * header cells and the row's cells. The table is `table-fixed` inside an
+ * `@container`: Title takes what the fixed columns leave, Total appears at
+ * `@xl`, Folder and Model(s) at `@4xl`; Date and Cost are always there. The
+ * first and last columns carry the card's inset (a sortable header takes `pl-2`
+ * / `pr-2` instead, since its link adds `px-2`).
+ */
+export const CONVERSATION_COLUMNS = {
+  date: "w-12 pl-4 @xl:w-36",
+  folder: "hidden w-32 @4xl:table-cell",
+  title: "w-full",
+  model: "hidden w-32 @4xl:table-cell",
+  total: "hidden w-24 @xl:table-cell",
+  cost: "w-24 pr-4 @xl:w-28",
+} as const;
+
+/**
+ * One conversation as a table row, plus its detail panel row when expanded.
+ *
+ * @example <ConversationRow row={row} date={formatDate(row.startedAt, now)} toggleHref={expandHref(row.id, expandedId, links)} />
+ */
 export function ConversationRow({
   row,
   // The Date cell's label/title, formatted by the page against a single
@@ -53,6 +77,9 @@ export function ConversationRow({
   errors = null,
   // The row's expand/collapse toggle target (built by the page via expandHref).
   toggleHref,
+  // The list view as a query (`listReturnQuery`), carried on every link into a
+  // transcript so its back link returns to this view.
+  listReturn,
 }: {
   row: ConversationSummary;
   date: { label: string; absolute: string };
@@ -63,37 +90,51 @@ export function ConversationRow({
   family?: FamilyView | null;
   errors?: ErrorViewRow[] | null;
   toggleHref: string;
+  listReturn?: string;
 }) {
   const model = modelLabel(row.models);
+  const folder = friendlyFolderName(row.project.path);
 
   return (
     <>
-      <TableRow>
-        <TableCell {...(date.absolute ? { title: date.absolute } : {})} className="text-muted-foreground tabular-nums">
-          {/* Expand toggle lives here so it works whether or not the Folder
-              cell is rendered (it's hidden when scoped). */}
-          <ExpandToggle href={toggleHref} expanded={expanded} label="conversation details">
-            {date.label}
-          </ExpandToggle>
+      {/* No row hover wash: only the chevron and the title are targets, and a
+          highlighted row would promise a click the row does not answer. */}
+      <TableRow className="hover:bg-transparent">
+        {/* The expand toggle lives here so it works whether or not the Folder
+            cell is rendered (it's hidden when scoped). Below `@xl` the column
+            narrows to the chevron and the date moves under the title. */}
+        <TableCell className={`${CONVERSATION_COLUMNS.date} text-muted-foreground`}>
+          <div className="flex items-center gap-1.5">
+            <ExpandToggle href={toggleHref} expanded={expanded} label="conversation details" />
+            <span className="hidden truncate @xl:inline" {...(date.absolute ? { title: date.absolute } : {})}>
+              {date.label}
+            </span>
+          </div>
         </TableCell>
         {/* When scoped to a single Project the Folder column is hidden (the page
             shows the path once as a breadcrumb). When unscoped, show the friendly
             basename; the full Project path is available on hover via the cell's
             title (kept off-screen so long paths don't break the table — #14). */}
         {!scoped && (
-          <TableCell title={row.project.path}>
-            <span className="font-medium">{friendlyFolderName(row.project.path)}</span>
+          <TableCell
+            title={row.project.path}
+            className={`${CONVERSATION_COLUMNS.folder} truncate text-muted-foreground`}
+          >
+            {folder}
           </TableCell>
         )}
         {/* The title deep-links into the Transcript view for this conversation
             (`/conversation/<sessionId>`; `row.id` IS the stable sessionId). Bare
-            path → the main/root agent. Only the title is a link — the row's
-            `?expanded=` toggle (on the Date cell) and sorting are untouched. */}
-        <TableCell className="max-w-xs font-medium">
-          <span className="flex items-center gap-1.5">
+            path → the main/root agent. It takes the width the fixed columns
+            leave; the badges sit outside its truncation, in a fixed order. */}
+        <TableCell className="font-medium">
+          {/* One truncated line where the columns leave room; two lines in the
+              compact layout, where the title shares a phone's width with Cost. */}
+          <div className="flex min-w-0 items-start gap-1.5 @xl:items-center">
             <Link
-              href={agentHref(row.id)}
-              className="truncate rounded-sm outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+              href={withListReturn(agentHref(row.id), listReturn)}
+              title={row.title ?? undefined}
+              className="min-w-0 rounded-sm break-words hover:underline focus-visible:whitespace-normal @max-xl:line-clamp-2 @max-xl:whitespace-normal @xl:truncate"
             >
               {row.title ?? <span className="text-muted-foreground">{row.id}</span>}
             </Link>
@@ -103,11 +144,12 @@ export function ConversationRow({
                 the per-error list. */}
             {row.errorCount > 0 && (
               <span
-                className="inline-flex shrink-0 items-center gap-1 rounded bg-destructive/10 px-1.5 py-0.5 text-xs font-normal text-destructive tabular-nums dark:bg-destructive/20"
+                className="inline-flex shrink-0 items-center gap-1 rounded bg-destructive/10 px-1.5 py-0.5 text-xs font-normal text-destructive-foreground dark:bg-destructive/20"
                 title={`${row.errorCount} turn${row.errorCount === 1 ? "" : "s"} failed with an API error — expand the row to see them.`}
               >
                 <AlertTriangle className="size-3" aria-hidden />
-                {row.errorCount} error{row.errorCount === 1 ? "" : "s"}
+                {row.errorCount}
+                <span className="sr-only @2xl:not-sr-only">error{row.errorCount === 1 ? "" : "s"}</span>
               </span>
             )}
             {/* Continuation family: this conversation is one sitting of a piece
@@ -115,7 +157,7 @@ export function ConversationRow({
                 the WHOLE family, so every member shows the same number. */}
             {familySize > 1 && (
               <span
-                className="inline-flex shrink-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground tabular-nums"
+                className="inline-flex shrink-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground"
                 title={`Part of a continuation family of ${familySize} conversations — expand the row for the family tree.`}
               >
                 <GitBranch className="size-3" aria-hidden />
@@ -123,22 +165,43 @@ export function ConversationRow({
                 <span className="sr-only"> conversations in this continuation family</span>
               </span>
             )}
-          </span>
-        </TableCell>
-        <TableCell>
-          <span className="inline-flex items-center gap-1">
-            {model.dominant || <span className="text-muted-foreground">—</span>}
-            {model.extra > 0 && (
-              <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">+{model.extra}</span>
+          </div>
+          {/* What the hidden columns would say, under the title: the date below
+              `@xl`, the folder until its own column appears at `@4xl`. */}
+          <div
+            className={`mt-0.5 flex min-w-0 items-center gap-1.5 text-xs font-normal text-muted-foreground ${
+              scoped ? "@xl:hidden" : "@4xl:hidden"
+            }`}
+          >
+            <span className="shrink-0 @xl:hidden" {...(date.absolute ? { title: date.absolute } : {})}>
+              {date.label}
+            </span>
+            {!scoped && (
+              <>
+                <span aria-hidden className="@xl:hidden">
+                  ·
+                </span>
+                <span className="truncate" title={row.project.path}>
+                  {folder}
+                </span>
+              </>
             )}
-          </span>
+          </div>
+        </TableCell>
+        <TableCell className={CONVERSATION_COLUMNS.model}>
+          <ModelCell
+            dominant={model.dominant}
+            extra={model.extra}
+            unpriced={row.unpriced}
+            detailsHref={expanded ? null : toggleHref}
+          />
         </TableCell>
         {/* Token total is secondary context → muted. Cost is the payload →
             full-weight foreground, so the eye lands on spend first. */}
-        <TableCell className="text-right text-muted-foreground tabular-nums">
+        <TableCell className={`${CONVERSATION_COLUMNS.total} text-right text-muted-foreground`}>
           {formatTokens(row.tokens.total)}
         </TableCell>
-        <TableCell className="text-right font-medium tabular-nums">
+        <TableCell className={`${CONVERSATION_COLUMNS.cost} text-right font-medium`}>
           {row.unpriced ? (
             <span title="Cost excludes unpriced model usage — lower bound.">~{formatCost(row.costUsd)}</span>
           ) : (
@@ -150,11 +213,65 @@ export function ConversationRow({
       {expanded && (
         <TableRow>
           <TableCell colSpan={columnCount(scoped)} className="bg-muted/30 p-0">
-            <DetailPanel detail={detail} row={row} family={family} errors={errors} />
+            <DetailPanel detail={detail} row={row} family={family} errors={errors} listReturn={listReturn} />
           </TableCell>
         </TableRow>
       )}
     </>
+  );
+}
+
+/**
+ * The dominant model, shortened for the column (full id on hover), and a "+N"
+ * pill for the others. While the row is collapsed the pill links to its panel,
+ * whose "Cost by model" lists them, and explains itself in a tooltip.
+ */
+function ModelCell({
+  dominant,
+  extra,
+  unpriced,
+  detailsHref,
+}: {
+  dominant: string;
+  extra: number;
+  unpriced: boolean;
+  /** The row's expand href, or `null` when the panel is already open. */
+  detailsHref: string | null;
+}) {
+  if (!dominant) return <span className="text-muted-foreground">—</span>;
+  const others = `${extra} more model${extra === 1 ? "" : "s"}`;
+  const pill = "shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground";
+  return (
+    <div className="flex min-w-0 items-center gap-1.5">
+      <span className="truncate text-muted-foreground" title={dominant}>
+        {formatModelName(dominant)}
+      </span>
+      {extra > 0 &&
+        (detailsHref === null ? (
+          <span className={pill}>
+            <span aria-hidden>+{extra}</span>
+            <span className="sr-only">{others}</span>
+          </span>
+        ) : (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <PendingLink
+                href={detailsHref}
+                scroll={false}
+                className={`${pill} transition-colors hover:bg-accent hover:text-foreground`}
+              >
+                <span aria-hidden>+{extra}</span>
+                <span className="sr-only">{others}, show cost by model</span>
+              </PendingLink>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="flex-col items-start gap-0.5">
+              <span className="font-medium">{others}</span>
+              {unpriced && <span>Includes usage on a model without a known price.</span>}
+              <span>Open the row for cost by model.</span>
+            </TooltipContent>
+          </Tooltip>
+        ))}
+    </div>
   );
 }
 
@@ -169,20 +286,22 @@ function DetailPanel({
   row,
   family,
   errors,
+  listReturn,
 }: {
   detail: ConversationDetail | null;
   row: ConversationSummary;
   family: FamilyView | null;
   errors: ErrorViewRow[] | null;
+  listReturn: string | undefined;
 }) {
   return (
-    <div className="space-y-6 px-6 py-5">
+    <div className="space-y-6 px-4 py-5">
       <SummaryStrip row={row} detail={detail} />
       {/* Failed turns lead the panel: a conversation that hit the API's limits
           is the most urgent thing to know about it. Absent when nothing failed. */}
       {errors !== null && errors.length > 0 && (
         <Section title="API errors">
-          <ErrorList errors={errors} />
+          <ErrorList errors={errors} listReturn={listReturn} />
         </Section>
       )}
       {/* The family sits above the breakdowns (and below the failures): it
@@ -193,7 +312,7 @@ function DetailPanel({
           <FamilyTree family={family} />
         </Section>
       )}
-      <div className="grid gap-x-10 gap-y-6 lg:grid-cols-[16rem_1fr]">
+      <div className="grid gap-x-10 gap-y-6 @3xl:grid-cols-[17rem_1fr]">
         <Section title="Token composition">
           <TokenComposition tokens={row.tokens} costByType={row.costByType} unpriced={row.unpriced} />
         </Section>
@@ -203,7 +322,7 @@ function DetailPanel({
           ) : (
             // `row.id` is the stable sessionId — threaded so the sub-agent
             // breakdown can deep-link each agent into its transcript.
-            <Breakdowns detail={detail} sessionId={row.id} />
+            <Breakdowns detail={detail} sessionId={row.id} listReturn={listReturn} />
           )}
         </div>
       </div>
@@ -230,7 +349,7 @@ function SummaryStrip({ row, detail }: { row: ConversationSummary; detail: Conve
 
   return (
     <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-      <span className="text-2xl font-semibold text-cost tabular-nums">
+      <span className="text-2xl font-semibold text-cost-foreground tabular-nums">
         {row.unpriced ? (
           <span title="Cost excludes unpriced model usage — lower bound.">~{formatCost(row.costUsd)}</span>
         ) : (
@@ -260,24 +379,39 @@ function TokenComposition({
 }) {
   const buckets = tokenComposition(tokens, costByType);
   return (
-    <ul className="space-y-1.5 text-sm">
-      {buckets.map((b) => (
-        <li key={b.key} className="flex items-center gap-3">
-          <span className="text-muted-foreground">{b.label}</span>
-          <span className="ml-auto w-16 text-right font-medium tabular-nums">
-            {unpriced ? (
-              <span title="Cost excludes unpriced model usage — lower bound.">~{formatCost(b.costUsd)}</span>
-            ) : (
-              formatCost(b.costUsd)
-            )}
-          </span>
-          <span className="w-12 text-right text-xs text-muted-foreground tabular-nums">
-            {formatCompactTokens(b.tokens)}
-          </span>
-          <span className="w-9 text-right text-xs text-muted-foreground tabular-nums">{b.percent}%</span>
-        </li>
-      ))}
-    </ul>
+    // A real table so the three figure columns line up whatever the label
+    // length; its header is for screen readers only (the section heading and
+    // the figures' own formats say enough to the eye).
+    <table className="w-full text-sm">
+      <thead className="sr-only">
+        <tr>
+          <th scope="col">Token type</th>
+          <th scope="col">Cost</th>
+          <th scope="col">Tokens</th>
+          <th scope="col">Share of tokens</th>
+        </tr>
+      </thead>
+      <tbody>
+        {buckets.map((b) => (
+          <tr key={b.key}>
+            <th scope="row" className="py-0.5 pr-3 text-left font-normal text-muted-foreground">
+              {b.label}
+            </th>
+            <td className="py-0.5 pl-3 text-right font-medium whitespace-nowrap">
+              {unpriced ? (
+                <span title="Cost excludes unpriced model usage — lower bound.">~{formatCost(b.costUsd)}</span>
+              ) : (
+                formatCost(b.costUsd)
+              )}
+            </td>
+            <td className="py-0.5 pl-3 text-right text-xs whitespace-nowrap text-muted-foreground">
+              {formatCompactTokens(b.tokens)}
+            </td>
+            <td className="w-0 py-0.5 pl-3 text-right text-xs whitespace-nowrap text-muted-foreground">{b.percent}%</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
@@ -301,7 +435,7 @@ function FamilyTree({ family }: { family: FamilyView }) {
               scroll={false}
               aria-current={member.isCurrent ? "true" : undefined}
               style={{ paddingLeft: `${8 + member.depth * 16}px` }}
-              className={`flex items-center gap-2 rounded-sm py-1 pr-2 text-sm outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50 ${
+              className={`flex items-center gap-2 rounded-sm py-1 pr-2 text-sm hover:bg-muted ${
                 member.isCurrent ? "bg-muted font-medium text-foreground" : "text-muted-foreground"
               }`}
             >
@@ -339,7 +473,7 @@ function FamilyTree({ family }: { family: FamilyView }) {
       </ol>
       <div className="flex items-center gap-2 border-t pt-2 pr-2 pl-2 text-sm">
         <span className="text-muted-foreground">Family total · {family.size} conversations</span>
-        <span className="ml-auto w-16 shrink-0 text-right font-semibold text-cost tabular-nums">
+        <span className="ml-auto w-16 shrink-0 text-right font-semibold text-cost-foreground tabular-nums">
           {family.hasUnpriced ? (
             <span title="Includes unpriced model usage — this total is a lower bound.">
               ~{formatCost(family.totalCostUsd)}
@@ -358,14 +492,14 @@ function FamilyTree({ family }: { family: FamilyView }) {
  * failed in, and what the API said. Each row links into that agent's Transcript,
  * anchored at the failing turn — the same `?msg=` deep link a search hit uses.
  */
-function ErrorList({ errors }: { errors: ErrorViewRow[] }) {
+function ErrorList({ errors, listReturn }: { errors: ErrorViewRow[]; listReturn: string | undefined }) {
   return (
     <ol className="space-y-0.5">
       {errors.map((error) => (
         <li key={error.key}>
           <Link
-            href={error.href}
-            className="flex items-baseline gap-2 rounded-sm px-2 py-1 text-sm outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50"
+            href={withListReturn(error.href, listReturn)}
+            className="flex items-baseline gap-2 rounded-sm px-2 py-1 text-sm hover:bg-muted"
           >
             <span
               className="shrink-0 text-xs text-muted-foreground tabular-nums"
@@ -376,7 +510,7 @@ function ErrorList({ errors }: { errors: ErrorViewRow[] }) {
             <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
               {error.agentLabel}
             </span>
-            {error.status && <span className="shrink-0 font-medium text-destructive">{error.status}</span>}
+            {error.status && <span className="shrink-0 font-medium text-destructive-foreground">{error.status}</span>}
             <span className="truncate text-muted-foreground">{error.excerpt}</span>
           </Link>
         </li>
@@ -386,7 +520,15 @@ function ErrorList({ errors }: { errors: ErrorViewRow[] }) {
 }
 
 /** The cost breakdowns from the server-fetched detail: Model / Skill / Sub-agent. */
-function Breakdowns({ detail, sessionId }: { detail: ConversationDetail; sessionId: string }) {
+function Breakdowns({
+  detail,
+  sessionId,
+  listReturn,
+}: {
+  detail: ConversationDetail;
+  sessionId: string;
+  listReturn: string | undefined;
+}) {
   const sections = detailSections(detail);
   return (
     <>
@@ -398,7 +540,8 @@ function Breakdowns({ detail, sessionId }: { detail: ConversationDetail; session
             {sections.perModel.rows.map((m) => (
               <CostRow
                 key={m.model}
-                label={m.model}
+                label={formatModelName(m.model)}
+                title={m.model}
                 costUsd={m.costUsd}
                 max={sections.perModel.totalCost}
                 unpriced={m.unpriced}
@@ -424,19 +567,18 @@ function Breakdowns({ detail, sessionId }: { detail: ConversationDetail; session
         {sections.subAgents.isEmpty ? (
           <NoneNote>No sub-agents.</NoneNote>
         ) : (
-          <SubAgentBreakdown section={sections.subAgents} sessionId={sessionId} />
+          <SubAgentBreakdown section={sections.subAgents} sessionId={sessionId} listReturn={listReturn} />
         )}
       </Section>
     </>
   );
 }
 
-/** A section: a quiet uppercase label (the panel's only uppercase element) over
- *  its content — the same label treatment as the overview stat cards. */
+/** A section of the detail panel: a sentence-case heading over its content. */
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h3 className="mb-3 text-xs font-medium tracking-wide text-muted-foreground uppercase">{title}</h3>
+      <h3 className="mb-3 text-sm font-medium text-foreground">{title}</h3>
       {children}
     </div>
   );

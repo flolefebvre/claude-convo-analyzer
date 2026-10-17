@@ -36,6 +36,8 @@ public/         Static assets served at the root
 
 ```
 pnpm dev           Run the app (next dev) on :3000
+pnpm seed          Rebuild the fake-data seed environment in data/seed/ (seed.db + projects/); --now=<ISO> pins it
+pnpm dev:seed      Seed, then run next dev on it; prints `Seeded app: http://localhost:<port>` (first free from 3001, or $PORT)
 pnpm gate          Format check, lint, duplication, typecheck, test, build — the full check
 pnpm format        Prettier, rewriting files in place
 pnpm format:check  Prettier in check mode (fails on unformatted files)
@@ -49,15 +51,23 @@ pnpm build         next build
 
 **Before considering a change done:** run `pnpm gate`. It passed only if the output ends with `--gate OK--` — anything else is a failure, whatever the rest of the output says. The sequence is the `gate` line in package.json; add a check by adding its script name there.
 
+## Worktrees
+
+- Create and leave worktrees with the `EnterWorktree` and `ExitWorktree` tools, never with `git worktree add`.
+- Run `git fetch` before creating one: a worktree starts from `origin/main`, not local `main`.
+- In a new worktree, run `pnpm install` before anything else; it also generates the Prisma client.
+- When a change touches the UI, check it in a browser against the seeded app, as `docs/codebase/ui-checks.md` describes.
+
 ## Testing
 
-This project uses TDD. Build features test-first via the `tdd` skill (red → green → refactor, one vertical slice at a time), exercising public interfaces — `src/core`'s exported functions against small sanitized JSONL fixtures — never internals. See `docs/codebase/testing.md` before writing tests.
+This project uses TDD. Build features test-first (red → green → refactor, one vertical slice at a time), exercising public interfaces — `src/core`'s exported functions against small sanitized JSONL fixtures — never internals. See `docs/codebase/testing.md` before writing tests.
 
 ## Documentation
 
 Always reach for documentation rather than working from memory. Prioritize the files below first, and then ctx7. Repo conventions live in `docs/codebase/`, linked from the section they govern; the sources below are external reference.
 
 - `node_modules/next/dist/docs/01-app/` — when writing anything under `src/app/`. This Next.js has breaking changes your training data predates — read the relevant page first rather than recalling an older API. `03-api-reference/` is the per-feature reference.
+- `node_modules/@flefebvre/next-pipe/docs/for-agents.md` — when writing a server action, route handler, or piped page. It matches the installed next-pipe and links the per-pipe pages.
 
 ## Comments and docs
 

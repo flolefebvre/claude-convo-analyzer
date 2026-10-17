@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_RANGE, rangeDays, rangeHref, resolveRange } from "@/app/_lib/range";
+import { DEFAULT_RANGE, rangeDays, rangeHref, rangePhrase, resolveRange } from "@/app/_lib/range";
 
 describe("resolveRange", () => {
   it("defaults to 30 days when the URL carries no (valid) range", () => {
@@ -36,5 +36,16 @@ describe("rangeHref", () => {
   it("omits an absent or empty folder scope", () => {
     expect(rangeHref("all")).toBe("?range=all");
     expect(rangeHref("90", "")).toBe("?range=90");
+  });
+});
+
+describe("rangePhrase", () => {
+  it("names a day range as 'in the last N days'", () => {
+    expect(rangePhrase("7")).toBe("in the last 7 days");
+    expect(rangePhrase("90")).toBe("in the last 90 days");
+  });
+
+  it("names all time as 'yet'", () => {
+    expect(rangePhrase("all")).toBe("yet");
   });
 });

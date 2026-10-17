@@ -1,11 +1,13 @@
 import path from "node:path";
 import { defineConfig } from "prisma/config";
 
-// Prisma 7 CLI config. The runtime DB path is resolved in src/core/db.ts;
-// here we only need a URL for `prisma migrate` / `prisma generate`. The
-// migration's DDL is what gets committed, so the concrete URL used at CLI
-// time is irrelevant to runtime (which uses the better-sqlite3 adapter).
-const databaseUrl = process.env.DATABASE_URL ?? `file:${path.join(process.cwd(), "data", "analyzer.db")}`;
+// Prisma 7 CLI config, for `prisma migrate` / `prisma generate`. The runtime
+// uses the better-sqlite3 adapter on the path from `defaultDbPath()` in
+// src/core/db.ts; the CLI resolves the same `CCA_DB_PATH` (empty counts as
+// unset) inline, since this file runs outside the app, so a CLI run under a
+// configured env touches the same file the app would.
+const dbPath = path.resolve(process.env.CCA_DB_PATH || path.join("data", "analyzer.db"));
+const databaseUrl = process.env.DATABASE_URL ?? `file:${dbPath}`;
 
 export default defineConfig({
   schema: path.join("src", "core", "prisma", "schema.prisma"),

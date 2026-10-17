@@ -1,7 +1,7 @@
 "use client";
 
 // The active-aware sidebar entry (issue #10, PR #13). A small client component:
-// the sidebar now lives in the root layout, which CANNOT read `searchParams`
+// the sidebar lives in the shell layout, which CANNOT read `searchParams`
 // (they would go stale — Next local docs, layout.md "Query params"), so two
 // things that depend on the live URL are decided here via `useSearchParams`:
 //   1. the active-folder HIGHLIGHT (which entry is the current `?folder=` scope);
@@ -14,9 +14,9 @@
 // come in as server-rendered `children`. Data filtering stays server-side from
 // the URL.
 
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
+import { PendingLink } from "@/app/_components/pending-link";
 import { cn } from "@/lib/utils-cn";
 
 /**
@@ -58,8 +58,11 @@ export function SidebarLink({
   next.delete("page");
   const href = `?${next.toString()}`;
   return (
-    <Link
+    // `scroll={false}`: re-scoping keeps your place on the page; the content
+    // dims while the new scope loads (PendingLink).
+    <PendingLink
       href={href}
+      scroll={false}
       title={title}
       aria-current={active ? "true" : undefined}
       className={cn(
@@ -69,10 +72,10 @@ export function SidebarLink({
         "relative block rounded-md px-3 py-2 text-sm transition-colors",
         active
           ? "bg-cost-muted text-foreground before:absolute before:top-1/2 before:left-0 before:h-7 before:w-[3px] before:-translate-y-1/2 before:rounded-r before:bg-cost"
-          : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+          : "text-muted-foreground hover:bg-muted/50 hover:text-foreground has-data-link-pending:bg-muted/50 has-data-link-pending:text-foreground",
       )}
     >
       {children}
-    </Link>
+    </PendingLink>
   );
 }

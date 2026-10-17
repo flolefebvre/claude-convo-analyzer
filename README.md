@@ -6,8 +6,8 @@ per-conversation token usage and cost — broken down by project, model, skill,
 and sub-agent.
 
 **Everything stays on your machine.** The app only reads `~/.claude/projects`
-and writes a local SQLite file (`./data/analyzer.db`). Nothing is ever sent
-anywhere.
+and writes a local SQLite file (`./data/analyzer.db`); both paths are
+configurable. Nothing is ever sent anywhere.
 
 > **About the cost figure:** the cost shown is always _"what these tokens would
 > cost through the public API"_. If you're on a Pro or Max subscription you
@@ -107,6 +107,18 @@ For live development instead of a production build:
 pnpm dev
 ```
 
+Two environment variables move what the app reads and writes; a relative value
+resolves against the process working directory (the repo root under `pnpm`):
+
+- `CCA_DB_PATH` — the SQLite file (default `./data/analyzer.db`), created and
+  migrated on first use.
+- `CCA_LOGS_ROOT` — the logs root that **Refresh** scans (default
+  `~/.claude/projects`).
+
+```bash
+CCA_DB_PATH=data/demo.db CCA_LOGS_ROOT=/tmp/demo-logs pnpm dev
+```
+
 ## How it works
 
 The app discovers each **project** (a directory where you ran Claude Code) under
@@ -150,6 +162,29 @@ pnpm gate
 
 See [`docs/codebase/testing.md`](docs/codebase/testing.md) for the testing
 approach and fixtures.
+
+For demo data, `pnpm seed` builds a self-contained seed environment in
+`data/seed/`: invented logs in `data/seed/projects/`, ingested into
+`data/seed/seed.db`. Each run wipes and rebuilds that directory; your real
+database and logs are never read or written. To seed and serve the app on it in
+one step:
+
+```bash
+pnpm dev:seed
+```
+
+It prints `Seeded app: http://localhost:<port>` — the first free port from
+3001, or `PORT` when set — so several checkouts can each run their own. Refresh
+in that app re-reads only the seeded logs.
+
+The seeded activity ends now. `pnpm seed` also takes `--now=<ISO>`, and the same
+`--now` always yields the same data, which is what screenshots want; point the
+app at that seed with the two variables above:
+
+```bash
+pnpm seed --now=2026-06-22T17:00:00Z
+CCA_DB_PATH=data/seed/seed.db CCA_LOGS_ROOT=data/seed/projects pnpm dev
+```
 
 ## Was this made with AI?
 

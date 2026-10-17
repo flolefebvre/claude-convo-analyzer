@@ -1,21 +1,21 @@
+import { ArrowRight, ChevronRight, Scissors } from "lucide-react";
 import Link from "next/link";
 
-import { subAgentLabel } from "@/app/_lib/detail";
-import { formatCost, formatTokens } from "@/app/_lib/format";
-import { classifyToolCall, findSpawnedNode, toolCallSnippet, truncationNote } from "@/app/_lib/transcript";
-import { agentHref, callAnchorId } from "@/app/_lib/transcript-url";
+import { formatTokens } from "@/app/_lib/format";
+import {
+  type AgentLabel,
+  classifyToolCall,
+  findSpawnedNode,
+  prettyToolText,
+  toolCallSnippet,
+  truncationNote,
+} from "@/app/_lib/transcript";
+import { agentHref, callAnchorId, withListReturn } from "@/app/_lib/transcript-url";
 import type { TranscriptToolCall, TranscriptView } from "@/core/read";
 
-/** Pretty-print a stored `inputJson` when it parses; otherwise show it verbatim. */
-function prettyJson(raw: string): string {
-  try {
-    return JSON.stringify(JSON.parse(raw) as unknown, null, 2);
-  } catch {
-    return raw;
-  }
-}
+import { AgentName, CostFigure, ErrorBadge } from "./transcript-parts";
 
-/** UPPERCASE badge label per visual kind. */
+/** Badge label per visual kind (set in small caps by the CSS). */
 const KIND_LABEL = { agent: "Agent", skill: "Skill", tool: "Tool" } as const;
 
 /**
@@ -23,20 +23,28 @@ const KIND_LABEL = { agent: "Agent", skill: "Skill", tool: "Tool" } as const;
  * disclosure needs no client JS (the page stays a server component). Three
  * visual kinds — generic tool, skill load, and Agent call — share the summary
  * shell but differ in the badge and body: an Agent call correlates to the
- * sub-agent it spawned to show that agent's exact cost and an "Open transcript"
- * deep-link.
+ * sub-agent it spawned to show that agent's name (as the tree shows it), exact
+ * cost and an "Open transcript" deep-link. Inputs and results are shown
+ * wrapped, height-capped, and pretty-printed when they are JSON.
  */
 export function TranscriptToolCallRow({
   call,
   messageId,
   view,
+  labels,
   anchoredCall,
+  listReturn,
 }: {
   call: TranscriptToolCall;
   messageId: number;
   view: TranscriptView;
+  /** Every agent's display name, from `agentLabels(view.tree)`. */
+  labels: Map<string, AgentLabel>;
   /** The `?call=` deep-link target: THIS call renders open and highlighted. */
   anchoredCall?: string;
+  /** The list view this transcript was opened from (`?from=`), carried on
+   *  every link to another transcript. */
+  listReturn?: string;
 }) {
   const kind = classifyToolCall(call);
   const snippet = toolCallSnippet(call);
@@ -45,38 +53,31 @@ export function TranscriptToolCallRow({
   // server), the fragment scrolls to the `id` below.
   const anchored = call.toolUseId !== null && call.toolUseId === anchoredCall;
   const anchorProps = call.toolUseId === null ? {} : { id: callAnchorId(call.toolUseId) };
+  const className = anchored ? "call anchored" : "call";
 
   if (kind === "agent") {
     const spawned = findSpawnedNode(view.tree, {
       toolUseId: call.toolUseId,
       messageId,
     });
-    const name = spawned ? subAgentLabel({ agentType: spawned.agentType ?? "" }) : "Agent";
+    const label = spawned ? labels.get(spawned.id) : undefined;
     return (
-      <details {...anchorProps} open={anchored || undefined} className={anchored ? "call anchored" : "call"}>
+      <details {...anchorProps} open={anchored || undefined} className={className}>
         <summary>
-          <span className="chev" aria-hidden>
-            ▶
-          </span>
+          <ChevronRight aria-hidden className="chev" />
           <span className="kind kind-agent">{KIND_LABEL.agent}</span>
-          <span className="call-name">{name}</span>
+          <span className="call-name">{label ? <AgentName label={label} /> : "Agent"}</span>
           <span className="call-snippet">{snippet}</span>
-          {spawned && <span className="cost num">{formatCost(spawned.costUsd)}</span>}
+          {call.isError && <ErrorBadge>error</ErrorBadge>}
+          {spawned && <CostFigure usd={spawned.costUsd} lowerBound={spawned.unpriced} />}
         </summary>
         <div className="call-body">
-          <div className="io-block">
-            <span className="microlabel">Prompt</span>
-            <pre>{prettyJson(call.inputJson)}</pre>
-          </div>
-          {call.resultText !== null && (
-            <div className="io-block">
-              <span className="microlabel">Returned</span>
-              <pre className={call.isError ? "err" : undefined}>{call.resultText}</pre>
-            </div>
-          )}
+          <IoBlock label="Prompt" text={call.inputJson} />
+          {call.resultText !== null && <IoBlock label="Returned" text={call.resultText} isError={call.isError} />}
           {spawned && (
-            <Link className="open-agent" href={agentHref(view.sessionId, spawned.id)}>
-              Open transcript <span aria-hidden>→</span>
+            <Link className="open-agent" href={withListReturn(agentHref(view.sessionId, spawned.id), listReturn)}>
+              Open transcript
+              <ArrowRight aria-hidden className="size-3.5" />
             </Link>
           )}
         </div>
@@ -89,37 +90,52 @@ export function TranscriptToolCallRow({
   const resultSize = call.resultCharSize ?? (call.resultText !== null ? call.resultText.length : null);
 
   return (
-    <details {...anchorProps} open={anchored || undefined} className={anchored ? "call anchored" : "call"}>
+    <details {...anchorProps} open={anchored || undefined} className={className}>
       <summary>
-        <span className="chev" aria-hidden>
-          ▶
-        </span>
+        <ChevronRight aria-hidden className="chev" />
         <span className={`kind ${kindClass}`}>{KIND_LABEL[kind]}</span>
         <span className="call-name">{call.name}</span>
         <span className="call-snippet">{snippet}</span>
         {call.isError ? (
-          <span className="call-err">error</span>
+          <ErrorBadge>error</ErrorBadge>
         ) : (
-          resultSize !== null && <span className="call-meta num">{formatTokens(resultSize)} chars</span>
+          resultSize !== null && <span className="call-meta">{formatTokens(resultSize)} chars</span>
         )}
       </summary>
       <div className="call-body">
-        <div className="io-block">
-          <span className="microlabel">Input</span>
-          <pre>{prettyJson(call.inputJson)}</pre>
-        </div>
+        <IoBlock label="Input" text={call.inputJson} />
         {call.resultText !== null && (
-          <div className="io-block">
-            <span className="microlabel">Result</span>
-            <pre className={call.isError ? "err" : undefined}>{call.resultText}</pre>
+          <IoBlock label="Result" text={call.resultText} isError={call.isError}>
             {note && (
               <div className="trunc">
-                <span aria-hidden>✂</span> truncated — {note}
+                <Scissors aria-hidden className="size-3" />
+                Truncated: {note}
               </div>
             )}
-          </div>
+          </IoBlock>
         )}
       </div>
     </details>
+  );
+}
+
+/** One labelled input/result block: wrapped, height-capped, JSON pretty-printed. */
+function IoBlock({
+  label,
+  text,
+  isError = false,
+  children,
+}: {
+  label: string;
+  text: string;
+  isError?: boolean;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="io-block">
+      <span className="io-label">{label}</span>
+      <pre className={isError ? "err" : undefined}>{prettyToolText(text)}</pre>
+      {children}
+    </div>
   );
 }

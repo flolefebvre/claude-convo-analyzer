@@ -7,6 +7,7 @@
 
 import type { TranscriptAgentNode } from "@/core/read";
 
+import { subAgentLabel } from "@/app/_lib/detail";
 import { formatTokens } from "@/app/_lib/format";
 
 /**
@@ -252,4 +253,64 @@ export function agentLineage(tree: TranscriptAgentNode, selectedId: string): Tra
     return false;
   };
   return walk(tree) ? path : [];
+}
+
+/**
+ * A tool call's input or result text for display: a JSON object or array is
+ * pretty-printed with two-space indents; anything else — plain text, a JSON
+ * scalar, a result cut off mid-JSON by the stored-length cap — comes back
+ * verbatim.
+ *
+ * @example prettyToolText('{"agentId":"dx"}') // '{\n  "agentId": "dx"\n}'
+ */
+export function prettyToolText(text: string): string {
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    return parsed !== null && typeof parsed === "object" ? JSON.stringify(parsed, null, 2) : text;
+  } catch {
+    return text;
+  }
+}
+
+/** How one agent of the tree is named on screen (see {@link agentLabels}). */
+export type AgentLabel = {
+  /** "main" for the main thread, else the sub-agent's type. */
+  name: string;
+  /** 1-based spawn position among same-named siblings; null when the name is unique there. */
+  ordinal: number | null;
+};
+
+/**
+ * The display name of every agent in the tree, keyed by agent id.
+ *
+ * @example agentLabels(view.tree).get(view.selectedAgentId) // { name: "Plan", ordinal: 2 }
+ */
+export function agentLabels(tree: TranscriptAgentNode): Map<string, AgentLabel> {
+  const nameOf = (node: TranscriptAgentNode) => subAgentLabel({ agentType: node.agentType ?? "" });
+  const labels = new Map<string, AgentLabel>([[tree.id, { name: nameOf(tree), ordinal: null }]]);
+  // Ordinals count among one parent's children only (already in spawn order).
+  const walkChildren = (parent: TranscriptAgentNode): void => {
+    const names = parent.children.map(nameOf);
+    const seen = new Map<string, number>();
+    parent.children.forEach((child, i) => {
+      const name = names[i];
+      const position = (seen.get(name) ?? 0) + 1;
+      seen.set(name, position);
+      const repeated = names.indexOf(name) !== names.lastIndexOf(name);
+      labels.set(child.id, { name, ordinal: repeated ? position : null });
+      walkChildren(child);
+    });
+  };
+  walkChildren(tree);
+  return labels;
+}
+
+/**
+ * True when any agent in the tree ran on a model without a known price — the
+ * conversation total is then a lower bound.
+ *
+ * @example hasUnpricedAgent(view.tree) ? `~${formatCost(view.totalCostUsd)}` : formatCost(view.totalCostUsd)
+ */
+export function hasUnpricedAgent(tree: TranscriptAgentNode): boolean {
+  return tree.unpriced || tree.children.some(hasUnpricedAgent);
 }

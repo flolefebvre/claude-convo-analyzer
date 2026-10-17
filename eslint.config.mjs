@@ -14,6 +14,8 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Nested git worktrees carry their own build output.
     ".claude/worktrees/**",
+    // Vendored skills, tracked by skills-lock.json.
+    ".agents/skills/**",
   ]),
   {
     // src/core is framework-free (ADR-0002): server-side domain logic only.

@@ -21,7 +21,7 @@
 import { CostBar } from "@/app/_components/cost-bar";
 import { SidebarLink } from "@/app/_components/sidebar-link";
 import { type FolderEntry } from "@/app/_lib/folders";
-import { formatGrandTotalCost } from "@/app/_lib/format";
+import { formatCount, formatGrandTotalCost } from "@/app/_lib/format";
 
 /**
  * Render the folder navigation: an "All folders" entry (the spend anchor: total
@@ -60,43 +60,57 @@ export function FolderSidebar({
   );
 }
 
-/** The "All folders" anchor: total count up top, total cost on a quiet second
- *  line labelled "Total" — visually distinct from the ranked per-folder rows. */
+/** The "All folders" anchor: the same two lines as a Project row — label and
+ *  cost, then the count — with no bar (it is the whole, not a share). */
 function AllFoldersRow({ count, cost, unpriced }: { count: number; cost: number; unpriced: boolean }) {
   return (
     <>
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="truncate font-medium">All folders</span>
-        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{count}</span>
-      </div>
-      <div className="mt-1.5 flex items-center justify-between text-xs text-muted-foreground">
-        <span>Total</span>
-        <span className="tabular-nums">
-          {unpriced ? "~" : ""}
-          {formatGrandTotalCost(cost)}
-        </span>
+      <RowHead label={<span className="font-medium">All folders</span>} cost={cost} unpriced={unpriced} />
+      <div className="mt-1 flex items-center justify-end">
+        <ConversationCount count={count} spelled />
       </div>
     </>
   );
 }
 
 /** A Project entry: friendly label + summed cost, then a cost bar (scaled to the
- *  total spend → its share of the whole) with the conversation count at the far
- *  right. */
+ *  total spend → its share of the whole) with the conversation count. */
 function FolderRow({ entry, total }: { entry: FolderEntry; total: number }) {
   return (
     <>
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="truncate">{entry.label}</span>
-        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-          {entry.unpriced ? "~" : ""}
-          {formatGrandTotalCost(entry.costUsd)}
-        </span>
-      </div>
-      <div className="mt-1.5 flex items-center gap-2">
-        <CostBar value={entry.costUsd} max={total} className="min-w-0 flex-1" />
-        <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">{entry.count}</span>
+      <RowHead label={entry.label} cost={entry.costUsd} unpriced={entry.unpriced} />
+      <div className="mt-1 flex items-center gap-3">
+        <CostBar value={entry.costUsd} max={total} className="h-1 min-w-0 flex-1" />
+        <ConversationCount count={entry.count} />
       </div>
     </>
+  );
+}
+
+/** Line one of every entry: the label, truncated, and its cost. */
+function RowHead({ label, cost, unpriced }: { label: React.ReactNode; cost: number; unpriced: boolean }) {
+  return (
+    <div className="flex items-baseline justify-between gap-2">
+      <span className="truncate">{label}</span>
+      <span
+        className="shrink-0 text-xs text-muted-foreground"
+        {...(unpriced ? { title: "Includes unpriced model usage — a lower bound." } : {})}
+      >
+        {unpriced ? "~" : ""}
+        {formatGrandTotalCost(cost)}
+      </span>
+    </div>
+  );
+}
+
+/** The entry's conversation count: worded on the "All folders" anchor, which
+ *  teaches what the bare figures under it mean, and always named for screen readers. */
+function ConversationCount({ count, spelled = false }: { count: number; spelled?: boolean }) {
+  const noun = `conversation${count === 1 ? "" : "s"}`;
+  return (
+    <span className="shrink-0 text-xs text-muted-foreground">
+      {formatCount(count)}
+      <span className={spelled ? undefined : "sr-only"}> {noun}</span>
+    </span>
   );
 }

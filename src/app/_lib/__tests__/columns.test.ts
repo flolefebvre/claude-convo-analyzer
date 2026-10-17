@@ -23,4 +23,11 @@ describe("footerLabelColSpan", () => {
   it("spans one fewer when the Folder column is hidden", () => {
     expect(footerLabelColSpan(true)).toBe(3);
   });
+
+  // Narrow tables hide Folder and Model(s): Date and Title are the only label
+  // columns left, scoped or not.
+  it("spans Date and Title only in the compact layout", () => {
+    expect(footerLabelColSpan(false, { compact: true })).toBe(2);
+    expect(footerLabelColSpan(true, { compact: true })).toBe(2);
+  });
 });

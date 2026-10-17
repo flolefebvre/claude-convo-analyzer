@@ -1,46 +1,59 @@
 import Link from "next/link";
 import { Fragment } from "react";
 
-import { RefreshButton } from "@/app/_components/refresh-button";
-import { SearchBox } from "@/app/_components/search-box";
-import { subAgentLabel } from "@/app/_lib/detail";
-import { formatCost } from "@/app/_lib/format";
-import { agentLineage, effortSummary } from "@/app/_lib/transcript";
-import { agentHref } from "@/app/_lib/transcript-url";
+import { formatCount, formatModelName } from "@/app/_lib/format";
+import { type AgentLabel, agentLineage, effortSummary } from "@/app/_lib/transcript";
+import { agentHref, withListReturn } from "@/app/_lib/transcript-url";
 import type { ConversationFamily } from "@/core/family";
 import type { TranscriptView } from "@/core/read";
 
 import { FamilyBanner } from "./family-banner";
 import { TranscriptMessageRow } from "./transcript-message";
+import { AgentName, CostFigure, agentLabelText } from "./transcript-parts";
 
 /**
  * The right pane: the selected agent's transcript, topped by a sticky header
- * with the lineage breadcrumb (root → selected; ancestors are links), the
- * turn/tool/model/cost stats, and a Refresh control (re-scan the logs without
- * leaving an ongoing conversation). Below it, the agent's messages render in order,
- * with a trailing "N meta records hidden" divider when the reader dropped meta
- * rows for this agent. When the conversation belongs to a continuation family,
- * a one-line banner between the header and the transcript names the sitting
- * before and the sitting(s) after.
+ * with the lineage breadcrumb (root → selected; ancestors are links) and the
+ * turn/tool/model/cost stats; search and Refresh live in the app bar above.
+ * The pane is the page's <main>, headed by the conversation title (visually
+ * the agent tree shows it). Header, banner and transcript share one centred
+ * column. Below the header the agent's messages render in order, with a
+ * trailing "N meta records hidden" divider when the reader dropped meta rows
+ * for this agent. On the main agent of a conversation that belongs to a
+ * continuation family, a one-line banner names the sitting before and the
+ * sitting(s) after.
  */
 export function TranscriptPane({
   view,
+  labels,
   family,
   anchoredCall,
   anchoredMessage,
+  listReturn,
 }: {
   view: TranscriptView;
+  /** Every agent's display name, from `agentLabels(view.tree)`. */
+  labels: Map<string, AgentLabel>;
   /** This conversation's continuation family (issue #46) — its DIRECT parent
-   *  and continuations head the pane as a banner. `null` when standalone. */
+   *  and continuations head the main agent's pane as a banner. `null` when standalone. */
   family?: ConversationFamily | null;
   /** The `?call=` deep-link target — that tool call renders open + highlighted. */
   anchoredCall?: string;
   /** The `?msg=` deep-link target — that message renders highlighted (a search
    *  result's landing spot). */
   anchoredMessage?: string;
+  /** The list view this transcript was opened from (`?from=`), carried on
+   *  every link to another transcript. */
+  listReturn?: string;
 }) {
   const lineage = agentLineage(view.tree, view.selectedAgentId);
   const selected = lineage[lineage.length - 1] ?? view.tree;
+  const labelOf = (id: string): AgentLabel => labels.get(id) ?? { name: "main", ordinal: null };
+  const selectedLabel = labelOf(selected.id);
+  // In a sub-agent's transcript every prompt was written by the agent that
+  // spawned it, not by the person.
+  const parent = lineage.length > 1 ? lineage[lineage.length - 2] : null;
+  const promptAuthor = parent === null ? null : agentLabelText(labelOf(parent.id));
 
   const turnCount = view.messages.filter((m) => m.role === "assistant").length;
   const toolCount = view.messages.reduce((sum, m) => sum + m.toolCalls.length, 0);
@@ -51,59 +64,72 @@ export function TranscriptPane({
   const effortLabel = effort.mixed ? "mixed" : effort.uniform;
 
   return (
-    <main className="pane">
+    <main id="main" tabIndex={-1} className="pane">
+      <h1 className="sr-only">{view.title ?? "Untitled conversation"}</h1>
       <div className="pane-header">
-        <nav className="crumb" aria-label="Agent lineage">
-          {lineage.map((node, i) => {
-            const isLast = i === lineage.length - 1;
-            const label = subAgentLabel({ agentType: node.agentType ?? "" });
-            return (
-              <Fragment key={node.id}>
-                {isLast ? (
-                  <span className="here">{label}</span>
-                ) : (
-                  <>
-                    <Link href={agentHref(view.sessionId, i === 0 ? undefined : node.id)}>{label}</Link>
-                    <span className="sep" aria-hidden>
-                      /
+        <div className="pane-header-inner">
+          <nav className="crumb" aria-label="Agent lineage">
+            {lineage.map((node, i) => {
+              const label = labelOf(node.id);
+              return (
+                <Fragment key={node.id}>
+                  {i === lineage.length - 1 ? (
+                    <span className="here" aria-current="page" title={agentLabelText(label)}>
+                      <AgentName label={label} />
                     </span>
-                  </>
-                )}
-              </Fragment>
-            );
-          })}
-        </nav>
-        <div className="stats">
-          <span className="num">
-            {turnCount} turn{turnCount === 1 ? "" : "s"}
-          </span>
-          <span className="num">
-            {toolCount} tool call{toolCount === 1 ? "" : "s"}
-          </span>
-          {selected.resolvedModel && <span className="model">{selected.resolvedModel}</span>}
-          {effortLabel && <span className="effort">{effortLabel} effort</span>}
-          <span className="cost num turn-cost">{formatCost(selected.costUsd)}</span>
+                  ) : (
+                    <>
+                      <Link
+                        href={withListReturn(agentHref(view.sessionId, i === 0 ? undefined : node.id), listReturn)}
+                        title={agentLabelText(label)}
+                      >
+                        <AgentName label={label} />
+                      </Link>
+                      <span className="sep" aria-hidden>
+                        /
+                      </span>
+                    </>
+                  )}
+                </Fragment>
+              );
+            })}
+          </nav>
+          <div className="stats">
+            <span>
+              {formatCount(turnCount)} turn{turnCount === 1 ? "" : "s"}
+            </span>
+            <span>
+              {formatCount(toolCount)} tool call{toolCount === 1 ? "" : "s"}
+            </span>
+            {selected.resolvedModel && (
+              <span className="model" title={selected.resolvedModel}>
+                {formatModelName(selected.resolvedModel)}
+              </span>
+            )}
+            {effortLabel && <span>{effortLabel} effort</span>}
+            <CostFigure usd={selected.costUsd} lowerBound={selected.unpriced} className="stat-cost" />
+          </div>
         </div>
-        {/* Search is reachable from here too — "find that OTHER conversation"
-            strikes precisely while reading one. */}
-        <SearchBox className="w-44" />
-        {/* Re-scan the logs without leaving an ongoing conversation. The action
-            revalidates the whole tree, so this page re-renders with the new
-            messages; compact variant to sit inside the sticky stats header. */}
-        <RefreshButton variant="outline" size="sm" />
       </div>
 
-      {family && <FamilyBanner parent={family.parent} continuations={family.children} />}
+      {family && parent === null && (
+        <FamilyBanner parent={family.parent} continuations={family.children} listReturn={listReturn} />
+      )}
 
+      <h2 className="sr-only">{agentLabelText(selectedLabel)} transcript</h2>
       <div className="transcript">
         {view.messages.map((message) => (
           <TranscriptMessageRow
             key={message.id}
             message={message}
             view={view}
+            labels={labels}
+            agentModel={selected.resolvedModel}
+            promptAuthor={promptAuthor}
             effortChanged={effort.changedIds.has(message.id)}
             anchoredCall={anchoredCall}
             anchoredMessage={anchoredMessage}
+            listReturn={listReturn}
           />
         ))}
         {view.metaHiddenCount > 0 && (

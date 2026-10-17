@@ -6,7 +6,7 @@ pnpm-lock.yaml
 next-env.d.ts
 
 # Vendored skills, tracked by skills-lock.json
-.claude/skills
+.agents/skills
 
 # Nested git worktrees, carrying their own build output
 .claude/worktrees

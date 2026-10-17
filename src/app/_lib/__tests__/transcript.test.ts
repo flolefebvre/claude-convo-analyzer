@@ -4,6 +4,9 @@ import type { TranscriptAgentNode, TranscriptToolCall } from "@/core/read";
 
 import {
   RESULT_TRUNCATE_CHARS,
+  prettyToolText,
+  agentLabels,
+  hasUnpricedAgent,
   agentLineage,
   classifyToolCall,
   effortSummary,
@@ -23,6 +26,29 @@ function call(partial: Partial<TranscriptToolCall> = {}): TranscriptToolCall {
     resultTruncated: false,
     resultCharSize: null,
     isError: false,
+    ...partial,
+  };
+}
+
+/** A tree node with the given id, type and children; every other field neutral. */
+function agentNode(
+  id: string,
+  agentType: string,
+  children: TranscriptAgentNode[] = [],
+  partial: Partial<TranscriptAgentNode> = {},
+): TranscriptAgentNode {
+  return {
+    id,
+    agentType,
+    resolvedModel: null,
+    costUsd: 0,
+    tokens: { input: 0, output: 0, cacheWrite: 0, cacheRead: 0, total: 0 },
+    unpriced: false,
+    hasError: false,
+    metaCount: 0,
+    spawnedByMessageId: null,
+    spawnedByToolUseId: null,
+    children,
     ...partial,
   };
 }
@@ -175,26 +201,10 @@ describe("parseSlashCommand", () => {
 });
 
 describe("agentLineage", () => {
-  const tree: TranscriptAgentNode = node("1", "", [
-    node("a1", "Explore", []),
-    node("a2", "general-purpose", [node("a3", "Explore", [])]),
+  const tree: TranscriptAgentNode = agentNode("1", "", [
+    agentNode("a1", "Explore"),
+    agentNode("a2", "general-purpose", [agentNode("a3", "Explore")]),
   ]);
-
-  function node(id: string, agentType: string, children: TranscriptAgentNode[]): TranscriptAgentNode {
-    return {
-      id,
-      agentType,
-      resolvedModel: null,
-      costUsd: 0,
-      tokens: { input: 0, output: 0, cacheWrite: 0, cacheRead: 0, total: 0 },
-      unpriced: false,
-      hasError: false,
-      metaCount: 0,
-      spawnedByMessageId: null,
-      spawnedByToolUseId: null,
-      children,
-    };
-  }
 
   it("returns just the root when the root is selected", () => {
     expect(agentLineage(tree, "1").map((n) => n.id)).toEqual(["1"]);
@@ -331,5 +341,65 @@ describe("effortSummary", () => {
     const summary = effortSummary(turns("high", "xhigh", "high"));
     expect([...summary.changedIds]).toEqual([2, 3]);
     expect(summary.mixed).toBe(true);
+  });
+});
+
+describe("prettyToolText", () => {
+  it("pretty-prints a JSON object", () => {
+    expect(prettyToolText('{"agentId":"dx","usage":{"total":3}}')).toBe(
+      '{\n  "agentId": "dx",\n  "usage": {\n    "total": 3\n  }\n}',
+    );
+  });
+
+  it("leaves plain text and a truncated JSON result verbatim", () => {
+    expect(prettyToolText("src/server.ts:12  error  no-unused-vars")).toBe("src/server.ts:12  error  no-unused-vars");
+    expect(prettyToolText('{"agentId":"dx","usa')).toBe('{"agentId":"dx","usa');
+  });
+
+  it("leaves a bare JSON scalar verbatim", () => {
+    expect(prettyToolText("  42 ")).toBe("  42 ");
+    expect(prettyToolText('"done"')).toBe('"done"');
+  });
+});
+
+describe("agentLabels", () => {
+  it("names the main thread and each distinct sub-agent with no ordinal", () => {
+    const labels = agentLabels(agentNode("1", "", [agentNode("a1", "Explore"), agentNode("a2", "general-purpose")]));
+    expect(Object.fromEntries(labels)).toEqual({
+      "1": { name: "main", ordinal: null },
+      a1: { name: "Explore", ordinal: null },
+      a2: { name: "general-purpose", ordinal: null },
+    });
+  });
+
+  it("numbers sibling sub-agents that share a name, in spawn order", () => {
+    const labels = agentLabels(
+      agentNode("1", "", [agentNode("p1", "Plan"), agentNode("e1", "Explore"), agentNode("p2", "Plan")]),
+    );
+    expect(labels.get("p1")).toEqual({ name: "Plan", ordinal: 1 });
+    expect(labels.get("e1")).toEqual({ name: "Explore", ordinal: null });
+    expect(labels.get("p2")).toEqual({ name: "Plan", ordinal: 2 });
+  });
+
+  it("numbers same-named sub-agents under different parents separately", () => {
+    const labels = agentLabels(
+      agentNode("1", "", [
+        agentNode("g1", "general-purpose", [agentNode("x1", "Explore")]),
+        agentNode("x2", "Explore"),
+      ]),
+    );
+    expect(labels.get("x1")).toEqual({ name: "Explore", ordinal: null });
+    expect(labels.get("x2")).toEqual({ name: "Explore", ordinal: null });
+  });
+});
+
+describe("hasUnpricedAgent", () => {
+  it("is false when every agent is priced", () => {
+    expect(hasUnpricedAgent(agentNode("1", "", [agentNode("a1", "Explore")]))).toBe(false);
+  });
+
+  it("is true when a nested sub-agent has unpriced usage", () => {
+    const tree = agentNode("1", "", [agentNode("a1", "Plan", [agentNode("a2", "Explore", [], { unpriced: true })])]);
+    expect(hasUnpricedAgent(tree)).toBe(true);
   });
 });

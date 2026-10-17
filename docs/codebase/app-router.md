@@ -19,8 +19,7 @@ In order of preference — reach for the next one only when the previous doesn't
 - View components live in `src/app/_components/` (the underscore keeps the folder out of routing), grouped
   in a subfolder when a view has several (e.g. `_components/transcript/`). `src/components/ui/` is
   shadcn-vendored only.
-- Server actions and route handlers are written with next-pipe (`actionPipe` / `routePipe` — the `next-pipe`
-  skill has the details); reach for `pagePipe` when a page needs middlewares (gates, validated search
+- Server actions and route handlers are written with next-pipe (`actionPipe` / `routePipe`); reach for `pagePipe` when a page needs middlewares (gates, validated search
   params), not before.
 - Components are server components by default; add `"use client"` only at the leaves that need
   interactivity, not on whole pages.

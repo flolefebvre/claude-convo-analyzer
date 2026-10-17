@@ -6,9 +6,35 @@
 // boundary). Everything here takes plain data and returns plain strings/objects
 // so it can be unit-tested in the node vitest environment.
 
-/** Integer token count rendered with locale thousands separators. */
+/**
+ * An integer count (calls, errors, conversations) with en-US thousands
+ * separators — a fixed locale, so the figure reads the same on every host.
+ * @example formatCount(12_345) // "12,345"
+ */
+export function formatCount(n: number): string {
+  return COUNT.format(Math.round(n));
+}
+
+const COUNT = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
+
+/**
+ * A share in `[0, 1]` (an error rate) as a percentage with one fixed decimal,
+ * so the decimals of a right-aligned column line up.
+ * @example formatRate(0.35) // "35.0%"
+ */
+export function formatRate(rate: number): string {
+  return PERCENT.format(rate);
+}
+
+const PERCENT = new Intl.NumberFormat("en-US", {
+  style: "percent",
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+});
+
+/** Integer token count rendered with en-US thousands separators. */
 export function formatTokens(n: number): string {
-  return Math.round(n).toLocaleString("en-US");
+  return formatCount(n);
 }
 
 /**
@@ -19,6 +45,11 @@ export function formatTokens(n: number): string {
  * Below 1,000 the plain integer is returned (no suffix).
  */
 export function formatCompactTokens(n: number): string {
+  return compact(n, false);
+}
+
+/** {@link formatCompactTokens}, keeping the ".0" when `fixed` (for aligned columns). */
+function compact(n: number, fixed: boolean): string {
   const abs = Math.abs(n);
   const units: { limit: number; suffix: string }[] = [
     { limit: 1e9, suffix: "B" },
@@ -28,15 +59,17 @@ export function formatCompactTokens(n: number): string {
   for (const { limit, suffix } of units) {
     if (abs >= limit) {
       const scaled = n / limit;
-      // One decimal, then strip a trailing ".0" (e.g. "2.0K" -> "2K").
-      return `${scaled.toFixed(1).replace(/\.0$/, "")}${suffix}`;
+      // One decimal; unless fixed, strip a trailing ".0" (e.g. "2.0K" -> "2K").
+      const digits = scaled.toFixed(1);
+      return `${fixed ? digits : digits.replace(/\.0$/, "")}${suffix}`;
     }
   }
   return Math.round(n).toString();
 }
 
 /**
- * USD with adaptive precision so small costs stay legible.
+ * USD with adaptive precision so small costs stay legible, grouped in en-US
+ * ("$1,234.56").
  *
  * Rule:
  *   - exactly 0            -> "$0.00"
@@ -48,9 +81,31 @@ export function formatCompactTokens(n: number): string {
  * cost, so we widen to 4 dp.
  */
 export function formatCost(usd: number): string {
-  if (usd === 0) return "$0.00";
-  const decimals = Math.abs(usd) >= 0.01 ? 2 : 4;
-  return `$${usd.toFixed(decimals)}`;
+  if (usd === 0 || Math.abs(usd) >= 0.01) return USD.format(usd);
+  return USD_SUB_CENT.format(usd);
+}
+
+/** USD at 2 dp with en-US grouping — a fixed locale, never the host's. */
+const USD = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 });
+
+/** USD at 4 dp, for the sub-cent amounts {@link formatCost} widens. */
+const USD_SUB_CENT = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 4,
+  maximumFractionDigits: 4,
+});
+
+/**
+ * A Claude model id shortened for display in a dense column: the `claude-`
+ * prefix and the release-date suffix go, anything else is left as is. Display
+ * only; keep the full id beside it (a `title`) wherever it is shown.
+ *
+ * @example formatModelName("claude-haiku-4-5-20251001") // "haiku-4-5"
+ */
+export function formatModelName(model: string): string {
+  if (!model.startsWith("claude-")) return model;
+  return model.slice("claude-".length).replace(/-\d{8}$/, "");
 }
 
 /**
@@ -59,7 +114,7 @@ export function formatCost(usd: number): string {
  * aggregate level a sub-cent total rounds to "$0.00".
  */
 export function formatGrandTotalCost(usd: number): string {
-  return `$${usd.toFixed(2)}`;
+  return USD.format(usd);
 }
 
 /**
@@ -224,9 +279,11 @@ function absoluteLabel(date: Date): string {
  * A result size in characters, compactly (`8.2K`), with an em dash for "no
  * size" — the Tools table's cell for a tool whose calls never paired a result
  * (NULL `result_char_size`), which is deliberately absent from the size stats
- * rather than shown as zero.
+ * rather than shown as zero. `fixed` keeps the ".0" ("6.0K") so the decimals
+ * of a right-aligned column line up.
+ * @example formatChars(6_000, { fixed: true }) // "6.0K"
  */
-export function formatChars(n: number | null): string {
+export function formatChars(n: number | null, { fixed = false }: { fixed?: boolean } = {}): string {
   if (n === null) return "—";
-  return formatCompactTokens(n);
+  return compact(n, fixed);
 }
