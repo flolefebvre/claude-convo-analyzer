@@ -1,5 +1,5 @@
 {
-  "path": ["src", "scripts"],
+  "path": ["src", "scripts", "e2e"],
   "ignore": ["src/components/ui/**"],
   "minTokens": 50,
   "exitCode": 1,

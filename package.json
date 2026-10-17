@@ -14,8 +14,9 @@
     "seed": "tsx scripts/seed.ts",
     "dev:seed": "tsx scripts/dev-seed.ts",
     "check": "tsx scripts/gate.ts format:check+lint+duplication+typecheck,test:changed",
-    "gate": "tsx scripts/gate.ts format:check+lint+duplication+typecheck,test+build",
+    "gate": "tsx scripts/gate.ts format:check+lint+duplication+typecheck,test+build,e2e",
     "build": "next build",
+    "e2e": "playwright test",
     "start": "next start",
     "lint": "eslint --cache --cache-location node_modules/.cache/eslint/ --cache-strategy content",
     "duplication": "jscpd",
@@ -50,7 +51,9 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@next/playwright": "16.4.2",
     "@playwright/cli": "0.1.22",
+    "@playwright/test": "1.64.1",
     "@tailwindcss/postcss": "^4",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
