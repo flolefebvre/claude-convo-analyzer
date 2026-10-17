@@ -22,7 +22,9 @@ import path from "node:path";
  * const sessions = discoverSessions(defaultLogsRoot());
  */
 export function defaultLogsRoot(): string {
-  return path.resolve(process.env.CCA_LOGS_ROOT || path.join(os.homedir(), ".claude", "projects"));
+  return path.resolve(
+    /*turbopackIgnore: true*/ process.env.CCA_LOGS_ROOT || path.join(os.homedir(), ".claude", "projects"),
+  );
 }
 
 /** A discovered top-level session file plus its on-disk change keys. */

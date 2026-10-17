@@ -15,7 +15,7 @@ import { PrismaClient } from "@/core/prisma/generated/client";
  * const dbPath = defaultDbPath();
  */
 export function defaultDbPath(): string {
-  return path.resolve(process.env.CCA_DB_PATH || path.join("data", "analyzer.db"));
+  return path.resolve(/*turbopackIgnore: true*/ process.env.CCA_DB_PATH || path.join("data", "analyzer.db"));
 }
 
 /**
