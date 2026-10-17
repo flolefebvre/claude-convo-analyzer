@@ -98,7 +98,22 @@ jobs:
       - name: Setup
         uses: ./.github/actions/setup
 
+      # After the install, so hashFiles reads the installed Playwright version. No restore-keys: a
+      # browser built for another Playwright version is never used.
+      - name: Restore Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('node_modules/@playwright/test/package.json') }}
+
+      # The cache holds the browser, not the OS packages it needs.
+      - name: Install Chromium system dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium
+
       - name: Install Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: pnpm exec playwright install --with-deps chromium
 
       # Starts the seeded app itself (playwright.config.ts).
