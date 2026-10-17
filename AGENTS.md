@@ -81,11 +81,15 @@ Prose in this repo — docs, comments, commit messages, issues — is written in
 
 ### Issue tracker
 
-Issues are tracked in this repo's GitHub Issues via the `gh` CLI, labeled with the five canonical triage labels; external PRs are not a triage surface. See `docs/issue-tracker.md`.
+Issues are tracked in this repo's GitHub Issues via the `gh` CLI; external PRs are not a triage surface. See `docs/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical triage labels, each named after its role. See `docs/triage-labels.md`.
 
 ### Domain docs
 
-Single-context: one `CONTEXT.md` (the glossary — match test names and interface vocabulary to it) + `docs/adr/` at the repo root. See `docs/codebase/domain.md`.
+Single-context: one `GLOSSARY.md` (the glossary — match test names and interface vocabulary to it) + `docs/adr/` at the repo root. See `docs/codebase/domain.md`.
 
 ## Keeping this file current
 

@@ -14,7 +14,7 @@ This project uses TDD. The rules that matter here:
   functions are deterministic and are the critical path — strict TDD. The Next
   UI is tested pragmatically (a few behavior checks), not exhaustively.
 - Tests live in `src/core/__tests__/`, one `.test.ts` file per behavior area,
-  named in the vocabulary of `CONTEXT.md`.
+  named in the vocabulary of `GLOSSARY.md`.
 - Tests of `scripts/` live beside the script they test, as `*.test.ts`
   (e.g. `scripts/seed/seed.test.ts`).
 

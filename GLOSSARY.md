@@ -1,4 +1,4 @@
-# Context — Claude Conversation Analyzer
+# Glossary — Claude Conversation Analyzer
 
 A local-only app that reads the Claude Code conversation logs stored on this
 machine, parses them deterministically into a SQLite database, and presents

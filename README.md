@@ -128,7 +128,7 @@ from a per-model, per-token-type price list — it's a hypothetical "what these
 tokens would list for on the public API today" figure, not your actual billing.
 
 The domain model and the reasoning behind it are documented in
-[`CONTEXT.md`](CONTEXT.md) and the ADRs under [`docs/adr/`](docs/adr).
+[`GLOSSARY.md`](GLOSSARY.md) and the ADRs under [`docs/adr/`](docs/adr).
 
 ## Roadmap
 

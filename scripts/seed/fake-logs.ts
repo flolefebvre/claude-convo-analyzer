@@ -698,7 +698,7 @@ function continuationFamilies(g: Gen, startIndex: number): Conversation[] {
   });
 
   // Resumed from a git worktree of the same repo: Claude Code launches there in
-  // its own directory, so the sitting belongs to a DIFFERENT Project (CONTEXT.md).
+  // its own directory, so the sitting belongs to a DIFFERENT Project (GLOSSARY.md).
   const inWorktree = buildConversation(g, PROJECTS[2], i++, {
     resumeFrom: secondBranch.resumePoint,
     title: "Billing split — event-sourced spike, in a worktree",
