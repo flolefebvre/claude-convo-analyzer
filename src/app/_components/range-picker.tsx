@@ -9,8 +9,28 @@
 // Tools keeps folder + sort + expanded row. The picker only knows which preset
 // is active.
 
+import { LoadingRegion } from "@/app/_components/loading-region";
 import { PendingLink } from "@/app/_components/pending-link";
 import { RANGE_PRESETS, type RangeKey } from "@/app/_lib/range";
+import { Skeleton } from "@/components/ui/skeleton";
+
+/**
+ * The picker's Suspense fallback: one strip at the segmented control's size.
+ * The picker reads only `searchParams`, so its own boundary lands before the
+ * page's data.
+ *
+ * @example
+ * <Suspense fallback={<RangePickerFallback />}>
+ *   <ToolsRangePicker searchParams={searchParams} />
+ * </Suspense>
+ */
+export function RangePickerFallback() {
+  return (
+    <LoadingRegion label="Loading range" className="shrink-0">
+      <Skeleton className="h-8 w-[19.5rem] rounded-lg" />
+    </LoadingRegion>
+  );
+}
 
 /**
  * The range presets as a segmented control, styled like the app bar's theme

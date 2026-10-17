@@ -1,30 +1,25 @@
 import { instant } from "@next/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
+import { type RouteShell, expectData, expectShell } from "./shell-assertions";
+
 // A seeded conversation title (`scripts/seed/fake-logs.ts`).
 const TITLE = "Split the billing service out of the monolith";
 
 const header = (page: Page) => page.getByRole("heading", { level: 1, name: "Conversations" });
-const fallbacks = (page: Page) => [
-  page.getByRole("status", { name: "Loading folders" }),
-  page.getByRole("status", { name: "Loading overview" }),
-  page.getByRole("status", { name: "Loading conversations" }),
-];
-const data = (page: Page) => [
-  page.getByRole("navigation", { name: "Folders" }),
-  page.getByRole("heading", { level: 2, name: /All projects/ }),
-  page.getByText(TITLE, { exact: true }),
-];
-
-async function expectShell(page: Page) {
-  await expect(header(page)).toBeVisible();
-  for (const fallback of fallbacks(page)) await expect(fallback).toBeVisible();
-  for (const region of data(page)) await expect(region).toHaveCount(0);
-}
-
-async function expectData(page: Page) {
-  for (const region of data(page)) await expect(region.first()).toBeVisible();
-}
+const conversations: RouteShell = {
+  shell: (page) => [header(page)],
+  fallbacks: (page) => [
+    page.getByRole("status", { name: "Loading folders" }),
+    page.getByRole("status", { name: "Loading overview" }),
+    page.getByRole("status", { name: "Loading conversations" }),
+  ],
+  data: (page) => [
+    page.getByRole("navigation", { name: "Folders" }),
+    page.getByRole("heading", { level: 2, name: /All projects/ }),
+    page.getByText(TITLE, { exact: true }),
+  ],
+};
 
 test.describe("Conversations (/)", () => {
   test("is instant on an initial page load", async ({ page, baseURL }) => {
@@ -32,11 +27,11 @@ test.describe("Conversations (/)", () => {
       page,
       async () => {
         await page.goto("/");
-        await expectShell(page);
+        await expectShell(page, conversations);
       },
       { baseURL },
     );
-    await expectData(page);
+    await expectData(page, conversations);
   });
 
   test("is instant on a client navigation", async ({ page }) => {
@@ -52,6 +47,6 @@ test.describe("Conversations (/)", () => {
       await expect(page.getByRole("heading", { level: 2, name: /All projects/ })).toHaveCount(0);
       await expect(page.getByText(TITLE, { exact: true })).toHaveCount(0);
     });
-    await expectData(page);
+    await expectData(page, conversations);
   });
 });
