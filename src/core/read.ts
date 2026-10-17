@@ -1061,7 +1061,7 @@ async function readTranscriptPage(
   const [messageCount, turnCount, toolCallCount, effortRows, anchorIndex] = await Promise.all([
     prisma.message.count({ where: rendered }),
     prisma.message.count({ where: { agentId: agent.id, role: "assistant" } }),
-    prisma.toolCall.count({ where: { message: { agentId: agent.id } } }),
+    prisma.toolCall.count({ where: { agentId: agent.id } }),
     prisma.message.groupBy({
       by: ["effort"],
       where: { agentId: agent.id, role: "assistant", effort: { not: null } },
