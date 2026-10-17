@@ -5,21 +5,20 @@ import type { TranscriptView } from "@/core/read";
 
 /**
  * Previous / Next between the selected agent's Transcript pages ("201–400 of
- * 450 messages"). Each end keeps the agent and the `?from=` list view and drops
- * any `?msg=`/`?call=` anchor. Renders nothing on a one-page transcript.
+ * 450 messages"), under the messages. Each end keeps the agent and the
+ * `?from=` list view and drops any `?msg=`/`?call=` anchor. Renders nothing on
+ * a one-page transcript.
  *
  * @example <TranscriptPager view={view} listReturn={listReturn} />
  */
 export function TranscriptPager({
   view,
   listReturn,
-  variant = "full",
   className,
 }: {
   view: TranscriptView;
   /** The list view this transcript was opened from (`?from=`). */
   listReturn?: string;
-  variant?: "full" | "compact";
   className?: string;
 }) {
   const { page, pageCount, pageSize, messageCount } = view;
@@ -35,8 +34,7 @@ export function TranscriptPager({
       last={last}
       total={messageCount}
       noun="messages"
-      label={variant === "compact" ? "Transcript pages, above the messages" : "Transcript pages"}
-      variant={variant}
+      label="Transcript pages"
       className={className}
     />
   );
