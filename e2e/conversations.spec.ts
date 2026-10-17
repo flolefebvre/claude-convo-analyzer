@@ -1,7 +1,7 @@
 import { instant } from "@next/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
-import { type RouteShell, expectData, expectShell } from "./shell-assertions";
+import { type RouteShell, expectData, expectInstantLoad } from "./route-shell";
 
 // A seeded conversation title (`scripts/seed/fake-logs.ts`).
 const TITLE = "Split the billing service out of the monolith";
@@ -23,15 +23,7 @@ const conversations: RouteShell = {
 
 test.describe("Conversations (/)", () => {
   test("is instant on an initial page load", async ({ page, baseURL }) => {
-    await instant(
-      page,
-      async () => {
-        await page.goto("/");
-        await expectShell(page, conversations);
-      },
-      { baseURL },
-    );
-    await expectData(page, conversations);
+    await expectInstantLoad(page, baseURL, "/", conversations);
   });
 
   test("is instant on a client navigation", async ({ page }) => {
