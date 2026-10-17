@@ -18,7 +18,8 @@
 src/
   app/          App Router; see docs/codebase/app-router.md for its conventions
   components/
-    ui/         Shadcn-vendored, edit only through the CLI
+    ui/         Shadcn-vendored, edit only through the CLI; then point a bare `cn` import
+                at @/lib/utils-cn (no `cn` package)
   core/         Domain logic — discovery, parsing, accounting, pricing, search.
                 Framework-free: no `next`/`react` imports (ADR-0002), ESLint enforces it
     __tests__/  Vitest suite and its sanitized JSONL fixtures
