@@ -41,6 +41,7 @@ public/         Static assets served at the root
 pnpm dev           Run the app (next dev) on :3000
 pnpm seed          Rebuild the fake-data seed environment in data/seed/ (seed.db + projects/); --now=<ISO> pins it
 pnpm dev:seed      Seed, then run next dev on it; prints `Seeded app: http://localhost:<port>` (first free from 3001, or $PORT)
+pnpm e2e:server    Seed, then next build with the testing API exposed and next start on it ($PORT, as dev:seed) — what pnpm e2e serves
 pnpm check         Format check, lint, duplication, typecheck, then the tests affected since $CHECK_BASE (default origin/main) — the inner loop
 pnpm gate          Format check, lint, duplication, typecheck, then test and build, then e2e — the full check
 pnpm format        Prettier, rewriting files in place
@@ -52,7 +53,7 @@ pnpm test          Vitest, once
 pnpm test:changed  Vitest, once, only the tests affected since $CHECK_BASE (default origin/main)
 pnpm test:watch    Vitest in watch mode
 pnpm build         next build
-pnpm e2e           Playwright instant-navigation specs against its own seeded app on :3123 (or $E2E_PORT)
+pnpm e2e           Playwright instant-navigation specs against its own e2e:server on :3123 (or $E2E_PORT)
 ```
 
 ## Verification

@@ -7,13 +7,10 @@
 - Split the test suite by adding a number to the `test` job's `shard` list when that job becomes the longest one; the shard count is read from the list.
 - Restore caches only for tools that reuse them across runs — `node_modules/.cache` (Prettier, ESLint) and `tsconfig.tsbuildinfo` in `static`, `.next/cache` in `build` — keyed on the lockfile and the commit, restored from the latest key with the same lockfile, and placed after the install.
 - The `e2e` job installs Chromium on every run (`pnpm exec playwright install --with-deps chromium`), then runs
-  `pnpm e2e`, which starts its own seeded `next dev`. If it fails, the job uploads `playwright-report/` as an
-  artifact for 7 days. That report is the only way to debug a failure that happens only on CI.
-- Once `e2e` becomes the longest job, speed it up in this order:
-  - Cache the Playwright browsers, keyed on the `@playwright/test` version.
-  - Run the specs against a test build: `next build` plus `next start`, with
-    `experimental.exposeTestingApiInProductionBuild` set for that build only. This also makes a
-    client-navigation GREEN reflect production prefetching.
+  `pnpm e2e`. That builds its own test build (`EXPOSE_TESTING_API=1`) and serves it seeded; it never reuses the
+  `build` job's output. If the job fails, it uploads `playwright-report/` as an artifact for 7 days, the only way
+  to debug a failure that happens only on CI.
+- Cache the Playwright browsers, keyed on the `@playwright/test` version, once `e2e` becomes the longest job.
 - Put a step every job needs in `.github/actions/setup`, the composite action each job calls right after checkout, never copied into the jobs.
 - Pin `node-version` to the major the repo is developed on, never a range that lets CI drift onto a major nobody has run.
 - Keep `pnpm/action-setup` ahead of `actions/setup-node`, which needs pnpm on the PATH for `cache: pnpm`. It takes no `version` input: pnpm resolves from the `packageManager` pin in package.json.

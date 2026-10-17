@@ -14,12 +14,12 @@ export default defineConfig({
   use: { baseURL, trace: "retain-on-failure" },
   projects: [{ name: "chromium", use: devices["Desktop Chrome"] }],
   webServer: {
-    command: "pnpm dev:seed",
+    command: "pnpm e2e:server",
     env: { PORT: port },
     url: baseURL,
-    // Never test whatever else holds the port: a taken port fails the run.
+    // Never test whatever else holds the port, or a build of older code: a taken port fails the run.
     reuseExistingServer: false,
-    // `next dev` seeds, then compiles each route on its first request.
-    timeout: 180_000,
+    // Seeds, then a cold `next build`, before `next start` answers.
+    timeout: 240_000,
   },
 });

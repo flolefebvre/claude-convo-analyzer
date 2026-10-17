@@ -35,3 +35,4 @@ In order of preference — reach for the next one only when the previous doesn't
 - Default to a focused `<Suspense>`; add a `loading.tsx` only when nothing below the layout can render without data — it wraps the whole page segment, not the segment's own layout.
 - Links that change search params within a page (sort, range, pager, expand, sidebar folder) are `PendingLink`s (`src/app/_components/pending-link.tsx`), which dim `#main` while in flight; links that change route rely on the prefetched shell and its skeletons and need no `PendingLink`.
 - Every route has an `instant()` spec asserting what its shell shows (`docs/codebase/testing.md`, "End-to-end"). Copy its client-navigation test with a section-tab click as the trigger line; `e2e/search.spec.ts` submits the search form only because no link leads to `/search`.
+- Where the vendored optimizer skills in `.agents/skills/` differ from this section, this section wins.

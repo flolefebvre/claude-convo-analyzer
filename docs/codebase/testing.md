@@ -34,10 +34,12 @@ This project uses TDD. The rules that matter here:
   watch it fail on that element, then revert.
 - Query the seeded data (`scripts/seed/fake-logs.ts`) with role and text
   locators. Don't add test ids.
-- The specs run against `next dev`. A dev GREEN shows where the shell ends. It
-  doesn't show that a production client navigation commits from the prefetch:
-  Next only prefetches in production builds (see the vendored
-  `next-cache-components-optimizer` skill).
+- The specs run against a production build (`pnpm e2e:server`), because `next dev`
+  doesn't prefetch. A dev `instant()` GREEN on a client navigation is not
+  evidence that the prefetched shell commits.
+- While you work on a route's loading states, use the dev overlay's
+  blocking-route insight and the Navigation Inspector (Next.js DevTools, "Pause
+  on navigations") as the inner loop. `pnpm e2e` is the check.
 - `pnpm e2e` is the last stage of `pnpm gate` and its own CI job. `pnpm check`
   leaves it out to stay fast. Running it is covered in `docs/codebase/ui-checks.md`.
 

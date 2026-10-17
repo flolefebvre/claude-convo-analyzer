@@ -42,19 +42,23 @@ pnpm exec playwright-cli -s=<worktree> close
 ## Run the e2e specs
 
 `pnpm e2e` runs `e2e/*.spec.ts` (`docs/codebase/testing.md`, "End-to-end")
-in headless Chromium. It starts and stops its own seeded app, running
-`pnpm dev:seed` with `PORT` set to `$E2E_PORT` (default `3123`). It never
-reuses a running server: if the port is taken, the run fails. To run two
-worktrees at once, give one of them a different `E2E_PORT`.
+in headless Chromium. It starts and stops its own seeded app with
+`pnpm e2e:server`, which seeds `data/seed/`, runs `next build` with the testing
+API exposed (`EXPOSE_TESTING_API=1`), then runs `next start` on `$E2E_PORT`
+(default `3123`). Because of the build, a run takes a minute or more. The
+build overwrites `.next/`, the same directory `pnpm build` writes to.
+
+It never reuses a running server: if the port is taken, the run fails. To run
+two worktrees at once, give one of them a different `E2E_PORT`.
 
 - Install the browser once per machine with
   `pnpm exec playwright install chromium`. This is `@playwright/test`'s
   Chromium, not the Chrome for Testing that `playwright-cli` uses.
 - A failure writes a trace to the gitignored `test-results/`; open it with
   `pnpm exec playwright show-trace <path>`.
-- Every `dev:seed` start rebuilds `data/seed/`. An e2e run and a manual
-  `pnpm dev:seed` in the same worktree share that directory, so each start
-  rebuilds it under the other.
+- Both `e2e:server` and `dev:seed` rebuild `data/seed/` every time they start.
+  An e2e run and a manual `pnpm dev:seed` in the same worktree share that
+  directory, so each start rebuilds it under the other.
 - The lock behind `instant()` and the Navigation Inspector's "Pause on
   navigations" is the `next-instant-navigation-testing` cookie. Cookies are
   shared across ports on `localhost`, so in a manual browser with `:3000` and
