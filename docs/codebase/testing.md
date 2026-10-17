@@ -59,7 +59,10 @@ per gotcha:
 - a conversation whose **first message `parentUuid`** resolves into another
   session (`continued_from`);
 - a `Bash` and a `Skill` **`tool_use`** (tool-call capture, CLI/skill
-  detection).
+  detection);
+- every **`origin` shape and `queued_command` attachment** of log-format §8,
+  duplicate delivery included (`agent-message-logs/`, records addressed by
+  `uuid` through `__tests__/helpers/agent-messages.ts`).
 
 Fixtures are committed, tiny, and contain no secrets. They double as executable
 documentation of the log format.

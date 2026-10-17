@@ -46,7 +46,7 @@ Counts are from the snapshot (across main + sub-agent files combined).
 | ----------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
 | `assistant`             | 11808  | An assistant turn (see §3). Carries `message.usage`, `message.model`, content blocks, attribution.                                                                         | **Yes** → `message` (+ `tool_call`)      |
 | `user`                  | 7251   | A user message OR a `tool_result` carrier (see §4).                                                                                                                        | **Yes** → `message` / feeds `tool_call`  |
-| `attachment`            | 3105   | Pasted/attached content (images, files) tied to a user message via `parentUuid`. `attachment` is a dict.                                                                   | **No** (see §6)                          |
+| `attachment`            | 3105   | A dict `attachment` tied to a message via `parentUuid`: pasted content (images, files), or a `queued_command` — a message delivered while the agent was working (§8).      | **Partly** → `queued_command` only (§8)  |
 | `ai-title`              | 1252   | `aiTitle`: AI-generated conversation title.                                                                                                                                | **Yes** → `conversation.title`           |
 | `mode`                  | 1016   | `mode` (e.g. `normal`) state marker.                                                                                                                                       | **No** (low value)                       |
 | `permission-mode`       | 1013   | `permissionMode` (e.g. `default`, `plan`) state marker. Also present per-turn on `user` records.                                                                           | **Partly** (per-turn field on `message`) |
@@ -162,8 +162,9 @@ files without schema-breaking surprises — this section is the pointer.
 - **File-history snapshots** (`file-history-snapshot.snapshot`): full file
   contents per checkpoint, keyed by `messageId`. This is how you'd reconstruct
   _which files changed and their diffs_. Skipped for size/complexity.
-- **Attachments** (`attachment` records): pasted images/files. Skipped
-  (large/binary).
+- **Attachments** (`attachment` records) other than `queued_command`: pasted
+  images/files. Skipped (large/binary). `queued_command` attachments ARE
+  modeled (§8).
 - **Compaction events** (`system` with `compactMetadata`): when a conversation
   was auto-summarized. Relevant if you analyze long-conversation behavior.
 - **Retries & API errors** (`system` `retryAttempt`/`maxRetries`/`retryInMs`;
@@ -176,7 +177,8 @@ files without schema-breaking surprises — this section is the pointer.
 Tokens/cost (per turn, deduped, per resolved model), tool calls (name + input +
 truncated result + size), sub-agent lineage, conversation title, project,
 per-turn attribution & timestamps, git branch, CC version, permission mode,
-api-error flag, PR links, and turn durations.
+api-error flag, PR links, turn durations, and each user Message's kind and
+`origin` extras (§8).
 
 ## 7. Refresh implication
 
@@ -185,3 +187,90 @@ re-parsing is idempotent. Incremental refresh can key off each conversation
 file's mtime/size (stored on `conversation`). Anything in §6 can be added later
 by extending the parser and re-reading — the raw logs are the durable source of
 truth; the SQLite DB is a disposable, rebuildable cache.
+
+## 8. Who a user message is from: `origin`, and mid-turn delivery
+
+Recent Claude Code versions put a top-level **`origin`** object on `user`
+records, saying who the message is from. It decides the user Message kind
+(GLOSSARY.md) before `isMeta` does; records without one (older logs, sub-agent
+task prompts) keep the `tool_result` / `isMeta` rules. Shapes seen (Oct 2026):
+
+| `origin.kind`       | Fields                                                                                                                                                            | Kind                                                    |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| `human`             | —                                                                                                                                                                 | Prompt (see the `isMeta` exception below)               |
+| `plugin`            | `name`, `asUser`                                                                                                                                                  | Prompt when `asUser: true`; otherwise the older rules   |
+| `peer`              | `from`, `name`, `body`; a Sub-agent adds `senderTaskId`, a hand-back `handback` (+ `handbackReportText`); another session `msg_id`, `fromMode`, `verifiedPeerPid` | Inter-agent message, always `isMeta: true`              |
+| `coordinator`       | —                                                                                                                                                                 | Inter-agent message (from the spawning agent), `isMeta` |
+| `task-notification` | sometimes `producer`, `runId`                                                                                                                                     | Task notification                                       |
+| anything else       | e.g. `auto-continuation`                                                                                                                                          | the older rules                                         |
+
+- **Peer messages.** The record text wraps the message
+  (`Another Claude session sent a message:\n<agent-message from=…>` or
+  `<cross-session-message …>`); `body` is the message alone. From a Sub-agent
+  of the same Conversation, `senderTaskId` is its agent id (the
+  `agent-<id>.jsonl` name) and `name` its type, sometimes absent; from another
+  session, `from` is a `uds:` socket path and `name` that session's name. A
+  hand-back's `body` starts with a harness frame; `handbackReportText`, when
+  present, is the report (sometimes behind a `[harness: …]` neutralization
+  note).
+- **Coordinator messages** carry no `body`. The text starts with the exact line
+  `The coordinator sent a message while you were working:`.
+- **`isMeta` human records** are machinery (skill instructions, command
+  caveats) — except a mid-turn user message, whose text is
+  `The user sent a new message while you were working:\n<text>\n\nThis is how Claude Code surfaces messages the user sends mid-turn …`.
+- **Task notifications** are XML in the text, sometimes behind a
+  `[SYSTEM NOTIFICATION - NOT USER INPUT]` preamble:
+  `<task-notification>` with `<task-id>` (a Sub-agent's agent id for agent
+  tasks, else a background task id), `<tool-use-id>`, `<output-file>`,
+  `<status>` (`completed`, `failed`, `killed`, `stopped`), `<summary>`
+  (`Agent "…" finished`, `Background command "…" failed with exit code 1`,
+  `Monitor event: "…"`), `<note>`, `<result>` (entity-escaped: `&lt;`, `&amp;`),
+  `<usage>`; a Monitor event has `<event>` and no status. A few are plain text
+  (`Background agent "…" was stopped by the user.`) or a `<fork-source>` notice.
+
+### Mid-turn delivery: `queued_command` attachments
+
+A Prompt, Inter-agent message or Task notification that arrives while the agent
+is working is logged as an `attachment` record:
+
+```json
+{
+  "type": "attachment",
+  "uuid": "…",
+  "timestamp": "…",
+  "attachment": {
+    "type": "queued_command",
+    "prompt": "…",
+    "origin": { "kind": "human" },
+    "commandMode": "prompt",
+    "source_uuid": "…",
+    "isMeta": true,
+    "timestamp": "…"
+  }
+}
+```
+
+- `prompt` is a string or a content-block array (pasted images included);
+  `origin`, `isMeta`, `commandMode` (`prompt` / `task-notification`),
+  `source_uuid`, `delivery_id` and the attachment's own `timestamp` are each
+  sometimes absent (coordinator messages have no attachment timestamp). Older
+  attachments have no `origin`; their `commandMode` tells a Task notification.
+- It is classified like a `user` record, timestamped from the attachment (else
+  the record), and — for a Prompt or Inter-agent message — flagged mid-turn.
+- **Duplicates.** One message delivered both as an attachment and as a `user`
+  record was expected, but none were found in Oct 2026 logs: no attachment's
+  `source_uuid` matches a record `uuid`, and no attachment repeats a record's
+  `msg_id` or body within a file (forked sessions copy history across files,
+  which is a different matter). The parser still drops an attachment whose
+  `source_uuid` or peer `msg_id` was already seen on a kept message — ids only,
+  never text or time.
+
+### How they are stored
+
+`message.kind` is the single discriminator (`inter-agent`, `task-notification`
+next to the older kinds). `message.text` is the display body — a peer's `body`
+(a hand-back's report text), a coordinator or mid-turn user message without its
+exact wrapper line, a notification's `result` (else `event`). Everything else
+the transcript needs goes into `message.origin`, a small JSON value in the
+normalized shape of `messageOriginSchema` (`src/core/parse.ts`) — never the raw
+log object. Search indexes Inter-agent messages, never Task notifications.
