@@ -14,6 +14,8 @@
 //   - `ParsedMessage` already carries `uuid`/`parentUuid` so Slice 4 can build the
 //     message-uuid index for continued-from resolution.
 
+import { z } from "zod";
+
 /** A `tool_use` block lifted out of an assistant message (one `tool_call` row). */
 export type ParsedToolUse = {
   /** `tool_use` block id; matches a later tool_result's `tool_use_id`. */
@@ -63,15 +65,187 @@ export type ParsedAgentSpawn = {
 };
 
 /**
- * Classification of a `user` record for the transcript view (finding: only
- * genuine human prompts render as user messages). `null` on assistant rows —
- * they carry no meaningful kind.
- *   - `prompt`      — a genuine human prompt.
- *   - `tool-result` — a tool_result carrier (the `extractToolResult` path).
- *   - `meta`        — a machine-injected record (`isMeta: true`): skill
+ * Classification of a user Message (GLOSSARY.md, Message). `null` on assistant
+ * rows — they carry no meaningful kind. Decided by the record's `origin.kind`
+ * first, then by the older rules (tool_result, `isMeta`) for records without
+ * a recognized origin (log-format §8).
+ *   - `prompt`            — text the human speaks: typed, or a plugin's `asUser` insert.
+ *   - `inter-agent`       — text another Agent addressed to this one (`peer`, `coordinator`).
+ *   - `task-notification` — a background task or Sub-agent stopped.
+ *   - `tool-result`       — a tool_result carrier (the `extractToolResult` path).
+ *   - `meta`              — a machine-injected record (`isMeta: true`): skill
  *     instructions, command output, system reminders.
  */
-export type MessageKind = "prompt" | "tool-result" | "meta";
+export type MessageKind = "prompt" | "inter-agent" | "task-notification" | "tool-result" | "meta";
+
+/**
+ * The normalized extras of a user Message — what its row needs beyond `kind`
+ * and `text`, lifted from the log's `origin` (and a Task notification's XML).
+ * NOT the raw log object: only these keys, each present only when it applies.
+ * Stored as JSON in `message.origin` and validated with this schema when read.
+ *
+ * @example messageOriginSchema.safeParse(JSON.parse(row.origin))
+ */
+export const messageOriginSchema = z.object({
+  /** Inter-agent sender's display name (`origin.name`: agent type or session name). */
+  senderName: z.string().optional(),
+  /** Inter-agent sender's address (`origin.from`): an agent type or id, or a socket path. */
+  senderFrom: z.string().optional(),
+  /** Agent id of a Sub-agent sender in this Conversation (`origin.senderTaskId`). */
+  senderTaskId: z.string().optional(),
+  /** The sender is the Agent that spawned this one (`origin.kind: coordinator`). */
+  coordinator: z.literal(true).optional(),
+  /** A hand-back: the Inter-agent message carrying a Sub-agent's final report. */
+  handback: z.literal(true).optional(),
+  /** Plugin that inserted this Prompt on the user's behalf. */
+  plugin: z.string().optional(),
+  /**
+   * The message arrived while the Agent was working (GLOSSARY.md: "can arrive
+   * while the Agent is working"). Semantic, not a record type: set for a
+   * `queued_command` attachment AND for a user record in an exact mid-turn
+   * delivery wrapper (see {@link COORDINATOR_MID_TURN_WRAPPER}).
+   */
+  midTurn: z.literal(true).optional(),
+  /** Task notification: the stopped task's id (a Sub-agent's agent id for agent tasks). */
+  taskId: z.string().optional(),
+  /** Task notification: `completed`, `failed`, `killed`, `stopped`, … (absent for events). */
+  taskStatus: z.string().optional(),
+  /** Task notification: its one-line summary (`Agent "…" finished`). */
+  taskSummary: z.string().optional(),
+});
+
+/** See {@link messageOriginSchema}. */
+export type MessageOrigin = z.infer<typeof messageOriginSchema>;
+
+/**
+ * Exact delivery wrappers Claude Code puts around a message that arrived while
+ * the Agent was working. One rule for both: an exact-match wrapper is stripped
+ * and marks the message mid-turn; if the wording ever changes, the row degrades
+ * to showing the wrapper (or, for an `isMeta` human record, to staying Meta) —
+ * never to a wrong kind.
+ */
+const COORDINATOR_MID_TURN_WRAPPER = "The coordinator sent a message while you were working:\n";
+/** See {@link COORDINATOR_MID_TURN_WRAPPER}. */
+const USER_MID_TURN_WRAPPER = "The user sent a new message while you were working:\n";
+/** The explanation Claude Code appends after a mid-turn user message; cut from here on. */
+const USER_MID_TURN_TRAILER = "\n\nThis is how Claude Code surfaces messages the user sends mid-turn";
+
+/** A user Message's classification, display body and extras. */
+type ClassifiedUserMessage = {
+  kind: MessageKind;
+  text: string | null;
+  origin: MessageOrigin | null;
+};
+
+/**
+ * Classify a user Message by its log `origin` (record-level on a `user`
+ * record, inside the attachment on a `queued_command`) before falling back to
+ * the older rules: `commandMode: task-notification` (origin-less attachments),
+ * then `isMeta`. Never throws: an unknown or malformed origin falls through.
+ */
+function classifyUserMessage(
+  rawOrigin: unknown,
+  isMeta: boolean,
+  text: string | null,
+  commandMode: unknown,
+): ClassifiedUserMessage {
+  const origin = isRecord(rawOrigin) ? rawOrigin : {};
+  switch (origin.kind) {
+    case "human": {
+      if (!isMeta) return { kind: "prompt", text, origin: null };
+      const inner = unwrap(text, USER_MID_TURN_WRAPPER);
+      if (inner === null) return { kind: "meta", text, origin: null };
+      const cut = inner.indexOf(USER_MID_TURN_TRAILER);
+      return { kind: "prompt", text: cut === -1 ? inner : inner.slice(0, cut), origin: { midTurn: true } };
+    }
+    case "plugin":
+      if (origin.asUser === true) {
+        return { kind: "prompt", text, origin: compactOrigin({ plugin: asString(origin.name) }) };
+      }
+      break;
+    case "peer": {
+      const handback = origin.handback === true;
+      const body = (handback ? asString(origin.handbackReportText) : null) ?? asString(origin.body) ?? text;
+      return {
+        kind: "inter-agent",
+        text: body,
+        origin: compactOrigin({
+          senderName: asString(origin.name),
+          senderFrom: asString(origin.from),
+          senderTaskId: asString(origin.senderTaskId),
+          handback: handback || null,
+        }),
+      };
+    }
+    case "coordinator": {
+      const inner = unwrap(text, COORDINATOR_MID_TURN_WRAPPER);
+      return {
+        kind: "inter-agent",
+        text: inner ?? text,
+        origin: compactOrigin({ coordinator: true, midTurn: inner !== null || null }),
+      };
+    }
+    case "task-notification":
+      return parseTaskNotification(text);
+  }
+  if (commandMode === "task-notification") return parseTaskNotification(text);
+  return { kind: isMeta ? "meta" : "prompt", text, origin: null };
+}
+
+/** `text` without its exact leading `wrapper`, or null when it does not start with it. */
+function unwrap(text: string | null, wrapper: string): string | null {
+  return text !== null && text.startsWith(wrapper) ? text.slice(wrapper.length) : null;
+}
+
+/** Drop absent (null/false) extras; null when nothing is left. */
+function compactOrigin(fields: { [K in keyof MessageOrigin]?: MessageOrigin[K] | null }): MessageOrigin | null {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(fields)) {
+    if (value !== null && value !== undefined) out[key] = value;
+  }
+  return Object.keys(out).length > 0 ? (out as MessageOrigin) : null;
+}
+
+/**
+ * Read a Task notification's text (log-format §8): the first
+ * `<task-notification>` block's `task-id`, `status`, `summary`, and `result`
+ * (else a Monitor `event`) as the body, entity-decoded. Text without such a
+ * block — "Background agent … was stopped by the user." — is all summary.
+ */
+function parseTaskNotification(text: string | null): ClassifiedUserMessage {
+  const block = text === null ? undefined : /<task-notification>([\s\S]*?)<\/task-notification>/.exec(text)?.[1];
+  if (block === undefined) {
+    const summary = text?.replace(/<[^>]*>/g, "").trim();
+    return { kind: "task-notification", text: null, origin: compactOrigin({ taskSummary: summary || null }) };
+  }
+  const tag = (name: string): string | null => {
+    const value = new RegExp(`<${name}>([\\s\\S]*?)</${name}>`).exec(block)?.[1]?.trim();
+    return value ? decodeEntities(value) : null;
+  };
+  return {
+    kind: "task-notification",
+    text: tag("result") ?? tag("event"),
+    origin: compactOrigin({
+      taskId: tag("task-id"),
+      taskStatus: tag("status"),
+      taskSummary: tag("summary") ?? (block.replace(/<[^>]*>/g, "").trim() || null),
+    }),
+  };
+}
+
+/** Decode the XML entities Claude Code escapes inside a notification's fields. */
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
 
 /** A normalized message destined for one `message` row. */
 export type ParsedMessage = {
@@ -82,7 +256,10 @@ export type ParsedMessage = {
   role: "user" | "assistant";
   /** User-record classification (see {@link MessageKind}); null for assistant. */
   kind: MessageKind | null;
+  /** The display body: for an Inter-agent message or Task notification, without its wrapper. */
   text: string | null;
+  /** User-Message extras (see {@link MessageOrigin}); null when there are none, and on assistant rows. */
+  origin: MessageOrigin | null;
   /** `tool_use` blocks in this assistant turn (empty for user messages). */
   toolUses: ParsedToolUse[];
   /** Token split — null buckets for user messages (no usage of their own). */
@@ -366,45 +543,20 @@ export function parseSessionLines(lines: Iterable<string>): ParsedSession {
 
     if (type === "user") {
       const toolResult = extractToolResult(record, message.content);
-      // Classify the user record for the transcript: a tool_result carrier, an
-      // isMeta machine-injected record, or a genuine human prompt.
-      let kind: MessageKind;
+      // A tool_result carrier is machinery whatever its origin; every other
+      // user record is classified by origin (see `classifyUserMessage`).
+      let classified: ClassifiedUserMessage;
       if (toolResult !== null) {
-        kind = "tool-result";
+        classified = { kind: "tool-result", text, origin: null };
         toolResults.set(toolResult.toolUseId, toolResult);
         const spawn = extractAgentSpawn(record, toolResult.toolUseId);
         if (spawn !== null) agentSpawns.set(spawn.agentId, spawn);
-      } else if (record.isMeta === true) {
-        kind = "meta";
       } else {
-        kind = "prompt";
-        // A genuine user prompt (not meta, no tool_result) seeds the title fallback.
-        firstUserText ??= text;
+        classified = classifyUserMessage(record.origin, record.isMeta === true, text, undefined);
       }
-      messages.push({
-        messageId: null,
-        uuid: asString(record.uuid),
-        parentUuid: asString(record.parentUuid),
-        role: "user",
-        kind,
-        text,
-        toolUses: [],
-        inputTokens: null,
-        outputTokens: null,
-        cacheCreation5mTokens: null,
-        cacheCreation1hTokens: null,
-        cacheReadTokens: null,
-        model: null,
-        attributionSkill: null,
-        attributionAgent: null,
-        attributionPlugin: null,
-        attributionMcpServer: null,
-        permissionMode: asString(record.permissionMode),
-        isApiError: false,
-        apiErrorMessage: null,
-        effort: null, // a user record has no reasoning effort of its own.
-        timestamp: toEpochMs(record.timestamp),
-      });
+      // Only a Prompt — the human speaking — seeds the title fallback.
+      if (classified.kind === "prompt") firstUserText ??= classified.text;
+      messages.push(userMessage(record, classified, toEpochMs(record.timestamp)));
       continue;
     }
 
@@ -437,6 +589,7 @@ export function parseSessionLines(lines: Iterable<string>): ParsedSession {
       role: "assistant",
       kind: null,
       text,
+      origin: null,
       toolUses: blockToolUses,
       ...usage,
       model: asString(message.model),
@@ -471,6 +624,37 @@ export function parseSessionLines(lines: Iterable<string>): ParsedSession {
     turnDurations,
     agentSpawns,
     malformedLines,
+  };
+}
+
+/** The `message` row of a user Message (a `user` record or a `queued_command` attachment). */
+function userMessage(
+  record: Record<string, unknown>,
+  classified: ClassifiedUserMessage,
+  timestamp: number | null,
+): ParsedMessage {
+  return {
+    messageId: null,
+    uuid: asString(record.uuid),
+    parentUuid: asString(record.parentUuid),
+    role: "user",
+    ...classified,
+    toolUses: [],
+    inputTokens: null,
+    outputTokens: null,
+    cacheCreation5mTokens: null,
+    cacheCreation1hTokens: null,
+    cacheReadTokens: null,
+    model: null,
+    attributionSkill: null,
+    attributionAgent: null,
+    attributionPlugin: null,
+    attributionMcpServer: null,
+    permissionMode: asString(record.permissionMode),
+    isApiError: false,
+    apiErrorMessage: null,
+    effort: null, // a user record has no reasoning effort of its own.
+    timestamp,
   };
 }
 
