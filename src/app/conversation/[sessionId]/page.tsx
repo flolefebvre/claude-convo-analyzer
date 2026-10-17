@@ -54,7 +54,8 @@ type RouteProps = {
 export async function generateMetadata({ params }: { params: Promise<{ sessionId: string }> }): Promise<Metadata> {
   const { sessionId } = await params;
   const row = (await loadConversations()).find((conversation) => conversation.id === sessionId);
-  return { title: row?.title ?? "Untitled conversation" };
+  if (row === undefined) notFound();
+  return { title: row.title ?? "Untitled conversation" };
 }
 
 export default function ConversationPage({ params, searchParams }: RouteProps) {
