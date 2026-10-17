@@ -10,7 +10,10 @@ In order of preference — reach for the next one only when the previous doesn't
    Refresh scan). Actions are queued one at a time per client, which is fine for the main action and wrong
    for anything else.
 3. **API routes** (route handlers) for what runs alongside the main flow — typeahead, polling, client-side
-   reads after the initial render. None exist yet; don't add one while a server component can do the job.
+   reads after the initial render. Add one only for a read no server component can do: one the reader asks
+   for after the page has rendered. The one route, `GET /api/tool-call/[id]`, serves a Tool call's body
+   the first time the reader opens it: the page ships only the summary, because a server component
+   cannot render a body nobody has opened yet.
 
 ## Structure
 
@@ -23,8 +26,9 @@ In order of preference — reach for the next one only when the previous doesn't
   params), not before.
 - Components are server components by default; add `"use client"` only at the leaves that need
   interactivity, not on whole pages.
-- Client components never import `src/core` (ADR-0002) — they receive data from server components or call a
-  server action.
+- Client components never import `src/core` (ADR-0002). They receive data from server components, call a
+  server action, or call a route through `callRoute` and the generated `@/generated/routes` barrel
+  (`pnpm gen`, gitignored, rebuilt by `postinstall`).
 
 ## Loading states
 

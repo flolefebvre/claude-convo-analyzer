@@ -84,15 +84,16 @@ describe("getTranscript core reader", () => {
     expect(ta2?.text).toBe("API Error: Overloaded");
   });
 
-  it("nests the raw tool-call fields under the assistant turn", async () => {
+  it("nests each tool call's summary fields under the assistant turn, but not its result", async () => {
     const view = await getTranscript("sess-transcript", { dbPath: db.dbPath });
     const ta1 = view?.messages[1];
     expect(ta1?.toolCalls).toHaveLength(1);
     const tc = ta1?.toolCalls[0];
+    expect(tc?.id).toEqual(expect.any(Number));
     expect(tc?.name).toBe("Bash");
     expect(tc?.toolUseId).toBe("toolu-t-bash");
     expect(tc?.inputJson).toContain("echo done");
-    expect(tc?.resultText).toContain("done");
+    expect(tc).not.toHaveProperty("resultText");
     expect(tc?.resultTruncated).toBe(false);
     expect(tc?.resultCharSize).toBeGreaterThan(0);
     expect(tc?.isError).toBe(false);

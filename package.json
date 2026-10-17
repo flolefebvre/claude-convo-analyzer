@@ -26,7 +26,8 @@
     "test:changed": "vitest run --changed ${CHECK_BASE:-origin/main}",
     "test:watch": "vitest",
     "prisma:generate": "prisma generate",
-    "postinstall": "prisma generate",
+    "gen": "next-pipe gen",
+    "postinstall": "prisma generate && next-pipe gen",
     "format": "prettier --cache --write .",
     "format:check": "prettier --cache --check ."
   },
