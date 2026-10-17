@@ -39,6 +39,29 @@ pnpm exec playwright-cli -s=<worktree> close
   `pnpm exec playwright-cli install-browser chrome-for-testing` (into the user
   cache, no sudo).
 
+## Run the e2e specs
+
+`pnpm e2e` runs `e2e/*.spec.ts` (`docs/codebase/testing.md`, "End-to-end")
+in headless Chromium. It starts and stops its own seeded app, running
+`pnpm dev:seed` with `PORT` set to `$E2E_PORT` (default `3123`). It never
+reuses a running server: if the port is taken, the run fails. To run two
+worktrees at once, give one of them a different `E2E_PORT`.
+
+- Install the browser once per machine with
+  `pnpm exec playwright install chromium`. This is `@playwright/test`'s
+  Chromium, not the Chrome for Testing that `playwright-cli` uses.
+- A failure writes a trace to the gitignored `test-results/`; open it with
+  `pnpm exec playwright show-trace <path>`.
+- Every `dev:seed` start rebuilds `data/seed/`. An e2e run and a manual
+  `pnpm dev:seed` in the same worktree share that directory, so each start
+  rebuilds it under the other.
+- The lock behind `instant()` and the Navigation Inspector's "Pause on
+  navigations" is the `next-instant-navigation-testing` cookie. Cookies are
+  shared across ports on `localhost`, so in a manual browser with `:3000` and
+  the seeded app both open, a pause in one also freezes navigations in the
+  other. Playwright's specs aren't affected: each one starts in a fresh
+  browser context.
+
 ## The empty state
 
 `pnpm dev:seed` overrides `CCA_DB_PATH`. Once it is stopped, serve the app on

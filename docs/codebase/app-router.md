@@ -25,3 +25,13 @@ In order of preference — reach for the next one only when the previous doesn't
   interactivity, not on whole pages.
 - Client components never import `src/core` (ADR-0002) — they receive data from server components or call a
   server action.
+
+## Loading states
+
+`cacheComponents` and `partialPrefetching` are on, so a default `<Link>` prefetches only the route's static shell; every DB read (behind `connection()` in `src/app/_lib/conversations.ts`) streams in after navigation, behind its Suspense fallback.
+
+- Render the page header, the range picker and every other control in the static shell, outside any `<Suspense>`: a control inside a boundary disappears until the data lands.
+- Give each data region its own `<Suspense>` right around the component that reads the data, with a `Skeleton` (`@/components/ui/skeleton`) fallback sized like the finished content; nest boundaries for a staged reveal. Never `fallback={null}` or a text-only fallback.
+- Default to a focused `<Suspense>`; add a `loading.tsx` only when nothing below the layout can render without data — it wraps the whole page segment, not the segment's own layout.
+- Links that change search params within a page (sort, range, pager, expand, sidebar folder) are `PendingLink`s (`src/app/_components/pending-link.tsx`), which dim `#main` while in flight; links that change route rely on the prefetched shell and its skeletons and need no `PendingLink`.
+- Every route has an `instant()` spec asserting what its shell shows (`docs/codebase/testing.md`, "End-to-end"). Copy its client-navigation test with a section-tab click as the trigger line; `e2e/search.spec.ts` submits the search form only because no link leads to `/search`.
