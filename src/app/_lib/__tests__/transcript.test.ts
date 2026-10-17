@@ -19,6 +19,7 @@ import {
 /** Build a minimal tool call; only `name`/`inputJson` matter for most helpers. */
 function call(partial: Partial<TranscriptToolCall> = {}): TranscriptToolCall {
   return {
+    id: 1,
     toolUseId: "tu_1",
     name: "Bash",
     inputJson: "{}",

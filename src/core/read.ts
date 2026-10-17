@@ -62,6 +62,8 @@ export type ConversationDetail = ConversationSummary & {
 
 /** One `tool_use` block on an assistant turn (raw fields; the app classifies kind). */
 export type TranscriptToolCall = {
+  /** Row id — the key {@link getToolCallBody} reads this call's body by. */
+  id: number;
   /** `tool_use` block id — correlates to a spawned agent's `spawnedByToolUseId`. */
   toolUseId: string | null;
   /** Tool name (`Bash`, `Skill`, `Agent`, …). */
@@ -579,6 +581,39 @@ export async function getTranscript(id: string, opts: TranscriptOptions = {}): P
       ...transcriptPage,
       metaHiddenCount: selected === undefined ? 0 : (metaByAgent.get(selected.id) ?? 0),
     };
+  } finally {
+    // Only a caller-owned (non-default) client is disconnected; the shared
+    // default singleton stays open for the next request.
+    if (owned) await prisma.$disconnect();
+  }
+}
+
+/** A Tool call's body: what its row shows once opened, read on demand by {@link getToolCallBody}. */
+export type ToolCallBody = {
+  /** Full tool input, serialized JSON. */
+  inputJson: string;
+  /** Stored tool result, truncated to ≤10k chars (NULL until paired). */
+  resultText: string | null;
+  resultTruncated: boolean;
+  /** Full (untruncated) result length; NULL until paired. */
+  resultCharSize: number | null;
+  isError: boolean;
+};
+
+/**
+ * Tool-call body read API: the input and stored result of the `tool_call` row
+ * `id` (a {@link TranscriptToolCall}'s `id`), or `null` for an unknown id — a
+ * row id lives only until the next re-parse of its Conversation.
+ *
+ * @example const body = await getToolCallBody(call.id);
+ */
+export async function getToolCallBody(id: number, opts: DetailOptions = {}): Promise<ToolCallBody | null> {
+  const { prisma, owned } = readClient(opts.dbPath);
+  try {
+    return await prisma.toolCall.findUnique({
+      where: { id },
+      select: { inputJson: true, resultText: true, resultTruncated: true, resultCharSize: true, isError: true },
+    });
   } finally {
     // Only a caller-owned (non-default) client is disconnected; the shared
     // default singleton stays open for the next request.
@@ -1285,6 +1320,7 @@ async function toolCallsByMessage(
     where: { messageId: { in: messageIds } },
     orderBy: { id: "asc" },
     select: {
+      id: true,
       messageId: true,
       toolUseId: true,
       name: true,
@@ -1302,6 +1338,7 @@ async function toolCallsByMessage(
       out.set(r.messageId, arr);
     }
     arr.push({
+      id: r.id,
       toolUseId: r.toolUseId,
       name: r.name,
       inputJson: r.inputJson,
