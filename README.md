@@ -128,7 +128,7 @@ from a per-model, per-token-type price list — it's a hypothetical "what these
 tokens would list for on the public API today" figure, not your actual billing.
 
 The domain model and the reasoning behind it are documented in
-[`CONTEXT.md`](CONTEXT.md) and the ADRs under [`docs/adr/`](docs/adr).
+[`GLOSSARY.md`](GLOSSARY.md) and the ADRs under [`docs/adr/`](docs/adr).
 
 ## Roadmap
 
@@ -153,10 +153,13 @@ Have an idea or a friction pattern you'd like surfaced? Open an issue.
 
 ## Development
 
-The validation gate — format check, lint, typecheck, test, build in sequence;
-it passed only if the output ends with `--gate OK--`:
+The validation gate — format check, lint, duplication and typecheck in
+parallel, then test and build in parallel; it passed only if the output ends
+with `--gate OK--`. `pnpm check` is the faster inner loop: the same static
+checks, then only the tests affected since `origin/main` (`--check OK--`):
 
 ```bash
+pnpm check
 pnpm gate
 ```
 

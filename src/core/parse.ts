@@ -9,7 +9,7 @@
 // EXTENSION POINTS:
 //   - `parseSessionLines` is the single dispatch site over record `type`; add new
 //     branches there. The same routine parses a sub-agent transcript (it is the
-//     same per-turn shape — CONTEXT.md), so refresh reuses it directly for subs.
+//     same per-turn shape — GLOSSARY.md), so refresh reuses it directly for subs.
 //   - `extractText` / `extractToolUseBlocks` decode the `content` union once.
 //   - `ParsedMessage` already carries `uuid`/`parentUuid` so Slice 4 can build the
 //     message-uuid index for continued-from resolution.
