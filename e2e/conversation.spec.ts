@@ -65,5 +65,12 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
   test("renders the not-found page for an unknown session id", async ({ page }) => {
     await page.goto("/conversation/no-such-session");
     await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
+    await expect(page).toHaveTitle("Not found · Claude Conversation Analyzer");
+  });
+
+  test("renders the not-found page for an unknown URL", async ({ page }) => {
+    await page.goto("/nothing-here");
+    await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
+    await expect(page).toHaveTitle("Not found · Claude Conversation Analyzer");
   });
 });
