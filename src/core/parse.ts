@@ -120,7 +120,9 @@ export type MessageOrigin = z.infer<typeof messageOriginSchema>;
 
 /**
  * Exact delivery wrappers Claude Code puts around a message that arrived while
- * the Agent was working. One rule for both: an exact-match wrapper is stripped
+ * the Agent was working, in a `user` record's text — the rule is for `user`
+ * records only (a `queued_command` keeps its wrapper in `rendered`, outside
+ * `prompt`). One rule for both: an exact-match wrapper is stripped
  * and marks the message mid-turn; if the wording ever changes, the row degrades
  * to showing the wrapper (or, for an `isMeta` human record, to staying Meta) —
  * never to a wrong kind.
@@ -652,7 +654,11 @@ function parseQueuedCommand(record: Record<string, unknown>): { message: ParsedM
   if (!isRecord(attachment) || attachment.type !== "queued_command") return null;
   const text = extractText(attachment.prompt);
   if (text === null) return null;
-  const classified = classifyUserMessage(attachment.origin, attachment.isMeta === true, text, attachment.commandMode);
+  // A human-origin attachment is a Prompt whatever its `isMeta`: the mid-turn
+  // wrapper lives in the record's `rendered`, and `prompt` is the bare text.
+  const human = isRecord(attachment.origin) && attachment.origin.kind === "human";
+  const isMeta = attachment.isMeta === true && !human;
+  const classified = classifyUserMessage(attachment.origin, isMeta, text, attachment.commandMode);
   if (classified.kind === "prompt" || classified.kind === "inter-agent") {
     classified.origin = { ...classified.origin, midTurn: true };
   }

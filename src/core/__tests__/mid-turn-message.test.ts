@@ -57,6 +57,13 @@ describe("Mid-turn message parsing", () => {
     expect(m.timestamp).toBe(Date.parse("2026-07-01T10:00:40.000Z"));
   });
 
+  it("a prompt typed into a running sub-agent is a Prompt, whatever its isMeta flag", () => {
+    const m = messageByUuid(sub, "c3");
+    expect(m.kind).toBe("prompt");
+    expect(m.text).toBe("continue");
+    expect(m.origin).toEqual({ midTurn: true });
+  });
+
   it("classifies an origin-less queued_command by its task-notification command mode, unflagged", () => {
     const m = messageByUuid(main, "q4");
     expect(m.kind).toBe("task-notification");

@@ -257,6 +257,10 @@ is working is logged as an `attachment` record:
   attachments have no `origin`; their `commandMode` tells a Task notification.
 - It is classified like a `user` record, timestamped from the attachment (else
   the record), and — for a Prompt or Inter-agent message — flagged mid-turn.
+  One difference: a `human` origin is a Prompt even with `isMeta: true` (seen
+  on prompts typed into a running Sub-agent). The mid-turn wrapper lives in
+  the record's `rendered`, never in `prompt`, so the exact-wrapper rule above
+  is for `user` records only.
 - **Duplicates.** One message delivered both as an attachment and as a `user`
   record was expected, but none were found in Oct 2026 logs: no attachment's
   `source_uuid` matches a record `uuid`, and no attachment repeats a record's

@@ -78,7 +78,10 @@ export function TranscriptMessageRow({
     );
   }
   if (message.role === "user") {
-    return <PromptRow message={message} time={time} anchor={anchor} author={promptAuthor} />;
+    // A Prompt sent while the agent was working is the person's, even in a
+    // sub-agent's transcript, where the other prompts come from its parent.
+    const author = message.origin?.midTurn ? null : promptAuthor;
+    return <PromptRow message={message} time={time} anchor={anchor} author={author} />;
   }
   return (
     <AssistantTurn
