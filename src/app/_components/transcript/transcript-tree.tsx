@@ -9,35 +9,48 @@ import { AgentName, CostFigure, ErrorBadge, agentLabelText } from "./transcript-
 import { TreeNodeLink } from "./tree-node-link";
 
 /**
- * The always-visible left pane: the conversation header (title + back-link to
- * the list + session id), the lineage-nested agent tree, and the grand-total
- * footer. Each node links to its own transcript (`?agent=`); the selected node
- * carries `aria-current="page"`. Even a solo conversation shows its single main
- * node. Same-named siblings carry their spawn ordinal ("Plan #2").
+ * The way back to the list view this transcript was opened from: the agent
+ * tree's first row, above the conversation header.
+ *
+ * @example <BackLink href={resolveListReturn(from).href} />
+ */
+export function BackLink({ href }: { href: string }) {
+  return (
+    <Link className="back-link" href={href}>
+      <ArrowLeft aria-hidden className="size-3.5" />
+      All conversations
+    </Link>
+  );
+}
+
+/**
+ * The agent tree below the back link: the conversation header (title + session
+ * id), the lineage-nested agent nodes, and the grand-total footer. Each node
+ * links to its own transcript (`?agent=`); the selected node carries
+ * `aria-current="page"`. Even a solo conversation shows its single main node.
+ * Same-named siblings carry their spawn ordinal ("Plan #2"). Renders inside the
+ * route's `<aside>`.
+ *
+ * @example <TranscriptTree view={view} labels={agentLabels(view.tree)} lowerBound={false} listReturn={undefined} />
  */
 export function TranscriptTree({
   view,
   labels,
   lowerBound,
-  back = { href: "/", from: undefined },
+  listReturn,
 }: {
   view: TranscriptView;
   /** Every agent's display name, from `agentLabels(view.tree)`. */
   labels: Map<string, AgentLabel>;
   /** True when some agent has unpriced usage: the total is then a lower bound. */
   lowerBound: boolean;
-  /** The way back to the list view this transcript was opened from
-   *  (`resolveListReturn`): the back link's `href`, and the `from` the agent
-   *  links carry on. */
-  back?: { href: string; from: string | undefined };
+  /** The list view this transcript was opened from (`?from=`), carried on
+   *  every agent link. */
+  listReturn: string | undefined;
 }) {
   return (
-    <aside className="tree" aria-label="Agent tree">
+    <>
       <div className="tree-header">
-        <Link className="back-link" href={back.href}>
-          <ArrowLeft aria-hidden className="size-3.5" />
-          All conversations
-        </Link>
         {/* The page's h1 is in the pane (<main>); here the title is a label. */}
         <p className="conv-title">{view.title ?? "Untitled conversation"}</p>
         <div className="conv-meta" title="Session id">
@@ -48,7 +61,7 @@ export function TranscriptTree({
         Agents
       </div>
       <nav className="tree-nodes" aria-labelledby="tree-caption">
-        <TreeNode node={view.tree} depth={0} view={view} labels={labels} listReturn={back.from} />
+        <TreeNode node={view.tree} depth={0} view={view} labels={labels} listReturn={listReturn} />
       </nav>
       <div className="tree-total">
         <div className="tree-total-row">
@@ -62,7 +75,7 @@ export function TranscriptTree({
           </p>
         )}
       </div>
-    </aside>
+    </>
   );
 }
 

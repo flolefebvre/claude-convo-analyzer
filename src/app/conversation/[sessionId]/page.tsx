@@ -6,15 +6,14 @@
 //
 // This route sits OUTSIDE the `(shell)` route group, so it is NOT wrapped in the
 // folder sidebar — below the shared app bar it brings its own full-bleed
-// two-pane frame instead (see `TranscriptTree`).
+// two-pane frame instead.
 //
-// An unknown session id is a real 404: the page checks the id BEFORE any
-// <Suspense> boundary, so `notFound()` runs before the response starts
-// streaming and the status can still be set (Next local docs: loading.md
-// "Status Codes"). That check blocks the route on purpose — hence
-// `instant = false` — and costs one read of the conversation summaries, which
-// the family banner needs anyway (React `cache()`). Only the transcript itself
-// streams in behind the fallback.
+// The frame (the `<aside>` and `<main>` landmarks) reads nothing, so it is the
+// static shell; `params` and `searchParams` are only awaited inside the
+// <Suspense> boundaries, which stream in behind their skeletons: the back link
+// (it reads only `?from=`), the agent tree, and the transcript pane. The two
+// data regions share one cached `loadTranscript` read, and either one turns an
+// unknown session id into the not-found page.
 //
 // A Tools-page drill-down can deep-link into ONE tool call here
 // (`?agent=<id>&call=<toolUseId>#call-<toolUseId>`): `?call=` opens and
@@ -28,11 +27,13 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
+import { LoadingRegion } from "@/app/_components/loading-region";
 import { TranscriptPane } from "@/app/_components/transcript/transcript-pane";
-import { TranscriptTree } from "@/app/_components/transcript/transcript-tree";
+import { BackLink, TranscriptTree } from "@/app/_components/transcript/transcript-tree";
 import { loadConversations, loadFamily, loadTranscript } from "@/app/_lib/conversations";
 import { agentLabels, hasUnpricedAgent } from "@/app/_lib/transcript";
 import { resolveAgent, resolveCall, resolveListReturn, resolveMessage } from "@/app/_lib/transcript-url";
+import { Skeleton } from "@/components/ui/skeleton";
 
 /** The route's URL view-state: which agent, which anchored call/message, and
  *  the list view it was opened from. */
@@ -43,8 +44,11 @@ type TranscriptSearchParams = {
   from?: string | string[];
 };
 
-/** The route blocks on its existence check (see the header note). */
-export const instant = false;
+/** The route inputs, as Next hands them over. */
+type RouteProps = {
+  params: Promise<{ sessionId: string }>;
+  searchParams: Promise<TranscriptSearchParams>;
+};
 
 /** The tab title is the conversation's own title. */
 export async function generateMetadata({ params }: { params: Promise<{ sessionId: string }> }): Promise<Metadata> {
@@ -53,75 +57,129 @@ export async function generateMetadata({ params }: { params: Promise<{ sessionId
   return { title: row?.title ?? "Untitled conversation" };
 }
 
-export default async function ConversationPage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ sessionId: string }>;
-  searchParams: Promise<TranscriptSearchParams>;
-}) {
-  const { sessionId } = await params;
-  // Every known session has a family (a standalone one is a family of one).
-  if ((await loadFamily(sessionId)) === null) notFound();
-
-  return (
-    <Suspense fallback={<TranscriptLoading />}>
-      <TranscriptRoute params={params} searchParams={searchParams} />
-    </Suspense>
-  );
-}
-
-/**
- * Awaits the route inputs and the transcript, then renders the two panes. Split
- * out from {@link ConversationPage} so the transcript read streams in behind the
- * page's <Suspense> boundary.
- */
-async function TranscriptRoute({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ sessionId: string }>;
-  searchParams: Promise<TranscriptSearchParams>;
-}) {
-  const { sessionId } = await params;
-  const { agent, call, msg, from } = await searchParams;
-
-  const view = await loadTranscript(sessionId, resolveAgent(agent));
-  if (view === null) notFound();
-
-  // The continuation lineage of this session (issue #46): the pane shows its
-  // DIRECT parent/continuations as a banner. Standalone sessions get `size === 1`
-  // and no banner at all.
-  const family = await loadFamily(sessionId);
-  // Both panes name agents the same way ("Plan #2" when siblings share a type).
-  const labels = agentLabels(view.tree);
-  // A transcript opened from the list carries that list view (`?from=`): the
-  // back link restores it, and every link to another transcript passes it on.
-  const back = resolveListReturn(from);
-
-  // `?call=` is how a Tools-page drill-down points at ONE tool call: the pane
-  // renders it open and highlighted, and the matching `#call-<id>` fragment
-  // scrolls to it. Server-side, because a fragment never reaches the server.
+export default function ConversationPage({ params, searchParams }: RouteProps) {
   return (
     <div className="tview">
-      <TranscriptTree view={view} labels={labels} lowerBound={hasUnpricedAgent(view.tree)} back={back} />
-      <TranscriptPane
-        view={view}
-        labels={labels}
-        family={family}
-        anchoredCall={resolveCall(call)}
-        anchoredMessage={resolveMessage(msg)}
-        listReturn={back.from}
-      />
+      <aside className="tree" aria-label="Agent tree">
+        <div className="tree-back">
+          <Suspense fallback={<BackLinkFallback />}>
+            <TranscriptBackLink searchParams={searchParams} />
+          </Suspense>
+        </div>
+        <Suspense fallback={<TreeFallback />}>
+          <TreeRegion params={params} searchParams={searchParams} />
+        </Suspense>
+      </aside>
+      <main id="main" tabIndex={-1} className="pane">
+        <Suspense fallback={<PaneFallback />}>
+          <PaneRegion params={params} searchParams={searchParams} />
+        </Suspense>
+      </main>
     </div>
   );
 }
 
-/** The shell-only fallback while the transcript read streams in. */
-function TranscriptLoading() {
+/**
+ * Awaits the route inputs and the selected agent's transcript; an unknown
+ * session is the not-found page. `loadTranscript` is `cache()`d, so the tree and
+ * the pane share one read.
+ */
+async function readRoute({ params, searchParams }: RouteProps) {
+  const { sessionId } = await params;
+  const { agent, call, msg, from } = await searchParams;
+  const view = await loadTranscript(sessionId, resolveAgent(agent));
+  if (view === null) notFound();
+  // Both panes name agents the same way ("Plan #2" when siblings share a type).
+  const labels = agentLabels(view.tree);
+  // A transcript opened from the list carries that list view (`?from=`): every
+  // link to another transcript passes it on.
+  return { view, labels, call, msg, listReturn: resolveListReturn(from).from };
+}
+
+/** The back link restores the list view the transcript was opened from (`?from=`). */
+async function TranscriptBackLink({ searchParams }: Pick<RouteProps, "searchParams">) {
+  const { from } = await searchParams;
+  return <BackLink href={resolveListReturn(from).href} />;
+}
+
+async function TreeRegion(props: RouteProps) {
+  const { view, labels, listReturn } = await readRoute(props);
   return (
-    <main id="main" tabIndex={-1} className="tview-empty">
-      <p className="text-sm text-muted-foreground">Loading transcript…</p>
-    </main>
+    <TranscriptTree view={view} labels={labels} lowerBound={hasUnpricedAgent(view.tree)} listReturn={listReturn} />
+  );
+}
+
+async function PaneRegion(props: RouteProps) {
+  const { view, labels, call, msg, listReturn } = await readRoute(props);
+  // The continuation lineage of this session (issue #46): the pane shows its
+  // DIRECT parent/continuations as a banner. Standalone sessions get `size === 1`
+  // and no banner at all.
+  const family = await loadFamily(view.sessionId);
+  // `?call=` is how a Tools-page drill-down points at ONE tool call: the pane
+  // renders it open and highlighted, and the matching `#call-<id>` fragment
+  // scrolls to it. Server-side, because a fragment never reaches the server.
+  return (
+    <TranscriptPane
+      view={view}
+      labels={labels}
+      family={family}
+      anchoredCall={resolveCall(call)}
+      anchoredMessage={resolveMessage(msg)}
+      listReturn={listReturn}
+    />
+  );
+}
+
+/** The back link's skeleton, the size of the link. */
+function BackLinkFallback() {
+  return (
+    <LoadingRegion label="Loading back link">
+      <Skeleton className="h-3.5 w-30" />
+    </LoadingRegion>
+  );
+}
+
+/** The agent tree's skeleton: the conversation header, a few nodes, the total. */
+function TreeFallback() {
+  return (
+    <LoadingRegion label="Loading agent tree">
+      <div className="tree-header">
+        <Skeleton className="mb-1.5 h-5 w-48" />
+        <Skeleton className="h-4 w-40" />
+      </div>
+      <div className="tree-caption">
+        <Skeleton className="h-4 w-12" />
+      </div>
+      <div className="tree-nodes">
+        {[0, 1, 1].map((depth, index) => (
+          <Skeleton key={index} className="h-8" style={{ marginLeft: depth * 16 }} />
+        ))}
+      </div>
+      <div className="tree-total">
+        <Skeleton className="h-5" />
+      </div>
+    </LoadingRegion>
+  );
+}
+
+/** The transcript pane's skeleton: the sticky header strip, then a few messages. */
+function PaneFallback() {
+  return (
+    <LoadingRegion label="Loading transcript">
+      <div className="pane-header">
+        <div className="pane-header-inner">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="ml-auto h-4 w-56" />
+        </div>
+      </div>
+      <div className="transcript">
+        {["h-10", "h-24", "h-10", "h-32"].map((height, index) => (
+          <div key={index}>
+            <Skeleton className="mb-1 h-4 w-40" />
+            <Skeleton className={height} />
+          </div>
+        ))}
+      </div>
+    </LoadingRegion>
   );
 }

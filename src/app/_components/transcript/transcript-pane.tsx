@@ -15,8 +15,8 @@ import { AgentName, CostFigure, agentLabelText } from "./transcript-parts";
  * The right pane: the selected agent's transcript, topped by a sticky header
  * with the lineage breadcrumb (root → selected; ancestors are links) and the
  * turn/tool/model/cost stats; search and Refresh live in the app bar above.
- * The pane is the page's <main>, headed by the conversation title (visually
- * the agent tree shows it). Header, banner and transcript share one centred
+ * It renders inside the route's <main>, headed by the conversation title
+ * (visually the agent tree shows it). Header, banner and transcript share one centred
  * column. Below the header the agent's messages render in order, with a
  * trailing "N meta records hidden" divider when the reader dropped meta rows
  * for this agent. On the main agent of a conversation that belongs to a
@@ -64,7 +64,7 @@ export function TranscriptPane({
   const effortLabel = effort.mixed ? "mixed" : effort.uniform;
 
   return (
-    <main id="main" tabIndex={-1} className="pane">
+    <>
       <h1 className="sr-only">{view.title ?? "Untitled conversation"}</h1>
       <div className="pane-header">
         <div className="pane-header-inner">
@@ -139,6 +139,6 @@ export function TranscriptPane({
           </div>
         )}
       </div>
-    </main>
+    </>
   );
 }
