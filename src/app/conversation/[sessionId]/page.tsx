@@ -13,7 +13,8 @@
 // <Suspense> boundaries, which stream in behind their skeletons: the back link
 // (it reads only `?from=`), the agent tree, and the transcript pane. The two
 // data regions share one cached `loadTranscript` read, and either one turns an
-// unknown session id into the not-found page.
+// unknown session id into the not-found page; `generateMetadata` does too, so
+// such a page never carries a conversation's title.
 //
 // A Tools-page drill-down can deep-link into ONE tool call here
 // (`?agent=<id>&call=<toolUseId>#call-<toolUseId>`): `?call=` opens and
