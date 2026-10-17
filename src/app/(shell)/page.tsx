@@ -124,16 +124,17 @@ function ConversationTableFallback() {
   return (
     <LoadingRegion label="Loading conversations">
       <div className="mb-3 flex h-8 items-center justify-end gap-3">
-        <Skeleton className="h-8 w-36" />
+        <Skeleton className="h-8 w-28" />
+        <Skeleton className="h-8 w-32" />
       </div>
       <div className="@container overflow-hidden rounded-xl border bg-card">
-        <div className="flex h-10 items-center gap-4 border-b bg-muted/30 px-4">
+        <div className="flex h-[41px] items-center gap-4 border-b bg-muted/30 px-4">
           <Skeleton className="h-3.5 w-6 @xl:w-12" />
           <Skeleton className="h-3.5 w-12" />
           <Skeleton className="ml-auto h-3.5 w-10" />
         </div>
         {Array.from({ length: SKELETON_ROWS }, (_, index) => (
-          <div key={index} className="flex h-10 items-center gap-4 border-b px-4 last:border-0">
+          <div key={index} className="flex h-[41px] items-center gap-4 border-b px-4 last:border-0">
             <Skeleton className="size-5 shrink-0 @xl:w-24" />
             <Skeleton className="h-3.5 flex-1" />
             <Skeleton className="hidden h-3.5 w-16 @xl:block" />
