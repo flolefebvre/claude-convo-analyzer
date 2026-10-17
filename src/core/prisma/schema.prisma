@@ -110,13 +110,19 @@ model Message {
   uuid      String? @map("uuid")
   /// `user` | `assistant`.
   role      String
-  /// USER-record classification for the transcript view: `prompt` (genuine
-  /// human prompt) | `tool-result` (a tool_result carrier) | `meta`
-  /// (machine-injected: skill instructions, command output, system reminders).
-  /// NULL on assistant rows — they carry no meaningful kind. The transcript
-  /// renders assistant rows plus user rows WHERE kind = 'prompt'.
+  /// User Message kind (GLOSSARY.md, Message): `prompt` | `inter-agent` |
+  /// `task-notification` | `tool-result` | `meta`. A free string, the single
+  /// discriminator. NULL on assistant rows — they carry no meaningful kind. The
+  /// transcript renders assistant rows plus user rows of the first three kinds.
   kind      String?
+  /// The display body. For an Inter-agent message, the message without its
+  /// delivery wrapper; for a Task notification, its `result` (or `event`).
   text      String?
+  /// The user Message's extras as JSON — sender, hand-back, plugin, mid-turn,
+  /// notification task id/status/summary — in the normalized shape of
+  /// `messageOriginSchema` (`src/core/parse.ts`), not the raw log `origin`.
+  /// Validated when read; NULL when there are none and on assistant rows.
+  origin    String?
 
   /// Token split — NULL for user messages (no usage of their own).
   inputTokens          Int? @map("input_tokens")

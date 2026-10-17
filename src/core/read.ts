@@ -10,6 +10,7 @@
 import { type CostByType, priceSplitByType, resolveModel, type TokenSplit, type Tokens } from "@/core/cost";
 import { readClient } from "@/core/db";
 import { addLocalDays, localDayKey, startOfLocalDay } from "@/core/local-day";
+import { type MessageOrigin, messageOriginSchema } from "@/core/parse";
 import type { PrismaClient } from "@/core/prisma/generated/client";
 
 export type ConversationSummary = {
@@ -75,6 +76,17 @@ export type TranscriptToolCall = {
   isError: boolean;
 };
 
+/**
+ * A user Message's extras ({@link MessageOrigin}) plus the agents they point
+ * at, resolved to `?agent=` keys of this conversation's tree.
+ */
+export type TranscriptMessageOrigin = MessageOrigin & {
+  /** Sender's tree key: the Sub-agent named by `senderTaskId`, or the parent agent for a coordinator message. */
+  senderAgentId: string | null;
+  /** Tree key of the Sub-agent a Task notification is about (its `taskId`); null for other tasks. */
+  taskAgentId: string | null;
+};
+
 /** One rendered message of a single agent's transcript. */
 export type TranscriptMessage = {
   /** `message` row id — stable per message; a spawn's `spawnedByMessageId` points here. */
@@ -88,9 +100,15 @@ export type TranscriptMessage = {
   uuid: string | null;
   /** `user` | `assistant`. */
   role: string;
-  /** `prompt` on rendered user rows (tool-result/meta are filtered out); null on assistant. */
+  /**
+   * On user rows `prompt`, `inter-agent` or `task-notification` (tool-result
+   * and meta are filtered out); null on assistant.
+   */
   kind: string | null;
+  /** The display body (an Inter-agent message without its wrapper, a Task notification's result). */
   text: string | null;
+  /** The user row's extras with their agent links resolved; null when none (or unreadable). */
+  origin: TranscriptMessageOrigin | null;
   model: string | null;
   /**
    * Reasoning effort of this assistant turn, verbatim (`high`, `xhigh`, …).
@@ -516,7 +534,7 @@ export async function getTranscript(id: string, opts: TranscriptOptions = {}): P
     const selected =
       (opts.agentId === undefined ? undefined : agents.find((a) => agentKey(a) === opts.agentId)) ?? mainAgent;
 
-    const messages = selected === undefined ? [] : await readAgentTranscript(prisma, selected.id);
+    const messages = selected === undefined ? [] : await readAgentTranscript(prisma, selected, agents);
 
     return {
       sessionId: convo.sessionId,
@@ -936,16 +954,24 @@ function emptyMainNode(): TranscriptAgentNode {
   };
 }
 
+/** The user Message kinds a transcript renders (tool-result carriers and meta are hidden). */
+const RENDERED_USER_KINDS = ["prompt", "inter-agent", "task-notification"];
+
 /**
- * Read one agent's rendered transcript: assistant turns + user rows WHERE
- * `kind = 'prompt'` (tool-result & meta excluded), in timestamp/id order, each
- * assistant turn carrying its per-turn cost and nested tool calls.
+ * Read one agent's rendered transcript: assistant turns + user rows of the
+ * {@link RENDERED_USER_KINDS}, in timestamp/id order, each assistant turn
+ * carrying its per-turn cost and nested tool calls, each user row its extras
+ * with their agent links resolved against `agents`.
  */
-async function readAgentTranscript(prisma: PrismaClient, agentId: number): Promise<TranscriptMessage[]> {
+async function readAgentTranscript(
+  prisma: PrismaClient,
+  agent: AgentRow,
+  agents: AgentRow[],
+): Promise<TranscriptMessage[]> {
   const rows = await prisma.message.findMany({
     where: {
-      agentId,
-      OR: [{ role: "assistant" }, { role: "user", kind: "prompt" }],
+      agentId: agent.id,
+      OR: [{ role: "assistant" }, { role: "user", kind: { in: RENDERED_USER_KINDS } }],
     },
     orderBy: [{ timestamp: "asc" }, { id: "asc" }],
     select: {
@@ -954,6 +980,7 @@ async function readAgentTranscript(prisma: PrismaClient, agentId: number): Promi
       role: true,
       kind: true,
       text: true,
+      origin: true,
       model: true,
       effort: true,
       inputTokens: true,
@@ -972,14 +999,31 @@ async function readAgentTranscript(prisma: PrismaClient, agentId: number): Promi
     rows.map((r) => r.id),
   );
 
+  // A Sub-agent's agent id is its external id, so `senderTaskId`/`taskId`
+  // resolve against it; a coordinator is the agent that spawned this one.
+  const keyByExternalId = new Map<string, string>();
+  for (const a of agents) if (a.externalAgentId !== null) keyByExternalId.set(a.externalAgentId, agentKey(a));
+  const parent = agents.find((a) => a.id === agent.parentAgentId);
+  const resolve = (origin: MessageOrigin): TranscriptMessageOrigin => ({
+    ...origin,
+    senderAgentId: origin.coordinator
+      ? parent === undefined
+        ? null
+        : agentKey(parent)
+      : ((origin.senderTaskId === undefined ? undefined : keyByExternalId.get(origin.senderTaskId)) ?? null),
+    taskAgentId: (origin.taskId === undefined ? undefined : keyByExternalId.get(origin.taskId)) ?? null,
+  });
+
   return rows.map((r) => {
     const turn = priceTurn(r);
+    const origin = readOrigin(r.origin);
     return {
       id: r.id,
       uuid: r.uuid,
       role: r.role,
       kind: r.kind,
       text: r.text,
+      origin: origin === null ? null : resolve(origin),
       model: r.model,
       effort: r.effort,
       tokens: turn.tokens,
@@ -991,6 +1035,23 @@ async function readAgentTranscript(prisma: PrismaClient, agentId: number): Promi
       toolCalls: toolCallsByMsg.get(r.id) ?? [],
     };
   });
+}
+
+/**
+ * A stored `message.origin`, validated against {@link messageOriginSchema}.
+ * Null when absent, not JSON, or not of that shape — the row then renders
+ * without its extras; reading never throws.
+ */
+function readOrigin(stored: string | null): MessageOrigin | null {
+  if (stored === null) return null;
+  let json: unknown;
+  try {
+    json = JSON.parse(stored);
+  } catch {
+    return null;
+  }
+  const parsed = messageOriginSchema.safeParse(json);
+  return parsed.success ? parsed.data : null;
 }
 
 /** One assistant turn's row shape for per-turn pricing. */

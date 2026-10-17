@@ -1,0 +1,11 @@
+-- A user Message's extras (issue #96): who sent an Inter-agent message, whether
+-- it is a hand-back, which plugin inserted a Prompt, whether it arrived while
+-- the Agent was working, and a Task notification's task id, status and
+-- summary. One JSON value in the normalized shape of `messageOriginSchema`
+-- (`src/core/parse.ts`) — not the raw log `origin` — because nothing queries
+-- inside it and the log format keeps evolving; it is validated when read. NULL
+-- when a message has none, and on assistant rows.
+--
+-- Backfill of already-ingested conversations is handled by the PARSER_VERSION
+-- bump in `src/core/refresh.ts`, not by touching rows here.
+ALTER TABLE "message" ADD COLUMN "origin" TEXT;

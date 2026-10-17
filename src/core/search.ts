@@ -8,8 +8,9 @@
 // relevance-picked extracts to recognize it by. Relevance (bm25) only decides
 // WHICH extracts a result shows — never which results you get, nor their order.
 //
-// The corpus is "what was said": human prompts, assistant text, and titles. The
-// index itself enforces that (see the migration); nothing here re-filters.
+// The corpus is "what was said": Prompts, Inter-agent messages, assistant text,
+// and titles — never Task notifications. The index itself enforces that (see
+// the migrations); nothing here re-filters.
 //
 // QUERY SAFETY: the raw string a human typed is NEVER handed to FTS5. FTS5's
 // MATCH grammar has operators (`NEAR`, `OR`, `*`, `^`, `:`, parentheses) that
