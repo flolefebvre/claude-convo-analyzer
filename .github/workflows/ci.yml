@@ -87,11 +87,37 @@ jobs:
       - name: Build
         run: pnpm build
 
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      # Starts the seeded app itself (playwright.config.ts).
+      - name: E2E
+        run: pnpm e2e
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
   # The one check to require in a branch ruleset: keep this job's name. A skipped required check
   # counts as passing, so this job runs whatever the others did and fails unless every one succeeded.
   ci:
     if: ${{ !cancelled() }}
-    needs: [static, test, build]
+    needs: [static, test, build, e2e]
     runs-on: ubuntu-latest
     timeout-minutes: 5
 

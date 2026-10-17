@@ -18,6 +18,31 @@ This project uses TDD. The rules that matter here:
 - Tests of `scripts/` live beside the script they test, as `*.test.ts`
   (e.g. `scripts/seed/seed.test.ts`).
 
+## End-to-end
+
+- Every route gets an `instant()` spec in `e2e/<route>.spec.ts` (Playwright, with
+  `instant` from `@next/playwright`). It asserts what the route's static shell
+  shows. A route ticket begins with that spec failing.
+- Inside the `instant()` scope, assert three things: the shell content is
+  visible (the page header, the controls), the Suspense fallback is visible,
+  and the streamed data has count 0. After the scope, assert that the data
+  appears. `e2e/search.spec.ts` is the pattern to copy.
+- Cover both entry points: an initial load (`page.goto` inside the scope,
+  passing `{ baseURL }` to `instant()`), and a client navigation that clicks a
+  real link, then `waitForURL` before any assertion.
+- Prove the spec can fail once: move the asserted element inside the boundary,
+  watch it fail on that element, then revert.
+- Query the seeded data (`scripts/seed/fake-logs.ts`) with role and text
+  locators. Don't add test ids.
+- The specs run against a production build (`pnpm e2e:server`), because `next dev`
+  doesn't prefetch. A dev `instant()` GREEN on a client navigation is not
+  evidence that the prefetched shell commits.
+- While you work on a route's loading states, use the dev overlay's
+  blocking-route insight and the Navigation Inspector (Next.js DevTools, "Pause
+  on navigations") as the inner loop. `pnpm e2e` is the check.
+- `pnpm e2e` is the last stage of `pnpm gate` and its own CI job. `pnpm check`
+  leaves it out to stay fast. Running it is covered in `docs/codebase/ui-checks.md`.
+
 ## Fixtures
 
 The parser is pure-ish over JSONL, so tests run against small, sanitized

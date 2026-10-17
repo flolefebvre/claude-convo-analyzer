@@ -419,8 +419,16 @@ html:has(.tview) {
     max-height: 100dvh;
   }
 }
+/* The back link's row is fixed-height, so the header never shifts when the
+   link replaces its skeleton. */
+.tview .tree-back {
+  display: flex;
+  align-items: center;
+  height: 1rem;
+  margin: 16px 16px 10px;
+}
 .tview .tree-header {
-  padding: 16px 16px 12px;
+  padding: 0 16px 12px;
   border-bottom: 1px solid var(--border);
 }
 .tview .back-link {
@@ -428,9 +436,9 @@ html:has(.tview) {
   align-items: center;
   gap: 6px;
   font-size: var(--text-xs);
+  line-height: 1rem;
   color: var(--muted-foreground);
   text-decoration: none;
-  margin-bottom: 10px;
   border-radius: 4px;
 }
 .tview .back-link:hover {
@@ -1152,18 +1160,6 @@ html:has(.tview) {
   content: "";
   flex: 1;
   border-top: 1px dashed var(--border);
-}
-
-/* ---- Empty / not-found state ---- */
-.tview-empty {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 32px;
-  text-align: center;
 }
 
 /* Phones: the tree stacks above the transcript and scrolls with the page. */

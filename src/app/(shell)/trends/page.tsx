@@ -10,7 +10,8 @@
 // component here is the chart leaf, which receives plain serializable props.
 //
 // `cacheComponents` (PPR) is on, so the request-time `searchParams` read is
-// wrapped in <Suspense>: the page shell prerenders, the chart streams in.
+// wrapped in <Suspense>: the header prerenders, the range picker and the chart
+// stream in behind their skeletons.
 
 import { ChartNoAxesColumn } from "lucide-react";
 import type { Metadata } from "next";
@@ -18,10 +19,11 @@ import { Suspense } from "react";
 
 import { CostBar } from "@/app/_components/cost-bar";
 import { EmptyState, EmptyStateLink } from "@/app/_components/empty-state";
+import { LoadingRegion } from "@/app/_components/loading-region";
 import { PageHeader } from "@/app/_components/page-header";
-import { RangePicker } from "@/app/_components/range-picker";
+import { RangePicker, RangePickerFallback } from "@/app/_components/range-picker";
 import { RefreshButton } from "@/app/_components/refresh-button";
-import { Stat, StatStrip } from "@/app/_components/stat-strip";
+import { Stat, StatSkeleton, StatStrip } from "@/app/_components/stat-strip";
 import { TrendsChart } from "@/app/_components/trends-chart";
 import { loadDailySpend } from "@/app/_lib/conversations";
 import {
@@ -34,14 +36,83 @@ import {
 import { type RangeKey, rangeDays, rangeHref, rangePhrase, resolveRange } from "@/app/_lib/range";
 import { type ViewSearchParams, firstParam } from "@/app/_lib/search-params";
 import { type TrendsView, buildTrendsView } from "@/app/_lib/trends";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export const metadata: Metadata = { title: "Trends" };
 
 export default function Page({ searchParams }: { searchParams: Promise<ViewSearchParams> }) {
   return (
-    <Suspense fallback={<p className="text-sm text-muted-foreground">Loading trends…</p>}>
-      <TrendsSurface searchParams={searchParams} />
-    </Suspense>
+    <div className="flex flex-col gap-5">
+      {/* The header is static; the range picker builds its hrefs from the URL,
+          so it streams in its own boundary, ahead of the data. */}
+      <PageHeader title="Trends" description="What Claude Code cost per day, split by model.">
+        <Suspense fallback={<RangePickerFallback />}>
+          <TrendsRangePicker searchParams={searchParams} />
+        </Suspense>
+      </PageHeader>
+      <Suspense fallback={<TrendsFallback />}>
+        <TrendsSurface searchParams={searchParams} />
+      </Suspense>
+    </div>
+  );
+}
+
+/**
+ * URL → resolved intent at the page edge; the seam takes intent, never raw
+ * searchParams. Both default safely (30 days, all Projects).
+ */
+async function resolveTrendsState(
+  searchParams: Promise<ViewSearchParams>,
+): Promise<{ range: RangeKey; folder: string | undefined }> {
+  const params = await searchParams;
+  return { range: resolveRange(params.range), folder: firstParam(params.folder) || undefined };
+}
+
+/** The range presets, each keeping the folder scope. */
+async function TrendsRangePicker({ searchParams }: { searchParams: Promise<ViewSearchParams> }) {
+  const { range, folder } = await resolveTrendsState(searchParams);
+  return <RangePicker active={range} hrefFor={(preset) => rangeHref(preset, folder)} />;
+}
+
+/** The legend rows its skeleton draws: about as many models as a typical range has. */
+const SKELETON_MODELS = 4;
+
+/**
+ * The surface's skeleton: the two-cell stat strip beside the model legend,
+ * then the chart card at the chart's height.
+ */
+function TrendsFallback() {
+  return (
+    <LoadingRegion label="Loading trends" className="flex flex-col gap-5">
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border lg:grid-cols-1">
+          <StatSkeleton />
+          <StatSkeleton />
+        </div>
+        <div className="rounded-xl border bg-card px-4 py-3">
+          <div className="mb-2.5 flex h-5 items-center">
+            <Skeleton className="h-3.5 w-16" />
+          </div>
+          <div className="flex flex-col gap-2.5">
+            {Array.from({ length: SKELETON_MODELS }, (_, index) => (
+              <div key={index}>
+                <div className="flex h-5 items-center justify-between">
+                  <Skeleton className="h-3.5 w-32" />
+                  <Skeleton className="h-3.5 w-14" />
+                </div>
+                <Skeleton className="mt-1.5 h-1.5 w-full rounded-full" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="rounded-xl border bg-card p-4 sm:p-5">
+        <div className="mb-3 flex h-5 items-center">
+          <Skeleton className="h-3.5 w-24" />
+        </div>
+        <Skeleton className="h-[320px] w-full" />
+      </div>
+    </LoadingRegion>
   );
 }
 
@@ -52,20 +123,12 @@ export default function Page({ searchParams }: { searchParams: Promise<ViewSearc
  * boundary (PPR).
  */
 async function TrendsSurface({ searchParams }: { searchParams: Promise<ViewSearchParams> }) {
-  const params = await searchParams;
-  // URL → resolved intent at the page edge; the seam takes intent, never raw
-  // searchParams. Both default safely (30 days, all Projects).
-  const range = resolveRange(params.range);
-  const folder = firstParam(params.folder) || undefined;
+  const { range, folder } = await resolveTrendsState(searchParams);
 
   const view = buildTrendsView(await loadDailySpend(folder, rangeDays(range)));
 
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader title="Trends" description="What Claude Code cost per day, split by model.">
-        <RangePicker active={range} hrefFor={(preset) => rangeHref(preset, folder)} />
-      </PageHeader>
-
       {view.isEmpty ? (
         <EmptyTrends range={range} folder={folder} />
       ) : (

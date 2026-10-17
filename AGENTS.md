@@ -4,12 +4,13 @@
 
 ## Stack
 
-- Next.js 16.3 (App Router, Cache Components), React 19.2 with the React Compiler
+- Next.js 16.4 (App Router, Cache Components), React 19.3 with the React Compiler
 - TypeScript 5, `strict`
 - Tailwind CSS v4, shadcn/ui (Radix + lucide)
 - Next-pipe (`@flefebvre/next-pipe`) for server entry points, zod 4 for validation
 - Prisma 7 on SQLite, through the `@prisma/adapter-better-sqlite3` driver adapter
-- Vitest 4, ESLint 9, Prettier 3 (sorts Tailwind classes)
+- Vitest 4, ESLint 10, Prettier 3 (sorts Tailwind classes)
+- Playwright (`@playwright/test` + `@next/playwright`), for the e2e specs
 - tsx, for the repo scripts
 
 ## Layout
@@ -18,12 +19,14 @@
 src/
   app/          App Router; see docs/codebase/app-router.md for its conventions
   components/
-    ui/         Shadcn-vendored, edit only through the CLI
+    ui/         Shadcn-vendored, edit only through the CLI; then point a bare `cn` import
+                at @/lib/utils-cn (no `cn` package)
   core/         Domain logic — discovery, parsing, accounting, pricing, search.
                 Framework-free: no `next`/`react` imports (ADR-0002), ESLint enforces it
     __tests__/  Vitest suite and its sanitized JSONL fixtures
     prisma/     Schema, generated client, and migrations
   lib/          Shared helpers
+e2e/            Playwright specs, one per route
 scripts/        Repo tooling, run with tsx (the gate, seeding fake demo data)
 data/           The local SQLite database (`analyzer.db`); generated, never hand-edit
 docs/
@@ -38,8 +41,9 @@ public/         Static assets served at the root
 pnpm dev           Run the app (next dev) on :3000
 pnpm seed          Rebuild the fake-data seed environment in data/seed/ (seed.db + projects/); --now=<ISO> pins it
 pnpm dev:seed      Seed, then run next dev on it; prints `Seeded app: http://localhost:<port>` (first free from 3001, or $PORT)
+pnpm e2e:server    Seed, then next build with the testing API exposed and next start on it ($PORT, as dev:seed) — what pnpm e2e serves
 pnpm check         Format check, lint, duplication, typecheck, then the tests affected since $CHECK_BASE (default origin/main) — the inner loop
-pnpm gate          Format check, lint, duplication, typecheck, then test and build — the full check
+pnpm gate          Format check, lint, duplication, typecheck, then test and build, then e2e — the full check
 pnpm format        Prettier, rewriting files in place
 pnpm format:check  Prettier in check mode (fails on unformatted files)
 pnpm lint          ESLint (includes the core boundary, ADR-0002)
@@ -49,6 +53,7 @@ pnpm test          Vitest, once
 pnpm test:changed  Vitest, once, only the tests affected since $CHECK_BASE (default origin/main)
 pnpm test:watch    Vitest in watch mode
 pnpm build         next build
+pnpm e2e           Playwright instant-navigation specs against its own e2e:server on :3123 (or $E2E_PORT)
 ```
 
 ## Verification
@@ -70,7 +75,7 @@ The `check` and `gate` lines in package.json are the sequences: `,` separates st
 
 ## Testing
 
-This project uses TDD. Build features test-first (red → green → refactor, one vertical slice at a time), exercising public interfaces — `src/core`'s exported functions against small sanitized JSONL fixtures — never internals. See `docs/codebase/testing.md` before writing tests.
+This project uses TDD. Build features test-first (red → green → refactor, one vertical slice at a time), exercising public interfaces — `src/core`'s exported functions against small sanitized JSONL fixtures — never internals. See `docs/codebase/testing.md` before writing tests. Each route also gets a Playwright `instant()` spec in `e2e/`, covering what its static shell shows (same file, "End-to-end").
 
 ## Documentation
 

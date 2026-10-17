@@ -13,18 +13,20 @@
 // `loadToolCallSamples` (app-zone), never a direct core import.
 //
 // `cacheComponents` (PPR) is on, so the request-time `searchParams` read is
-// wrapped in <Suspense>: the page shell prerenders, the table streams in.
+// wrapped in <Suspense>: the header prerenders, the range picker and the table
+// stream in behind their skeletons.
 
 import { Wrench } from "lucide-react";
 import type { Metadata } from "next";
 import { Suspense } from "react";
 
 import { EmptyState, EmptyStateLink } from "@/app/_components/empty-state";
+import { LoadingRegion } from "@/app/_components/loading-region";
 import { PageHeader } from "@/app/_components/page-header";
-import { RangePicker } from "@/app/_components/range-picker";
+import { RangePicker, RangePickerFallback } from "@/app/_components/range-picker";
 import { RefreshButton } from "@/app/_components/refresh-button";
 import { SortableHead } from "@/app/_components/sortable-head";
-import { Stat, StatStrip } from "@/app/_components/stat-strip";
+import { Stat, StatSkeleton, StatStrip } from "@/app/_components/stat-strip";
 import { TOOL_COLUMNS, ToolRow } from "@/app/_components/tool-row";
 import { loadToolCallSamples, loadToolStats } from "@/app/_lib/conversations";
 import { formatChars, formatCount, formatRate } from "@/app/_lib/format";
@@ -41,6 +43,7 @@ import {
   toolSortHref,
 } from "@/app/_lib/tools";
 import type { ToolCallSamples, ToolStat, ToolStats } from "@/core/tool-stats";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils-cn";
 
@@ -48,9 +51,83 @@ export const metadata: Metadata = { title: "Tools" };
 
 export default function Page({ searchParams }: { searchParams: Promise<ViewSearchParams> }) {
   return (
-    <Suspense fallback={<p className="text-sm text-muted-foreground">Loading tools…</p>}>
-      <ToolsSurface searchParams={searchParams} />
-    </Suspense>
+    <div className="flex flex-col gap-5">
+      {/* The header is static; the range picker builds its hrefs from the URL,
+          so it streams in its own boundary, ahead of the data. */}
+      <PageHeader title="Tools" description="Which tools you use, which ones fail, and which ones flood your context.">
+        <Suspense fallback={<RangePickerFallback />}>
+          <ToolsRangePicker searchParams={searchParams} />
+        </Suspense>
+      </PageHeader>
+      <Suspense fallback={<ToolsFallback />}>
+        <ToolsSurface searchParams={searchParams} />
+      </Suspense>
+    </div>
+  );
+}
+
+/**
+ * URL → resolved intent at the page edge; the seam takes intent, never raw
+ * searchParams. Every axis defaults safely (30 days, all Projects, calls ↓).
+ */
+async function resolveToolsState(searchParams: Promise<ViewSearchParams>): Promise<ToolsViewState> {
+  const params = await searchParams;
+  return {
+    sort: resolveToolSort(params.sortBy, params.dir),
+    folder: firstParam(params.folder) || undefined,
+    range: resolveRange(params.range),
+    expanded: resolveExpanded(params.expanded),
+  };
+}
+
+/** The range presets, each keeping the folder, sort and expanded row. */
+async function ToolsRangePicker({ searchParams }: { searchParams: Promise<ViewSearchParams> }) {
+  const state = await resolveToolsState(searchParams);
+  return <RangePicker active={state.range} hrefFor={(preset) => toolRangeHref(preset, state)} />;
+}
+
+/** The table rows its skeleton draws: about as many tools as a typical range has. */
+const SKELETON_ROWS = 8;
+
+/**
+ * The surface's skeleton: the three-cell stat strip, then the table card with
+ * its two-row header, a handful of rows and the footer, then the legend line.
+ */
+function ToolsFallback() {
+  return (
+    <LoadingRegion label="Loading tools" className="flex flex-col gap-5">
+      <div className="grid grid-cols-1 gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-3">
+        {Array.from({ length: 3 }, (_, index) => (
+          <StatSkeleton key={index} />
+        ))}
+      </div>
+      <div className="flex flex-col gap-2">
+        <div className="@container overflow-hidden rounded-xl border bg-card">
+          <div className="flex h-[73px] items-end gap-4 border-b bg-muted/30 px-4 pb-3.5">
+            <Skeleton className="h-3.5 w-10" />
+            <Skeleton className="ml-auto h-3.5 w-12" />
+            <Skeleton className="h-3.5 w-14" />
+            <Skeleton className="h-3.5 w-14" />
+          </div>
+          {Array.from({ length: SKELETON_ROWS }, (_, index) => (
+            <div key={index} className="flex h-[42px] items-center gap-4 border-b px-4">
+              <Skeleton className="size-6 shrink-0" />
+              <Skeleton className="h-3.5 w-28" />
+              <Skeleton className="ml-auto h-3.5 w-10" />
+              <Skeleton className="h-3.5 w-12" />
+              <Skeleton className="h-3.5 w-14" />
+            </div>
+          ))}
+          <div className="flex h-[37px] items-center gap-4 bg-muted/50 px-4">
+            <Skeleton className="h-3.5 w-16" />
+            <Skeleton className="ml-auto h-3.5 w-14" />
+          </div>
+        </div>
+        <div className="flex h-4 items-center">
+          <Skeleton className="h-3 w-72" />
+        </div>
+      </div>
+    </LoadingRegion>
   );
 }
 
@@ -61,15 +138,7 @@ export default function Page({ searchParams }: { searchParams: Promise<ViewSearc
  * <Suspense> boundary (PPR).
  */
 async function ToolsSurface({ searchParams }: { searchParams: Promise<ViewSearchParams> }) {
-  const params = await searchParams;
-  // URL → resolved intent at the page edge; the seam takes intent, never raw
-  // searchParams. Every axis defaults safely (30 days, all Projects, calls ↓).
-  const state: ToolsViewState = {
-    sort: resolveToolSort(params.sortBy, params.dir),
-    folder: firstParam(params.folder) || undefined,
-    range: resolveRange(params.range),
-    expanded: resolveExpanded(params.expanded),
-  };
+  const state = await resolveToolsState(searchParams);
 
   const days = rangeDays(state.range);
   const stats = await loadToolStats(state.folder, days);
@@ -82,10 +151,6 @@ async function ToolsSurface({ searchParams }: { searchParams: Promise<ViewSearch
 
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader title="Tools" description="Which tools you use, which ones fail, and which ones flood your context.">
-        <RangePicker active={state.range} hrefFor={(preset) => toolRangeHref(preset, state)} />
-      </PageHeader>
-
       {rows.length === 0 ? (
         <EmptyTools state={state} />
       ) : (

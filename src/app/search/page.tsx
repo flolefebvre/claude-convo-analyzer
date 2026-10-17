@@ -23,6 +23,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 
 import { EmptyState, EmptyStateLink } from "@/app/_components/empty-state";
+import { LoadingRegion } from "@/app/_components/loading-region";
 import { PageHeader } from "@/app/_components/page-header";
 import { loadSearch } from "@/app/_lib/conversations";
 import { friendlyFolderName } from "@/app/_lib/folders";
@@ -30,6 +31,7 @@ import { formatCount, formatDate } from "@/app/_lib/format";
 import { firstParam } from "@/app/_lib/search-params";
 import { agentHref, messageHref } from "@/app/_lib/transcript-url";
 import type { SearchResult, SearchSnippet } from "@/core/search";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type PageSearchParams = { q?: string | string[] };
 
@@ -48,11 +50,46 @@ export default function SearchPage({ searchParams }: { searchParams: Promise<Pag
     <main id="main" tabIndex={-1} className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:py-8">
       <div className="flex max-w-3xl flex-col gap-5">
         <PageHeader title="Search" description="Your prompts, Claude's replies and conversation titles." />
-        <Suspense fallback={<p className="text-sm text-muted-foreground">Searching…</p>}>
+        <Suspense fallback={<SearchFallback />}>
           <SearchSurface searchParams={searchParams} />
         </Suspense>
       </div>
     </main>
+  );
+}
+
+/** The result cards its skeleton draws: enough to fill the first screen. */
+const SKELETON_RESULTS = 4;
+
+/**
+ * The results' skeleton: the count line, then a few cards at a result card's
+ * size (title and match count, Project and date, one or two extracts).
+ */
+function SearchFallback() {
+  return (
+    <LoadingRegion label="Loading results">
+      <div className="mb-4 flex h-5 items-center">
+        <Skeleton className="h-3.5 w-56" />
+      </div>
+      <div className="flex flex-col gap-3">
+        {Array.from({ length: SKELETON_RESULTS }, (_, index) => (
+          <div key={index} className="rounded-xl border bg-card p-4">
+            <div className="flex h-6 items-center justify-between gap-4">
+              <Skeleton className="h-4 w-72 max-w-[70%]" />
+              <Skeleton className="h-3 w-16" />
+            </div>
+            <div className="mt-1 flex h-4 items-center">
+              <Skeleton className="h-3 w-40" />
+            </div>
+            <div className="mt-3 flex flex-col gap-1.5">
+              {Array.from({ length: (index % 2) + 1 }, (_, extract) => (
+                <Skeleton key={extract} className="h-8 w-full" />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </LoadingRegion>
   );
 }
 
