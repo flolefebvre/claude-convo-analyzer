@@ -2,9 +2,11 @@ import { Suspense } from "react";
 
 import { FolderDisclosure } from "@/app/_components/folder-disclosure";
 import { FolderSidebar } from "@/app/_components/folder-sidebar";
+import { LoadingRegion } from "@/app/_components/loading-region";
 import { loadConversations } from "@/app/_lib/conversations";
 import { formatGrandTotalCost } from "@/app/_lib/format";
 import { buildListView } from "@/app/_lib/list-view";
+import { Skeleton } from "@/components/ui/skeleton";
 
 // The analysis surfaces' frame (PR #13): the folder sidebar beside the page's
 // <main>, shared by the conversation list (`/`), Trends and Tools. The app bar
@@ -83,11 +85,32 @@ async function Sidebar() {
   );
 }
 
-/** Holds the sidebar's place (desktop) or the disclosure's line (below `lg`). */
+/** The folder entries the sidebar skeleton draws, "All folders" included. */
+const SKELETON_FOLDERS = 7;
+
+/**
+ * The sidebar's skeleton: the disclosure's one line below `lg`, the folder
+ * column from `lg` up — each entry a label and cost over a bar and a count,
+ * at the real entry's line heights.
+ */
 function SidebarFallback() {
   return (
-    <div className="h-12 shrink-0 rounded-xl border border-dashed lg:h-auto lg:w-64 lg:border-0">
-      <p className="sr-only lg:not-sr-only lg:px-3 lg:py-2 lg:text-sm lg:text-muted-foreground">Loading folders…</p>
-    </div>
+    <LoadingRegion label="Loading folders" className="shrink-0 lg:w-64">
+      <Skeleton className="h-12 rounded-xl lg:hidden" />
+      <div className="hidden flex-col gap-1 lg:flex">
+        {Array.from({ length: SKELETON_FOLDERS }, (_, index) => (
+          <div key={index} className="px-3 py-2">
+            <div className="flex h-5 items-center justify-between gap-2">
+              <Skeleton className="h-3.5 w-28" />
+              <Skeleton className="h-3 w-10" />
+            </div>
+            <div className="mt-1 flex h-4 items-center gap-3">
+              {index === 0 ? <span className="flex-1" /> : <Skeleton className="h-1 flex-1" />}
+              <Skeleton className="h-3 w-6" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </LoadingRegion>
   );
 }
