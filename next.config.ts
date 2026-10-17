@@ -16,6 +16,8 @@ const nextConfig: NextConfig = {
   reactCompiler: true,
   experimental: {
     turbopackRustReactCompiler: true,
+    // On only for the `pnpm e2e:server` build, which `instant()` drives; the app is never deployed.
+    exposeTestingApiInProductionBuild: process.env.EXPOSE_TESTING_API === "1",
   },
 };
 
