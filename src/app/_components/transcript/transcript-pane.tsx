@@ -119,7 +119,7 @@ export function TranscriptPane({
             )}
             {effortLabel && <span>{effortLabel} effort</span>}
             <CostFigure usd={selected.costUsd} lowerBound={selected.unpriced} className="stat-cost" />
-          </div>{" "}
+          </div>
         </div>
       </div>
 
