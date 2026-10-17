@@ -219,9 +219,9 @@ function AssistantTurn({
 
       {message.toolCalls.length > 0 && (
         <div className="calls">
-          {message.toolCalls.map((call, i) => (
+          {message.toolCalls.map((call) => (
             <TranscriptToolCallRow
-              key={call.toolUseId ?? `${message.id}-${i}`}
+              key={call.id}
               call={call}
               messageId={message.id}
               view={view}

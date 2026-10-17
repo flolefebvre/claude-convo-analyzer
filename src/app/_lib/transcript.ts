@@ -7,6 +7,9 @@
 
 import type { TranscriptAgentNode } from "@/core/read";
 
+/** A Tool call's body, as core reads it — re-exported so a client leaf can name it without touching core. */
+export type { ToolCallBody } from "@/core/read";
+
 import { subAgentLabel } from "@/app/_lib/detail";
 import { formatTokens } from "@/app/_lib/format";
 

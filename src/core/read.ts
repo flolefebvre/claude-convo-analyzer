@@ -60,7 +60,11 @@ export type ConversationDetail = ConversationSummary & {
   perSkill: { skill: string; tokens: Tokens; costUsd: number }[];
 };
 
-/** One `tool_use` block on an assistant turn (raw fields; the app classifies kind). */
+/**
+ * One `tool_use` block on an assistant turn, as its summary needs it (raw
+ * fields; the app classifies kind). The result text is left to
+ * {@link getToolCallBody}, read when the call is opened.
+ */
 export type TranscriptToolCall = {
   /** Row id — the key {@link getToolCallBody} reads this call's body by. */
   id: number;
@@ -70,10 +74,8 @@ export type TranscriptToolCall = {
   name: string;
   /** Full tool input, serialized JSON (the app extracts snippets). */
   inputJson: string;
-  /** Stored tool result, truncated to ≤10k chars (NULL until paired). */
-  resultText: string | null;
   resultTruncated: boolean;
-  /** Full (untruncated) result length — a token-cost proxy. */
+  /** Full (untruncated) result length — a token-cost proxy; NULL until paired. */
   resultCharSize: number | null;
   isError: boolean;
 };
@@ -1325,7 +1327,6 @@ async function toolCallsByMessage(
       toolUseId: true,
       name: true,
       inputJson: true,
-      resultText: true,
       resultTruncated: true,
       resultCharSize: true,
       isError: true,
@@ -1342,7 +1343,6 @@ async function toolCallsByMessage(
       toolUseId: r.toolUseId,
       name: r.name,
       inputJson: r.inputJson,
-      resultText: r.resultText,
       resultTruncated: r.resultTruncated,
       resultCharSize: r.resultCharSize,
       isError: r.isError,

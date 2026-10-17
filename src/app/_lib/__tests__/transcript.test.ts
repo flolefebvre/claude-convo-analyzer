@@ -23,7 +23,6 @@ function call(partial: Partial<TranscriptToolCall> = {}): TranscriptToolCall {
     toolUseId: "tu_1",
     name: "Bash",
     inputJson: "{}",
-    resultText: null,
     resultTruncated: false,
     resultCharSize: null,
     isError: false,

@@ -163,6 +163,11 @@ block in a turn and paired with a `tool_result`. Carries the tool `name` (e.g.
 `command`, Skill's `skill` name). A Tool call belongs to exactly one Turn of one
 Agent.
 
+In a Transcript a Tool call reads in two parts. Its **summary** is the one line
+it shows collapsed: its kind, name, a snippet of its input, its result size and
+whether it failed. Its **body** is the full input and stored result, shown once
+the reader opens it.
+
 ### Skill invocation
 
 A Tool call with `name = Skill`; its `input.skill` names the skill (possibly

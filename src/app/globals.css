@@ -1130,6 +1130,11 @@ html:has(.tview) {
   font-size: var(--text-xs);
   color: var(--muted-foreground);
 }
+/* The one line a body shows when it could not be loaded. */
+.tview .call-body-note {
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
+}
 .tview .open-agent {
   display: inline-flex;
   align-items: center;

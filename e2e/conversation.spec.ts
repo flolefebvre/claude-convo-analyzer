@@ -94,6 +94,46 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     await expect(pageTwoPrompt).toBeInViewport();
   });
 
+  test("ships a collapsed tool call's summary, and fetches its body when opened", async ({ page }) => {
+    await page.goto("/");
+    await titleLink(page).click();
+    await page.waitForURL((url) => url.pathname.startsWith("/conversation/"));
+    const main = page.getByRole("main");
+    // Every seeded result that is not an error begins with this line.
+    const resultText = main.getByText(/export function handler/);
+    await expect(main.getByRole("heading", { level: 1, name: TITLE })).toBeVisible();
+    await expect(resultText).toHaveCount(0);
+
+    // A Tool call that succeeded: its summary carries the result size.
+    const size = page.getByText(/^[\d,]+ chars$/);
+    const call = main.getByRole("group").filter({ has: size }).first();
+    await call.locator(size).click();
+    await expect(call.getByText(/export function handler/)).toBeVisible();
+    await expect(call.getByText("Input", { exact: true })).toBeVisible();
+  });
+
+  test("a Tools-page link lands on its call open, with the body already there", async ({ page }) => {
+    const bodyRequests: string[] = [];
+    page.on("request", (request) => {
+      if (new URL(request.url()).pathname.startsWith("/api/tool-call/")) bodyRequests.push(request.url());
+    });
+
+    await page.goto("/tools?range=all&expanded=Bash");
+    const largest = page.locator("section").filter({ has: page.getByRole("heading", { name: "Largest results" }) });
+    const link = largest.getByRole("link").first();
+    const href = await link.getAttribute("href");
+    expect(href).toMatch(/[?&]call=.*#call-/);
+    await link.click();
+    await page.waitForURL((url) => url.searchParams.has("call"));
+
+    const anchored = page.locator(`[id="${href!.split("#")[1]}"]`);
+    await expect(anchored).toHaveAttribute("open", "");
+    await expect(anchored).toHaveClass(/\banchored\b/);
+    await expect(anchored.getByText(/export function handler/)).toBeVisible();
+    await expect(anchored).toBeInViewport();
+    expect(bodyRequests).toEqual([]);
+  });
+
   test("renders the not-found page for an unknown session id", async ({ page }) => {
     await page.goto("/conversation/no-such-session");
     await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
