@@ -107,14 +107,9 @@ jobs:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('node_modules/@playwright/test/package.json') }}
 
-      # The cache holds the browser, not the OS packages it needs.
-      - name: Install Chromium system dependencies
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: pnpm exec playwright install-deps chromium
-
       - name: Install Chromium
         if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: pnpm exec playwright install --with-deps chromium
+        run: pnpm exec playwright install chromium
 
       # Starts the seeded app itself (playwright.config.ts).
       - name: E2E
