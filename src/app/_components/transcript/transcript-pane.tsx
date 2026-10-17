@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { Fragment } from "react";
 
+import { PendingLink } from "@/app/_components/pending-link";
 import { formatCount, formatModelName } from "@/app/_lib/format";
 import { type AgentLabel, agentLineage, effortSummary } from "@/app/_lib/transcript";
 import { agentHref, withListReturn } from "@/app/_lib/transcript-url";
@@ -79,12 +79,12 @@ export function TranscriptPane({
                     </span>
                   ) : (
                     <>
-                      <Link
+                      <PendingLink
                         href={withListReturn(agentHref(view.sessionId, i === 0 ? undefined : node.id), listReturn)}
                         title={agentLabelText(label)}
                       >
                         <AgentName label={label} />
-                      </Link>
+                      </PendingLink>
                       <span className="sep" aria-hidden>
                         /
                       </span>
