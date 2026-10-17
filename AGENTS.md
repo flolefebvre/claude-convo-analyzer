@@ -9,7 +9,7 @@
 - Tailwind CSS v4, shadcn/ui (Radix + lucide)
 - Next-pipe (`@flefebvre/next-pipe`) for server entry points, zod 4 for validation
 - Prisma 7 on SQLite, through the `@prisma/adapter-better-sqlite3` driver adapter
-- Vitest 4, ESLint 9, Prettier 3 (sorts Tailwind classes)
+- Vitest 4, ESLint 10, Prettier 3 (sorts Tailwind classes)
 - tsx, for the repo scripts
 
 ## Layout
