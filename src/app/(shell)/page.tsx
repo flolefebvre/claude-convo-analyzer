@@ -28,6 +28,7 @@ import { PageHeader } from "@/app/_components/page-header";
 import { PendingLink } from "@/app/_components/pending-link";
 import { RefreshButton } from "@/app/_components/refresh-button";
 import { SortableHead } from "@/app/_components/sortable-head";
+import { StatSkeleton } from "@/app/_components/stat-strip";
 import {
   loadConversationDetail,
   loadConversationErrors,
@@ -96,17 +97,7 @@ function OverviewFallback() {
       </div>
       <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-4">
         {Array.from({ length: 4 }, (_, index) => (
-          <div key={index} className="flex flex-col bg-card px-4 py-3">
-            <div className="flex h-5 items-center">
-              <Skeleton className="h-3.5 w-20" />
-            </div>
-            <div className="mt-1 flex h-8 items-center">
-              <Skeleton className="h-6 w-24" />
-            </div>
-            <div className="mt-0.5 flex h-4 items-center">
-              <Skeleton className="h-3 w-28" />
-            </div>
-          </div>
+          <StatSkeleton key={index} />
         ))}
       </div>
     </LoadingRegion>

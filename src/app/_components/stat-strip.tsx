@@ -3,6 +3,7 @@
 // few figures read as one strip rather than as competing cards. Every cell has
 // a hint line, so cell heights match.
 
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils-cn";
 
 /**
@@ -28,6 +29,31 @@ export function Stat({ label, hint, children }: { label: string; hint: string; c
       <dt className="text-sm font-medium text-muted-foreground">{label}</dt>
       <dd className="mt-1 text-2xl font-semibold tracking-tight">{children}</dd>
       <dd className="mt-0.5 truncate text-xs text-muted-foreground">{hint}</dd>
+    </div>
+  );
+}
+
+/**
+ * A {@link Stat}'s skeleton at its three lines' heights, for a strip drawn in a
+ * Suspense fallback (a `div` grid, since the cells hold no terms).
+ *
+ * @example
+ * <div className="grid grid-cols-3 gap-px overflow-hidden rounded-xl border bg-border">
+ *   <StatSkeleton />
+ * </div>
+ */
+export function StatSkeleton() {
+  return (
+    <div className="flex flex-col bg-card px-4 py-3">
+      <div className="flex h-5 items-center">
+        <Skeleton className="h-3.5 w-20" />
+      </div>
+      <div className="mt-1 flex h-8 items-center">
+        <Skeleton className="h-6 w-24" />
+      </div>
+      <div className="mt-0.5 flex h-4 items-center">
+        <Skeleton className="h-3 w-28" />
+      </div>
     </div>
   );
 }

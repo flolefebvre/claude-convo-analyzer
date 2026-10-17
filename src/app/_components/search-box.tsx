@@ -1,8 +1,8 @@
 import Form from "next/form";
-import { Search } from "lucide-react";
 import { Suspense } from "react";
 
 import { SearchField, SearchFieldFromUrl } from "@/app/_components/search-field";
+import { SearchStatusIcon } from "@/app/_components/search-status-icon";
 import { cn } from "@/lib/utils-cn";
 
 /**
@@ -14,8 +14,8 @@ import { cn } from "@/lib/utils-cn";
  * A `next/form` GET form pointed at `/search`: submitting puts the query in the
  * URL (`/search?q=…`) and navigates client-side, and it still works with
  * JavaScript off — the URL IS the state, exactly like the list's sort/scope
- * links. This stays a server component; `<Form>` and the URL-reading input
- * bring their own client boundaries.
+ * links. This stays a server component; `<Form>`, the URL-reading input and
+ * the pending-aware icon bring their own client boundaries.
  *
  * ADR-0002: pure UI, no core import.
  *
@@ -24,7 +24,7 @@ import { cn } from "@/lib/utils-cn";
 export function SearchBox({ className }: { className?: string }) {
   return (
     <Form action="/search" role="search" className={cn("relative flex items-center", className)}>
-      <Search className="pointer-events-none absolute left-2.5 size-3.5 text-muted-foreground" aria-hidden />
+      <SearchStatusIcon />
       {/* The pre-filled value comes from the live URL, which only the client
           reads; the prerendered shell shows the same field, empty. */}
       <Suspense fallback={<SearchField />}>
