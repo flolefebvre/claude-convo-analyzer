@@ -2,8 +2,9 @@
 // lines into a typed, deduplicated `ParsedSession` ready for DB write.
 //
 // SLICE SCOPE: handles `assistant`, `user` (incl. tool_result), `ai-title`,
-// `custom-title`, `pr-link`, and `system`/`turn_duration`; tool_use blocks and
-// `Agent` spawn ledgers are lifted too. Other record types are skipped gracefully
+// `custom-title`, `pr-link`, `system`/`turn_duration`, and `queued_command`
+// attachments (mid-turn user Messages); tool_use blocks and `Agent` spawn
+// ledgers are lifted too. Other record types are skipped gracefully
 // (log-format §6). A line that fails JSON.parse is skipped and counted (never fatal).
 //
 // EXTENSION POINTS:
@@ -475,6 +476,7 @@ export function parseSessionLines(lines: Iterable<string>): ParsedSession {
   // Assistant turns already emitted, keyed by message.id, so later content-block
   // records for the same turn merge into the existing message (see below).
   const assistantById = new Map<string, ParsedMessage>();
+  const deliveries = deliveryLedger();
   let malformedLines = 0;
 
   let cwd: string | null = null;
@@ -529,8 +531,18 @@ export function parseSessionLines(lines: Iterable<string>): ParsedSession {
       continue; // other system subtypes (compaction, retries) not modeled.
     }
 
+    if (type === "attachment") {
+      const queued = parseQueuedCommand(record);
+      if (queued !== null && !deliveries.seen(queued.keys)) {
+        deliveries.add(queued.keys);
+        if (queued.message.kind === "prompt") firstUserText ??= queued.message.text;
+        messages.push(queued.message);
+      }
+      continue; // other attachment types (files, images) are skipped (log-format §6).
+    }
+
     if (type !== "assistant" && type !== "user") {
-      continue; // attachment/mode/etc. skipped gracefully (log-format §6).
+      continue; // mode/etc. skipped gracefully (log-format §6).
     }
 
     // Per-record context fields (finding #10) — take the first non-null seen.
@@ -556,6 +568,7 @@ export function parseSessionLines(lines: Iterable<string>): ParsedSession {
       }
       // Only a Prompt — the human speaking — seeds the title fallback.
       if (classified.kind === "prompt") firstUserText ??= classified.text;
+      deliveries.add(deliveryKeys(record.origin, null));
       messages.push(userMessage(record, classified, toEpochMs(record.timestamp)));
       continue;
     }
@@ -624,6 +637,54 @@ export function parseSessionLines(lines: Iterable<string>): ParsedSession {
     turnDurations,
     agentSpawns,
     malformedLines,
+  };
+}
+
+/**
+ * A `queued_command` attachment (log-format §8): a Prompt, Inter-agent message
+ * or Task notification delivered while the Agent was working. Classified like
+ * a user record from the attachment's own `origin`/`isMeta`/`commandMode`, and
+ * timestamped from the attachment (else the record). Null for any other
+ * attachment, or one without prompt text.
+ */
+function parseQueuedCommand(record: Record<string, unknown>): { message: ParsedMessage; keys: string[] } | null {
+  const attachment = record.attachment;
+  if (!isRecord(attachment) || attachment.type !== "queued_command") return null;
+  const text = extractText(attachment.prompt);
+  if (text === null) return null;
+  const classified = classifyUserMessage(attachment.origin, attachment.isMeta === true, text, attachment.commandMode);
+  if (classified.kind === "prompt" || classified.kind === "inter-agent") {
+    classified.origin = { ...classified.origin, midTurn: true };
+  }
+  const timestamp = toEpochMs(attachment.timestamp) ?? toEpochMs(record.timestamp);
+  return {
+    message: userMessage(record, classified, timestamp),
+    keys: deliveryKeys(attachment.origin, attachment.source_uuid),
+  };
+}
+
+/** The ids that identify one delivered message: the queue's `source_uuid`, a peer's `origin.msg_id`. */
+function deliveryKeys(origin: unknown, sourceUuid: unknown): string[] {
+  const keys: string[] = [];
+  const source = asString(sourceUuid);
+  if (source !== null) keys.push(`source:${source}`);
+  const msgId = isRecord(origin) ? asString(origin.msg_id) : null;
+  if (msgId !== null) keys.push(`msg:${msgId}`);
+  return keys;
+}
+
+/**
+ * The delivery ids of the messages kept so far, so an attachment repeating
+ * one already kept — by `source_uuid` or peer `msg_id`, never by text or time —
+ * is dropped.
+ */
+function deliveryLedger() {
+  const kept = new Set<string>();
+  return {
+    seen: (keys: string[]) => keys.some((k) => kept.has(k)),
+    add: (keys: string[]) => {
+      for (const k of keys) kept.add(k);
+    },
   };
 }
 
