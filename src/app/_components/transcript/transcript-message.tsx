@@ -49,8 +49,8 @@ export function TranscriptMessageRow({
 }) {
   const time = formatClock(message.timestamp);
   // A search result links here as `?msg=<uuid>#msg-<uuid>`: the query
-  // highlights the row server-side (a fragment never reaches the server), the
-  // fragment scrolls to the id. Same idiom as `?call=` for tool calls.
+  // highlights the row server-side (a fragment never reaches the server), and
+  // the pane's `ScrollToAnchor` scrolls to the id. Same idiom as `?call=`.
   const anchor = anchorProps(message, anchoredMessage);
 
   if (message.kind === "inter-agent") {

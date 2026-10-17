@@ -18,7 +18,8 @@
 //
 // A Tools-page drill-down can deep-link into ONE tool call here
 // (`?agent=<id>&call=<toolUseId>#call-<toolUseId>`): `?call=` opens and
-// highlights that call server-side, the fragment does the scrolling.
+// highlights that call server-side, and the pane's `ScrollToAnchor` scrolls to
+// it once it streams in. The fragment stays for copied links and no-JS.
 //
 // The pane shows one Transcript page (`?page=`, page 1 the bare URL). A
 // deep link carries no page: core opens the page holding its anchor.
@@ -126,8 +127,8 @@ async function PaneRegion(props: RouteProps) {
   // and no banner at all.
   const family = await loadFamily(view.sessionId);
   // `?call=` is how a Tools-page drill-down points at ONE tool call: the pane
-  // renders it open and highlighted, and the matching `#call-<id>` fragment
-  // scrolls to it. Server-side, because a fragment never reaches the server.
+  // renders it open and highlighted (server-side, because a fragment never
+  // reaches the server), and its `ScrollToAnchor` scrolls to it.
   return (
     <TranscriptPane
       view={view}
