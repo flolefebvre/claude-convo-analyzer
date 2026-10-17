@@ -438,15 +438,23 @@ describe("buildListView — an expanded row decides the page when the URL asks f
 
 describe("pageRange", () => {
   it("names the 1-based first and last row a full page shows", () => {
-    expect(pageRange(1, 2 * PAGE_SIZE + 10)).toEqual({ first: 1, last: PAGE_SIZE });
-    expect(pageRange(2, 2 * PAGE_SIZE + 10)).toEqual({ first: PAGE_SIZE + 1, last: 2 * PAGE_SIZE });
+    expect(pageRange(1, 2 * PAGE_SIZE + 10, PAGE_SIZE)).toEqual({ first: 1, last: PAGE_SIZE });
+    expect(pageRange(2, 2 * PAGE_SIZE + 10, PAGE_SIZE)).toEqual({ first: PAGE_SIZE + 1, last: 2 * PAGE_SIZE });
   });
 
   it("ends the last page at the last row", () => {
-    expect(pageRange(3, 2 * PAGE_SIZE + 10)).toEqual({ first: 2 * PAGE_SIZE + 1, last: 2 * PAGE_SIZE + 10 });
+    expect(pageRange(3, 2 * PAGE_SIZE + 10, PAGE_SIZE)).toEqual({
+      first: 2 * PAGE_SIZE + 1,
+      last: 2 * PAGE_SIZE + 10,
+    });
+  });
+
+  it("counts in the page size it is given", () => {
+    expect(pageRange(2, 450, 200)).toEqual({ first: 201, last: 400 });
+    expect(pageRange(3, 450, 200)).toEqual({ first: 401, last: 450 });
   });
 
   it("is empty for an empty set", () => {
-    expect(pageRange(1, 0)).toEqual({ first: 0, last: 0 });
+    expect(pageRange(1, 0, PAGE_SIZE)).toEqual({ first: 0, last: 0 });
   });
 });

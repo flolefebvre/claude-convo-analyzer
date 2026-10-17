@@ -14,7 +14,6 @@ import {
   resolveErrorsOnly,
   resolveExpanded,
   pageHref,
-  resolvePage,
   resolveSort,
   sortConversations,
   sortHref,
@@ -490,30 +489,6 @@ describe("the errors filter travels with every other list link", () => {
 
   it("adds no param when the filter is off", () => {
     expect(sortHref("cost", { sort: DEFAULT_SORT, errorsOnly: false })).toBe("?sortBy=cost&dir=desc");
-  });
-});
-
-describe("resolvePage", () => {
-  it("reports NO requested page when the param is absent", () => {
-    // `undefined` means "the URL asked for nothing", which lets an
-    // `?expanded=<id>` link land on the page that actually holds its row.
-    expect(resolvePage(undefined)).toBeUndefined();
-  });
-
-  it("reads a valid 1-based page number", () => {
-    expect(resolvePage("3")).toBe(3);
-  });
-
-  it("reads an invalid page as no request at all", () => {
-    // A hand-edited URL never yields an empty table: 0, a negative, a
-    // fractional or a non-numeric page all read as "no page requested".
-    for (const raw of ["0", "-2", "1.5", "abc", "", " "]) {
-      expect(resolvePage(raw)).toBeUndefined();
-    }
-  });
-
-  it("takes the FIRST value of a repeated param, like every other resolver", () => {
-    expect(resolvePage(["4", "9"])).toBe(4);
   });
 });
 

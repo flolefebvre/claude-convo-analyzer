@@ -42,7 +42,7 @@ import { familyView } from "@/app/_lib/family-view";
 import { type FolderEntry } from "@/app/_lib/folders";
 import { formatCount, formatDate, formatGrandTotalCost, formatTokens } from "@/app/_lib/format";
 import { buildListView } from "@/app/_lib/list-view";
-import { type ViewSearchParams, firstParam } from "@/app/_lib/search-params";
+import { type ViewSearchParams, firstParam, resolvePage } from "@/app/_lib/search-params";
 import {
   type ListLinkContext,
   type SortableField,
@@ -52,7 +52,6 @@ import {
   listReturnQuery,
   resolveErrorsOnly,
   resolveExpanded,
-  resolvePage,
   resolveSort,
   sortHref,
 } from "@/app/_lib/sort";
