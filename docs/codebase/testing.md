@@ -41,10 +41,17 @@ documentation of the log format.
 
 ## The validation gate
 
-The gate itself — `pnpm gate` and its `--gate OK--` marker — lives in
-`AGENTS.md`. Two details behind it: the marker exists so a run is verifiable
-(a run that doesn't end with `--gate OK--` is a failure, whatever the rest of
-the output says), and it is a documented discipline, not a git hook — there is
-intentionally no commit-time enforcement, so rapid red-green cycles stay fast.
-During those cycles, run the individual scripts (`pnpm test`,
-`pnpm test:watch`, …); the gate is for the end.
+The gate itself — `pnpm check`, `pnpm gate` and their `--check OK--` /
+`--gate OK--` markers — lives in the Verification section of `AGENTS.md`. Two
+details behind it: the marker exists so a run is verifiable (a run that doesn't
+end with it is a failure, whatever the rest of the output says), and it is a
+documented discipline, not a git hook — there is intentionally no commit-time
+enforcement, so rapid red-green cycles stay fast. During those cycles, run the
+individual scripts (`pnpm test`, `pnpm test:watch`, …) or `pnpm check`; the
+gate is for the end.
+
+`pnpm check` runs only the tests whose module graph reaches a file changed since
+`$CHECK_BASE`. A fixture is read from disk, not imported, so the graph can't see
+it: the fixtures directory, the Prisma schema and migrations, and the configs are
+`forceRerunTriggers` in `vitest.config.ts`, rerunning the whole suite. Add a path
+there when tests depend on a file they don't import.

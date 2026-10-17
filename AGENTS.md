@@ -38,18 +38,28 @@ public/         Static assets served at the root
 pnpm dev           Run the app (next dev) on :3000
 pnpm seed          Rebuild the fake-data seed environment in data/seed/ (seed.db + projects/); --now=<ISO> pins it
 pnpm dev:seed      Seed, then run next dev on it; prints `Seeded app: http://localhost:<port>` (first free from 3001, or $PORT)
-pnpm gate          Format check, lint, duplication, typecheck, test, build — the full check
+pnpm check         Format check, lint, duplication, typecheck, then the tests affected since $CHECK_BASE (default origin/main) — the inner loop
+pnpm gate          Format check, lint, duplication, typecheck, then test and build — the full check
 pnpm format        Prettier, rewriting files in place
 pnpm format:check  Prettier in check mode (fails on unformatted files)
 pnpm lint          ESLint (includes the core boundary, ADR-0002)
 pnpm duplication   jscpd copy-paste detection (config in .jscpd.json, fails on any clone)
 pnpm typecheck     Next route typegen, then TypeScript with no emit
 pnpm test          Vitest, once
+pnpm test:changed  Vitest, once, only the tests affected since $CHECK_BASE (default origin/main)
 pnpm test:watch    Vitest in watch mode
 pnpm build         next build
 ```
 
-**Before considering a change done:** run `pnpm gate`. It passed only if the output ends with `--gate OK--` — anything else is a failure, whatever the rest of the output says. The sequence is the `gate` line in package.json; add a check by adding its script name there.
+## Verification
+
+- check: `CHECK_BASE=origin/<base-branch> pnpm check`
+- gate: `pnpm gate`
+- final: ci
+
+`<base-branch>` is the branch the change will merge into, `main` unless told otherwise. Run `check` after each step and each fix; it passed only if the output ends with `--check OK--`. A change is done when the pushed PR's `ci` check is green; a change that will not be pushed passes `pnpm gate` (ends with `--gate OK--`) once before it is handed over; later fixes re-run `check`, and CI re-validates the change when it is pushed. Any other ending is a failure, whatever the rest of the output says.
+
+The `check` and `gate` lines in package.json are the sequences: `,` separates stages run in order, `+` joins scripts run in parallel. Never join two scripts that write the same files — `typecheck` and `build` both write `.next/types`. Add a check to the `gate` line and to the CI workflow, which runs one job per stage. See `docs/codebase/ci.md`.
 
 ## Worktrees
 

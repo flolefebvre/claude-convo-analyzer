@@ -1,5 +1,5 @@
 import path from "node:path";
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig({
   resolve: {
@@ -14,5 +14,20 @@ export default defineConfig({
     // Shared setup modules under `__tests__/helpers/` declare no tests of their
     // own — they would fail the "no test suite found" check if collected.
     exclude: ["**/node_modules/**", "**/__tests__/helpers/**"],
+    // `--changed` reruns everything when one of these changes. Anchored to the
+    // repo root: the default `**` globs skip `.claude/worktrees`. The fixtures
+    // are read from disk, not imported, so the module graph can't see them.
+    forceRerunTriggers: [
+      ...configDefaults.forceRerunTriggers,
+      ...[
+        "package.json",
+        "pnpm-lock.yaml",
+        "vitest.config.ts",
+        "prisma.config.ts",
+        "src/core/prisma/schema.prisma",
+        "src/core/prisma/migrations/**",
+        "src/core/__tests__/fixtures/**",
+      ].map((relativePath) => path.resolve(import.meta.dirname, relativePath)),
+    ],
   },
 });
