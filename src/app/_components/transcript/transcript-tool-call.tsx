@@ -1,5 +1,6 @@
 import { ArrowRight, ChevronRight } from "lucide-react";
 import Link from "next/link";
+import type { ComponentProps } from "react";
 
 import { loadToolCallBody } from "@/app/_lib/conversations";
 import { formatTokens } from "@/app/_lib/format";
@@ -22,7 +23,7 @@ const KIND_LABEL = { agent: "Agent", skill: "Skill", tool: "Tool" } as const;
  * the sub-agent it spawned to show that agent's name (as the tree shows it),
  * exact cost and an "Open transcript" deep-link.
  */
-export async function TranscriptToolCallRow({
+export function TranscriptToolCallRow({
   call,
   messageId,
   view,
@@ -45,15 +46,14 @@ export async function TranscriptToolCallRow({
   const snippet = toolCallSnippet(call);
   // A Tools-page drill-down links here as `?call=<id>#call-<id>`: the query
   // opens + highlights the call server-side (a fragment never reaches the
-  // server), with its body read here, and the pane's `ScrollToAnchor` scrolls
-  // to the `id`.
+  // server), with its body read server-side, and the pane's `ScrollToAnchor`
+  // scrolls to the `id`.
   const anchored = call.toolUseId !== null && call.toolUseId === anchoredCall;
-  const body = anchored ? ((await loadToolCallBody(call.id)) ?? undefined) : undefined;
+  const Disclosure = anchored ? PreloadedToolCallDisclosure : ToolCallDisclosure;
   const disclosure = {
     id: call.id,
     anchorId: call.toolUseId === null ? undefined : callAnchorId(call.toolUseId),
     anchored,
-    body,
   };
 
   if (kind === "agent") {
@@ -63,7 +63,7 @@ export async function TranscriptToolCallRow({
     });
     const label = spawned ? labels.get(spawned.id) : undefined;
     return (
-      <ToolCallDisclosure
+      <Disclosure
         {...disclosure}
         labels={{ input: "Prompt", result: "Returned" }}
         showTruncation={false}
@@ -91,7 +91,7 @@ export async function TranscriptToolCallRow({
 
   const kindClass = kind === "skill" ? "kind-skill" : "kind-tool";
   return (
-    <ToolCallDisclosure
+    <Disclosure
       {...disclosure}
       labels={{ input: "Input", result: "Result" }}
       summary={
@@ -109,4 +109,14 @@ export async function TranscriptToolCallRow({
       }
     />
   );
+}
+
+/**
+ * The `?call=` anchored call's disclosure, its body read server-side so the
+ * deep link lands open with nothing to fetch. The summary and footer arrive
+ * built by the row; only the body read waits here.
+ */
+async function PreloadedToolCallDisclosure(props: Omit<ComponentProps<typeof ToolCallDisclosure>, "body">) {
+  const body = await loadToolCallBody(props.id);
+  return <ToolCallDisclosure {...props} body={body ?? undefined} />;
 }
