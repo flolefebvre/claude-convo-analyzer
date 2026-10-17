@@ -5,6 +5,8 @@ import { type RouteShell, expectData, expectInstantLoad, expectShell } from "./r
 
 // A seeded conversation title (`scripts/seed/fake-logs.ts`).
 const TITLE = "Split the billing service out of the monolith";
+// The seeded conversation where agents message each other (issue #96).
+const AGENT_MESSAGES_TITLE = "Coordinate the search rewrite across agents";
 
 const titleLink = (page: Page) => page.getByRole("link", { name: TITLE, exact: true });
 
@@ -42,6 +44,22 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
       await expectShell(page, conversation);
     });
     await expectData(page, conversation);
+  });
+
+  test("renders the messages agents send each other, and their task notifications", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("link", { name: AGENT_MESSAGES_TITLE, exact: true }).click();
+    await page.waitForURL((url) => url.pathname.startsWith("/conversation/"));
+
+    // A sub-agent's status message, its sender linked to that sub-agent's transcript.
+    const interAgent = page.getByRole("article").filter({ hasText: "Indexing is done" });
+    await expect(interAgent).toHaveAccessibleName(/^From /);
+    await expect(interAgent.getByRole("link")).toHaveAttribute("href", /[?&]agent=/);
+
+    // The sub-agent's task notification: summary and status on one row.
+    const notification = page.getByRole("article", { name: /Agent "rewrite ranking" finished/ });
+    await expect(notification).toBeVisible();
+    await expect(notification).toContainText("completed");
   });
 
   test("renders the not-found page for an unknown session id", async ({ page }) => {

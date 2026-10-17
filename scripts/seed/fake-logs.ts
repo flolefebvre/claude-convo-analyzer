@@ -744,6 +744,205 @@ function coverageConversations(g: Gen, startIndex: number): Conversation[] {
   return conversations;
 }
 
+/** The seeded Conversation where agents talk to each other (issue #96). */
+export const AGENT_MESSAGES_TITLE = "Coordinate the search rewrite across agents";
+
+/** A user record from someone other than the person at the keyboard (`origin` set). */
+function originRecord(
+  g: Gen,
+  ms: number,
+  cwd: string,
+  origin: Record<string, unknown>,
+  content: string,
+  extra: Record<string, unknown> = {},
+): string {
+  return JSON.stringify({
+    type: "user",
+    uuid: g.uid("u"),
+    timestamp: iso(ms),
+    cwd,
+    gitBranch: "main",
+    version: CC_VERSION,
+    ...extra,
+    origin,
+    message: { role: "user", content },
+  });
+}
+
+/** A `queued_command` attachment: a message delivered while the agent was working. */
+function queuedCommand(g: Gen, ms: number, attachment: Record<string, unknown>, extra: Record<string, unknown> = {}) {
+  return JSON.stringify({
+    type: "attachment",
+    uuid: g.uid("att"),
+    timestamp: iso(ms),
+    ...extra,
+    attachment: { type: "queued_command", source_uuid: g.uid("src"), ...attachment },
+  });
+}
+
+/** A `<task-notification>` as Claude Code writes it, `result` entity-escaped. */
+function taskNotificationXml(taskId: string, status: string, summary: string, result?: string): string {
+  const escaped = result?.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return [
+    "<task-notification>",
+    `<task-id>${taskId}</task-id>`,
+    `<output-file>/tmp/claude/tasks/${taskId}.output</output-file>`,
+    `<status>${status}</status>`,
+    `<summary>${summary}</summary>`,
+    ...(escaped === undefined ? [] : [`<result>${escaped}</result>`]),
+    "</task-notification>",
+  ].join("\n");
+}
+
+/**
+ * One Conversation carrying every user Message shape of issue #96, so the UI
+ * check and the e2e spec can find them: a plugin Prompt, two Sub-agents — one
+ * reporting in and handing back, the other stopped — a cross-session peer
+ * message and a Prompt sent while working (both `queued_command`), Task
+ * notifications in three statuses, and coordinator messages inside a Sub-agent.
+ * Recent, so it lands on the list's first page.
+ */
+function agentMessagesConversation(g: Gen, index: number): Conversation {
+  const project = PROJECTS[5];
+  const cwd = project.path;
+  const folder = cwd.replace(/\//g, "-");
+  const sessionId = `seed-${folder.slice(1)}-${index}`;
+  const model = MODELS[0];
+  let t = g.now - 3 * 3_600_000;
+  const at = (seconds: number) => (t += seconds * 1_000);
+
+  const lines: string[] = [JSON.stringify({ type: "ai-title", aiTitle: AGENT_MESSAGES_TITLE })];
+  lines.push(
+    originRecord(
+      g,
+      t,
+      cwd,
+      { kind: "plugin", name: "session-history", asUser: true },
+      "Pick up where we left off on the search rewrite.",
+      { permissionMode: "default" },
+    ),
+  );
+
+  const spawn = (): { sub: SubAgent; agentType: string } => {
+    const { toolUse, ledgerResult, sub } = spawnSubAgent(g, at(60), cwd, false);
+    lines.push(assistantTurn(g, t, cwd, model, { toolUses: [toolUse] }));
+    lines.push(toolResult(g, at(5), cwd, (toolUse as { id: string }).id, ledgerResult));
+    return { sub, agentType: (ledgerResult as { agentType: string }).agentType };
+  };
+  const { sub: worker, agentType: workerType } = spawn();
+  const { sub: stopped } = spawn();
+
+  // The worker reports in, then hands back; meanwhile the person and another
+  // session speak while the main agent is busy.
+  const status = "Indexing is done; starting on **ranking** next.";
+  lines.push(
+    originRecord(
+      g,
+      at(120),
+      cwd,
+      { kind: "peer", from: workerType, senderTaskId: worker.agentId, name: workerType, body: status },
+      `Another Claude session sent a message:\n<agent-message from="${workerType}">\n${status}\n</agent-message>`,
+      { isMeta: true },
+    ),
+  );
+  lines.push(
+    queuedCommand(g, at(40), {
+      prompt: "Keep the old endpoint working until the mobile client ships.",
+      commandMode: "prompt",
+      origin: { kind: "human" },
+      timestamp: iso(t),
+    }),
+  );
+  const heads = "Docs freeze starts Friday: ping me before renaming any endpoint.";
+  const socket = "uds:/run/user/1000/cc-socks/4242.sock";
+  lines.push(
+    queuedCommand(g, at(30), {
+      prompt: `<cross-session-message from="${socket}" from-name="docs-site release">\n${heads}\n</cross-session-message>`,
+      commandMode: "prompt",
+      isMeta: true,
+      origin: { kind: "peer", from: socket, msg_id: g.uid("msg"), name: "docs-site release", body: heads },
+      timestamp: iso(t),
+    }),
+  );
+  const report = "## Report\n\nRanking is rewritten on BM25 and the old endpoint still answers.\n\n- 42 tests pass";
+  const frame = "[Subagent hand-back] The text below is the final report of a subagent. The report follows:";
+  lines.push(
+    originRecord(
+      g,
+      at(180),
+      cwd,
+      {
+        kind: "peer",
+        from: worker.agentId,
+        senderTaskId: worker.agentId,
+        name: workerType,
+        body: `${frame}\n  ${report.replace(/\n/g, "\n  ")}`,
+        handback: true,
+        handbackReportText: report,
+      },
+      `Another Claude session sent a message:\n<agent-message from="${worker.agentId}">\n${frame}\n</agent-message>`,
+      { isMeta: true },
+    ),
+  );
+  lines.push(
+    originRecord(
+      g,
+      at(2),
+      cwd,
+      { kind: "task-notification" },
+      taskNotificationXml(worker.agentId, "completed", 'Agent "rewrite ranking" finished', report),
+    ),
+  );
+  lines.push(
+    originRecord(
+      g,
+      at(30),
+      cwd,
+      { kind: "task-notification", producer: "session-task" },
+      taskNotificationXml(g.uid("b"), "failed", 'Background command "pnpm build" failed with exit code 1'),
+    ),
+  );
+  lines.push(
+    originRecord(
+      g,
+      at(30),
+      cwd,
+      { kind: "task-notification" },
+      taskNotificationXml(stopped.agentId, "stopped", 'Agent "profile the indexer" was stopped'),
+    ),
+  );
+  lines.push(assistantTurn(g, at(20), cwd, model));
+
+  // Inside the worker: the main agent steers it, once between turns and once
+  // mid-turn (a `queued_command`).
+  const workerStart = Date.parse((JSON.parse(worker.lines[0]) as { timestamp: string }).timestamp);
+  const sidechain = { isSidechain: true, agentId: worker.agentId };
+  worker.lines.push(
+    originRecord(
+      g,
+      workerStart + 20_000,
+      cwd,
+      { kind: "coordinator" },
+      "The coordinator sent a message while you were working:\nGood plan. Keep the old endpoint answering.",
+      { ...sidechain, isMeta: true },
+    ),
+    queuedCommand(
+      g,
+      workerStart + 40_000,
+      { prompt: "Also cover the empty-query case.", origin: { kind: "coordinator" }, isMeta: true },
+      sidechain,
+    ),
+  );
+
+  return {
+    folder,
+    sessionId,
+    mainLines: lines,
+    subAgents: [worker, stopped],
+    resumePoint: { uuid: lastAssistantUuid(lines), ms: t },
+  };
+}
+
 /** Every seeded Conversation, its conversations starting up to three weeks before `anchor`. */
 function buildCorpus(anchor: number): Conversation[] {
   const g = createGen(anchor);
@@ -754,7 +953,9 @@ function buildCorpus(anchor: number): Conversation[] {
   }
   const families = continuationFamilies(g, total);
   conversations.push(...families);
-  conversations.push(...coverageConversations(g, total + families.length));
+  const coverage = coverageConversations(g, total + families.length);
+  conversations.push(...coverage);
+  conversations.push(agentMessagesConversation(g, total + families.length + coverage.length));
   return conversations;
 }
 
@@ -782,8 +983,9 @@ export type FakeLogsCounts = {
 /**
  * Write the fake logs under `logsRoot`, their timeline ending at `now`: 30
  * standalone Conversations across six Projects, two continuation families
- * (seven more), then 23 covering pagination, unpriced usage and API errors —
- * 60 in all. The same `now` always writes the same bytes.
+ * (seven more), 23 covering pagination, unpriced usage and API errors, then one
+ * where agents message each other — 61 in all. The same `now` always writes the
+ * same bytes.
  *
  * @example
  * const counts = generateFakeLogs({ logsRoot: "data/seed/projects", now: new Date() });

@@ -4,13 +4,14 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { PAGE_SIZE } from "@/app/_lib/list-view";
-import { listConversations } from "@/core/read";
+import { getTranscript, listConversations } from "@/core/read";
 
 import { seedEnvironment } from "./environment";
+import { AGENT_MESSAGES_TITLE } from "./fake-logs";
 
 const NOW = new Date("2026-06-22T17:00:00.000Z");
 
-// A full seed is a real ingest of 133 files (~3s); two per test outrun the 5s
+// A full seed is a real ingest of 136 files (~3s); two per test outrun the 5s
 // default when the suite runs in parallel.
 describe("seedEnvironment", { timeout: 30_000 }, () => {
   let tmpDir = "";
@@ -30,8 +31,8 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     expect(seed.summary.duplicateSessionsSkipped).toEqual([]);
 
     const conversations = await listConversations({ dbPath: seed.dbPath });
-    expect(conversations).toHaveLength(60);
-    expect(conversations.reduce((sum, c) => sum + c.subAgentCount, 0)).toBe(73);
+    expect(conversations).toHaveLength(61);
+    expect(conversations.reduce((sum, c) => sum + c.subAgentCount, 0)).toBe(75);
 
     const continued = conversations.filter((c) => c.continuedFromId !== null);
     expect(continued).toHaveLength(5);
@@ -54,6 +55,34 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     const failing = conversations.find((c) => c.title === "Finish the release while the API keeps failing");
     expect(failing).toMatchObject({ unpriced: false });
     expect(failing?.errorCount).toBeGreaterThan(0);
+  });
+
+  it("seeds a Conversation where agents message each other, with every user Message shape", async () => {
+    const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
+
+    const convo = (await listConversations({ dbPath: seed.dbPath })).find((c) => c.title === AGENT_MESSAGES_TITLE);
+    expect(convo).toBeDefined();
+    const main = await getTranscript(convo?.id ?? "", { dbPath: seed.dbPath });
+    const user = main?.messages.filter((m) => m.role === "user") ?? [];
+    const subIds = main?.tree.children.map((c) => c.id) ?? [];
+
+    const interAgent = user.filter((m) => m.kind === "inter-agent");
+    expect(interAgent.some((m) => m.origin?.senderAgentId === subIds[0] && !m.origin.handback)).toBe(true);
+    expect(interAgent.some((m) => m.origin?.handback && m.origin.senderAgentId === subIds[0])).toBe(true);
+    expect(interAgent.some((m) => m.origin?.senderAgentId === null && m.origin.midTurn)).toBe(true);
+
+    const notifications = user.filter((m) => m.kind === "task-notification");
+    expect(notifications.map((m) => m.origin?.taskStatus)).toEqual(["completed", "failed", "stopped"]);
+    expect(notifications.map((m) => m.origin?.taskAgentId)).toEqual([subIds[0], null, subIds[1]]);
+
+    const prompts = user.filter((m) => m.kind === "prompt");
+    expect(prompts.some((m) => m.origin?.plugin === "session-history")).toBe(true);
+    expect(prompts.some((m) => m.origin?.midTurn)).toBe(true);
+
+    const worker = await getTranscript(convo?.id ?? "", { dbPath: seed.dbPath, agentId: subIds[0] });
+    const coordinator = worker?.messages.filter((m) => m.origin?.coordinator) ?? [];
+    expect(coordinator).toHaveLength(2);
+    expect(coordinator.every((m) => m.origin?.senderAgentId === main?.tree.id && m.origin?.midTurn)).toBe(true);
   });
 
   it("ends the seeded activity at the anchor", async () => {
@@ -86,7 +115,7 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     const after = await seedEnvironment({ dir, now: NOW });
 
     expect(existsSync(leftover)).toBe(false);
-    expect(await listConversations({ dbPath: after.dbPath })).toHaveLength(60);
+    expect(await listConversations({ dbPath: after.dbPath })).toHaveLength(61);
   });
 });
 
