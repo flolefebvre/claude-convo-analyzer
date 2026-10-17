@@ -6,7 +6,7 @@
 //
 // React-free + I/O-free so it unit-tests in the node vitest environment.
 
-import { firstParam } from "@/app/_lib/search-params";
+import { FIRST_PAGE, firstParam } from "@/app/_lib/search-params";
 
 /**
  * Resolve the selected agent id from the raw `?agent=` search param. Mirrors
@@ -28,6 +28,25 @@ export function agentHref(sessionId: string, agentId?: string): string {
   const base = `/conversation/${encodeURIComponent(sessionId)}`;
   if (!agentId) return base;
   return `${base}?${new URLSearchParams({ agent: agentId }).toString()}`;
+}
+
+/**
+ * Link to one Transcript page of an agent: its {@link agentHref} with `?page=`
+ * set — never for page 1, the bare link — and the `?from=` list view carried
+ * on. It names no `?msg=`/`?call=` anchor: paging leaves the deep-link target.
+ *
+ * @example transcriptPageHref(view.sessionId, "a7", 2, listReturn) // "/conversation/<id>?agent=a7&page=2"
+ */
+export function transcriptPageHref(
+  sessionId: string,
+  agentId: string | undefined,
+  page: number,
+  listReturn: string | undefined,
+): string {
+  const base = agentHref(sessionId, agentId);
+  if (page <= FIRST_PAGE) return withListReturn(base, listReturn);
+  const separator = base.includes("?") ? "&" : "?";
+  return withListReturn(`${base}${separator}${new URLSearchParams({ page: String(page) }).toString()}`, listReturn);
 }
 
 /**

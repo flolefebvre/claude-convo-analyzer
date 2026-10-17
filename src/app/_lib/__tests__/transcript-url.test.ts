@@ -9,8 +9,28 @@ import {
   resolveListReturn,
   resolveMessage,
   toolCallHref,
+  transcriptPageHref,
   withListReturn,
 } from "@/app/_lib/transcript-url";
+
+describe("transcriptPageHref", () => {
+  it("sets the page on the agent's link", () => {
+    expect(transcriptPageHref("s1", "a7", 3, undefined)).toBe("/conversation/s1?agent=a7&page=3");
+  });
+
+  it("links page 1 as the bare agent link, never ?page=1", () => {
+    expect(transcriptPageHref("s1", "a7", 1, undefined)).toBe("/conversation/s1?agent=a7");
+    expect(transcriptPageHref("s1", undefined, 1, undefined)).toBe("/conversation/s1");
+  });
+
+  it("pages the main agent with no ?agent=", () => {
+    expect(transcriptPageHref("s1", undefined, 2, undefined)).toBe("/conversation/s1?page=2");
+  });
+
+  it("keeps the list view the transcript was opened from", () => {
+    expect(transcriptPageHref("s1", "a7", 2, "page=3")).toBe("/conversation/s1?agent=a7&page=2&from=page%3D3");
+  });
+});
 
 describe("resolveAgent", () => {
   it("returns undefined when the param is absent (core defaults to main)", () => {
