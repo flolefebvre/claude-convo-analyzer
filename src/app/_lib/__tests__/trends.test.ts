@@ -41,11 +41,10 @@ function spendFixture(): DailySpend {
 }
 
 describe("buildTrendsView", () => {
-  it("keeps the core's cost ranking as the band order and assigns a color per band", () => {
+  it("keeps the core's cost ranking as the band order", () => {
     const view = buildTrendsView(spendFixture());
 
     expect(view.bands.map((b) => b.model)).toEqual(["claude-opus-4-8", "claude-sonnet-4-6"]);
-    expect(view.bands.map((b) => b.color)).toEqual(["var(--chart-1)", "var(--chart-2)"]);
     // Each band knows its share of the range total (the legend's bar).
     expect(view.bands[0]?.share).toBeCloseTo(2 / 3, 12);
   });
@@ -93,22 +92,59 @@ describe("buildTrendsView", () => {
     expect(view.bands).toEqual([]);
   });
 
-  it("cycles the chart palette when a range holds more models than colors", () => {
-    const many = spendFixture();
-    many.models = ["a", "b", "c", "d", "e", "f"].map((model) => ({
-      model,
-      costUsd: 1,
-      tokens: tokens(1, 1),
-    }));
-    const view = buildTrendsView(many);
+  it("colors each band by its model family, whatever its cost rank", () => {
+    const view = buildTrendsView(withModels(["claude-haiku-4-5-20251001", "claude-sonnet-4-6", "claude-opus-4-8"]));
 
-    expect(view.bands.map((b) => b.color)).toEqual([
-      "var(--chart-1)",
-      "var(--chart-2)",
-      "var(--chart-3)",
-      "var(--chart-4)",
-      "var(--chart-5)",
-      "var(--chart-1)",
-    ]);
+    expect(colorsByModel(view)).toEqual({
+      "claude-opus-4-8": "var(--chart-1)",
+      "claude-sonnet-4-6": "var(--chart-3)",
+      "claude-haiku-4-5-20251001": "var(--chart-4)",
+    });
+  });
+
+  it("keeps a model's color when another range reorders the models' costs", () => {
+    const models = ["claude-opus-4-8", "claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5"];
+    const thirtyDays = buildTrendsView(withModels(models));
+    const sevenDays = buildTrendsView(withModels([...models].reverse()));
+
+    expect(colorsByModel(sevenDays)).toEqual(colorsByModel(thirtyDays));
+  });
+
+  it("gives the newest version of a family the family's color, and an older one another", () => {
+    const view = buildTrendsView(withModels(["claude-opus-4-7", "claude-opus-4-8"]));
+
+    expect(colorsByModel(view)["claude-opus-4-8"]).toBe("var(--chart-1)");
+    expect(colorsByModel(view)["claude-opus-4-7"]).not.toBe("var(--chart-1)");
+  });
+
+  it("never repeats a color among the bands, even past the palette's size", () => {
+    const view = buildTrendsView(
+      withModels([
+        "claude-opus-4-8",
+        "claude-opus-4-7",
+        "claude-opus-4-1",
+        "claude-sonnet-4-6",
+        "claude-sonnet-4-5",
+        "claude-3-7-sonnet",
+        "claude-haiku-4-5",
+        "claude-3-5-haiku",
+        "some-other-model",
+        "another-model",
+      ]),
+    );
+
+    expect(new Set(view.bands.map((b) => b.color)).size).toBe(10);
   });
 });
+
+/** A spend whose models come in the given (cost) order, one dollar apart. */
+function withModels(models: string[]): DailySpend {
+  const spend = spendFixture();
+  spend.models = models.map((model, i) => ({ model, costUsd: models.length - i, tokens: tokens(1, 1) }));
+  return spend;
+}
+
+/** Each band's color, keyed by its model. */
+function colorsByModel(view: ReturnType<typeof buildTrendsView>): Record<string, string> {
+  return Object.fromEntries(view.bands.map((b) => [b.model, b.color]));
+}

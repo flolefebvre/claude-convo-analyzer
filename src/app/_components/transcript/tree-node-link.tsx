@@ -15,22 +15,31 @@
 import Link, { useLinkStatus } from "next/link";
 import type { CSSProperties, ReactNode } from "react";
 
+import { cn } from "@/lib/utils-cn";
+
 /** The pending dot — fixed-size and always rendered (see CSS) so toggling it
  *  never shifts the row's layout. Must be a descendant of the `<Link>`. */
 function NodeHint() {
   const { pending } = useLinkStatus();
-  return <span aria-hidden className={`node-hint${pending ? "is-pending" : ""}`} />;
+  return <span aria-hidden className={cn("node-hint", pending && "is-pending")} />;
 }
 
+/**
+ * One agent row of the tree, linking to that agent's transcript.
+ *
+ * @example <TreeNodeLink href={agentHref(sessionId, node.id)} isCurrent={false} depth={1}>Plan</TreeNodeLink>
+ */
 export function TreeNodeLink({
   href,
   isCurrent,
   depth,
+  title,
   children,
 }: {
   href: string;
   isCurrent: boolean;
   depth: number;
+  title?: string;
   children: ReactNode;
 }) {
   return (
@@ -38,7 +47,8 @@ export function TreeNodeLink({
       className="node"
       href={href}
       prefetch={false}
-      aria-current={isCurrent ? "true" : undefined}
+      title={title}
+      aria-current={isCurrent ? "page" : undefined}
       style={{ "--depth": depth } as CSSProperties}
     >
       {children}

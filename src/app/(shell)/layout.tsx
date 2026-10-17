@@ -1,79 +1,52 @@
 import { Suspense } from "react";
 
+import { FolderDisclosure } from "@/app/_components/folder-disclosure";
 import { FolderSidebar } from "@/app/_components/folder-sidebar";
-import { RefreshButton } from "@/app/_components/refresh-button";
-import { SearchBox } from "@/app/_components/search-box";
-import { SectionNav } from "@/app/_components/section-nav";
-import { ThemeToggle } from "@/app/_components/theme-toggle";
 import { loadConversations } from "@/app/_lib/conversations";
+import { formatGrandTotalCost } from "@/app/_lib/format";
 import { buildListView } from "@/app/_lib/list-view";
 
-// The persistent app chrome (PR #13): header + two-column sidebar/main grid,
-// shared by the analysis surfaces — the conversation list (`/`) and Trends
-// (`/trends`). It lived in the root layout, then in a `(list)` route group;
-// with a second surface joining it the group is `(shell)`, since what it holds
-// is the shell, not the list. The full-bleed `/conversation/<id>` transcript
-// view (its own route, outside this group) still renders without the sidebar.
-// This layout does NOT re-render on navigation within the group, so changing
-// `?folder=`/sort/range never flashes the sidebar.
+// The analysis surfaces' frame (PR #13): the folder sidebar beside the page's
+// <main>, shared by the conversation list (`/`), Trends and Tools. The app bar
+// above it belongs to the root layout. This layout does NOT re-render on
+// navigation within the group, so changing `?folder=`/sort/range never flashes
+// the sidebar.
 //
-// The sidebar (section nav + folder list) is scope-independent (derived from ALL
-// conversations), so the layout can build it without reading `searchParams`
-// (which layouts cannot do anyway). Both this and the page call
-// `loadConversations()`, but React `cache()` dedupes it to one read per request.
-// Surface-specific chrome — e.g. the list's overview band — belongs to its page,
-// not here.
+// Two columns from `lg` up; below that the page gets the full width and the
+// folder list folds into a one-line disclosure above the content, so a phone
+// does not scroll past every Project before reaching any data.
+//
+// The folder list is scope-independent (derived from ALL conversations), so
+// the layout can build it without reading `searchParams` (which layouts cannot
+// do anyway). Both this and the page call `loadConversations()`, but React
+// `cache()` dedupes it to one read per request.
 export default function ShellLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <main className="mx-auto w-full max-w-7xl px-6 py-10">
-      <header className="mb-6 flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Claude Conversation Analyzer</h1>
-          <p className="text-sm text-muted-foreground">
-            Every conversation from your local Claude Code logs, with token and cost rollups.
-          </p>
-        </div>
-        {/* Header controls: full-text search, the Light/Dark/Auto theme toggle
-            and the Refresh control. All bring their own client boundary; the
-            layout stays a server component. */}
-        <div className="flex items-center gap-3">
-          <SearchBox />
-          <ThemeToggle />
-          <div data-slot="refresh-action">
-            <RefreshButton />
-          </div>
-        </div>
-      </header>
-
-      <div className="flex flex-col gap-6 md:flex-row md:items-start">
-        <aside className="flex w-full shrink-0 flex-col gap-5 md:w-64">
-          {/* The sidebar reads the live URL (usePathname/useSearchParams) for
-              its active highlights, and its folder list is fetched at request
-              time — both reasons to keep it inside Suspense boundaries so the
-              shell can prerender (Next local docs: use-pathname "Cache
-              Components", use-search-params "Prerendering"). */}
-          <Suspense fallback={null}>
-            <SectionNav />
-          </Suspense>
-          <Suspense fallback={<p className="text-sm text-muted-foreground">Loading folders…</p>}>
-            <Sidebar />
-          </Suspense>
-        </aside>
-        <div className="min-w-0 flex-1">{children}</div>
-      </div>
-    </main>
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row lg:items-start lg:gap-8 lg:py-8">
+      {/* The folder list is fetched at request time and its entries read the
+          live URL — both reasons to keep it inside a Suspense boundary so the
+          shell can prerender (Next local docs: use-search-params
+          "Prerendering"). The fallback holds the sidebar's width so the page
+          does not jump sideways when it lands. */}
+      <Suspense fallback={<SidebarFallback />}>
+        <Sidebar />
+      </Suspense>
+      <main id="main" tabIndex={-1} className="min-w-0 flex-1">
+        {children}
+      </main>
+    </div>
   );
 }
 
 /**
  * The sidebar's data: derive the scope-independent folder list from ALL
- * conversations. Split out so the request-time read sits inside the layout's
- * <Suspense> boundary (the read is deferred out of prerendering via
- * `loadConversations`/`connection()`).
+ * conversations, and render it twice — as the desktop sidebar and as the
+ * phone/tablet disclosure (CSS shows one). Nothing at all before the first
+ * scan: an empty folder list is no navigation.
  */
 async function Sidebar() {
   const allRows = await loadConversations();
@@ -81,12 +54,40 @@ async function Sidebar() {
   // the table slice is skipped. The "All folders" anchor totals are summed from
   // the already-derived per-folder entries (no extra core touch).
   const { folders, totals } = buildListView(allRows);
-  return (
+  if (totals.count === 0) return null;
+
+  const nav = (
     <FolderSidebar
       folders={folders}
       totalCount={totals.count}
       totalCost={totals.costUsd}
       totalUnpriced={totals.unpriced}
     />
+  );
+  const cost = (value: number, unpriced: boolean) => `${unpriced ? "~" : ""}${formatGrandTotalCost(value)}`;
+  return (
+    <>
+      <aside className="hidden w-64 shrink-0 lg:block">{nav}</aside>
+      <FolderDisclosure
+        className="lg:hidden"
+        totalCost={cost(totals.costUsd, totals.unpriced)}
+        folders={folders.map((entry) => ({
+          folder: entry.folder,
+          label: entry.label,
+          cost: cost(entry.costUsd, entry.unpriced),
+        }))}
+      >
+        {nav}
+      </FolderDisclosure>
+    </>
+  );
+}
+
+/** Holds the sidebar's place (desktop) or the disclosure's line (below `lg`). */
+function SidebarFallback() {
+  return (
+    <div className="h-12 shrink-0 rounded-xl border border-dashed lg:h-auto lg:w-64 lg:border-0">
+      <p className="sr-only lg:not-sr-only lg:px-3 lg:py-2 lg:text-sm lg:text-muted-foreground">Loading folders…</p>
+    </div>
   );
 }

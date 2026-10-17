@@ -108,12 +108,6 @@ export function sortTools(tools: readonly ToolStat[], sort: ToolSortState): Tool
   });
 }
 
-/** Active-sort arrow for a header, or "" when the column is not the active sort. */
-export function toolSortIndicator(field: ToolSortField, current: ToolSortState): string {
-  if (current.sortBy !== field) return "";
-  return current.dir === "asc" ? "↑" : "↓";
-}
-
 /**
  * Build the page's query string from a view state, so every axis composes: a
  * sort link keeps the scope, range and expanded row; a range link keeps the

@@ -6,8 +6,10 @@ import {
   messageHref,
   resolveAgent,
   resolveCall,
+  resolveListReturn,
   resolveMessage,
   toolCallHref,
+  withListReturn,
 } from "@/app/_lib/transcript-url";
 
 describe("resolveAgent", () => {
@@ -96,5 +98,55 @@ describe("messageHref", () => {
 
   it("url-encodes a uuid with reserved characters", () => {
     expect(messageHref("sess-1", undefined, "a b")).toBe("/conversation/sess-1?msg=a+b#msg-a%20b");
+  });
+});
+
+describe("withListReturn", () => {
+  const from = "sortBy=cost&dir=asc&page=2";
+
+  it("carries the list view on a transcript link as ?from=", () => {
+    expect(withListReturn("/conversation/sess-1", from)).toBe(
+      "/conversation/sess-1?from=sortBy%3Dcost%26dir%3Dasc%26page%3D2",
+    );
+  });
+
+  it("joins an existing query and keeps the #fragment last", () => {
+    expect(withListReturn("/conversation/sess-1?agent=a2&msg=m1#msg-m1", from)).toBe(
+      "/conversation/sess-1?agent=a2&msg=m1&from=sortBy%3Dcost%26dir%3Dasc%26page%3D2#msg-m1",
+    );
+  });
+
+  it("leaves the link alone when there is no list view to return to", () => {
+    expect(withListReturn("/conversation/sess-1?agent=a2", undefined)).toBe("/conversation/sess-1?agent=a2");
+    expect(withListReturn("/conversation/sess-1", "")).toBe("/conversation/sess-1");
+  });
+});
+
+describe("resolveListReturn", () => {
+  it("returns to the bare list when the transcript was not opened from one", () => {
+    expect(resolveListReturn(undefined)).toEqual({ href: "/", from: undefined });
+    expect(resolveListReturn("")).toEqual({ href: "/", from: undefined });
+  });
+
+  it("restores the list view the transcript was opened from", () => {
+    const from = "sortBy=cost&dir=asc&folder=-home-dev-api&expanded=sess-a&range=7&errors=1&page=2";
+    expect(resolveListReturn(from)).toEqual({ href: `/?${from}`, from });
+  });
+
+  it("keeps only the list's own view-state params", () => {
+    expect(resolveListReturn("folder=-home-dev-api&agent=a2&q=x&page=")).toEqual({
+      href: "/?folder=-home-dev-api",
+      from: "folder=-home-dev-api",
+    });
+  });
+
+  it("never leaves the list page, whatever the param holds", () => {
+    expect(resolveListReturn("//evil.example/path")).toEqual({ href: "/", from: undefined });
+    expect(resolveListReturn("https://evil.example/?folder=x")).toEqual({ href: "/", from: undefined });
+    expect(resolveListReturn("javascript:alert(1)")).toEqual({ href: "/", from: undefined });
+  });
+
+  it("reads the first value when the param repeats", () => {
+    expect(resolveListReturn(["page=3", "page=4"])).toEqual({ href: "/?page=3", from: "page=3" });
   });
 });

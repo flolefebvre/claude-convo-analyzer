@@ -122,6 +122,18 @@ export function clampPage(requested: number, pageCount: number): number {
 }
 
 /**
+ * The 1-based positions of the first and last row a (clamped) page shows within
+ * the whole scoped set, for the pager's "51–60 of 60"; both 0 for an empty set.
+ *
+ * @example pageRange(2, 60) // { first: 51, last: 60 }
+ */
+export function pageRange(page: number, rowCount: number): { first: number; last: number } {
+  if (rowCount === 0) return { first: 0, last: 0 };
+  const first = (page - 1) * PAGE_SIZE + 1;
+  return { first, last: Math.min(rowCount, first + PAGE_SIZE - 1) };
+}
+
+/**
  * Build the conversation-list view model from ALL rows + already-resolved intent.
  *
  * Always returns the scope-independent base (`folders`, `overview`,

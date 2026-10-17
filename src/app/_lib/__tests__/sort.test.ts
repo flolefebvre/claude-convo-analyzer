@@ -9,6 +9,7 @@ import {
   expandHref,
   folderHref,
   isSortableField,
+  listReturnQuery,
   modelLabel,
   resolveErrorsOnly,
   resolveExpanded,
@@ -17,7 +18,6 @@ import {
   resolveSort,
   sortConversations,
   sortHref,
-  sortIndicator,
   toggleSort,
 } from "@/app/_lib/sort";
 
@@ -266,20 +266,6 @@ describe("expandHref", () => {
 
   it("url-encodes a row id with special characters", () => {
     expect(expandHref("a b&c", undefined, { sort: DEFAULT_SORT })).toBe("?sortBy=date&dir=desc&expanded=a+b%26c");
-  });
-});
-
-describe("sortIndicator", () => {
-  it("shows an up arrow for the active ascending field", () => {
-    expect(sortIndicator("title", { sortBy: "title", dir: "asc" })).toBe("↑");
-  });
-
-  it("shows a down arrow for the active descending field", () => {
-    expect(sortIndicator("cost", { sortBy: "cost", dir: "desc" })).toBe("↓");
-  });
-
-  it("shows nothing for an inactive field", () => {
-    expect(sortIndicator("title", { sortBy: "cost", dir: "desc" })).toBe("");
   });
 });
 
@@ -566,5 +552,16 @@ describe("the page axis resets on a filter change and travels with the rest", ()
   it("expandHref keeps the page in BOTH directions — expanding never moves you", () => {
     expect(expandHref("sess-a", undefined, ON_PAGE_4)).toBe("?sortBy=date&dir=desc&expanded=sess-a&page=4");
     expect(expandHref("sess-a", "sess-a", ON_PAGE_4)).toBe("?sortBy=date&dir=desc&page=4");
+  });
+});
+
+describe("listReturnQuery", () => {
+  it("carries the whole list view — sort, folder, filter, range, page and the open row — as a query", () => {
+    expect(
+      listReturnQuery(
+        { sort: { sortBy: "cost", dir: "asc" }, folder: "-home-dev-api", range: "7", errorsOnly: true, page: 2 },
+        "sess-a",
+      ),
+    ).toBe("sortBy=cost&dir=asc&folder=-home-dev-api&expanded=sess-a&range=7&errors=1&page=2");
   });
 });

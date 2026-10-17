@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Tokens } from "@/core/cost";
 
-import { PAGE_SIZE, buildListView, clampPage } from "@/app/_lib/list-view";
+import { PAGE_SIZE, buildListView, clampPage, pageRange } from "@/app/_lib/list-view";
 import type { SortState } from "@/app/_lib/sort";
 
 import { summary } from "./helpers/summaries";
@@ -433,5 +433,20 @@ describe("buildListView — an expanded row decides the page when the URL asks f
   it("puts the FIRST row of a page on that page, not the previous one", () => {
     expect(buildListView(ROWS, { sort: DESC_COST, expanded: "r050" }).page).toBe(2);
     expect(buildListView(ROWS, { sort: DESC_COST, expanded: "r049" }).page).toBe(1);
+  });
+});
+
+describe("pageRange", () => {
+  it("names the 1-based first and last row a full page shows", () => {
+    expect(pageRange(1, 2 * PAGE_SIZE + 10)).toEqual({ first: 1, last: PAGE_SIZE });
+    expect(pageRange(2, 2 * PAGE_SIZE + 10)).toEqual({ first: PAGE_SIZE + 1, last: 2 * PAGE_SIZE });
+  });
+
+  it("ends the last page at the last row", () => {
+    expect(pageRange(3, 2 * PAGE_SIZE + 10)).toEqual({ first: 2 * PAGE_SIZE + 1, last: 2 * PAGE_SIZE + 10 });
+  });
+
+  it("is empty for an empty set", () => {
+    expect(pageRange(1, 0)).toEqual({ first: 0, last: 0 });
   });
 });

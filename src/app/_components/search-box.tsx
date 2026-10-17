@@ -1,42 +1,35 @@
 import Form from "next/form";
 import { Search } from "lucide-react";
+import { Suspense } from "react";
+
+import { SearchField, SearchFieldFromUrl } from "@/app/_components/search-field";
+import { cn } from "@/lib/utils-cn";
 
 /**
- * The full-text search box (issue #45) — in every surface's header, so "find
+ * The full-text search box (issue #45), in the app bar on every route, so "find
  * that conversation where we discussed X" is one keystroke away wherever you
- * are: the app shell, the transcript view, and the results page itself.
+ * are. On the results page it holds the query you just ran, so a refinement
+ * starts from it.
  *
  * A `next/form` GET form pointed at `/search`: submitting puts the query in the
  * URL (`/search?q=…`) and navigates client-side, and it still works with
  * JavaScript off — the URL IS the state, exactly like the list's sort/scope
- * links. This stays a server component; `<Form>` brings its own client
- * boundary.
+ * links. This stays a server component; `<Form>` and the URL-reading input
+ * bring their own client boundaries.
  *
- * ADR-0002: pure UI, no core import. Styling uses existing semantic tokens
- * only, so both themes read correctly with no per-theme rule.
+ * ADR-0002: pure UI, no core import.
+ *
+ * @example <SearchBox className="w-full md:w-60" />
  */
-export function SearchBox({
-  /** Pre-fills the input on the results page, so a refinement starts from the
-   *  query you just ran. */
-  defaultValue,
-  /** Tailwind width utility for the surface this sits in (headers are tight,
-   *  the results page is roomy). */
-  className,
-}: {
-  defaultValue?: string;
-  className?: string;
-}) {
+export function SearchBox({ className }: { className?: string }) {
   return (
-    <Form action="/search" role="search" className={`relative flex items-center ${className ?? "w-56"}`}>
+    <Form action="/search" role="search" className={cn("relative flex items-center", className)}>
       <Search className="pointer-events-none absolute left-2.5 size-3.5 text-muted-foreground" aria-hidden />
-      <input
-        type="search"
-        name="q"
-        defaultValue={defaultValue}
-        placeholder="Search conversations…"
-        aria-label="Search conversations"
-        className="h-8 w-full rounded-lg border border-border bg-muted/50 pr-2.5 pl-8 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
-      />
+      {/* The pre-filled value comes from the live URL, which only the client
+          reads; the prerendered shell shows the same field, empty. */}
+      <Suspense fallback={<SearchField />}>
+        <SearchFieldFromUrl />
+      </Suspense>
     </Form>
   );
 }

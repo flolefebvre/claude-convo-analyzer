@@ -230,6 +230,17 @@ export function errorsHref(ctx: ListLinkContext): string {
 }
 
 /**
+ * The list view as a bare query (no `?`), for a transcript link to carry back
+ * (`?from=`), so the transcript's "All conversations" link returns to this
+ * exact view — open row included.
+ *
+ * @example listReturnQuery(links, expandedId) // "sortBy=date&dir=desc&folder=-home-dev-api&page=2"
+ */
+export function listReturnQuery(ctx: ListLinkContext, expanded?: string): string {
+  return buildHref(ctx, expanded).slice(1);
+}
+
+/**
  * Resolve the "only with errors" filter from the raw `?errors=` search param.
  * ONLY the canonical {@link ERRORS_ON} value switches it on: anything else — an
  * absent param, an empty value, a hand-edited `errors=yes` — leaves the list
@@ -264,12 +275,6 @@ export function resolvePage(raw: string | string[] | undefined): number | undefi
  */
 export function resolveExpanded(raw: string | string[] | undefined): string | undefined {
   return firstParam(raw) || undefined;
-}
-
-/** Active-sort arrow for a header, or "" when the field is not the active sort. */
-export function sortIndicator(field: SortableField, current: SortState): string {
-  if (current.sortBy !== field) return "";
-  return current.dir === "asc" ? "↑" : "↓";
 }
 
 /**

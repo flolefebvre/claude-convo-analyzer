@@ -9,7 +9,6 @@ import {
   toolLabel,
   toolRangeHref,
   toolSortHref,
-  toolSortIndicator,
   toggleToolSort,
 } from "@/app/_lib/tools";
 
@@ -107,14 +106,6 @@ describe("tool table hrefs", () => {
     expect(toolExpandHref("Bash", { ...STATE, expanded: "Bash" })).toBe(
       "?sortBy=calls&dir=desc&folder=-Users-me-dev-app&range=7",
     );
-  });
-});
-
-describe("toolSortIndicator", () => {
-  it("marks only the active column", () => {
-    expect(toolSortIndicator("calls", DEFAULT_TOOL_SORT)).toBe("↓");
-    expect(toolSortIndicator("calls", { sortBy: "calls", dir: "asc" })).toBe("↑");
-    expect(toolSortIndicator("volume", DEFAULT_TOOL_SORT)).toBe("");
   });
 });
 

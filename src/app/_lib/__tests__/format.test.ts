@@ -1,14 +1,18 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  formatChars,
   formatClock,
   formatCompactTokens,
   formatCost,
+  formatCount,
   formatDate,
   formatDateRange,
   formatDayKey,
   formatDuration,
   formatGrandTotalCost,
+  formatModelName,
+  formatRate,
   formatTokens,
 } from "@/app/_lib/format";
 
@@ -27,6 +31,13 @@ describe("formatClock", () => {
 describe("formatTokens", () => {
   it("formats an integer with thousands separators", () => {
     expect(formatTokens(1_234_567)).toBe("1,234,567");
+  });
+});
+
+describe("formatCount", () => {
+  it("renders a count with en-US thousands separators", () => {
+    expect(formatCount(0)).toBe("0");
+    expect(formatCount(12_345)).toBe("12,345");
   });
 });
 
@@ -110,6 +121,10 @@ describe("formatCost", () => {
   it("renders zero as $0.00", () => {
     expect(formatCost(0)).toBe("$0.00");
   });
+
+  it("groups thousands", () => {
+    expect(formatCost(1234.5)).toBe("$1,234.50");
+  });
 });
 
 describe("formatGrandTotalCost", () => {
@@ -117,6 +132,10 @@ describe("formatGrandTotalCost", () => {
     expect(formatGrandTotalCost(12.3456)).toBe("$12.35");
     expect(formatGrandTotalCost(0)).toBe("$0.00");
     expect(formatGrandTotalCost(0.0042)).toBe("$0.00");
+  });
+
+  it("groups thousands", () => {
+    expect(formatGrandTotalCost(1_234_567.891)).toBe("$1,234,567.89");
   });
 });
 
@@ -171,5 +190,43 @@ describe("formatDayKey", () => {
     expect(formatDayKey("")).toBe("");
     expect(formatDayKey("2026-13-01")).toBe("2026-13-01");
     expect(formatDayKey("2026-06-10T12:00:00Z")).toBe("2026-06-10T12:00:00Z");
+  });
+});
+
+describe("formatChars", () => {
+  it("renders an unknown size as an em dash", () => {
+    expect(formatChars(null)).toBe("—");
+  });
+
+  it("keeps the trailing .0 when fixed, so a column's decimals line up", () => {
+    expect(formatChars(6_000, { fixed: true })).toBe("6.0K");
+    expect(formatChars(41_600, { fixed: true })).toBe("41.6K");
+    expect(formatChars(418, { fixed: true })).toBe("418");
+    expect(formatChars(null, { fixed: true })).toBe("—");
+  });
+});
+
+describe("formatModelName", () => {
+  it("drops the claude- prefix and the date suffix", () => {
+    expect(formatModelName("claude-haiku-4-5-20251001")).toBe("haiku-4-5");
+    expect(formatModelName("claude-3-5-sonnet-20241022")).toBe("3-5-sonnet");
+  });
+
+  it("drops the prefix of an undated id", () => {
+    expect(formatModelName("claude-opus-4-8")).toBe("opus-4-8");
+  });
+
+  it("leaves an id it does not recognise as is", () => {
+    expect(formatModelName("<synthetic>")).toBe("<synthetic>");
+    expect(formatModelName("gpt-4o-2024-08-06")).toBe("gpt-4o-2024-08-06");
+    expect(formatModelName("")).toBe("");
+  });
+});
+
+describe("formatRate", () => {
+  it("renders a share as a percentage with one fixed decimal, so a column's decimals line up", () => {
+    expect(formatRate(0.35)).toBe("35.0%");
+    expect(formatRate(1 / 30)).toBe("3.3%");
+    expect(formatRate(0)).toBe("0.0%");
   });
 });

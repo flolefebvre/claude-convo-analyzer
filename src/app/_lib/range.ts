@@ -52,3 +52,13 @@ export function rangeHref(range: RangeKey, folder?: string): string {
   if (folder) params.set("folder", folder);
   return `?${params.toString()}`;
 }
+
+/**
+ * The range as the end of a sentence, for empty-state copy: "No tool calls
+ * in the last 30 days", or "No tool calls yet" for all time.
+ *
+ * @example `No priced usage ${rangePhrase(range)}` // "No priced usage in the last 7 days"
+ */
+export function rangePhrase(range: RangeKey): string {
+  return range === "all" ? "yet" : `in the last ${range} days`;
+}

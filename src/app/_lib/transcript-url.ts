@@ -92,3 +92,42 @@ export function toolCallHref(sessionId: string, agentId: string | undefined, too
   const query = new URLSearchParams({ call: toolUseId }).toString();
   return `${base}${separator}${query}#${callAnchorId(toolUseId)}`;
 }
+
+/**
+ * Carry the list view a transcript was opened from (`?from=`, a
+ * `listReturnQuery`) on a transcript link, so its back link can restore that
+ * view. The query joins any existing one and the `#fragment` stays last; with no
+ * view to carry the link is returned unchanged.
+ *
+ * @example withListReturn(agentHref(row.id), listReturnQuery(links)) // "/conversation/<id>?from=sortBy%3Ddate%26dir%3Ddesc"
+ */
+export function withListReturn(href: string, from: string | undefined): string {
+  if (!from) return href;
+  const hashAt = href.indexOf("#");
+  const [path, hash] = hashAt === -1 ? [href, ""] : [href.slice(0, hashAt), href.slice(hashAt)];
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}${new URLSearchParams({ from }).toString()}${hash}`;
+}
+
+/** The conversation list's own view-state params — all a `?from=` may restore. */
+const LIST_VIEW_PARAMS = ["sortBy", "dir", "folder", "expanded", "range", "errors", "page"] as const;
+
+/**
+ * Resolve the raw `?from=` search param into the transcript's way back: `href`
+ * is the list page (`/`) with only the list's own view-state params kept, so the
+ * link can never leave the list whatever the param holds; `from` is that same
+ * query, normalized, for the transcript's own links to carry on (`undefined`
+ * when there is nothing to restore).
+ *
+ * @example resolveListReturn(params.from) // { href: "/?folder=-home-dev-api&page=2", from: "folder=-home-dev-api&page=2" }
+ */
+export function resolveListReturn(raw: string | string[] | undefined): { href: string; from: string | undefined } {
+  const given = new URLSearchParams(firstParam(raw) ?? "");
+  const kept = new URLSearchParams();
+  for (const key of LIST_VIEW_PARAMS) {
+    const value = given.get(key);
+    if (value) kept.set(key, value);
+  }
+  const from = kept.toString();
+  return from === "" ? { href: "/", from: undefined } : { href: `/?${from}`, from };
+}

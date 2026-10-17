@@ -2,26 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { RefreshSummary } from "@/core/refresh";
 
-import { formatDuplicateSessionDetail, formatDuration, formatRefreshSummary } from "@/app/_lib/refresh-summary";
-
-describe("formatDuration", () => {
-  it("renders sub-second durations in milliseconds", () => {
-    expect(formatDuration(0)).toBe("0ms");
-    expect(formatDuration(850)).toBe("850ms");
-    expect(formatDuration(999)).toBe("999ms");
-  });
-
-  it("switches to seconds at 1000ms with one decimal under ten seconds", () => {
-    expect(formatDuration(1000)).toBe("1.0s");
-    expect(formatDuration(1234)).toBe("1.2s");
-    expect(formatDuration(9949)).toBe("9.9s");
-  });
-
-  it("drops the decimal at ten seconds and above", () => {
-    expect(formatDuration(10_000)).toBe("10s");
-    expect(formatDuration(17_900)).toBe("18s");
-  });
-});
+import { formatDuplicateSessionDetail, formatRefreshSummary } from "@/app/_lib/refresh-summary";
 
 function summary(partial: Partial<RefreshSummary> = {}): RefreshSummary {
   return {
@@ -44,43 +25,36 @@ function duplicates(n: number): RefreshSummary["duplicateSessionsSkipped"] {
 }
 
 describe("formatRefreshSummary", () => {
-  it("renders all counts and the formatted duration in one line", () => {
-    expect(
-      formatRefreshSummary(
-        summary({
-          conversationsParsed: 12,
-          conversationsSkipped: 5,
-          conversationsDeleted: 2,
-          malformedLinesSkipped: 3,
-          durationMs: 1234,
-        }),
-      ),
-    ).toBe("Parsed 12 · Skipped 5 · Deleted 2 · 3 malformed lines skipped · 1.2s");
-  });
-
-  it("singularizes the malformed-line phrase when exactly one", () => {
-    expect(formatRefreshSummary(summary({ malformedLinesSkipped: 1, durationMs: 500 }))).toBe(
-      "Parsed 0 · Skipped 0 · Deleted 0 · 1 malformed line skipped · 500ms",
+  it("says everything is up to date when no conversation changed", () => {
+    expect(formatRefreshSummary(summary({ conversationsSkipped: 60, durationMs: 18 }))).toBe(
+      "Everything is up to date",
     );
   });
 
-  it("omits the malformed-line segment when there are none", () => {
-    expect(formatRefreshSummary(summary({ conversationsParsed: 1, durationMs: 12_000 }))).toBe(
-      "Parsed 1 · Skipped 0 · Deleted 0 · 12s",
+  it("counts updated and removed conversations in plain words", () => {
+    expect(formatRefreshSummary(summary({ conversationsParsed: 3, conversationsDeleted: 2 }))).toBe(
+      "3 conversations updated, 2 removed",
+    );
+    expect(formatRefreshSummary(summary({ conversationsParsed: 1 }))).toBe("1 conversation updated");
+    expect(formatRefreshSummary(summary({ conversationsDeleted: 1 }))).toBe("1 conversation removed");
+  });
+
+  it("adds the log lines it could not read, singular at one", () => {
+    expect(formatRefreshSummary(summary({ conversationsParsed: 2, malformedLinesSkipped: 3 }))).toBe(
+      "2 conversations updated, 3 log lines could not be read",
+    );
+    expect(formatRefreshSummary(summary({ malformedLinesSkipped: 1 }))).toBe(
+      "Everything is up to date, 1 log line could not be read",
     );
   });
 
-  it("reports duplicate session files, singularized at exactly one", () => {
-    expect(formatRefreshSummary(summary({ duplicateSessionsSkipped: duplicates(1), durationMs: 500 }))).toBe(
-      "Parsed 0 · Skipped 0 · Deleted 0 · 1 duplicate session file skipped · 500ms",
+  it("adds the duplicate log files it ignored, singular at one", () => {
+    expect(formatRefreshSummary(summary({ duplicateSessionsSkipped: duplicates(1) }))).toBe(
+      "Everything is up to date, 1 duplicate log file ignored",
     );
-    expect(formatRefreshSummary(summary({ duplicateSessionsSkipped: duplicates(2), durationMs: 500 }))).toBe(
-      "Parsed 0 · Skipped 0 · Deleted 0 · 2 duplicate session files skipped · 500ms",
+    expect(formatRefreshSummary(summary({ conversationsParsed: 1, duplicateSessionsSkipped: duplicates(2) }))).toBe(
+      "1 conversation updated, 2 duplicate log files ignored",
     );
-  });
-
-  it("omits the duplicate segment when there are none", () => {
-    expect(formatRefreshSummary(summary({ durationMs: 0 }))).toBe("Parsed 0 · Skipped 0 · Deleted 0 · 0ms");
   });
 });
 

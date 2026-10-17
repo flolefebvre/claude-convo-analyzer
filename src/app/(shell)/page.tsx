@@ -2,8 +2,8 @@
 // Component: it reads the active scope + sort + expanded row from
 // `searchParams`, fetches the rows (and the expanded row's detail) via the
 // cached app-zone readers, and renders a sortable shadcn table with a
-// grand-total footer. The persistent app shell (header + sidebar) lives in the
-// root layout (PR #13); the page renders ONLY the table region. Sorting,
+// grand-total footer. The app bar and the folder sidebar live in the layouts
+// (PR #13); the page renders its title, the overview band and the table. Sorting,
 // scoping, and row expansion are all server-side via search-param links (no
 // front-end data filtering); the pure URL-state logic lives in `@/app/_lib/sort`.
 //
@@ -15,13 +15,18 @@
 // wrapped in <Suspense>: the page shell prerenders, the data table streams in.
 // `loadConversations` defers the DB read out of prerendering (connection()).
 
-import { AlertTriangle } from "lucide-react";
-import Link from "next/link";
+import { AlertTriangle, FolderOpen, Inbox } from "lucide-react";
+import type { Metadata } from "next";
 import { Suspense } from "react";
 
-import { ConversationRow } from "@/app/_components/conversation-row";
+import { CONVERSATION_COLUMNS, ConversationRow } from "@/app/_components/conversation-row";
+import { EmptyState, EmptyStateLink } from "@/app/_components/empty-state";
 import { ListPager } from "@/app/_components/list-pager";
 import { OverviewBand } from "@/app/_components/overview-band";
+import { PageHeader } from "@/app/_components/page-header";
+import { PendingLink } from "@/app/_components/pending-link";
+import { RefreshButton } from "@/app/_components/refresh-button";
+import { SortableHead } from "@/app/_components/sortable-head";
 import {
   loadConversationDetail,
   loadConversationErrors,
@@ -33,7 +38,7 @@ import { footerLabelColSpan } from "@/app/_lib/columns";
 import { errorsView } from "@/app/_lib/errors-view";
 import { familyView } from "@/app/_lib/family-view";
 import { type FolderEntry } from "@/app/_lib/folders";
-import { formatDate, formatGrandTotalCost, formatTokens } from "@/app/_lib/format";
+import { formatCount, formatDate, formatGrandTotalCost, formatTokens } from "@/app/_lib/format";
 import { buildListView } from "@/app/_lib/list-view";
 import { type ViewSearchParams, firstParam } from "@/app/_lib/search-params";
 import {
@@ -42,24 +47,32 @@ import {
   errorsHref,
   expandHref,
   folderHref,
+  listReturnQuery,
   resolveErrorsOnly,
   resolveExpanded,
   resolvePage,
   resolveSort,
   sortHref,
-  sortIndicator,
 } from "@/app/_lib/sort";
-import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableFooter, TableHeader, TableRow } from "@/components/ui/table";
+
+export const metadata: Metadata = { title: "Conversations" };
 
 export default function Page({ searchParams }: { searchParams: Promise<ViewSearchParams> }) {
   return (
     <>
+      <PageHeader
+        title="Conversations"
+        description="Every conversation from your local Claude Code logs, with token and cost rollups."
+        className="mb-6"
+      />
+
       {/* The overview band: this surface's headline analysis, above its table.
-          Global (scope-independent), so it needs no `searchParams` and gets its
-          own Suspense boundary — the request-time read is deferred out of
-          prerendering (PPR) while the page shell prerenders. */}
+          Global (scope-independent) figures; it reads `searchParams` only to
+          say so when a folder is selected. Its own Suspense boundary defers the
+          request-time read out of prerendering (PPR). */}
       <Suspense fallback={null}>
-        <Overview />
+        <Overview searchParams={searchParams} />
       </Suspense>
 
       <Suspense fallback={<p className="text-sm text-muted-foreground">Loading conversations…</p>}>
@@ -70,18 +83,24 @@ export default function Page({ searchParams }: { searchParams: Promise<ViewSearc
 }
 
 /**
- * The overview band's data: the headline aggregate plus the cost-ranked top
- * Projects, both derived from ALL conversations (scope-independent). Split out
- * so the request-time read sits inside its own <Suspense> boundary. The
- * `loadConversations()` read is deduped with the sidebar/table via React
- * `cache()`, so the band adds no extra DB work.
+ * The overview band's data: the headline aggregate, derived from ALL
+ * conversations (scope-independent), plus the selected folder's label so the
+ * band can say its figures are not filtered. Split out so the request-time read
+ * sits inside its own <Suspense> boundary. The `loadConversations()` read is
+ * deduped with the sidebar/table via React `cache()`, so the band adds no extra
+ * DB work.
  */
-async function Overview() {
+async function Overview({ searchParams }: { searchParams: Promise<ViewSearchParams> }) {
+  const params = await searchParams;
   const allRows = await loadConversations();
-  // No sort intent -> scope-independent slice only; one `deriveFolders` pass
-  // feeds both the overview aggregate and the cost-ranked top Projects.
-  const { overview, topProjects } = buildListView(allRows);
-  return <OverviewBand overview={overview} topProjects={topProjects} />;
+  // No sort intent -> scope-independent slice only.
+  const { overview, folders } = buildListView(allRows);
+  // Before the first scan there is nothing to sum: the table's empty state
+  // says what to do, and a row of zero cards would only look broken.
+  if (overview.conversationCount === 0) return null;
+  const activeFolder = firstParam(params.folder) || undefined;
+  const selected = activeFolder ? folders.find((entry) => entry.folder === activeFolder) : undefined;
+  return <OverviewBand overview={overview} selectedFolderLabel={selected?.label} />;
 }
 
 /**
@@ -163,54 +182,77 @@ async function ConversationTable({ searchParams }: { searchParams: Promise<ViewS
   const expandedFamily = expandedRow ? await loadFamily(expandedRow.id) : null;
   const expandedFamilyView = expandedFamily ? familyView(expandedFamily, links, now) : null;
 
+  // This exact view — open row included — for the transcript links to carry
+  // back (`?from=`), so "All conversations" there returns here.
+  const listReturn = listReturnQuery(links, expandedRow?.id);
+
+  const conversations = `${formatCount(rowCount)} conversation${rowCount === 1 ? "" : "s"}`;
+  const footerLabel = pageCount > 1 ? `All ${conversations}` : conversations;
+
   // Empty when there are genuinely no conversations OR when the active scope
   // matched nothing (unknown/stale `?folder=`, or a folder with zero rows).
   if (rows.length === 0) {
+    // No filter in play: the database is simply empty — the first run.
+    if (!isScoped && !errorsOnly) return <EmptyList scoped={false} links={links} />;
     return (
       <>
-        <ListControls folder={selectedFolder} links={links} />
-        <EmptyState scoped={isScoped} links={links} />
+        <ListControls folder={selectedFolder} links={links} pager={null} />
+        <EmptyList scoped={isScoped} links={links} />
       </>
     );
   }
 
   return (
     <>
-      <ListControls folder={selectedFolder} links={links} />
+      <ListControls
+        folder={selectedFolder}
+        links={links}
+        pager={<ListPager variant="compact" page={page} pageCount={pageCount} rowCount={rowCount} links={links} />}
+      />
 
-      <div className="overflow-hidden rounded-xl border bg-card">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <SortableHead field="date" links={links}>
+      {/* The pager lands here (`#conversations`), not at the page top. The
+          wrapper is the `@container` the columns respond to: the table's
+          width, not the viewport's, decides which columns fit. */}
+      <div id="conversations" className="@container scroll-mt-4 overflow-hidden rounded-xl border bg-card">
+        <Table className="table-fixed">
+          <TableHeader className="bg-muted/30">
+            <TableRow className="hover:bg-transparent">
+              <ListSortableHead
+                field="date"
+                links={links}
+                className={`${CONVERSATION_COLUMNS.date} pl-2`}
+                labelClassName="sr-only @xl:not-sr-only"
+              >
                 Date
-              </SortableHead>
+              </ListSortableHead>
               {/* The Folder column is hidden when scoped (redundant — see breadcrumb). */}
               {!isScoped && (
-                <SortableHead field="folder" links={links}>
+                <ListSortableHead field="folder" links={links} className={CONVERSATION_COLUMNS.folder}>
                   Folder
-                </SortableHead>
+                </ListSortableHead>
               )}
-              <SortableHead field="title" links={links}>
+              <ListSortableHead field="title" links={links} className={CONVERSATION_COLUMNS.title}>
                 Title
-              </SortableHead>
-              <SortableHead field="model" links={links}>
+              </ListSortableHead>
+              <ListSortableHead field="model" links={links} className={CONVERSATION_COLUMNS.model}>
                 Model(s)
-              </SortableHead>
-              <SortableHead field="total" links={links} className="text-right">
+              </ListSortableHead>
+              <ListSortableHead field="total" links={links} align="right" className={CONVERSATION_COLUMNS.total}>
                 Total
-              </SortableHead>
-              <SortableHead field="cost" links={links} className="text-right">
+              </ListSortableHead>
+              <ListSortableHead
+                field="cost"
+                links={links}
+                align="right"
+                className={`${CONVERSATION_COLUMNS.cost} pr-2`}
+              >
                 Cost
-              </SortableHead>
+              </ListSortableHead>
             </TableRow>
           </TableHeader>
 
           <TableBody>
             {rows.map((row) => (
-              // `scoped` lets slice 3 hide the Folder column when a single
-              // Project is selected; presentation (two-line cell / breadcrumb)
-              // is slice 3's job — this only threads the flag through.
               <ConversationRow
                 key={row.id}
                 row={row}
@@ -222,17 +264,30 @@ async function ConversationTable({ searchParams }: { searchParams: Promise<ViewS
                 family={row.id === expandedRow?.id ? expandedFamilyView : null}
                 errors={row.id === expandedRow?.id ? expandedErrors : null}
                 toggleHref={expandHref(row.id, expandedId, links)}
+                listReturn={listReturn}
               />
             ))}
           </TableBody>
 
+          {/* The footer totals the whole scoped set, every page of it — its
+              label says so once the set spans pages. The label cell exists in
+              two spans, one per layout, since a hidden column must not be
+              spanned (the compact layout hides Folder and Model(s)). */}
           <TableFooter>
-            <TableRow>
-              <TableCell colSpan={footerLabelColSpan(isScoped)} className="font-medium">
-                {rowCount} conversation{rowCount === 1 ? "" : "s"}
+            <TableRow className="hover:bg-transparent">
+              <TableCell
+                colSpan={footerLabelColSpan(isScoped, { compact: true })}
+                className="pl-4 font-medium @4xl:hidden"
+              >
+                {footerLabel}
               </TableCell>
-              <TableCell className="text-right tabular-nums">{formatTokens(total.tokens.total)}</TableCell>
-              <TableCell className="text-right font-semibold text-cost tabular-nums">
+              <TableCell colSpan={footerLabelColSpan(isScoped)} className="hidden pl-4 font-medium @4xl:table-cell">
+                {footerLabel}
+              </TableCell>
+              <TableCell className={`${CONVERSATION_COLUMNS.total} text-right`}>
+                {formatTokens(total.tokens.total)}
+              </TableCell>
+              <TableCell className={`${CONVERSATION_COLUMNS.cost} text-right font-semibold text-cost-foreground`}>
                 {total.hasUnpriced ? (
                   <span title="Includes unpriced model usage — this total is a lower bound.">
                     {"~"}
@@ -247,28 +302,49 @@ async function ConversationTable({ searchParams }: { searchParams: Promise<ViewS
         </Table>
       </div>
 
-      <ListPager page={page} pageCount={pageCount} links={links} />
+      {(total.hasUnpriced || pageCount > 1) && (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+          {/* The "~" is explained where people can see it, not only in a
+              hover title: once, under the table, whenever the totals carry it. */}
+          {total.hasUnpriced ? (
+            <p className="text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">~</span> marks a lower bound: some usage is on a model
+              without a known price, counted as $0.
+            </p>
+          ) : (
+            <span />
+          )}
+          <ListPager page={page} pageCount={pageCount} rowCount={rowCount} links={links} />
+        </div>
+      )}
     </>
   );
 }
 
 /**
- * The strip above the table: the Project breadcrumb when scoped (left) and the
- * "only with errors" toggle (right). Rendered in BOTH states — with rows and
- * empty — so the toggle never disappears at the moment you want to turn it off.
+ * The strip above the table: the Project breadcrumb when scoped (left), then
+ * the compact pager and the "only with errors" toggle (right). Rendered in BOTH
+ * states — with rows and empty — so the toggle never disappears at the moment
+ * you want to turn it off.
  */
 function ListControls({
   folder,
   links,
+  pager,
 }: {
   /** The selected Project, when a `?folder=` scope is active. */
   folder: FolderEntry | undefined;
   links: ListLinkContext;
+  /** The compact pager, or `null` when there are no rows to page. */
+  pager: React.ReactNode;
 }) {
   return (
-    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
       {folder ? <FolderBreadcrumb folder={folder} links={links} /> : <span />}
-      <ErrorsFilterToggle links={links} />
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        {pager}
+        <ErrorsFilterToggle links={links} />
+      </div>
     </div>
   );
 }
@@ -281,29 +357,28 @@ function ListControls({
 function ErrorsFilterToggle({ links }: { links: ListLinkContext }) {
   const active = links.errorsOnly === true;
   return (
-    <Link
+    <PendingLink
       href={errorsHref(links)}
       scroll={false}
       aria-pressed={active}
-      className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50 ${
+      className={`inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors ${
         active
-          ? "border-destructive/30 bg-destructive/10 text-destructive dark:bg-destructive/20"
+          ? "border-destructive/30 bg-destructive/10 text-destructive-foreground dark:bg-destructive/20"
           : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
       }`}
     >
       <AlertTriangle className="size-3.5" aria-hidden />
       Only with errors
-    </Link>
+    </PendingLink>
   );
 }
 
 /**
- * The table-region empty state. When scoped, the `?folder=` matched nothing
- * (unknown/stale key or an empty Project) so we offer a clear-filter link back
- * to "All folders" (preserving sort). When unscoped, there are simply no
- * conversations yet.
+ * The table-region empty state, with the way out: a filter that matched
+ * nothing offers to drop it (keeping the rest of the view state); an empty
+ * database offers the first scan.
  */
-function EmptyState({
+function EmptyList({
   scoped,
   links,
 }: {
@@ -311,28 +386,32 @@ function EmptyState({
   /** The active view state, preserved by the clear-filter link. */
   links: ListLinkContext;
 }) {
+  if (links.errorsOnly) {
+    return (
+      <EmptyState
+        icon={AlertTriangle}
+        title="No conversations with API errors"
+        action={<EmptyStateLink href={errorsHref(links)}>Show all conversations</EmptyStateLink>}
+      >
+        {scoped ? "Nothing in this folder hit an API error." : "None of your conversations hit an API error."}
+      </EmptyState>
+    );
+  }
+  if (scoped) {
+    return (
+      <EmptyState
+        icon={FolderOpen}
+        title="No conversations in this folder"
+        action={<EmptyStateLink href={folderHref(undefined, links)}>Show all folders</EmptyStateLink>}
+      >
+        The folder may have been removed since the last scan.
+      </EmptyState>
+    );
+  }
   return (
-    <div className="rounded-xl border border-dashed bg-card p-16 text-center">
-      {links.errorsOnly ? (
-        <>
-          <p className="text-sm text-muted-foreground">
-            No conversations with API errors{scoped ? " in this folder" : ""}.
-          </p>
-          <Link href={errorsHref(links)} className="mt-3 inline-block text-sm font-medium hover:underline">
-            Show all conversations
-          </Link>
-        </>
-      ) : scoped ? (
-        <>
-          <p className="text-sm text-muted-foreground">No conversations in this folder.</p>
-          <Link href={folderHref(undefined, links)} className="mt-3 inline-block text-sm font-medium hover:underline">
-            Clear filter — show all folders
-          </Link>
-        </>
-      ) : (
-        <p className="text-sm text-muted-foreground">No conversations yet. Click Refresh to scan your conversations.</p>
-      )}
-    </div>
+    <EmptyState icon={Inbox} title="No conversations yet" action={<RefreshButton />}>
+      Scan your Claude Code logs to see your conversations here.
+    </EmptyState>
   );
 }
 
@@ -351,9 +430,9 @@ function FolderBreadcrumb({
 }) {
   return (
     <nav aria-label="Folder scope" className="flex flex-wrap items-center gap-2 text-sm">
-      <Link href={folderHref(undefined, links)} className="text-muted-foreground hover:underline">
+      <PendingLink href={folderHref(undefined, links)} scroll={false} className="text-muted-foreground hover:underline">
         All folders
-      </Link>
+      </PendingLink>
       <span aria-hidden className="text-muted-foreground">
         /
       </span>
@@ -364,36 +443,17 @@ function FolderBreadcrumb({
   );
 }
 
-/** A header cell that links to the toggled sort + shows the active arrow. */
-function SortableHead({
+/** A list column header: the shared {@link SortableHead} pointed at this list's sort links. */
+function ListSortableHead({
   field,
   links,
-  className,
-  children,
+  ...props
 }: {
   field: SortableField;
   /** The active view state, threaded so re-sorting keeps every other axis. */
   links: ListLinkContext;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  const sort = links.sort;
-  const indicator = sortIndicator(field, sort);
-  const isActive = sort.sortBy === field;
-  const ariaSort = isActive ? (sort.dir === "asc" ? "ascending" : "descending") : "none";
+} & Omit<React.ComponentProps<typeof SortableHead>, "href" | "sort">) {
   return (
-    <TableHead className={className} aria-sort={ariaSort}>
-      {/* Quiet uppercase labels echo the overview band's stat-card captions. The
-          active sort column lifts to full foreground; the rest stay muted. */}
-      <Link
-        href={sortHref(field, links)}
-        className={`inline-flex items-center gap-1 text-xs font-medium tracking-wide uppercase transition-colors hover:text-foreground ${
-          isActive ? "text-foreground" : "text-muted-foreground"
-        }`}
-      >
-        {children}
-        {indicator !== "" && <span aria-hidden>{indicator}</span>}
-      </Link>
-    </TableHead>
+    <SortableHead href={sortHref(field, links)} sort={links.sort.sortBy === field ? links.sort.dir : null} {...props} />
   );
 }

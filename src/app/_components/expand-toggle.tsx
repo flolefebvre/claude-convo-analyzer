@@ -4,9 +4,16 @@
 // `scroll={false}` so toggling a row deep in a table never jumps the viewport.
 // The conversation list and the Tools table both hang their first cell on it.
 
-import { ChevronDown, ChevronRight } from "lucide-react";
-import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 
+import { PendingLink } from "@/app/_components/pending-link";
+
+/**
+ * The row's disclosure control: a 24px chevron button that turns down when
+ * open, optionally followed by a label that is part of the same target.
+ *
+ * @example <ExpandToggle href={expandHref(row.id, expandedId, links)} expanded={false} label="conversation details" />
+ */
 export function ExpandToggle({
   href,
   expanded,
@@ -18,25 +25,26 @@ export function ExpandToggle({
   href: string;
   expanded: boolean;
   label: string;
-  /** The cell's visible content, rendered inside the link after the chevron. */
-  children: React.ReactNode;
+  /** Visible content after the chevron, inside the same link; omit for a chevron-only toggle. */
+  children?: React.ReactNode;
 }) {
   return (
-    <Link
+    <PendingLink
       href={href}
       scroll={false}
       aria-expanded={expanded}
-      className="inline-flex items-center gap-1.5 rounded-sm text-left outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+      className="group/expand inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-md text-left focus-inset"
     >
-      {expanded ? (
-        <ChevronDown className="size-3.5 shrink-0" aria-hidden />
-      ) : (
-        <ChevronRight className="size-3.5 shrink-0" aria-hidden />
-      )}
+      <span className="grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors group-hover/expand:bg-muted group-hover/expand:text-foreground group-has-data-link-pending/expand:bg-muted group-aria-expanded/expand:text-foreground">
+        <ChevronRight
+          className="size-4 transition-transform duration-150 group-aria-expanded/expand:rotate-90"
+          aria-hidden
+        />
+      </span>
       <span className="sr-only">
         {expanded ? "Collapse" : "Expand"} {label}
       </span>
       {children}
-    </Link>
+    </PendingLink>
   );
 }
