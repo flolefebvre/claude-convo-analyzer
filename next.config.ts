@@ -6,8 +6,7 @@ const nextConfig: NextConfig = {
   // server-side.
   serverExternalPackages: ["better-sqlite3", "@prisma/client", "@prisma/adapter-better-sqlite3"],
   // The app is only ever served over loopback, where gzip costs CPU and saves
-  // nothing. Next's gzip path also leaks a `drain` listener per backpressured
-  // write before 16.4.2 (`MaxListenersExceededWarning` on long transcripts).
+  // nothing.
   compress: false,
   cacheComponents: true,
   partialPrefetching: true,

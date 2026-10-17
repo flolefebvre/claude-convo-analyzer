@@ -4,12 +4,12 @@
 
 ## Stack
 
-- Next.js 16.3 (App Router, Cache Components), React 19.2 with the React Compiler
+- Next.js 16.4 (App Router, Cache Components), React 19.3 with the React Compiler
 - TypeScript 5, `strict`
 - Tailwind CSS v4, shadcn/ui (Radix + lucide)
 - Next-pipe (`@flefebvre/next-pipe`) for server entry points, zod 4 for validation
 - Prisma 7 on SQLite, through the `@prisma/adapter-better-sqlite3` driver adapter
-- Vitest 4, ESLint 9, Prettier 3 (sorts Tailwind classes)
+- Vitest 4, ESLint 10, Prettier 3 (sorts Tailwind classes)
 - tsx, for the repo scripts
 
 ## Layout
