@@ -85,9 +85,13 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     await expect(pager).toContainText("201–400 of 450 messages");
     await expect(pageTwoPrompt).toBeVisible();
 
-    await page.goto(deepLink!);
+    // Following that link lands on page 2, the prompt highlighted and scrolled to.
+    await page.goto(`/search?q=${encodeURIComponent("quarterly heatmap")}`);
+    await page.getByRole("link", { name: /heatmap export/ }).click();
+    await page.waitForURL((url) => url.searchParams.has("msg"));
     await expect(pager).toContainText("201–400 of 450 messages");
     await expect(pageTwoPrompt).toHaveClass(/\banchored\b/);
+    await expect(pageTwoPrompt).toBeInViewport();
   });
 
   test("renders the not-found page for an unknown session id", async ({ page }) => {

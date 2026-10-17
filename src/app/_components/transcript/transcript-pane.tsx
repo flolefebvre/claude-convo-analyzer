@@ -3,11 +3,12 @@ import { Fragment } from "react";
 import { PendingLink } from "@/app/_components/pending-link";
 import { formatCount, formatModelName } from "@/app/_lib/format";
 import { type AgentLabel, agentLineage, effortSummary } from "@/app/_lib/transcript";
-import { agentHref, withListReturn } from "@/app/_lib/transcript-url";
+import { agentHref, callAnchorId, messageAnchorId, withListReturn } from "@/app/_lib/transcript-url";
 import type { ConversationFamily } from "@/core/family";
 import type { TranscriptView } from "@/core/read";
 
 import { FamilyBanner } from "./family-banner";
+import { ScrollToAnchor } from "./scroll-to-anchor";
 import { TranscriptMessageRow } from "./transcript-message";
 import { TranscriptPager } from "./transcript-pager";
 import { AgentName, CostFigure, agentLabelText } from "./transcript-parts";
@@ -65,6 +66,13 @@ export function TranscriptPane({
   // log recorded no effort.
   const effort = effortSummary(view.messages, { levels: view.effortLevels, before: view.effortBefore });
   const effortLabel = effort.mixed ? "mixed" : effort.uniform;
+  // The deep-link target to scroll to: the `?msg=` message first, else the `?call=` call.
+  const anchorId =
+    anchoredMessage !== undefined
+      ? messageAnchorId(anchoredMessage)
+      : anchoredCall !== undefined
+        ? callAnchorId(anchoredCall)
+        : undefined;
 
   return (
     <>
@@ -143,6 +151,7 @@ export function TranscriptPane({
         )}
         <TranscriptPager view={view} listReturn={listReturn} className="justify-center" />
       </div>
+      {anchorId !== undefined && <ScrollToAnchor id={anchorId} />}
     </>
   );
 }
