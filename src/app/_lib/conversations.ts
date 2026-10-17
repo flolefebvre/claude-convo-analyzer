@@ -14,7 +14,7 @@ import { connection } from "next/server";
 
 import { getConversationErrors } from "@/core/errors";
 import { buildFamily, familySizes } from "@/core/family";
-import { getConversation, getDailySpend, getTranscript, listConversations } from "@/core/read";
+import { getConversation, getDailySpend, getToolCallBody, getTranscript, listConversations } from "@/core/read";
 import { searchConversations } from "@/core/search";
 import { getToolCallSamples, getToolStats } from "@/core/tool-stats";
 
@@ -99,6 +99,20 @@ export const loadTranscript = cache(
     return getTranscript(id, { agentId, page, anchoredMessage, anchoredCall });
   },
 );
+
+/**
+ * Read one Tool call's body (input and stored result) by its row id — for the
+ * `?call=` anchored call server-side, and for `GET /api/tool-call/<id>` when
+ * the reader opens any other. Same request-time gating as
+ * {@link loadConversations}; `null` for an unknown id (the transcript was
+ * re-parsed since the page rendered).
+ *
+ * @example const body = await loadToolCallBody(call.id);
+ */
+export const loadToolCallBody = cache(async (id: number) => {
+  await connection();
+  return getToolCallBody(id);
+});
 
 /**
  * Read the Tools view's per-tool analytics for one folder + range scope
