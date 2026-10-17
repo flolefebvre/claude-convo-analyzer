@@ -75,7 +75,7 @@ async function TrendsRangePicker({ searchParams }: { searchParams: Promise<ViewS
 }
 
 /** The legend rows its skeleton draws: about as many models as a typical range has. */
-const SKELETON_MODELS = 3;
+const SKELETON_MODELS = 4;
 
 /**
  * The surface's skeleton: the two-cell stat strip beside the model legend,

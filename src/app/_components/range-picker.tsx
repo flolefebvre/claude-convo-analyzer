@@ -27,7 +27,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 export function RangePickerFallback() {
   return (
     <LoadingRegion label="Loading range" className="shrink-0">
-      <Skeleton className="h-8 w-[19.5rem] rounded-lg" />
+      <Skeleton className="h-8 w-[18.875rem] rounded-lg" />
     </LoadingRegion>
   );
 }

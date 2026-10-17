@@ -87,7 +87,7 @@ async function ToolsRangePicker({ searchParams }: { searchParams: Promise<ViewSe
 }
 
 /** The table rows its skeleton draws: about as many tools as a typical range has. */
-const SKELETON_ROWS = 6;
+const SKELETON_ROWS = 8;
 
 /**
  * The surface's skeleton: the three-cell stat strip, then the table card with
@@ -110,7 +110,7 @@ function ToolsFallback() {
             <Skeleton className="h-3.5 w-14" />
           </div>
           {Array.from({ length: SKELETON_ROWS }, (_, index) => (
-            <div key={index} className="flex h-[41px] items-center gap-4 border-b px-4">
+            <div key={index} className="flex h-[42px] items-center gap-4 border-b px-4">
               <Skeleton className="size-6 shrink-0" />
               <Skeleton className="h-3.5 w-28" />
               <Skeleton className="ml-auto h-3.5 w-10" />
@@ -118,7 +118,7 @@ function ToolsFallback() {
               <Skeleton className="h-3.5 w-14" />
             </div>
           ))}
-          <div className="flex h-[41px] items-center gap-4 bg-muted/50 px-4">
+          <div className="flex h-[37px] items-center gap-4 bg-muted/50 px-4">
             <Skeleton className="h-3.5 w-16" />
             <Skeleton className="ml-auto h-3.5 w-14" />
           </div>
