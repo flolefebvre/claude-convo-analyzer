@@ -16,7 +16,7 @@ export type RefreshActivity =
  * The activity a runner state stands for: the last outcome is not carried, a
  * page opened after it shows the idle control.
  *
- * @example refreshActivityOf(runner.state()) // { isRunning: true, runId: 3, progress: { done: 50, total: 2450 } }
+ * @example refreshActivityOf(runner.state()) // { isRunning: true, runId: "0b9f…", progress: { done: 50, total: 2450 } }
  */
 export function refreshActivityOf(state: RefreshRunState): RefreshActivity {
   return state.status === "running"

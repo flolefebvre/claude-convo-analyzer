@@ -54,9 +54,9 @@ describe("refresh events", () => {
         ...progressReports.map((progress) => ({
           channel: "refresh",
           event: "progress",
-          payload: { runId: 1, ...progress },
+          payload: { runId: expect.any(String), ...progress },
         })),
-        { channel: "refresh", event: "finished", payload: { runId: 1, summary } },
+        { channel: "refresh", event: "finished", payload: { runId: expect.any(String), summary } },
       ]),
     );
   });
@@ -73,11 +73,11 @@ describe("refresh events", () => {
 
     await vi.waitFor(async () =>
       expect(await published()).toEqual([
-        { channel: "refresh", event: "progress", payload: { runId: 1, done: 0, total: 3 } },
+        { channel: "refresh", event: "progress", payload: { runId: expect.any(String), done: 0, total: 3 } },
         {
           channel: "refresh",
           event: "failed",
-          payload: { runId: 1, message: "Refresh failed in its worker: disk gone" },
+          payload: { runId: expect.any(String), message: "Refresh failed in its worker: disk gone" },
         },
       ]),
     );
@@ -100,11 +100,11 @@ describe("refresh events", () => {
 
     expect(runCount).toBe(1);
     expect(await published()).toEqual([
-      { channel: "refresh", event: "finished", payload: { runId: 1, summary: SUMMARY } },
+      { channel: "refresh", event: "finished", payload: { runId: expect.any(String), summary: SUMMARY } },
     ]);
   });
 
-  it("carries one run id on all of a run's events, and the next one on the next run's", async () => {
+  it("carries one run id on all of a run's events, and another on the next run's", async () => {
     const runner = createRefreshRunner(async (onProgress) => {
       onProgress({ done: 1, total: 1 });
       return SUMMARY;
@@ -115,14 +115,18 @@ describe("refresh events", () => {
     await runner.start();
     await runner.start();
 
-    await vi.waitFor(async () =>
-      expect(await published()).toEqual([
-        { channel: "refresh", event: "progress", payload: { runId: 1, done: 1, total: 1 } },
-        { channel: "refresh", event: "finished", payload: { runId: 1, summary: SUMMARY } },
-        { channel: "refresh", event: "progress", payload: { runId: 2, done: 1, total: 1 } },
-        { channel: "refresh", event: "finished", payload: { runId: 2, summary: SUMMARY } },
-      ]),
-    );
+    await vi.waitFor(async () => expect(await published()).toHaveLength(4));
+    const messages = await published();
+    const runIds = messages.map((message) => (message.payload as { runId: unknown }).runId);
+    const [firstRunId, , secondRunId] = runIds;
+    expect(firstRunId).toEqual(expect.any(String));
+    expect(secondRunId).not.toBe(firstRunId);
+    expect(messages).toEqual([
+      { channel: "refresh", event: "progress", payload: { runId: firstRunId, done: 1, total: 1 } },
+      { channel: "refresh", event: "finished", payload: { runId: firstRunId, summary: SUMMARY } },
+      { channel: "refresh", event: "progress", payload: { runId: secondRunId, done: 1, total: 1 } },
+      { channel: "refresh", event: "finished", payload: { runId: secondRunId, summary: SUMMARY } },
+    ]);
   });
 
   it("stops publishing once unsubscribed", async () => {

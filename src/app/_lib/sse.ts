@@ -10,7 +10,7 @@ import { z } from "zod";
 import type { RefreshSummary } from "@/core/refresh";
 
 /** Which Refresh an event belongs to (the runner's `RefreshRunId`). */
-const refreshRunIdSchema = z.number().int().positive();
+const refreshRunIdSchema = z.string();
 
 const refreshProgressSchema = z.object({
   runId: refreshRunIdSchema,
@@ -48,7 +48,7 @@ const { channel, createSSE } = initSSE({ transport: createMemoryTransport() });
  * `finished { summary }` or `failed { message }`, each with the `runId` of its
  * Refresh.
  *
- * @example await sse.refresh().progress({ runId: 1, done: 50, total: 2450 });
+ * @example await sse.refresh().progress({ runId, done: 50, total: 2450 });
  */
 export const sse = createSSE({
   refresh: channel({

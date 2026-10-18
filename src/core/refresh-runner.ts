@@ -4,6 +4,7 @@
 // logic runs in-process under test, without a worker; the process-wide runner
 // runs each Refresh in a worker thread, off the main thread.
 
+import { randomUUID } from "node:crypto";
 import { Worker } from "node:worker_threads";
 
 import type { RefreshProgress, RefreshSummary } from "@/core/refresh";
@@ -22,8 +23,8 @@ export type RefreshWorkerMessage =
 /** The work of one Refresh: reports progress as it goes, resolves to its summary. */
 export type RefreshJob = (onProgress: (progress: RefreshProgress) => void) => Promise<RefreshSummary>;
 
-/** Which Refresh of this runner a state belongs to: 1 for its first, counting up. */
-export type RefreshRunId = number;
+/** Which Refresh a state belongs to: opaque, and unique across server processes. */
+export type RefreshRunId = string;
 
 /** Where the runner stands: no Refresh yet, one running, or the last one's outcome. */
 export type RefreshRunState =
@@ -62,11 +63,8 @@ export function createRefreshRunner(job: RefreshJob): RefreshRunner {
     for (const listener of listeners) listener(state);
   }
 
-  let lastRunId: RefreshRunId = 0;
-
   function runRefresh(): Promise<RefreshSummary> {
-    lastRunId += 1;
-    const runId = lastRunId;
+    const runId: RefreshRunId = randomUUID();
     moveTo({ status: "running", runId, progress: null });
     // The executor turns a job that throws synchronously into a rejection too.
     const jobSummary = new Promise<RefreshSummary>((resolve) =>
