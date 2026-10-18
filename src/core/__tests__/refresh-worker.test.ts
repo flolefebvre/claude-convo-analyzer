@@ -87,7 +87,11 @@ describe("refresh in a worker", () => {
       vi.stubEnv("CCA_DB_PATH", tmpDir);
       const runner = createRefreshRunner(tsxWorkerRefreshJob());
 
-      await expect(runner.start()).rejects.toThrow(Error);
+      const failure = await runner.start().catch((error: unknown) => error);
+
+      expect(failure).toBeInstanceOf(Error);
+      expect((failure as Error).cause).toBeInstanceOf(Error);
+      expect((failure as Error).cause).toMatchObject({ message: expect.stringMatching(/open database/) });
       expect(runner.state().status).toBe("failed");
     },
     WORKER_TIMEOUT_MS,

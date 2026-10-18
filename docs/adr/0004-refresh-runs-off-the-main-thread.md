@@ -31,12 +31,13 @@ database connection; it gets a copy of `process.env`, so `CCA_DB_PATH` and
 `CCA_LOGS_ROOT` still apply. Readers on the main thread run beside it under WAL
 (ADR-0002) and see each Conversation as soon as its transaction commits.
 
-**A refresh runner on the main thread owns the run** (`src/core/refresh-runner.ts`).
-It holds the one Refresh the process runs at a time: a start while one runs
-joins it, a start after it settled begins a new one, and a failure rejects
-every waiter and leaves the next start to run fresh. A throw in the worker, or
-an exit before the summary (where an out-of-memory crash lands), is such a
-failure. There is no cancel and no start at boot. The runner keeps the current
+**A refresh runner on the main thread owns the run**
+(`src/core/refresh-runner.ts`). It holds the one Refresh the process runs at a
+time: a start while one runs joins it, a start after it settled begins a new
+one, and a failure rejects every waiter and leaves the next start to run
+fresh. A throw in the worker, or an exit before the summary (where an
+out-of-memory crash lands), is such a failure. There is no cancel and no start
+at boot. The runner keeps the current
 state: idle, running with the latest `{ done, total }`, or the last summary or
 error. It takes the job as a dependency, so its logic is tested in-process. The
 process-wide instance lives in a `globalThis[Symbol.for(…)]` slot, created on
@@ -56,8 +57,8 @@ an in-memory transport is enough.
   calls is no yield at all: across the 268 s cold run, a 10 ms timer probe
   never fired, because each Prisma call resolves as a microtask over
   synchronous SQLite. So yielding needs explicit macrotask breaks everywhere,
-  and every slice still blocks every request for its whole length. The parse of one large Conversation is itself
-  a long synchronous task.
+  and every slice still blocks every request for its whole length. The parse
+  of one large Conversation is itself a long synchronous task.
 - **A forked child process running the Refresh through tsx.** Real isolation,
   but it ships a dev dependency (tsx) as a runtime requirement, needs its own
   entry outside the Next bundle with its own alias resolution, and talks over

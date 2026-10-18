@@ -34,8 +34,9 @@ connections that commit: a power cut may lose the last commits, which is
 acceptable for a cache that can always be rebuilt from the logs.
 
 **Refresh.** _Superseded by ADR-0004 (Refresh runs off the main thread): a
-worker thread runs it, owned by a shared refresh runner._ User-triggered via a Next **server action** (synchronous, with a
-spinner) that calls `core.refresh()` and returns a summary. Refresh is
+worker thread runs it, owned by a shared refresh runner._ User-triggered via a
+Next **server action** (synchronous, with a spinner) that calls
+`core.refresh()` and returns a summary. Refresh is
 **incremental**: each `conversation` row stores its source file's `mtime`+`size`;
 on refresh the core re-parses only new/changed conversation files (replacing
 their rows in a per-conversation transaction), skips unchanged ones, and drops

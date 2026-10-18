@@ -27,6 +27,10 @@ export default defineConfig({
         "src/core/prisma/schema.prisma",
         "src/core/prisma/migrations/**",
         "src/core/__tests__/fixtures/**",
+        // The worker test reaches these only through a Worker URL and type
+        // imports, which the module graph cannot see.
+        "src/core/refresh.ts",
+        "src/core/refresh.worker.ts",
       ].map((relativePath) => path.resolve(import.meta.dirname, relativePath)),
     ],
   },

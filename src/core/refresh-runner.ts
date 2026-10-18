@@ -8,9 +8,16 @@ import { Worker } from "node:worker_threads";
 
 import type { RefreshProgress, RefreshSummary } from "@/core/refresh";
 
-/** What `refresh.worker.ts` posts: each progress report, then the summary. */
+/**
+ * What `refresh.worker.ts` posts: each progress report, then the summary or the
+ * failure. A failure travels as its message and stack because an error thrown
+ * in the worker reaches the main thread without them (a better-sqlite3
+ * `SqliteError` arrives as a bare `{ code }`).
+ */
 export type RefreshWorkerMessage =
-  { type: "progress"; progress: RefreshProgress } | { type: "summary"; summary: RefreshSummary };
+  | { type: "progress"; progress: RefreshProgress }
+  | { type: "summary"; summary: RefreshSummary }
+  | { type: "failure"; message: string; stack: string | undefined };
 
 /** The work of one Refresh: reports progress as it goes, resolves to its summary. */
 export type RefreshJob = (onProgress: (progress: RefreshProgress) => void) => Promise<RefreshSummary>;
@@ -100,8 +107,9 @@ type WorkerRefreshJobOptions = {
  * A job that runs each Refresh in a fresh worker thread, which opens its own
  * database connection and reads a copy of `process.env` (`CCA_DB_PATH`,
  * `CCA_LOGS_ROOT`). It relays the worker's progress and resolves to its summary;
- * the worker then exits on its own. A throw in the worker, or an exit before the
- * summary (out of memory lands here), rejects with an `Error`.
+ * the worker then exits on its own. A failed Refresh rejects with an `Error`
+ * whose `cause` is the worker's error, message and stack included; a worker
+ * error or an exit before the outcome (out of memory lands here) rejects too.
  *
  * @example
  * const runner = createRefreshRunner(createWorkerRefreshJob());
@@ -112,19 +120,24 @@ export function createWorkerRefreshJob({
   return (onProgress) =>
     new Promise((resolve, reject) => {
       const worker = spawnWorker();
-      let hasPostedSummary = false;
+      let hasPostedOutcome = false;
 
       worker.on("message", (message: RefreshWorkerMessage) => {
         if (message.type === "progress") {
           onProgress(message.progress);
           return;
         }
-        hasPostedSummary = true;
-        resolve(message.summary);
+        hasPostedOutcome = true;
+        if (message.type === "summary") {
+          resolve(message.summary);
+          return;
+        }
+        const cause = Object.assign(new Error(message.message), { stack: message.stack });
+        reject(new Error("Refresh failed in its worker", { cause }));
       });
-      worker.on("error", (cause) => reject(new Error("Refresh failed in its worker", { cause })));
+      worker.on("error", (cause) => reject(new Error("Refresh worker crashed", { cause })));
       worker.on("exit", (exitCode) => {
-        if (hasPostedSummary) return;
+        if (hasPostedOutcome) return;
         reject(new Error(`Refresh worker stopped with exit code ${exitCode} before its summary`));
       });
     });
