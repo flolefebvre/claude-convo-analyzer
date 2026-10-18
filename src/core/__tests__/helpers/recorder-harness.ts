@@ -7,7 +7,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach } from "vitest";
 import { startRecorder, type RecorderOptions, type RunningRecorder } from "@/core/recorder";
-import { MESSAGES_REQUEST_JSON, startFakeUpstream, type FakeUpstream } from "./fake-upstream";
+import {
+  deferred,
+  MESSAGES_REQUEST_JSON,
+  respondWithFirstEventUntil,
+  startFakeUpstream,
+  type FakeUpstream,
+} from "./fake-upstream";
 
 /** The bearer token every test request carries; it must never reach a Recording. */
 export const AUTH_TOKEN = "sk-ant-oat01-secret";
@@ -24,6 +30,21 @@ export type RecorderHarness = {
   startUpstream(respond: (request: http.IncomingMessage, response: http.ServerResponse) => void): Promise<FakeUpstream>;
   /** Start a Recorder on a free port in front of `upstreamUrl`. */
   startRecorder(upstreamUrl: string, options?: Partial<RecorderOptions>): Promise<RunningRecorder>;
+  /**
+   * Start a Recorder in front of an upstream that streams the SSE fixture's
+   * first event, then holds the rest until `releaseRest()`; send it one API
+   * request of session `sess-in-flight` and read up to that first event.
+   */
+  startHeldStream(): Promise<HeldStream>;
+};
+
+/** An API request whose streamed response is held after its first event. */
+export type HeldStream = {
+  recorder: RunningRecorder;
+  /** The response body's reader, past the first event. */
+  reader: ReadableStreamDefaultReader<Uint8Array>;
+  firstChunk: string;
+  releaseRest: () => void;
 };
 
 /** Register the hooks that give each test of the file a fresh harness. */
@@ -71,6 +92,15 @@ export function setUpRecorderHarness(): RecorderHarness {
       });
       recorders.push(recorder);
       return recorder;
+    },
+    async startHeldStream() {
+      const releaseRest = deferred();
+      const upstream = await this.startUpstream(respondWithFirstEventUntil(releaseRest.promise));
+      const recorder = await this.startRecorder(upstream.url);
+      const response = await postMessages(recorder, { headers: { "x-claude-code-session-id": "sess-in-flight" } });
+      const reader = response.body!.getReader();
+      const firstChunk = new TextDecoder().decode((await reader.read()).value);
+      return { recorder, reader, firstChunk, releaseRest: releaseRest.resolve };
     },
   };
 }

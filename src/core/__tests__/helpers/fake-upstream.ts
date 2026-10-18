@@ -12,6 +12,18 @@ export const MESSAGES_RESPONSE_SSE = readFileSync(
   "utf8",
 );
 
+/** The SSE fixture's events, each with its blank line. */
+export const MESSAGES_RESPONSE_EVENTS = MESSAGES_RESPONSE_SSE.split(/(?<=\n\n)/);
+
+/** The text a response body reader yields from here to its end. */
+export async function textUntilEnd(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<string> {
+  let text = "";
+  for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
+    text += new TextDecoder().decode(chunk.value);
+  }
+  return text;
+}
+
 /** The request-body fixture, as text, carrying `metadata.user_id` in its JSON shape. */
 export const MESSAGES_REQUEST_JSON = readFileSync(
   path.join(import.meta.dirname, "..", "fixtures", "recording", "messages-request.json"),
@@ -62,6 +74,17 @@ export async function startFakeUpstream(
 export function respondWithEventStream(_request: http.IncomingMessage, response: http.ServerResponse): void {
   response.writeHead(200, { "content-type": "text/event-stream", "request-id": "req_fixture01" });
   response.end(MESSAGES_RESPONSE_SSE);
+}
+
+/** A handler streaming the SSE fixture's first event at once, and the rest only once `releaseRest` resolves. */
+export function respondWithFirstEventUntil(
+  releaseRest: Promise<void>,
+): (request: http.IncomingMessage, response: http.ServerResponse) => void {
+  return (_request, response) => {
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    response.write(MESSAGES_RESPONSE_EVENTS[0]);
+    void releaseRest.then(() => response.end(MESSAGES_RESPONSE_EVENTS.slice(1).join("")));
+  };
 }
 
 /** A promise with its resolve function exposed, for a test to release a waiting handler. */

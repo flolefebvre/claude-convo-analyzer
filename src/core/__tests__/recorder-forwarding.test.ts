@@ -11,9 +11,11 @@ import { readRecordings } from "@/core/recording";
 import {
   deferred,
   MESSAGES_REQUEST_JSON,
+  MESSAGES_RESPONSE_EVENTS,
   MESSAGES_RESPONSE_SSE,
   respondWithEventStream,
   startFakeUpstream,
+  textUntilEnd,
 } from "./helpers/fake-upstream";
 import { AUTH_TOKEN, postMessages, setUpRecorderHarness } from "./helpers/recorder-harness";
 
@@ -41,9 +43,6 @@ const REASSEMBLED_MESSAGE = {
 };
 
 const harness = setUpRecorderHarness();
-
-/** The fixture's events, each with its blank line. */
-const EVENTS = MESSAGES_RESPONSE_SSE.split(/(?<=\n\n)/);
 
 /** POST the fixture over raw http (fetch refuses hop-by-hop headers), handing its response to `onResponse`. */
 function rawPost(
@@ -96,25 +95,11 @@ describe("forwarding through the Recorder", () => {
   });
 
   it("streams a response back chunk by chunk, before the upstream finishes", async () => {
-    const releaseRest = deferred();
-    const upstream = await harness.startUpstream((_request, response) => {
-      response.writeHead(200, { "content-type": "text/event-stream" });
-      response.write(EVENTS[0]);
-      void releaseRest.promise.then(() => response.end(EVENTS.slice(1).join("")));
-    });
-    const recorder = await harness.startRecorder(upstream.url);
+    const { reader, firstChunk, releaseRest } = await harness.startHeldStream();
+    expect(firstChunk).toBe(MESSAGES_RESPONSE_EVENTS[0]);
 
-    const response = await postMessages(recorder, { headers: SESSION_HEADERS });
-    const reader = response.body!.getReader();
-    const firstChunk = new TextDecoder().decode((await reader.read()).value);
-    expect(firstChunk).toBe(EVENTS[0]);
-
-    releaseRest.resolve();
-    let rest = "";
-    for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
-      rest += new TextDecoder().decode(chunk.value);
-    }
-    expect(firstChunk + rest).toBe(MESSAGES_RESPONSE_SSE);
+    releaseRest();
+    expect(firstChunk + (await textUntilEnd(reader))).toBe(MESSAGES_RESPONSE_SSE);
   });
 
   it("records the reassembled response, its usage with the cache split, its status, request-id and timings", async () => {
@@ -220,7 +205,7 @@ describe("a failing upstream or disk", () => {
     const upstreamRequestClosed = deferred();
     const upstream = await harness.startUpstream((_request, response) => {
       response.writeHead(200, { "content-type": "text/event-stream" });
-      response.write(EVENTS[0]);
+      response.write(MESSAGES_RESPONSE_EVENTS[0]);
       response.on("close", upstreamRequestClosed.resolve);
     });
     const recorder = await harness.startRecorder(upstream.url);
