@@ -14,11 +14,13 @@ import {
   FAMILY_WORKTREE_PROJECT_PATH,
   LONG_PAGE_TWO_TEXT,
   LONG_TITLE,
+  PARTIALLY_RECORDED_SESSION_ID,
   RECORDED_SESSION_ID,
   SCRATCH_PARENT_PATH,
   WORKTREE_SWITCH_PROJECT_PATH,
   WORKTREE_SWITCH_TITLE,
 } from "./fake-logs";
+import { PARTIALLY_RECORDED_FROM_TURN } from "./fake-recordings";
 
 const NOW = new Date("2026-06-22T17:00:00.000Z");
 
@@ -166,6 +168,23 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
       };
     });
     expect(recordedTurns).toEqual(turns);
+  });
+
+  it("records the partially recorded Conversation only from a later Turn on, repeating the history before it", async () => {
+    const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
+
+    const mainTurns = turnsInLog(seed.logsRoot, PARTIALLY_RECORDED_SESSION_ID).filter((t) => t.agentId === null);
+    const apiRequests = readRecordings(seed.recordingsRoot).filter(
+      (r) => r.sessionId === PARTIALLY_RECORDED_SESSION_ID,
+    );
+    const isRecorded = mainTurns.map((turn) => apiRequests.some((r) => r.response.requestId === turn.requestId));
+    expect(isRecorded).toEqual(mainTurns.map((_, i) => i + 1 >= PARTIALLY_RECORDED_FROM_TURN));
+
+    const firstRecorded = apiRequests.find(
+      (r) => r.response.requestId === mainTurns[PARTIALLY_RECORDED_FROM_TURN - 1].requestId,
+    );
+    const { messages } = firstRecorded?.body as { messages: { role: string }[] };
+    expect(messages.filter((m) => m.role === "assistant")).toHaveLength(PARTIALLY_RECORDED_FROM_TURN - 1);
   });
 
   it("writes byte-identical Recordings for the same anchor", async () => {

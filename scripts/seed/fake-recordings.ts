@@ -7,7 +7,13 @@
 
 import { openRecordingWriter, type RecordedApiRequest, type RecordedHeaders } from "@/core/recording";
 
-import { CC_VERSION, type Conversation, RECORDED_SESSION_ID, type SeedToolName } from "./fake-logs";
+import {
+  CC_VERSION,
+  type Conversation,
+  PARTIALLY_RECORDED_SESSION_ID,
+  RECORDED_SESSION_ID,
+  type SeedToolName,
+} from "./fake-logs";
 
 // ── Invented content (safe for a public README) ─────────────────────────────
 
@@ -49,6 +55,13 @@ const SUB_AGENT_INSTRUCTIONS =
 const PLACEHOLDER_AUTHORIZATION = "Bearer seed-placeholder-token";
 const PLACEHOLDER_DEVICE_ID = "seed-device-0001";
 const PLACEHOLDER_ACCOUNT_UUID = "seed-account-0001";
+
+/**
+ * The first main-agent Turn (1-based) of the partially recorded Conversation
+ * with an API request: the Recorder started just before it, and every Turn
+ * from then on, sub-agents' included, is recorded.
+ */
+export const PARTIALLY_RECORDED_FROM_TURN = 4;
 
 const SECOND = 1_000;
 const HOUR = 3_600_000;
@@ -223,6 +236,18 @@ function conversationApiRequests(conversation: Conversation): RecordedApiRequest
   ];
 }
 
+/**
+ * The API requests of a Conversation the Recorder started on mid-way, just
+ * before its main agent's Turn {@link PARTIALLY_RECORDED_FROM_TURN}: each
+ * still sends the whole history before it.
+ */
+function partiallyRecordedApiRequests(conversation: Conversation): RecordedApiRequest[] {
+  const apiRequests = conversationApiRequests(conversation);
+  const mainAgentApiRequests = apiRequests.filter((r) => r.agentId === null);
+  const recorderStartedAt = mainAgentApiRequests[PARTIALLY_RECORDED_FROM_TURN - 1].timings.arrivedAt;
+  return apiRequests.filter((r) => r.timings.arrivedAt >= recorderStartedAt);
+}
+
 /** The seeded Conversation of `sessionId`. */
 function conversationOf(conversations: readonly Conversation[], sessionId: string): Conversation {
   const conversation = conversations.find((c) => c.sessionId === sessionId);
@@ -243,9 +268,10 @@ export async function writeFakeRecordings(opts: {
   recordingsRoot: string;
   conversations: readonly Conversation[];
 }): Promise<void> {
-  const apiRequests = conversationApiRequests(conversationOf(opts.conversations, RECORDED_SESSION_ID)).sort((a, b) =>
-    a.timings.arrivedAt.localeCompare(b.timings.arrivedAt),
-  );
+  const apiRequests = [
+    ...conversationApiRequests(conversationOf(opts.conversations, RECORDED_SESSION_ID)),
+    ...partiallyRecordedApiRequests(conversationOf(opts.conversations, PARTIALLY_RECORDED_SESSION_ID)),
+  ].sort((a, b) => a.timings.arrivedAt.localeCompare(b.timings.arrivedAt));
   const writer = openRecordingWriter(opts.recordingsRoot);
   await Promise.all(apiRequests.map((apiRequest) => writer.append(apiRequest)));
 }
