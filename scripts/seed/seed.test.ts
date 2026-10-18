@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { PAGE_SIZE } from "@/app/_lib/list-view";
 import { getTranscript, listConversations } from "@/core/read";
+import { readRecordings } from "@/core/recording";
 
 import { seedEnvironment } from "./environment";
 import {
@@ -13,6 +14,7 @@ import {
   FAMILY_WORKTREE_PROJECT_PATH,
   LONG_PAGE_TWO_TEXT,
   LONG_TITLE,
+  RECORDED_SESSION_ID,
   SCRATCH_PARENT_PATH,
   WORKTREE_SWITCH_PROJECT_PATH,
   WORKTREE_SWITCH_TITLE,
@@ -40,8 +42,8 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     expect(seed.summary.duplicateSessionsSkipped).toEqual([]);
 
     const conversations = await listConversations({ dbPath: seed.dbPath });
-    expect(conversations).toHaveLength(67);
-    expect(conversations.reduce((sum, c) => sum + c.subAgentCount, 0)).toBe(81);
+    expect(conversations).toHaveLength(69);
+    expect(conversations.reduce((sum, c) => sum + c.subAgentCount, 0)).toBe(83);
 
     const continued = conversations.filter((c) => c.continuedFromId !== null);
     expect(continued).toHaveLength(5);
@@ -147,6 +149,34 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     expect(readTree(second.logsRoot)).toEqual(files);
   });
 
+  it("records every Turn of the recorded Conversation, its sub-agent's included, as its log has it", async () => {
+    const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
+
+    const turns = turnsInLog(seed.logsRoot, RECORDED_SESSION_ID);
+    expect(turns.some((turn) => turn.agentId !== null)).toBe(true);
+    const apiRequests = readRecordings(seed.recordingsRoot).filter((r) => r.sessionId === RECORDED_SESSION_ID);
+    const recordedTurns = turns.map((turn) => {
+      const apiRequest = apiRequests.find((r) => r.response.requestId === turn.requestId);
+      const body = apiRequest?.response.body as { id?: string; usage?: unknown } | undefined;
+      return {
+        requestId: apiRequest?.response.requestId,
+        agentId: apiRequest?.agentId,
+        messageId: body?.id,
+        usage: body?.usage,
+      };
+    });
+    expect(recordedTurns).toEqual(turns);
+  });
+
+  it("writes byte-identical Recordings for the same anchor", async () => {
+    const first = await seedEnvironment({ dir: path.join(tmpDir, "first"), now: NOW });
+    const second = await seedEnvironment({ dir: path.join(tmpDir, "second"), now: NOW });
+
+    const files = readTree(first.recordingsRoot, "base64");
+    expect(Object.keys(files).length).toBeGreaterThan(0);
+    expect(readTree(second.recordingsRoot, "base64")).toEqual(files);
+  });
+
   it("rebuilds from a clean slate, leaving nothing from a previous run", async () => {
     const dir = path.join(tmpDir, "seed");
     const before = await seedEnvironment({ dir, now: NOW });
@@ -157,17 +187,40 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     const after = await seedEnvironment({ dir, now: NOW });
 
     expect(existsSync(leftover)).toBe(false);
-    expect(await listConversations({ dbPath: after.dbPath })).toHaveLength(67);
+    expect(await listConversations({ dbPath: after.dbPath })).toHaveLength(69);
   });
 });
 
-/** Every file under `root`, by relative path, with its contents. */
-function readTree(root: string): Record<string, string> {
+/** Every file under `root`, by relative path, with its contents in `encoding`. */
+function readTree(root: string, encoding: BufferEncoding = "utf8"): Record<string, string> {
   const files = readdirSync(root, { recursive: true, withFileTypes: true }).filter((e) => e.isFile());
   return Object.fromEntries(
     files.map((e) => {
       const file = path.join(e.parentPath, e.name);
-      return [path.relative(root, file), readFileSync(file, "utf8")];
+      return [path.relative(root, file), readFileSync(file, encoding)];
     }),
+  );
+}
+
+/** A Turn as a log has it: the ids an API request is joined on, and its usage. */
+type LoggedTurn = { requestId: string; agentId: string | null; messageId: string; usage: unknown };
+
+/** Every Turn in the logs of `sessionId`, its main agent's then each sub-agent's, in log order. */
+function turnsInLog(logsRoot: string, sessionId: string): LoggedTurn[] {
+  const logFiles = Object.entries(readTree(logsRoot))
+    .filter(([file]) => path.basename(file) === `${sessionId}.jsonl` || file.includes(`/${sessionId}/subagents/`))
+    .sort(([a], [b]) => a.length - b.length || a.localeCompare(b));
+  return logFiles.flatMap(([, text]) =>
+    text
+      .split("\n")
+      .filter((line) => line !== "")
+      .map((line) => JSON.parse(line))
+      .filter((record) => record.type === "assistant")
+      .map((record) => ({
+        requestId: record.requestId,
+        agentId: record.agentId ?? null,
+        messageId: record.message.id,
+        usage: record.message.usage,
+      })),
   );
 }

@@ -1,5 +1,6 @@
-// The seed environment: one self-contained directory holding fake logs and the
-// database the genuine `refresh()` builds from them. Rebuilding it is wiping
+// The seed environment: one self-contained directory holding fake logs, fake
+// Recordings of some of their Conversations, and the database the genuine
+// `refresh()` builds from the logs. Rebuilding it is wiping
 // that one directory, so a seed never leaves anything behind — and never
 // touches the real database or the real logs.
 
@@ -9,6 +10,7 @@ import path from "node:path";
 import { refresh, type RefreshSummary } from "@/core/refresh";
 
 import { type FakeLogsCounts, generateFakeLogs } from "./fake-logs";
+import { writeFakeRecordings } from "./fake-recordings";
 
 /** Where a seed environment lives and what building it produced. */
 export type SeedEnvironment = {
@@ -16,6 +18,8 @@ export type SeedEnvironment = {
   dbPath: string;
   /** The persisted fake logs, `<dir>/projects` — a later refresh re-reads them. */
   logsRoot: string;
+  /** The Recordings of some of those logs' Conversations, `<dir>/recordings`. */
+  recordingsRoot: string;
   /** What the generator wrote. */
   generated: FakeLogsCounts;
   /** The ingest's own report. */
@@ -24,8 +28,8 @@ export type SeedEnvironment = {
 
 /**
  * Wipe `dir`, write the fake logs (timeline ending at `now`) into
- * `<dir>/projects`, and ingest them into `<dir>/seed.db` with the real
- * `refresh()`.
+ * `<dir>/projects` and their Recordings into `<dir>/recordings`, and ingest
+ * the logs into `<dir>/seed.db` with the real `refresh()`.
  *
  * @example
  * const { dbPath, logsRoot } = await seedEnvironment({ dir: "data/seed", now: new Date() });
@@ -36,7 +40,9 @@ export async function seedEnvironment(opts: { dir: string; now: Date }): Promise
 
   const logsRoot = path.join(dir, "projects");
   const dbPath = path.join(dir, "seed.db");
-  const generated = generateFakeLogs({ logsRoot, now: opts.now });
+  const recordingsRoot = path.join(dir, "recordings");
+  const { counts: generated, conversations } = generateFakeLogs({ logsRoot, now: opts.now });
+  await writeFakeRecordings({ recordingsRoot, conversations });
   const summary = await refresh({ logsRoot, dbPath });
-  return { dbPath, logsRoot, generated, summary };
+  return { dbPath, logsRoot, recordingsRoot, generated, summary };
 }

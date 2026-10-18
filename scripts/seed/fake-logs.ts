@@ -168,7 +168,8 @@ const SUBAGENT_PROMPTS: Record<(typeof SUBAGENT_TYPES)[number], string> = {
 const BASH_CMDS = ["pnpm test", "pnpm lint", "git status", "pnpm build", "npm run typecheck"] as const;
 const READ_FILES = ["src/index.ts", "src/server.ts", "README.md", "src/db.ts", "package.json"] as const;
 
-const CC_VERSION = "2.1.185";
+/** The Claude Code version every seeded record (and API request) states. */
+export const CC_VERSION = "2.1.185";
 
 const DAY = 86_400_000;
 
@@ -220,7 +221,8 @@ function makeUsage(g: Gen, scale: number): Usage {
   };
 }
 
-type SubAgent = { agentId: string; lines: string[] };
+/** A sub-agent's transcript: its id, and its JSONL records in file order. */
+export type SubAgent = { agentId: string; lines: string[] };
 
 // ── API errors (issue #47) ──────────────────────────────────────────────────
 // Turns the API itself failed on: the log marks them `isApiErrorMessage` with
@@ -430,6 +432,9 @@ const TOOL_KINDS = [
   },
 ] as const;
 
+/** Every tool a seeded Turn can call, spawning a sub-agent included. */
+export type SeedToolName = (typeof TOOL_KINDS)[number]["name"] | "Agent";
+
 const TOTAL_TOOL_WEIGHT = TOOL_KINDS.reduce((sum, k) => sum + k.weight, 0);
 
 /** Pick a tool kind by weight, so built-ins dominate as they do in real logs. */
@@ -462,12 +467,14 @@ function toolResultText(g: Gen, kind: (typeof TOOL_KINDS)[number], isError: bool
 /**
  * Build a sub-agent transcript file + the parent's spawn ledger tool_result.
  * `canFail: false` rules out its failed turns, without drawing for them.
+ * `stopsOnlyAtItsLastTurn: true` makes every earlier Turn call a tool, so each
+ * later Turn answers a tool result, as in a real sub-agent's transcript.
  */
 function spawnSubAgent(
   g: Gen,
   ms: number,
   cwd: string,
-  canFail = true,
+  { canFail = true, stopsOnlyAtItsLastTurn = false }: { canFail?: boolean; stopsOnlyAtItsLastTurn?: boolean } = {},
 ): { toolUse: object; ledgerResult: object; sub: SubAgent } {
   const agentId = g.uid("agent").replace("agent-", "");
   const toolUseId = g.uid("tu");
@@ -488,9 +495,10 @@ function spawnSubAgent(
     const turnMs = ms + 5_000 + i * 30_000;
     const u = makeUsage(g, 0.6);
     const subKind = pickToolKind(g);
-    const subToolUse = g.chance(0.6)
-      ? { type: "tool_use", id: g.uid("tu"), name: subKind.name, input: subKind.input(g) }
-      : null;
+    const subToolUse =
+      (stopsOnlyAtItsLastTurn && i < turns - 1) || g.chance(0.6)
+        ? { type: "tool_use", id: g.uid("tu"), name: subKind.name, input: subKind.input(g) }
+        : null;
     const subText = g.pick(SUB_AGENT_REPLIES);
     subTotal += u.input_tokens + u.output_tokens + u.cache_creation_input_tokens + u.cache_read_input_tokens;
     subLines.push(
@@ -551,7 +559,8 @@ function spawnSubAgent(
  *  would continue from, and when that happened. */
 type ResumePoint = { uuid: string; ms: number };
 
-type Conversation = {
+/** A seeded Conversation: where it is filed, and its JSONL records, main agent and sub-agents. */
+export type Conversation = {
   /** The log folder Claude Code files it in (see {@link logFolderNameOf}). */
   logFolderName: string;
   /** The Project it belongs to (GLOSSARY.md, Project). */
@@ -631,7 +640,7 @@ function buildConversation(
     // Occasionally spawn a sub-agent.
     if (g.chance(0.22)) {
       t += g.int(10_000, 30_000);
-      const { toolUse, ledgerResult, sub } = spawnSubAgent(g, t, cwd, opts.apiErrors !== "none");
+      const { toolUse, ledgerResult, sub } = spawnSubAgent(g, t, cwd, { canFail: opts.apiErrors !== "none" });
       lines.push(assistantTurn(g, t, cwd, dominant, { skill, toolUses: [toolUse] }));
       t += g.int(8_000, 40_000);
       lines.push(toolResult(g, t, cwd, (toolUse as { id: string }).id, ledgerResult));
@@ -843,7 +852,7 @@ function agentMessagesConversation(g: Gen, index: number): Conversation {
   );
 
   const spawn = (): { sub: SubAgent; agentType: string } => {
-    const { toolUse, ledgerResult, sub } = spawnSubAgent(g, at(60), cwd, false);
+    const { toolUse, ledgerResult, sub } = spawnSubAgent(g, at(60), cwd, { canFail: false });
     lines.push(assistantTurn(g, t, cwd, model, { toolUses: [toolUse] }));
     lines.push(toolResult(g, at(5), cwd, (toolUse as { id: string }).id, ledgerResult));
     return { sub, agentType: (ledgerResult as { agentType: string }).agentType };
@@ -1087,6 +1096,89 @@ function projectPathConversations(g: Gen, startIndex: number): Conversation[] {
   ];
 }
 
+/** The seeded Conversation whose every Turn, its sub-agent's included, is recorded (issue #127). */
+export const RECORDED_TITLE = "Add an audit trail to the billing exports";
+
+/** The session id of {@link RECORDED_TITLE}. */
+export const RECORDED_SESSION_ID = "5eed0000-0000-4000-8000-000000000001";
+
+/** The seeded Conversation whose Recording starts mid-way (issue #127). */
+export const PARTIALLY_RECORDED_TITLE = "Tighten the webhook signature checks";
+
+/** The session id of {@link PARTIALLY_RECORDED_TITLE}. */
+export const PARTIALLY_RECORDED_SESSION_ID = "5eed0000-0000-4000-8000-000000000002";
+
+/**
+ * A Conversation shaped as a recorded one reads: its main agent's Turns —
+ * a `Read`, an `Agent` spawn, a reply, then after a second prompt a `Bash` and
+ * a reply — each answer a prompt or a tool result, and so does every Turn of
+ * its one sub-agent. No Turn fails. `startedAgo` is how long before the anchor
+ * it starts.
+ */
+function recordableConversation(
+  g: Gen,
+  project: SeedProject,
+  opts: { sessionId: string; title: string; startedAgo: number },
+): Conversation {
+  const cwd = project.path;
+  const model = MODELS[0];
+  let t = g.now - opts.startedAgo;
+  const lines = [JSON.stringify({ type: "ai-title", aiTitle: opts.title }), userPrompt(g, t, cwd, g.pick(PROMPTS))];
+  const toolTurn = (kind: (typeof TOOL_KINDS)[number]) => {
+    t += g.int(20_000, 120_000);
+    const toolUseId = g.uid("tu");
+    lines.push(
+      assistantTurn(g, t, cwd, model, {
+        toolUses: [{ type: "tool_use", id: toolUseId, name: kind.name, input: kind.input(g) }],
+      }),
+    );
+    t += g.int(2_000, 20_000);
+    lines.push(toolResult(g, t, cwd, toolUseId, toolResultText(g, kind, false)));
+  };
+
+  toolTurn(TOOL_KINDS[0]);
+  t += g.int(10_000, 30_000);
+  const { toolUse, ledgerResult, sub } = spawnSubAgent(g, t, cwd, { canFail: false, stopsOnlyAtItsLastTurn: true });
+  lines.push(assistantTurn(g, t, cwd, model, { toolUses: [toolUse] }));
+  t += 180_000; // after the sub-agent's last record (five Turns at most, 30s apart)
+  lines.push(toolResult(g, t, cwd, (toolUse as { id: string }).id, ledgerResult));
+  lines.push(assistantTurn(g, (t += g.int(20_000, 60_000)), cwd, model));
+  lines.push(userPrompt(g, (t += g.int(60_000, 300_000)), cwd, g.pick(PROMPTS)));
+  toolTurn(TOOL_KINDS[1]);
+  lines.push(assistantTurn(g, (t += g.int(20_000, 60_000)), cwd, model));
+
+  return {
+    logFolderName: logFolderNameOf(cwd),
+    projectPath: cwd,
+    sessionId: opts.sessionId,
+    mainLines: lines,
+    subAgents: [sub],
+    resumePoint: { uuid: lastAssistantUuid(lines), ms: t },
+  };
+}
+
+/**
+ * The Conversations the seeded Recordings cover (issue #127): one recorded
+ * throughout, one recorded only from mid-way. Both end hours before the
+ * agent-messages one, so the anchor does not move.
+ *
+ * Drawn last, so every earlier Conversation keeps its draws.
+ */
+function recordableConversations(g: Gen): Conversation[] {
+  return [
+    recordableConversation(g, PROJECTS[2], {
+      sessionId: RECORDED_SESSION_ID,
+      title: RECORDED_TITLE,
+      startedAgo: 8 * 3_600_000,
+    }),
+    recordableConversation(g, PROJECTS[1], {
+      sessionId: PARTIALLY_RECORDED_SESSION_ID,
+      title: PARTIALLY_RECORDED_TITLE,
+      startedAgo: 30 * 3_600_000,
+    }),
+  ];
+}
+
 /** Every seeded Conversation, its conversations starting up to three weeks before `anchor`. */
 function buildCorpus(anchor: number): Conversation[] {
   const g = createGen(anchor);
@@ -1103,6 +1195,7 @@ function buildCorpus(anchor: number): Conversation[] {
   conversations.push(longConversation(g, conversations.length));
   conversations.push(...projectPathConversations(g, conversations.length));
   conversations.push(...scratchConversations(g, conversations.length));
+  conversations.push(...recordableConversations(g));
   return conversations;
 }
 
@@ -1145,14 +1238,18 @@ export type FakeLogsCounts = {
  * standalone Conversations across six Projects, two continuation families
  * (seven more), 23 covering pagination, unpriced usage and API errors, one
  * where agents message each other, one long enough to span three Transcript
- * pages, one that enters a worktree and one that states no cwd, then three in
- * per-session scratch directories under `/tmp` — 67 in all. The same `now`
- * always writes the same bytes.
+ * pages, one that enters a worktree and one that states no cwd, three in
+ * per-session scratch directories under `/tmp`, then the two the Recordings
+ * cover — 69 in all. The same `now` always writes the same bytes. Returns the
+ * counts, and the Conversations as written, for the Recordings to derive from.
  *
  * @example
- * const counts = generateFakeLogs({ logsRoot: "data/seed/projects", now: new Date() });
+ * const { counts, conversations } = generateFakeLogs({ logsRoot: "data/seed/projects", now: new Date() });
  */
-export function generateFakeLogs(opts: { logsRoot: string; now: Date }): FakeLogsCounts {
+export function generateFakeLogs(opts: { logsRoot: string; now: Date }): {
+  counts: FakeLogsCounts;
+  conversations: readonly Conversation[];
+} {
   // Conversations START at random offsets before the anchor, so the newest
   // record falls short of it. The draws never depend on the anchor, so a
   // draft measures that gap and the real pass moves the anchor forward by it.
@@ -1175,9 +1272,10 @@ export function generateFakeLogs(opts: { logsRoot: string; now: Date }): FakeLog
     }
   }
 
-  return {
+  const counts = {
     conversations: conversations.length,
     subAgents,
     projects: new Set(conversations.map((c) => c.projectPath)).size,
   };
+  return { counts, conversations };
 }
