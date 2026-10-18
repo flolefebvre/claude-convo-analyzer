@@ -118,6 +118,9 @@ const PARSER_VERSION = 3;
  */
 const UNSTAMPED_PARSER_VERSION = 0;
 
+/** Upper bound on one conversation's write transaction (see `writeConversation`). */
+const WRITE_TRANSACTION_TIMEOUT_MS = 10 * 60_000;
+
 /** One main session + its sub-agent transcripts, all parsed, ready to write. */
 type ParsedConversation = {
   session: DiscoveredSession;
@@ -271,9 +274,6 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     // Pass 1b — (re)write each parsed conversation. A CHANGED conversation's old
     // rows are deleted first (cascade) so the re-parse never duplicates rows.
     for (const convo of conversations) {
-      if (convo.priorId !== null) {
-        await prisma.conversation.delete({ where: { id: convo.priorId } });
-      }
       await writeConversation(prisma, convo);
       conversationsParsed += 1;
     }
@@ -373,13 +373,13 @@ function parseSession(sourcePath: string): ParsedSession {
 }
 
 /** Resolve (find-or-create) the project row for an on-disk folder. */
-async function upsertProject(prisma: PrismaClient, folder: string, parsed: ParsedSession): Promise<number> {
+async function upsertProject(tx: PrismaTx, folder: string, parsed: ParsedSession): Promise<number> {
   const projectPath = parsed.cwd ?? decodeFolderName(folder);
-  const existing = await prisma.project.findUnique({
+  const existing = await tx.project.findUnique({
     where: { path: projectPath },
   });
   if (existing) return existing.id;
-  const created = await prisma.project.create({
+  const created = await tx.project.create({
     data: { path: projectPath, folderName: folder },
   });
   return created.id;
@@ -489,100 +489,112 @@ async function writeAgentMessages(
  * that spawn ledger.
  */
 async function writeConversation(prisma: PrismaClient, convo: ParsedConversation): Promise<void> {
-  const { session, parsed, subAgents } = convo;
-  const projectId = await upsertProject(prisma, session.folder, parsed);
+  const { session, parsed, subAgents, priorId } = convo;
 
-  await prisma.$transaction(async (tx) => {
-    const conversation = await tx.conversation.create({
-      data: {
-        sessionId: session.sessionId,
-        projectId,
-        title: parsed.title,
-        gitBranch: parsed.gitBranch,
-        ccVersion: parsed.ccVersion,
-        sourcePath: session.sourcePath,
-        sourceMtime: BigInt(session.sourceMtime),
-        sourceSize: BigInt(session.sourceSize),
-        // Not stamped yet — `stampParserVersion` does that once this refresh's
-        // continuation linking has run (see `UNSTAMPED_PARSER_VERSION`).
-        parserVersion: UNSTAMPED_PARSER_VERSION,
-        continuedFromConversationId: null,
-      },
-    });
+  await prisma.$transaction(
+    async (tx) => {
+      // The prior row goes in the SAME transaction as its replacement (cascading
+      // to every child table), so a reader on another connection sees the old
+      // version or the new one — never the conversation missing.
+      if (priorId !== null) {
+        await tx.conversation.delete({ where: { id: priorId } });
+      }
+      const projectId = await upsertProject(tx, session.folder, parsed);
 
-    const rootAgent = await tx.agent.create({
-      data: {
-        conversationId: conversation.id,
-        parentAgentId: null,
-        agentType: null, // root/main thread
-        resolvedModel: parsed.dominantModel,
-      },
-    });
-
-    const rootByMsgId = await writeAgentMessages(tx, parsed, conversation.id, rootAgent.id);
-    await writeToolCalls(tx, parsed, rootAgent.id, rootByMsgId);
-
-    // Sub-agents: each transcript is its own agent row (single source of truth
-    // for its tokens — the parent aggregate is NOT summed). Linked back to the
-    // spawning Agent tool_use via the spawn ledger's agentId → tool_use_id —
-    // that ledger may live in ANOTHER sub-agent's transcript (a sub-agent can
-    // itself spawn sub-agents), so parentage is resolved across every transcript
-    // and the rows are written parents-first.
-    const written = new Map<string, AgentWriteTarget>();
-    const rootTarget: AgentWriteTarget = {
-      agentRowId: rootAgent.id,
-      parsed,
-      messageRowByMsgId: rootByMsgId,
-    };
-
-    for (const plan of planSubAgents(parsed, subAgents)) {
-      const parent = plan.parentExternalId === null ? rootTarget : (written.get(plan.parentExternalId) ?? rootTarget);
-      const spawnedByMessageId =
-        plan.spawn?.toolUseId == null
-          ? null
-          : (toolUseToMessageRow(parent.parsed, plan.spawn.toolUseId, parent.messageRowByMsgId) ?? null);
-
-      const subAgent = await tx.agent.create({
+      const conversation = await tx.conversation.create({
         data: {
-          conversationId: conversation.id,
-          parentAgentId: parent.agentRowId,
-          externalAgentId: plan.agentId,
-          spawnedByMessageId,
-          agentType: plan.spawn?.agentType ?? null,
-          resolvedModel: plan.spawn?.resolvedModel ?? plan.parsed.dominantModel,
+          sessionId: session.sessionId,
+          projectId,
+          title: parsed.title,
+          gitBranch: parsed.gitBranch,
+          ccVersion: parsed.ccVersion,
+          sourcePath: session.sourcePath,
+          sourceMtime: BigInt(session.sourceMtime),
+          sourceSize: BigInt(session.sourceSize),
+          // Not stamped yet — `stampParserVersion` does that once this refresh's
+          // continuation linking has run (see `UNSTAMPED_PARSER_VERSION`).
+          parserVersion: UNSTAMPED_PARSER_VERSION,
+          continuedFromConversationId: null,
         },
       });
 
-      const subByMsgId = await writeAgentMessages(tx, plan.parsed, conversation.id, subAgent.id);
-      await writeToolCalls(tx, plan.parsed, subAgent.id, subByMsgId);
-      written.set(plan.agentId, {
-        agentRowId: subAgent.id,
-        parsed: plan.parsed,
-        messageRowByMsgId: subByMsgId,
-      });
-    }
-
-    if (parsed.prLinks.length > 0) {
-      await tx.prLink.createMany({
-        data: parsed.prLinks.map((p) => ({
+      const rootAgent = await tx.agent.create({
+        data: {
           conversationId: conversation.id,
-          prNumber: p.prNumber,
-          prUrl: p.prUrl,
-          prRepository: p.prRepository,
-        })),
+          parentAgentId: null,
+          agentType: null, // root/main thread
+          resolvedModel: parsed.dominantModel,
+        },
       });
-    }
 
-    if (parsed.turnDurations.length > 0) {
-      await tx.turnDuration.createMany({
-        data: parsed.turnDurations.map((t) => ({
-          conversationId: conversation.id,
-          durationMs: BigInt(t.durationMs),
-          messageCount: t.messageCount,
-        })),
-      });
-    }
-  });
+      const rootByMsgId = await writeAgentMessages(tx, parsed, conversation.id, rootAgent.id);
+      await writeToolCalls(tx, parsed, rootAgent.id, rootByMsgId);
+
+      // Sub-agents: each transcript is its own agent row (single source of truth
+      // for its tokens — the parent aggregate is NOT summed). Linked back to the
+      // spawning Agent tool_use via the spawn ledger's agentId → tool_use_id —
+      // that ledger may live in ANOTHER sub-agent's transcript (a sub-agent can
+      // itself spawn sub-agents), so parentage is resolved across every transcript
+      // and the rows are written parents-first.
+      const written = new Map<string, AgentWriteTarget>();
+      const rootTarget: AgentWriteTarget = {
+        agentRowId: rootAgent.id,
+        parsed,
+        messageRowByMsgId: rootByMsgId,
+      };
+
+      for (const plan of planSubAgents(parsed, subAgents)) {
+        const parent = plan.parentExternalId === null ? rootTarget : (written.get(plan.parentExternalId) ?? rootTarget);
+        const spawnedByMessageId =
+          plan.spawn?.toolUseId == null
+            ? null
+            : (toolUseToMessageRow(parent.parsed, plan.spawn.toolUseId, parent.messageRowByMsgId) ?? null);
+
+        const subAgent = await tx.agent.create({
+          data: {
+            conversationId: conversation.id,
+            parentAgentId: parent.agentRowId,
+            externalAgentId: plan.agentId,
+            spawnedByMessageId,
+            agentType: plan.spawn?.agentType ?? null,
+            resolvedModel: plan.spawn?.resolvedModel ?? plan.parsed.dominantModel,
+          },
+        });
+
+        const subByMsgId = await writeAgentMessages(tx, plan.parsed, conversation.id, subAgent.id);
+        await writeToolCalls(tx, plan.parsed, subAgent.id, subByMsgId);
+        written.set(plan.agentId, {
+          agentRowId: subAgent.id,
+          parsed: plan.parsed,
+          messageRowByMsgId: subByMsgId,
+        });
+      }
+
+      if (parsed.prLinks.length > 0) {
+        await tx.prLink.createMany({
+          data: parsed.prLinks.map((p) => ({
+            conversationId: conversation.id,
+            prNumber: p.prNumber,
+            prUrl: p.prUrl,
+            prRepository: p.prRepository,
+          })),
+        });
+      }
+
+      if (parsed.turnDurations.length > 0) {
+        await tx.turnDuration.createMany({
+          data: parsed.turnDurations.map((t) => ({
+            conversationId: conversation.id,
+            durationMs: BigInt(t.durationMs),
+            messageCount: t.messageCount,
+          })),
+        });
+      }
+    },
+    // A huge conversation's delete + inserts can outlast Prisma's 5 s default,
+    // and aborting a local, user-triggered run on a timer is pure downside.
+    { timeout: WRITE_TRANSACTION_TIMEOUT_MS },
+  );
 }
 
 /** An already-written agent: what a child needs to resolve its spawn linkage. */
