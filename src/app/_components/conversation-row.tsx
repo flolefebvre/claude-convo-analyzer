@@ -20,7 +20,6 @@ import { columnCount } from "@/app/_lib/columns";
 import { detailSections, tokenComposition } from "@/app/_lib/detail";
 import type { ErrorViewRow } from "@/app/_lib/errors-view";
 import type { FamilyView } from "@/app/_lib/family-view";
-import { friendlyFolderName } from "@/app/_lib/folders";
 import { PendingLink } from "@/app/_components/pending-link";
 import { formatCompactTokens, formatCost, formatDuration, formatModelName, formatTokens } from "@/app/_lib/format";
 import { modelLabel } from "@/app/_lib/sort";
@@ -56,6 +55,9 @@ export function ConversationRow({
   // The Date cell's label/title, formatted by the page against a single
   // request-time `now` so every row's relative label agrees (see page.tsx).
   date,
+  // The row's Project as the Folder cell names it under the active scope
+  // (`folderLabelInScope`); the full Project path stays on hover.
+  folderLabel,
   // True when every row in scope comes from one Project (a leaf Folder, or
   // this folder), so the Folder cell is redundant and hidden — the page shows
   // the scope once as a breadcrumb instead. The expand toggle therefore lives
@@ -82,6 +84,7 @@ export function ConversationRow({
 }: {
   row: ConversationSummary;
   date: { label: string; absolute: string };
+  folderLabel: string;
   isFolderColumnHidden?: boolean;
   expanded?: boolean;
   detail?: ConversationDetail | null;
@@ -92,7 +95,6 @@ export function ConversationRow({
   listReturn?: string;
 }) {
   const model = modelLabel(row.models);
-  const folder = friendlyFolderName(row.project.path);
 
   return (
     <>
@@ -111,15 +113,15 @@ export function ConversationRow({
           </div>
         </TableCell>
         {/* Hidden when every row in scope comes from one Project (the page shows
-            the scope once as a breadcrumb). Otherwise, show the friendly
-            basename; the full Project path is available on hover via the cell's
-            title (kept off-screen so long paths don't break the table — #14). */}
+            the scope once as a breadcrumb). Otherwise, show the scope's label;
+            the full Project path is available on hover via the cell's title
+            (kept off-screen so long paths don't break the table — #14). */}
         {!isFolderColumnHidden && (
           <TableCell
             title={row.project.path}
             className={`${CONVERSATION_COLUMNS.folder} truncate text-muted-foreground`}
           >
-            {folder}
+            {folderLabel}
           </TableCell>
         )}
         {/* The title deep-links into the Transcript view for this conversation
@@ -181,7 +183,7 @@ export function ConversationRow({
                   ·
                 </span>
                 <span className="truncate" title={row.project.path}>
-                  {folder}
+                  {folderLabel}
                 </span>
               </>
             )}

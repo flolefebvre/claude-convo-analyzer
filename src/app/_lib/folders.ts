@@ -92,7 +92,7 @@ function latestActivity(rows: ConversationSummary[]): string {
 /**
  * The friendly name for a Project path: its last non-empty `/`-separated
  * segment (basename), or "" if the path has none. Used for the sidebar labels
- * and the table's two-line Folder cell so both stay consistent.
+ * and the table's Folder cell under All folders so both stay consistent.
  */
 export function friendlyFolderName(path: string): string {
   return pathSegments(path).at(-1) ?? "";

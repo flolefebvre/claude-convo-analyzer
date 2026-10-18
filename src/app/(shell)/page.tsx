@@ -40,7 +40,7 @@ import {
 import { footerLabelColSpan } from "@/app/_lib/columns";
 import { errorsView } from "@/app/_lib/errors-view";
 import { familyView } from "@/app/_lib/family-view";
-import { type FolderScope, resolveFolderScope } from "@/app/_lib/folder-scope";
+import { type FolderScope, folderLabelInScope, resolveFolderScope } from "@/app/_lib/folder-scope";
 import { type FolderNode, findFolderNode, folderScopeLabel } from "@/app/_lib/folder-tree";
 import { formatCount, formatDate, formatGrandTotalCost, formatTokens } from "@/app/_lib/format";
 import { buildListView } from "@/app/_lib/list-view";
@@ -315,6 +315,7 @@ async function ConversationTable({ searchParams }: { searchParams: Promise<ViewS
                 key={row.id}
                 row={row}
                 date={formatDate(row.startedAt, now)}
+                folderLabel={folderLabelInScope(row.project.path, scope)}
                 isFolderColumnHidden={isFolderColumnHidden}
                 expanded={row.id === expandedRow?.id}
                 detail={row.id === expandedRow?.id ? expandedDetail : null}

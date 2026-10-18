@@ -7,6 +7,7 @@
 // React-free + I/O-free, so the client sidebar can use it too (it never
 // imports core). The core applies the same rule to its scoped reads.
 
+import { friendlyFolderName } from "@/app/_lib/folders";
 import { firstParam, type ViewSearchParams } from "@/app/_lib/search-params";
 
 /** A Folder scope: All folders when `folder` is absent. */
@@ -59,6 +60,25 @@ export function isProjectInFolderScope(projectPath: string, scope: FolderScope):
   if (!scope.folder) return true;
   if (projectPath === scope.folder) return true;
   return !scope.thisFolderOnly && projectPath.startsWith(`${scope.folder}/`);
+}
+
+/** The folder label of the selected Folder's own Project. */
+const THIS_FOLDER_LABEL = "this folder";
+
+/**
+ * The table's label for a Conversation's Project under a scope: under All
+ * folders its friendly name; otherwise its path relative to the selected Folder,
+ * `this folder` for the Folder's own Project. That holds whether or not the
+ * scope is narrowed to this folder — the narrowed table hides the column, but
+ * the label stays total. A Project outside the scope keeps its friendly name.
+ *
+ * @example folderLabelInScope("/home/me/dev/api/.claude/worktrees/spike", { folder: "/home/me/dev/api" }) // ".claude/worktrees/spike"
+ */
+export function folderLabelInScope(projectPath: string, scope: FolderScope): string {
+  if (!scope.folder) return friendlyFolderName(projectPath);
+  if (projectPath === scope.folder) return THIS_FOLDER_LABEL;
+  if (isProjectInFolderScope(projectPath, { folder: scope.folder })) return projectPath.slice(scope.folder.length + 1);
+  return friendlyFolderName(projectPath);
 }
 
 /** True when two scopes name the same Folder, narrowed (or not) the same way. */
