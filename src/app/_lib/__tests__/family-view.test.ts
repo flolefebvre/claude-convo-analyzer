@@ -9,7 +9,7 @@ const NOW = new Date("2026-06-21T18:00:00.000Z");
 function member(partial: Partial<FamilyMember> & { id: string }): FamilyMember {
   return {
     title: `Title of ${partial.id}`,
-    project: { folder: "-home-dev-app", path: "/home/dev/app" },
+    project: { path: "/home/dev/app" },
     startedAt: "2026-06-21T09:00:00.000Z",
     costUsd: 1,
     unpriced: false,
@@ -40,7 +40,7 @@ function crossProjectFamily(): ConversationFamily {
     member({ id: "a", isCurrent: true }),
     member({
       id: "b",
-      project: { folder: "-home-dev-app-wt", path: "/home/dev/app-wt" },
+      project: { path: "/home/dev/app-wt" },
     }),
   ]);
 }
@@ -76,10 +76,10 @@ describe("familyView", () => {
   });
 
   it("drops the folder scope for a member the scope would hide", () => {
-    const view = familyView(crossProjectFamily(), { sort: SORT, folder: "-home-dev-app", range: "30" }, NOW);
+    const view = familyView(crossProjectFamily(), { sort: SORT, folder: "/home/dev/app", range: "30" }, NOW);
 
     // The in-scope member keeps the active scope…
-    expect(view.rows[0].href).toContain("folder=-home-dev-app");
+    expect(view.rows[0].href).toContain("folder=%2Fhome%2Fdev%2Fapp");
     // …the cross-project one drops it, so the click can actually reach the row.
     expect(view.rows[1].href).not.toContain("folder=");
     // The Trends range is preserved either way.

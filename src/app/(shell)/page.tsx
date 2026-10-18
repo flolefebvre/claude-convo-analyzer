@@ -153,7 +153,7 @@ async function Overview({ searchParams }: { searchParams: Promise<ViewSearchPara
   // says what to do, and a row of zero cards would only look broken.
   if (overview.conversationCount === 0) return null;
   const activeFolder = firstParam(params.folder) || undefined;
-  const selected = activeFolder ? folders.find((entry) => entry.folder === activeFolder) : undefined;
+  const selected = activeFolder ? folders.find((entry) => entry.path === activeFolder) : undefined;
   return <OverviewBand overview={overview} selectedFolderLabel={selected?.label} />;
 }
 

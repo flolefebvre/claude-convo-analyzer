@@ -28,7 +28,9 @@ true` and the same per-turn `usage` shape as the main thread — often on a
 
 Model the domain as seven tables:
 
-- `project` — one per `~/.claude/projects/` folder (decoded cwd).
+- `project` — one per Project path: the directory its Conversations run in,
+  per their records' `cwd` (GLOSSARY.md, Project), not the log folder they are
+  filed in.
 - `conversation` — one per top-level `<sessionId>.jsonl`; the user-facing row.
   Carries `title`, `git_branch`, Claude Code `version`, file mtime/size for
   incremental refresh, and `continued_from_conversation_id` — set when the

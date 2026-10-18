@@ -37,7 +37,6 @@ describe("searchConversations", () => {
     expect(a).toBeDefined();
     if (!a) return;
     expect(a.title).toBe("Postgres migration plan");
-    expect(a.project.folder).toBe("-Users-me-dev-search");
     expect(a.project.path).toBe("/Users/me/dev/search");
     expect(a.lastMatchAt).toBe("2026-06-25T09:01:00.000Z");
   });

@@ -139,7 +139,7 @@ const LIST_VIEW_PARAMS = ["sortBy", "dir", "folder", "expanded", "range", "error
  * query, normalized, for the transcript's own links to carry on (`undefined`
  * when there is nothing to restore).
  *
- * @example resolveListReturn(params.from) // { href: "/?folder=-home-dev-api&page=2", from: "folder=-home-dev-api&page=2" }
+ * @example resolveListReturn(params.from) // { href: "/?folder=%2Fhome%2Fdev%2Fapi&page=2", from: "folder=%2Fhome%2Fdev%2Fapi&page=2" }
  */
 export function resolveListReturn(raw: string | string[] | undefined): { href: string; from: string | undefined } {
   const given = new URLSearchParams(firstParam(raw) ?? "");

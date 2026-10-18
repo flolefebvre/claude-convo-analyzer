@@ -19,7 +19,7 @@ export type FamilyRow = {
   /** The session id (the stable, user-facing conversation id). */
   id: string;
   title: string | null;
-  project: { folder: string; path: string };
+  project: { path: string };
   startedAt: string;
   costUsd: number;
   unpriced: boolean;
@@ -31,7 +31,7 @@ export type FamilyRow = {
 export type FamilyMember = {
   id: string;
   title: string | null;
-  project: { folder: string; path: string };
+  project: { path: string };
   startedAt: string;
   costUsd: number;
   unpriced: boolean;

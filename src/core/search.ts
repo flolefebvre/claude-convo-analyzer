@@ -72,8 +72,8 @@ export type SearchResult = {
   /** Session id (the `/conversation/<sessionId>` key). */
   sessionId: string;
   title: string | null;
-  /** Owning Project: `folder` is the dash-encoded identity, `path` the decoded one. */
-  project: { folder: string; path: string };
+  /** Owning Project, identified by its path. */
+  project: { path: string };
   /**
    * ISO timestamp the ordering uses: the conversation's most recent matching
    * message. For a title-only match it falls back to the conversation's last
@@ -157,7 +157,7 @@ export async function searchConversations(rawQuery: string, opts: SearchOptions 
       results.push({
         sessionId: row.sessionId,
         title: row.title,
-        project: { folder: row.folder, path: row.path },
+        project: { path: row.path },
         lastMatchAt: lastMatchAt === null ? null : isoOf(lastMatchAt),
         matchCount: (messageHits.get(id)?.count ?? 0) + (titleHitIds.has(id) ? 1 : 0),
         snippets: [...(titleSnippet === undefined ? [] : [titleSnippet]), ...(snippets.get(id) ?? [])].slice(
@@ -244,14 +244,14 @@ async function lastActivityByConversation(
 async function conversationRows(
   prisma: PrismaClient,
   conversationIds: number[],
-): Promise<Map<number, { sessionId: string; title: string | null; folder: string; path: string }>> {
+): Promise<Map<number, { sessionId: string; title: string | null; path: string }>> {
   const rows = await prisma.conversation.findMany({
     where: { id: { in: conversationIds } },
     select: {
       id: true,
       sessionId: true,
       title: true,
-      project: { select: { folderName: true, path: true } },
+      project: { select: { path: true } },
     },
   });
   return new Map(
@@ -260,7 +260,6 @@ async function conversationRows(
       {
         sessionId: r.sessionId,
         title: r.title,
-        folder: r.project.folderName,
         path: r.project.path,
       },
     ]),

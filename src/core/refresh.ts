@@ -25,7 +25,7 @@
 // looking up-to-date with a missing link (see `UNSTAMPED_PARSER_VERSION`).
 //
 // DUPLICATE SESSION IDS: the session id is a FILE STEM, so a transcript copied
-// into a second project folder presents as two sessions with one id — which the
+// into a second log folder presents as two sessions with one id — which the
 // unique `conversation.sessionId` rejected, aborting the whole run. Discovery
 // now keeps ONE file per session id (smallest source path wins) and reports the
 // losers in `RefreshSummary.duplicateSessionsSkipped` (see `dedupeBySessionId`).
@@ -39,7 +39,7 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { defaultDbPath, openRefreshConnection } from "@/core/db";
 import {
-  decodeFolderName,
+  decodeLogFolderName,
   defaultLogsRoot,
   type DiscoveredSession,
   discoverSessions,
@@ -107,8 +107,11 @@ type RefreshOptions = {
  * 3 — user Messages are classified by `origin.kind` (Inter-agent messages and
  *     Task notifications, with their `origin` extras) and `queued_command`
  *     attachments become mid-turn Messages.
+ * 4 — a Project is identified by its path: a Conversation that switches into a
+ *     git worktree belongs to the worktree, and a cwd-less one borrows the
+ *     Project of a sibling in its log folder.
  */
-const PARSER_VERSION = 3;
+const PARSER_VERSION = 4;
 
 /**
  * The version a conversation carries while it is written but NOT YET COMPLETE:
@@ -198,11 +201,15 @@ type DiscoveredWithKey = {
  * sees the old version or the new one, never neither; drop the parsed content —
  * memory stays flat however large the logs grow. A transaction holds a batch of
  * conversations; once it commits, report `{ done, total }`, `done` counting the
- * conversations committed so far; (2) resolve `continued_from` by looking up each
+ * conversations committed so far. Conversations whose records state no `cwd`
+ * are written last, in discovery order, as they borrow their Project from the
+ * siblings in their log folder (see `resolveProjectPath`); (2) resolve
+ * `continued_from` by looking up each
  * child's first-message `parentUuid` against the persisted `message` rows of ALL
  * conversations — so a skipped (unchanged) parent still resolves; (3) stamp the
  * current `parserVersion` on that set — the commit mark that lets a later run
- * skip them. Passes 2 and 3 share one final transaction. The sub-agent
+ * skip them — and delete every Project left without a Conversation. Passes 2
+ * and 3 share one final transaction. The sub-agent
  * transcript is the single source of truth for its tokens (GOTCHA 3) — the
  * parent aggregate is a cross-check only.
  *
@@ -313,9 +320,18 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
       endPhase("write");
       opts.onProgress?.({ done: conversationsParsed, total });
     };
-    for (const sessionToReparse of sessionsToReparse) {
+    // A cwd-less Conversation borrows its Project from the siblings already
+    // written (see `resolveProjectPath`), so it is set aside and parsed again
+    // after every other one: re-parsing these near-empty files beats holding them.
+    const cwdLessSessions: SessionToReparse[] = [];
+    const parseAndWrite = (sessionToReparse: SessionToReparse, isCwdLessPass: boolean) => {
       phaseStart = performance.now();
       const parsedConversation = parseConversation(sessionToReparse);
+      if (!isCwdLessPass && parsedConversation.parsed.projectPath === null) {
+        cwdLessSessions.push(sessionToReparse);
+        endPhase("parse");
+        return;
+      }
       malformedLinesSkipped += parsedConversation.parsed.malformedLines;
       for (const sub of parsedConversation.subAgents) malformedLinesSkipped += sub.parsed.malformedLines;
       endPhase("parse");
@@ -335,7 +351,9 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
         performance.now() - batchOpenedAt >= MAX_BATCH_DURATION_MS;
       if (isBatchFull) commitBatch();
       else endPhase("write");
-    }
+    };
+    for (const sessionToReparse of sessionsToReparse) parseAndWrite(sessionToReparse, false);
+    for (const sessionToReparse of cwdLessSessions) parseAndWrite(sessionToReparse, true);
     if (batchOpenedAt !== null) commitBatch();
 
     // Passes 2 and 3 share one transaction.
@@ -350,6 +368,8 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     // next run may skip them. An abort before this point leaves them unstamped
     // and therefore re-parseable (see `UNSTAMPED_PARSER_VERSION`).
     stampParserVersion(statements, writtenConversations);
+    // A re-parse or a vanished file can leave a Project with no Conversation.
+    statements.deleteProjectsWithoutConversations();
     statements.commitTransaction();
     endPhase("stamp");
   } finally {
@@ -374,7 +394,7 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
  * of `refresh()` only ever sees ONE file per session id.
  *
  * WHY: the session id is a file STEM, so two copies of a transcript in two
- * project folders (a user copying a `.jsonl` around) present as two sessions
+ * log folders (a user copying a `.jsonl` around) present as two sessions
  * with one id — and `conversation.sessionId` is UNIQUE, so writing the second
  * threw and aborted the ENTIRE refresh (issue #37).
  *
@@ -451,10 +471,29 @@ function parseConversation({ session, subAgentPaths, priorConversationId }: Sess
   };
 }
 
-/** Resolve (find-or-create) the project row for an on-disk folder. */
-function upsertProject(statements: RefreshStatements, folder: string, parsed: ParsedSession): number {
-  const projectPath = parsed.cwd ?? decodeFolderName(folder);
-  return statements.selectProjectId(projectPath) ?? statements.insertProject({ path: projectPath, folderName: folder });
+/**
+ * The path of the Project a parsed Conversation belongs to: the one its records
+ * state (`ParsedSession.projectPath`); else — for a cwd-less Conversation — the
+ * one most Conversations filed in the same log folder state through their own
+ * records, ties to the smallest path, read from the database so siblings this
+ * run skipped count; else the log folder name, decoded.
+ *
+ * `refresh()` writes cwd-less Conversations after every other one, so the
+ * siblings of this run are already in. A cwd-less Conversation resolved while
+ * its log folder had no cwd-bearing sibling keeps the decoded path until it
+ * itself changes: a later sibling does not re-assign it.
+ */
+function resolveProjectPath(statements: RefreshStatements, session: DiscoveredSession, parsed: ParsedSession): string {
+  return (
+    parsed.projectPath ??
+    statements.selectBorrowableProjectPath(path.dirname(session.sourcePath)) ??
+    decodeLogFolderName(session.logFolderName)
+  );
+}
+
+/** Find or create the row of the Project at `projectPath`. */
+function upsertProject(statements: RefreshStatements, projectPath: string): number {
+  return statements.selectProjectId(projectPath) ?? statements.insertProject({ path: projectPath });
 }
 
 /** The `message` row of one parsed message (FK columns + accounting). */
@@ -572,11 +611,12 @@ function writeConversation(statements: RefreshStatements, parsedConversation: Pa
     continuingConversationIds = statements.selectContinuingConversationIds(priorConversationId);
     statements.deleteConversation(priorConversationId);
   }
-  const projectId = upsertProject(statements, session.folder, parsed);
+  const projectId = upsertProject(statements, resolveProjectPath(statements, session, parsed));
 
   const conversationId = statements.insertConversation({
     sessionId: session.sessionId,
     projectId,
+    projectPathFromRecords: parsed.projectPath !== null,
     title: parsed.title,
     gitBranch: parsed.gitBranch,
     ccVersion: parsed.ccVersion,

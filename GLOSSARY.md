@@ -13,27 +13,44 @@ contains no implementation details. Architectural decisions live in
 
 ### Project
 
-A working directory in which Claude Code was used. On disk it is one folder
-under `~/.claude/projects/`, named after the directory path with `/` replaced
-by `-` (e.g. `-Users-me-Documents-dev-pvm2-0` ⇒ `/Users/me/Documents/dev/pvm2.0`).
-A Project contains one or more Conversations. Referred to as the **Folder** in
-the UI. Project identity is **one project per on-disk folder** (the launch
-directory); a Conversation's exact project path is read from its records' `cwd`.
+A working directory in which Claude Code was used. A Project contains one or
+more Conversations, and is identified by its **path**: the directory its
+Conversations run in, as their records' `cwd` states it — never the shell's
+directory, and never a path guessed from the log folder's name while any
+Conversation filed beside it states its `cwd`.
+
 Within-session `cwd` drift (the agent `cd`-ing into a subdirectory) does not
-change the Project. Git worktrees launch in their own folder and therefore
-appear as **separate** Projects.
+change the Project. Switching into a git worktree does: a Conversation that
+started in a repo and moved into one of its worktrees belongs to the worktree,
+where it did its work.
+
+On disk, Claude Code files each Conversation in a folder under
+`~/.claude/projects/` named after that directory with `/` replaced by `-`
+(e.g. `-Users-me-Documents-dev-pvm2-0` ⇒ `/Users/me/Documents/dev/pvm2.0`).
+That name is lossy (a real `-` or `.` reads the same as `/`), so it is a filing
+detail, not the Project's identity.
 
 The **friendly name** of a Project is the last segment of its path (e.g.
 `pvm2.0`), used as the human label in the UI; the full path is shown alongside
-it, and the dash-encoded folder name is the stable identity used to **scope**
-the conversation list to one Project.
+it.
+
+### Folder
+
+A node of the **folder tree** the UI navigates by: a directory that is a
+Project's path or contains one. A repo's git worktrees and a scratch directory's
+per-session subdirectories are therefore Folders under it, not peers of it.
+Selecting a Folder **scopes** every view to the Conversations of all the
+Projects at or below it; its cost is theirs summed. A Folder that is itself a
+Project and also has sub-Folders can be narrowed to **this folder** — its own
+Conversations only.
+_Avoid_: using Folder for the on-disk log folder under `~/.claude/projects/`.
 
 ### Conversation (Session)
 
 One continuous Claude Code session. On disk it is a single `<sessionId>.jsonl`
-file inside a Project folder. Each line is a typed Record. A Conversation is the
-unit shown as one row in the conversation list. Its human-readable name comes
-from an `ai-title` Record.
+file inside a log folder under `~/.claude/projects/`. Each line is a typed
+Record. A Conversation is the unit shown as one row in the conversation list.
+Its human-readable name comes from an `ai-title` Record.
 
 ### Continuation family
 

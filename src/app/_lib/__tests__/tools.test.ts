@@ -31,7 +31,7 @@ function stat(name: string, calls: number, errorRate: number, totalSize: number)
 /** The view state a Tools page link is built from. */
 const STATE = {
   sort: DEFAULT_TOOL_SORT,
-  folder: "-Users-me-dev-app",
+  folder: "/Users/me/dev/app",
   range: "7",
 } as const;
 
@@ -93,18 +93,20 @@ describe("sortTools", () => {
 describe("tool table hrefs", () => {
   it("keeps folder, range, and the expanded row when re-sorting", () => {
     expect(toolSortHref("volume", { ...STATE, expanded: "Bash" })).toBe(
-      "?sortBy=volume&dir=desc&folder=-Users-me-dev-app&range=7&expanded=Bash",
+      "?sortBy=volume&dir=desc&folder=%2FUsers%2Fme%2Fdev%2Fapp&range=7&expanded=Bash",
     );
   });
 
   it("keeps sort and scope when changing range", () => {
-    expect(toolRangeHref("all", STATE)).toBe("?sortBy=calls&dir=desc&folder=-Users-me-dev-app&range=all");
+    expect(toolRangeHref("all", STATE)).toBe("?sortBy=calls&dir=desc&folder=%2FUsers%2Fme%2Fdev%2Fapp&range=all");
   });
 
   it("expands a row, and collapses the one already expanded", () => {
-    expect(toolExpandHref("Bash", STATE)).toBe("?sortBy=calls&dir=desc&folder=-Users-me-dev-app&range=7&expanded=Bash");
+    expect(toolExpandHref("Bash", STATE)).toBe(
+      "?sortBy=calls&dir=desc&folder=%2FUsers%2Fme%2Fdev%2Fapp&range=7&expanded=Bash",
+    );
     expect(toolExpandHref("Bash", { ...STATE, expanded: "Bash" })).toBe(
-      "?sortBy=calls&dir=desc&folder=-Users-me-dev-app&range=7",
+      "?sortBy=calls&dir=desc&folder=%2FUsers%2Fme%2Fdev%2Fapp&range=7",
     );
   });
 });

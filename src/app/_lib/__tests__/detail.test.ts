@@ -25,7 +25,7 @@ function detail(partial: Partial<ConversationDetail> = {}): ConversationDetail {
   return {
     id: "s1",
     title: "T",
-    project: { folder: "f", path: "/p" },
+    project: { path: "/p" },
     startedAt: "",
     endedAt: "",
     models: { dominant: "sonnet", distinctCount: 1 },

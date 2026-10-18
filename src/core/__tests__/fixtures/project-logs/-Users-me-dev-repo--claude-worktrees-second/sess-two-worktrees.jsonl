@@ -1,0 +1,4 @@
+{"type":"user","uuid":"t1","timestamp":"2026-06-20T12:00:00.000Z","cwd":"/Users/me/dev/repo","version":"2.1.180","message":{"role":"user","content":"try two worktrees"}}
+{"type":"user","uuid":"t2","parentUuid":"t1","timestamp":"2026-06-20T12:01:00.000Z","cwd":"/Users/me/dev/repo/.claude/worktrees/first","version":"2.1.180","message":{"role":"user","content":"the first one"}}
+{"type":"user","uuid":"t3","parentUuid":"t2","timestamp":"2026-06-20T12:02:00.000Z","cwd":"/Users/me/dev/repo","version":"2.1.180","message":{"role":"user","content":"back in the repo"}}
+{"type":"user","uuid":"t4","parentUuid":"t3","timestamp":"2026-06-20T12:03:00.000Z","cwd":"/Users/me/dev/repo/.claude/worktrees/second/docs","version":"2.1.180","message":{"role":"user","content":"then the second one"}}

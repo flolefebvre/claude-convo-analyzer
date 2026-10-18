@@ -7,11 +7,18 @@ import { PAGE_SIZE } from "@/app/_lib/list-view";
 import { getTranscript, listConversations } from "@/core/read";
 
 import { seedEnvironment } from "./environment";
-import { AGENT_MESSAGES_TITLE, LONG_PAGE_TWO_TEXT, LONG_TITLE } from "./fake-logs";
+import {
+  AGENT_MESSAGES_TITLE,
+  CWD_LESS_TITLE,
+  LONG_PAGE_TWO_TEXT,
+  LONG_TITLE,
+  WORKTREE_SWITCH_PROJECT_PATH,
+  WORKTREE_SWITCH_TITLE,
+} from "./fake-logs";
 
 const NOW = new Date("2026-06-22T17:00:00.000Z");
 
-// A full seed is a real ingest of 137 files (~3s); two per test outrun the 5s
+// A full seed is a real ingest of 142 files (~3s); two per test outrun the 5s
 // default when the suite runs in parallel.
 describe("seedEnvironment", { timeout: 30_000 }, () => {
   let tmpDir = "";
@@ -31,8 +38,8 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     expect(seed.summary.duplicateSessionsSkipped).toEqual([]);
 
     const conversations = await listConversations({ dbPath: seed.dbPath });
-    expect(conversations).toHaveLength(62);
-    expect(conversations.reduce((sum, c) => sum + c.subAgentCount, 0)).toBe(75);
+    expect(conversations).toHaveLength(64);
+    expect(conversations.reduce((sum, c) => sum + c.subAgentCount, 0)).toBe(78);
 
     const continued = conversations.filter((c) => c.continuedFromId !== null);
     expect(continued).toHaveLength(5);
@@ -40,6 +47,16 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
       (c) => c.continuedFromId === null && continued.some((d) => d.continuedFromId === c.id),
     );
     expect(familyRoots).toHaveLength(2);
+  });
+
+  it("seeds a Conversation that enters a worktree and a cwd-less one, each in the Project it belongs to", async () => {
+    const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
+
+    const conversations = await listConversations({ dbPath: seed.dbPath });
+    const switching = conversations.find((c) => c.title === WORKTREE_SWITCH_TITLE);
+    expect(switching?.project.path).toBe(WORKTREE_SWITCH_PROJECT_PATH);
+    const cwdLess = conversations.find((c) => c.title === CWD_LESS_TITLE);
+    expect(cwdLess?.project.path).toBe("/home/dev/acme-api");
   });
 
   it("seeds a second page of Conversations, one with unpriced usage and another with API errors", async () => {
@@ -127,7 +144,7 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     const after = await seedEnvironment({ dir, now: NOW });
 
     expect(existsSync(leftover)).toBe(false);
-    expect(await listConversations({ dbPath: after.dbPath })).toHaveLength(62);
+    expect(await listConversations({ dbPath: after.dbPath })).toHaveLength(64);
   });
 });
 

@@ -246,6 +246,20 @@ function decodeEntities(s: string): string {
     .replace(/&amp;/g, "&");
 }
 
+/** Where Claude Code puts a repo's git worktrees, relative to the repo. */
+const WORKTREES_DIR = "/.claude/worktrees/";
+
+/**
+ * The root of the git worktree of `repo` that `cwd` lies at or under
+ * (`<repo>/.claude/worktrees/<name>`), or null when `cwd` is not inside one.
+ */
+function worktreeRootOf(repo: string, cwd: string): string | null {
+  const prefix = repo.replace(/\/+$/, "") + WORKTREES_DIR;
+  if (!cwd.startsWith(prefix)) return null;
+  const name = cwd.slice(prefix.length).split("/")[0];
+  return name === undefined || name.length === 0 ? null : prefix + name;
+}
+
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
@@ -294,8 +308,14 @@ export type ParsedMessage = {
 
 /** Per-session context fields, taken from the first record that carries them. */
 export type ParsedSession = {
-  /** Authoritative project path from a record `cwd` (null ⇒ fall back to folder). */
-  cwd: string | null;
+  /**
+   * The Project path per the records (GLOSSARY.md, Project): the first record
+   * `cwd`, unless a later `cwd` lies at or under a git worktree of it —
+   * `<firstCwd>/.claude/worktrees/<name>` — in which case it is that worktree's
+   * root, the last worktree visited winning. Any other `cd` (a subdirectory,
+   * another directory) leaves it unchanged. Null when no record states a `cwd`.
+   */
+  projectPath: string | null;
   gitBranch: string | null;
   ccVersion: string | null;
   /** Resolved title per finding #7 precedence (custom > ai > first prompt > null). */
@@ -488,7 +508,8 @@ export function parseSessionLines(lines: Iterable<string>): ParsedSession {
   const deliveries = deliveryLedger();
   let malformedLines = 0;
 
-  let cwd: string | null = null;
+  let firstCwd: string | null = null;
+  let worktreeRoot: string | null = null;
   let gitBranch: string | null = null;
   let ccVersion: string | null = null;
   let aiTitle: string | null = null;
@@ -554,8 +575,11 @@ export function parseSessionLines(lines: Iterable<string>): ParsedSession {
       continue; // mode/etc. skipped gracefully (log-format §6).
     }
 
-    // Per-record context fields (finding #10) — take the first non-null seen.
-    cwd ??= asString(record.cwd);
+    // Per-record context fields (finding #10) — take the first non-null seen;
+    // a later `cwd` only matters when it enters a worktree of the first.
+    const cwd = asString(record.cwd);
+    firstCwd ??= cwd;
+    if (cwd !== null && firstCwd !== null) worktreeRoot = worktreeRootOf(firstCwd, cwd) ?? worktreeRoot;
     gitBranch ??= asString(record.gitBranch);
     ccVersion ??= asString(record.version);
 
@@ -635,7 +659,7 @@ export function parseSessionLines(lines: Iterable<string>): ParsedSession {
   const title = customTitle ?? aiTitle ?? firstUserText ?? null;
 
   return {
-    cwd,
+    projectPath: worktreeRoot ?? firstCwd,
     gitBranch,
     ccVersion,
     title,

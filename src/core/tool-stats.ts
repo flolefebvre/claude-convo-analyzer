@@ -51,7 +51,7 @@ export type ToolStats = {
 
 /** Scope of a tool-analytics read — the same axes as the Trends read. */
 export type ToolStatsOptions = {
-  /** Scope to one Project by its `folderName` (the `?folder=` key); all Projects when omitted. */
+  /** Scope to one Project by its path (the `?folder=` value); all Projects when omitted. */
   folder?: string;
   /** Range length in days, ending today (inclusive). All time when omitted. */
   days?: number;
@@ -180,7 +180,7 @@ function scopeWhere(opts: ToolStatsOptions) {
         lt: BigInt(addLocalDays(today, 1).getTime()),
         ...(from === null ? {} : { gte: BigInt(from.getTime()) }),
       },
-      ...(opts.folder === undefined ? {} : { conversation: { project: { folderName: opts.folder } } }),
+      ...(opts.folder === undefined ? {} : { conversation: { project: { path: opts.folder } } }),
     },
   };
 }

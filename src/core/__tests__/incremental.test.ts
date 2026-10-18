@@ -465,10 +465,79 @@ describe("incremental refresh", () => {
     const summary = await refresh({ logsRoot, dbPath });
     expect(summary.duplicateSessionsSkipped).toEqual([]);
   });
+
+  it("puts a cwd-less Conversation in the Project of a sibling the Refresh skips as unchanged", async () => {
+    writeOneRecordSession(logsRoot, "-home-dev-acme-api", "sess-stated", "/home/dev/acme-api");
+    await refresh({ logsRoot, dbPath });
+
+    writeOneRecordSession(logsRoot, "-home-dev-acme-api", "sess-cwdless", null);
+    const summary = await refresh({ logsRoot, dbPath });
+
+    expect(summary.conversationsParsed).toBe(1);
+    expect(await projectPathOf(dbPath, "sess-cwdless")).toBe("/home/dev/acme-api");
+  });
+
+  it("lets only Conversations that state their cwd decide the Project a cwd-less sibling borrows", async () => {
+    writeOneRecordSession(logsRoot, "-home-dev-acme-api", "sess-a-cwdless", null);
+    writeOneRecordSession(logsRoot, "-home-dev-acme-api", "sess-b-cwdless", null);
+    await refresh({ logsRoot, dbPath });
+
+    writeOneRecordSession(logsRoot, "-home-dev-acme-api", "sess-c-stated", "/home/dev/acme-api");
+    writeOneRecordSession(logsRoot, "-home-dev-acme-api", "sess-d-cwdless", null);
+    await refresh({ logsRoot, dbPath });
+
+    expect(await projectPathOf(dbPath, "sess-d-cwdless")).toBe("/home/dev/acme-api");
+    // Resolved while its log folder had no cwd-bearing Conversation, unchanged since.
+    expect(await projectPathOf(dbPath, "sess-a-cwdless")).toBe("/home/dev/acme/api");
+  });
+
+  it("leaves no Project without a Conversation once a re-parse or a vanished file empties it", async () => {
+    writeOneRecordSession(logsRoot, "-home-dev-app", "sess-moving", "/home/dev/app");
+    writeOneRecordSession(logsRoot, "-home-dev-gone", "sess-gone", "/home/dev/gone");
+    await refresh({ logsRoot, dbPath });
+
+    writeOneRecordSession(logsRoot, "-home-dev-app", "sess-moving", "/home/dev/app/.claude/worktrees/feature");
+    rmSync(path.join(logsRoot, "-home-dev-gone"), { recursive: true });
+    await refresh({ logsRoot, dbPath });
+
+    const projectPaths = await storedProjectPaths(dbPath);
+    expect(projectPaths).toContain("/home/dev/app/.claude/worktrees/feature");
+    expect(projectPaths).not.toContain("/home/dev/app");
+    expect(projectPaths).not.toContain("/home/dev/gone");
+  });
 });
 
+/** Plant a one-record session in `logFolderName`, stating `cwd` unless it is null. */
+function writeOneRecordSession(logsRoot: string, logFolderName: string, sessionId: string, cwd: string | null): void {
+  const dir = path.join(logsRoot, logFolderName);
+  mkdirSync(dir, { recursive: true });
+  const record = {
+    type: "user",
+    uuid: `${sessionId}-u1`,
+    timestamp: "2026-06-22T09:00:00.000Z",
+    ...(cwd === null ? {} : { cwd }),
+    message: { role: "user", content: `prompt of ${sessionId}` },
+  };
+  writeFileSync(path.join(dir, `${sessionId}.jsonl`), `${JSON.stringify(record)}\n`);
+}
+
+/** The path of the Project a Conversation belongs to. */
+async function projectPathOf(dbPath: string, sessionId: string): Promise<string | undefined> {
+  return (await listConversations({ dbPath })).find((c) => c.id === sessionId)?.project.path;
+}
+
+/** Every stored Project path — Projects without a Conversation included. */
+async function storedProjectPaths(dbPath: string): Promise<string[]> {
+  const prisma = createPrismaClient(dbPath);
+  try {
+    return (await prisma.project.findMany({ select: { path: true } })).map((p) => p.path);
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
 /**
- * Plant `sess-copy.jsonl` in one project folder and return its path. The title
+ * Plant `sess-copy.jsonl` in one log folder and return its path. The title
  * is the only difference between two copies, so an assertion on the ingested
  * title says exactly WHICH file won.
  */
@@ -489,7 +558,7 @@ function writeSessionCopy(logsRoot: string, folder: string, title: string): stri
 }
 
 /**
- * Plant the same session id in two project folders and return
+ * Plant the same session id in two log folders and return
  * `[smallestPath, otherPath]` — the expected winner first ("-a" sorts before
  * "-b").
  */

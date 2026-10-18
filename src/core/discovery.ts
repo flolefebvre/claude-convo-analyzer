@@ -5,7 +5,7 @@
 // `<project>/<sessionId>/subagents/agent-<agentId>.jsonl` and MUST be skipped
 // here (finding #1) — a later slice ingests them. We identify them by the
 // `/subagents/` path segment and by their nesting depth (they are not direct
-// children of a project folder), so a naive recursive walk does not conflate
+// children of a log folder), so a naive recursive walk does not conflate
 // them with sessions.
 
 import { readdirSync, statSync } from "node:fs";
@@ -29,8 +29,8 @@ export function defaultLogsRoot(): string {
 
 /** A discovered top-level session file plus its on-disk change keys. */
 export type DiscoveredSession = {
-  /** The on-disk project folder name (dash-encoded cwd). */
-  folder: string;
+  /** Name of the log folder the session is filed in (its directory, dash-encoded). */
+  logFolderName: string;
   /** The session id (file stem of `<sessionId>.jsonl`). */
   sessionId: string;
   /** Absolute path to the `.jsonl` file. */
@@ -47,7 +47,7 @@ export function isSubAgentPath(p: string): boolean {
 }
 
 /**
- * Discover every top-level session file under `logsRoot`. Each project folder is
+ * Discover every top-level session file under `logsRoot`. Each log folder is
  * scanned for direct-child `.jsonl` files; nested directories (`<sessionId>/`,
  * which holds `subagents/`) are not descended into, so sub-agent transcripts are
  * never returned by this slice.
@@ -63,8 +63,8 @@ export function discoverSessions(logsRoot: string): DiscoveredSession[] {
   const sessions: DiscoveredSession[] = [];
   for (const projectEntry of projectEntries) {
     if (!projectEntry.isDirectory()) continue;
-    const folder = projectEntry.name;
-    const projectDir = path.join(logsRoot, folder);
+    const logFolderName = projectEntry.name;
+    const projectDir = path.join(logsRoot, logFolderName);
 
     let fileEntries;
     try {
@@ -86,7 +86,7 @@ export function discoverSessions(logsRoot: string): DiscoveredSession[] {
       const sessionId = fileEntry.name.slice(0, -".jsonl".length);
       const stat = statSync(sourcePath);
       sessions.push({
-        folder,
+        logFolderName,
         sessionId,
         sourcePath,
         sourceMtime: Math.floor(stat.mtimeMs),
@@ -132,10 +132,13 @@ export function discoverSubAgents(projectDir: string, sessionId: string): Discov
 }
 
 /**
- * Decode a dash-encoded project folder name back to an absolute path
+ * Decode a dash-encoded log folder name back to an absolute path
  * (`/` ⇐ `-`). Lossy/ambiguous on a real `-` (finding #10) — used only as a
- * fallback when no `cwd` is present on any record.
+ * last resort when neither a Conversation nor any sibling in its log folder
+ * states a `cwd` (see `resolveProjectPath` in refresh.ts).
+ *
+ * @example decodeLogFolderName("-Users-me-dev-acme-api") // "/Users/me/dev/acme/api"
  */
-export function decodeFolderName(folder: string): string {
-  return folder.replace(/-/g, "/");
+export function decodeLogFolderName(logFolderName: string): string {
+  return logFolderName.replace(/-/g, "/");
 }

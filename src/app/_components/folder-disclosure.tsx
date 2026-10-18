@@ -21,7 +21,7 @@ import { cn } from "@/lib/utils-cn";
  * The collapsible folder picker shown below `lg`, wrapping the folder `<nav>`.
  *
  * @example
- * <FolderDisclosure folders={[{ folder: "-acme", label: "acme", cost: "$3.10" }]} totalCost="$3.10">
+ * <FolderDisclosure folders={[{ folder: "/home/dev/acme", label: "acme", cost: "$3.10" }]} totalCost="$3.10">
  *   {nav}
  * </FolderDisclosure>
  */

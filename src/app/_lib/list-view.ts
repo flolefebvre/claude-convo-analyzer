@@ -192,7 +192,7 @@ export function buildListView(
     pageCount,
     rowCount: sortedRows.length,
     scoped: activeFolder !== undefined,
-    selectedFolder: activeFolder ? folders.find((f) => f.folder === activeFolder) : undefined,
+    selectedFolder: activeFolder ? folders.find((f) => f.path === activeFolder) : undefined,
     grandTotal: grandTotal(sortedRows),
   };
 }
@@ -200,14 +200,14 @@ export function buildListView(
 // ── module-private pipeline helpers (folded in from folders/format/overview) ──
 
 /**
- * Scope conversations to a single Project by its `?folder=` key, WITHOUT sorting
+ * Scope conversations to a single Project by its path (`?folder=`), WITHOUT sorting
  * — input order is preserved so the caller sorts afterward (scope composes with
  * sort). All rows when `folder` is `undefined`/empty (no scope); the matching
  * rows for a known key; an empty array for a non-empty but unknown/stale key.
  */
 function filterByFolder(summaries: ConversationSummary[], folder: string | undefined): ConversationSummary[] {
   if (!folder) return summaries;
-  return summaries.filter((s) => s.project.folder === folder);
+  return summaries.filter((s) => s.project.path === folder);
 }
 
 /**
@@ -293,7 +293,7 @@ function deriveOverview(summaries: ConversationSummary[]): Overview {
   let latest = "";
 
   for (const s of summaries) {
-    projects.add(s.project.folder);
+    projects.add(s.project.path);
     tokens.input += s.tokens.input;
     tokens.output += s.tokens.output;
     tokens.cacheWrite += s.tokens.cacheWrite;
