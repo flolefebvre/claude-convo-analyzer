@@ -1,0 +1,5 @@
+{"type":"user","uuid":"d1","timestamp":"2026-06-20T11:00:00.000Z","cwd":"/Users/me/dev/repo","version":"2.1.180","message":{"role":"user","content":"work in the repo"}}
+{"type":"user","uuid":"d2","parentUuid":"d1","timestamp":"2026-06-20T11:01:00.000Z","cwd":"/Users/me/dev/repo/packages/api","version":"2.1.180","message":{"role":"user","content":"cd into a package"}}
+{"type":"user","uuid":"d3","parentUuid":"d2","timestamp":"2026-06-20T11:02:00.000Z","cwd":"/tmp/elsewhere","version":"2.1.180","message":{"role":"user","content":"cd somewhere else"}}
+{"type":"user","uuid":"d4","parentUuid":"d3","timestamp":"2026-06-20T11:03:00.000Z","cwd":"/Users/me/dev/repo/.claude/worktrees","version":"2.1.180","message":{"role":"user","content":"the worktrees directory itself"}}
+{"type":"user","uuid":"d5","parentUuid":"d4","timestamp":"2026-06-20T11:04:00.000Z","cwd":"/Users/me/dev/other/.claude/worktrees/feature","version":"2.1.180","message":{"role":"user","content":"another repo's worktree"}}

@@ -107,8 +107,11 @@ type RefreshOptions = {
  * 3 — user Messages are classified by `origin.kind` (Inter-agent messages and
  *     Task notifications, with their `origin` extras) and `queued_command`
  *     attachments become mid-turn Messages.
+ * 4 — a Project is identified by its path: a Conversation that switches into a
+ *     git worktree belongs to the worktree, and a cwd-less one borrows the
+ *     Project of a sibling in its log folder.
  */
-const PARSER_VERSION = 3;
+const PARSER_VERSION = 4;
 
 /**
  * The version a conversation carries while it is written but NOT YET COMPLETE:
@@ -453,7 +456,7 @@ function parseConversation({ session, subAgentPaths, priorConversationId }: Sess
 
 /** Resolve (find-or-create) the project row for an on-disk folder. */
 function upsertProject(statements: RefreshStatements, folder: string, parsed: ParsedSession): number {
-  const projectPath = parsed.cwd ?? decodeFolderName(folder);
+  const projectPath = parsed.projectPath ?? decodeFolderName(folder);
   return statements.selectProjectId(projectPath) ?? statements.insertProject({ path: projectPath, folderName: folder });
 }
 

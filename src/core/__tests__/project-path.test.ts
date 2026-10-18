@@ -1,0 +1,40 @@
+// A Conversation's Project is identified by its path (GLOSSARY.md, Project):
+// the directory its records' `cwd` states, moved only by a switch into a git
+// worktree of that directory — never by ordinary `cd` drift, and never by the
+// lossy name of the log folder the Conversation is filed in.
+
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+import { listConversations } from "@/core/read";
+
+import { seededTempDb } from "./helpers/temp-db";
+
+const PROJECT_LOGS_ROOT = path.join(import.meta.dirname, "fixtures", "project-logs");
+
+/** The Project path of every Conversation, by session id. */
+async function projectPathBySessionId(dbPath: string): Promise<Record<string, string>> {
+  const conversations = await listConversations({ dbPath });
+  return Object.fromEntries(conversations.map((c) => [c.id, c.project.path]));
+}
+
+describe("Project path", () => {
+  const db = seededTempDb({ prefix: "cca-project-path-", logsRoot: PROJECT_LOGS_ROOT });
+
+  it("moves a Conversation that switches into a worktree to the worktree root, whatever its log folder decodes to", async () => {
+    const byId = await projectPathBySessionId(db.dbPath);
+
+    expect(byId["sess-into-worktree"]).toBe("/Users/me/dev/repo/.claude/worktrees/feature");
+  });
+
+  it("keeps a Conversation in its first cwd through cd drift into subdirectories, elsewhere and other repos' worktrees", async () => {
+    const byId = await projectPathBySessionId(db.dbPath);
+
+    expect(byId["sess-drift"]).toBe("/Users/me/dev/repo");
+  });
+
+  it("puts a Conversation that visits several worktrees in the last one it visited", async () => {
+    const byId = await projectPathBySessionId(db.dbPath);
+
+    expect(byId["sess-two-worktrees"]).toBe("/Users/me/dev/repo/.claude/worktrees/second");
+  });
+});
