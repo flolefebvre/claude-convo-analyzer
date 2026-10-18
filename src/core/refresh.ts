@@ -537,8 +537,9 @@ async function writeAgentMessages(
 }
 
 /**
- * Write one conversation + root agent + messages + tool_calls, then each
- * sub-agent (its own agent row + messages + tool_calls), then pr_links and
+ * Replace one conversation: delete its prior row (if any), then write it + root
+ * agent + messages + tool_calls, then each sub-agent (its own agent row +
+ * messages + tool_calls), then pr_links and
  * turn_durations — all in one transaction. Sub-agent `spawnedByMessageId` is
  * linked via the spawning `Agent` tool_use that produced the matching `agentId`
  * (log-format §4) — in whichever transcript that ledger lives, main thread or
