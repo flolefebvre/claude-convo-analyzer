@@ -537,7 +537,7 @@ async function storedProjectPaths(dbPath: string): Promise<string[]> {
 }
 
 /**
- * Plant `sess-copy.jsonl` in one project folder and return its path. The title
+ * Plant `sess-copy.jsonl` in one log folder and return its path. The title
  * is the only difference between two copies, so an assertion on the ingested
  * title says exactly WHICH file won.
  */
@@ -558,7 +558,7 @@ function writeSessionCopy(logsRoot: string, folder: string, title: string): stri
 }
 
 /**
- * Plant the same session id in two project folders and return
+ * Plant the same session id in two log folders and return
  * `[smallestPath, otherPath]` — the expected winner first ("-a" sorts before
  * "-b").
  */

@@ -13,7 +13,7 @@ deliberately did not model** (and where to find it if we ever want it).
 
 ```
 ~/.claude/projects/
-  <dash-encoded-cwd>/                         ← one folder per project (working dir)
+  <dash-encoded-cwd>/                         ← one log folder per launch directory
       <sessionId>.jsonl                       ← one main conversation (session)
       <sessionId>/
           subagents/
@@ -25,7 +25,11 @@ deliberately did not model** (and where to find it if we ever want it).
   Note this is lossy/ambiguous in theory (a real `-` vs a `/`), but each
   `assistant`/`user` record also carries an exact `cwd` field, which is the
   authoritative source for the project path. Prefer `cwd` over decoding the
-  folder name.
+  folder name. A session that enters a git worktree
+  (`<repo>/.claude/worktrees/<name>`) is filed under the worktree's folder,
+  though its first records state the repo's `cwd`; some sessions state no `cwd`
+  at all. How the analyzer derives the Project path from both: GLOSSARY.md,
+  Project, and `ParsedSession.projectPath` in `src/core/parse.ts`.
 - **Main conversation** = a top-level `<sessionId>.jsonl`. In the snapshot:
   **418** of these.
 - **Sub-agent** = its own complete transcript at

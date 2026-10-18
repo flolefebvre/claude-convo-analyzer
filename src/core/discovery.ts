@@ -5,7 +5,7 @@
 // `<project>/<sessionId>/subagents/agent-<agentId>.jsonl` and MUST be skipped
 // here (finding #1) — a later slice ingests them. We identify them by the
 // `/subagents/` path segment and by their nesting depth (they are not direct
-// children of a project folder), so a naive recursive walk does not conflate
+// children of a log folder), so a naive recursive walk does not conflate
 // them with sessions.
 
 import { readdirSync, statSync } from "node:fs";
@@ -47,7 +47,7 @@ export function isSubAgentPath(p: string): boolean {
 }
 
 /**
- * Discover every top-level session file under `logsRoot`. Each project folder is
+ * Discover every top-level session file under `logsRoot`. Each log folder is
  * scanned for direct-child `.jsonl` files; nested directories (`<sessionId>/`,
  * which holds `subagents/`) are not descended into, so sub-agent transcripts are
  * never returned by this slice.

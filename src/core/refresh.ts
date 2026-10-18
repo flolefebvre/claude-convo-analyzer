@@ -25,7 +25,7 @@
 // looking up-to-date with a missing link (see `UNSTAMPED_PARSER_VERSION`).
 //
 // DUPLICATE SESSION IDS: the session id is a FILE STEM, so a transcript copied
-// into a second project folder presents as two sessions with one id — which the
+// into a second log folder presents as two sessions with one id — which the
 // unique `conversation.sessionId` rejected, aborting the whole run. Discovery
 // now keeps ONE file per session id (smallest source path wins) and reports the
 // losers in `RefreshSummary.duplicateSessionsSkipped` (see `dedupeBySessionId`).
@@ -394,7 +394,7 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
  * of `refresh()` only ever sees ONE file per session id.
  *
  * WHY: the session id is a file STEM, so two copies of a transcript in two
- * project folders (a user copying a `.jsonl` around) present as two sessions
+ * log folders (a user copying a `.jsonl` around) present as two sessions
  * with one id — and `conversation.sessionId` is UNIQUE, so writing the second
  * threw and aborted the ENTIRE refresh (issue #37).
  *
