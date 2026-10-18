@@ -5,13 +5,19 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { Worker } from "node:worker_threads";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RefreshProgress } from "@/core/refresh";
-import { createRefreshRunner, createWorkerRefreshJob } from "@/core/refresh-runner";
+import { createRefreshRunner, createWorkerRefreshJob, spawnRefreshWorker } from "@/core/refresh-runner";
 
 const FIXTURES_ROOT = path.join(import.meta.dirname, "fixtures", "logs");
 const TSX_EXEC_ARGV = ["--import", "tsx"];
 const WORKER_TIMEOUT_MS = 30_000;
+
+/** The production worker-backed job, with its worker loaded through tsx. */
+function tsxWorkerRefreshJob() {
+  return createWorkerRefreshJob({ spawnWorker: () => spawnRefreshWorker(TSX_EXEC_ARGV) });
+}
 
 /** Longest stretch, in ms, between two ticks of a 10 ms interval while `work` runs. */
 async function longestTickGapDuring(work: () => Promise<unknown>): Promise<number> {
@@ -47,7 +53,7 @@ describe("refresh in a worker", () => {
   it(
     "keeps the main thread ticking while a cold Refresh runs, and resolves to its summary",
     async () => {
-      const runner = createRefreshRunner(createWorkerRefreshJob({ execArgv: TSX_EXEC_ARGV }));
+      const runner = createRefreshRunner(tsxWorkerRefreshJob());
       let summary;
 
       const longestTickGap = await longestTickGapDuring(async () => {
@@ -63,7 +69,7 @@ describe("refresh in a worker", () => {
   it(
     "relays every progress report of the Refresh, in order",
     async () => {
-      const refreshInWorker = createWorkerRefreshJob({ execArgv: TSX_EXEC_ARGV });
+      const refreshInWorker = tsxWorkerRefreshJob();
       const progressReports: RefreshProgress[] = [];
 
       const summary = await refreshInWorker((progress) => progressReports.push(progress));
@@ -79,7 +85,7 @@ describe("refresh in a worker", () => {
     async () => {
       // A directory is no database: opening it throws inside the worker.
       vi.stubEnv("CCA_DB_PATH", tmpDir);
-      const runner = createRefreshRunner(createWorkerRefreshJob({ execArgv: TSX_EXEC_ARGV }));
+      const runner = createRefreshRunner(tsxWorkerRefreshJob());
 
       await expect(runner.start()).rejects.toThrow(Error);
       expect(runner.state().status).toBe("failed");
@@ -92,8 +98,10 @@ describe("refresh in a worker", () => {
     async () => {
       const runner = createRefreshRunner(
         createWorkerRefreshJob({
-          workerUrl: new URL("./helpers/exit-without-summary.worker.ts", import.meta.url),
-          execArgv: TSX_EXEC_ARGV,
+          spawnWorker: () =>
+            new Worker(new URL("./helpers/exit-without-summary.worker.ts", import.meta.url), {
+              execArgv: TSX_EXEC_ARGV,
+            }),
         }),
       );
 

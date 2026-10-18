@@ -75,12 +75,25 @@ export function createRefreshRunner(job: RefreshJob): RefreshRunner {
   };
 }
 
-/** How a worker-backed job spawns its worker; the defaults are production's. */
+/**
+ * Spawn the worker a Refresh runs in (`refresh.worker.ts`). `execArgv` holds
+ * Node flags for it, e.g. `["--import", "tsx"]` to load its `.ts` graph outside
+ * the bundler.
+ *
+ * @example
+ * const worker = spawnRefreshWorker(["--import", "tsx"]);
+ */
+export function spawnRefreshWorker(execArgv?: string[]): Worker {
+  // Keep this the only `new Worker`, on a literal URL: Turbopack bundles that
+  // pattern as a worker entry, but traces a Worker on a computed URL to every
+  // file in the project (a 500 on every page under `next dev`).
+  return new Worker(new URL("./refresh.worker.ts", import.meta.url), { execArgv });
+}
+
+/** How a worker-backed job spawns its worker; the default is production's. */
 type WorkerRefreshJobOptions = {
-  /** The worker script; defaults to `refresh.worker.ts`. */
-  workerUrl?: URL;
-  /** Node flags for the worker, e.g. `["--import", "tsx"]` to run `.ts` outside the bundler. */
-  execArgv?: string[];
+  /** Starts the worker for one Refresh; defaults to {@link spawnRefreshWorker}. */
+  spawnWorker?: () => Worker;
 };
 
 /**
@@ -93,15 +106,12 @@ type WorkerRefreshJobOptions = {
  * @example
  * const runner = createRefreshRunner(createWorkerRefreshJob());
  */
-export function createWorkerRefreshJob({ workerUrl, execArgv }: WorkerRefreshJobOptions = {}): RefreshJob {
+export function createWorkerRefreshJob({
+  spawnWorker = () => spawnRefreshWorker(),
+}: WorkerRefreshJobOptions = {}): RefreshJob {
   return (onProgress) =>
     new Promise((resolve, reject) => {
-      // The production worker stays a literal `new Worker(new URL(…))`: that is
-      // the pattern Turbopack bundles as a worker entry.
-      const worker =
-        workerUrl === undefined
-          ? new Worker(new URL("./refresh.worker.ts", import.meta.url), { execArgv })
-          : new Worker(workerUrl, { execArgv });
+      const worker = spawnWorker();
       let hasPostedSummary = false;
 
       worker.on("message", (message: RefreshWorkerMessage) => {
