@@ -1,8 +1,9 @@
 # Glossary — Claude Conversation Analyzer
 
 A local-only app that reads the Claude Code conversation logs stored on this
-machine, parses them deterministically into a SQLite database, and presents
-analysis (starting with per-conversation token usage and cost).
+machine — and, when the Recorder is used, the Recordings of what Claude Code
+actually sent the API — parses them deterministically into a SQLite database,
+and presents analysis (starting with per-conversation token usage and cost).
 
 This file is the **glossary** — the ubiquitous language for the domain. It
 contains no implementation details. Architectural decisions live in
@@ -193,12 +194,14 @@ individual Tool call**. Therefore:
 The hypothetical price of a Conversation had it run on the Claude API, computed
 from its token usage and a per-model, per-token-type price list. Costs are
 attributed per Resolved model, so Main-thread and sub-agent costs can differ
-within one Conversation.
+within one Conversation. A Recorded Conversation's Cost also includes its Side
+requests, which the conversation logs never show.
 
 ### Refresh
 
-The user-triggered action that re-reads the conversation logs from disk and
+The action that re-reads the conversation logs (and Recordings) from disk and
 updates the local SQLite database, so the UI does not re-parse on every view.
+The user triggers it, or Live does when they change.
 
 At most one Refresh runs at a time. A click starts one, or joins the one already
 running; it outlives the page that started it, and every open page sees its
@@ -212,3 +215,50 @@ missed.
 A **cold** Refresh is one with nothing stored yet, so every Conversation is
 parsed. A Refresh right after the parser changes costs the same, since every
 Conversation must be re-parsed.
+
+### Live
+
+A mode the user switches on in the app, off by default: while it is on, the app
+watches the conversation logs and Recordings and runs a Refresh whenever they
+change, so open pages follow Conversations as they happen. Switching it on
+first starts watching, then runs a catch-up Refresh, so nothing written in
+between is missed.
+
+### Recorder
+
+A local proxy that sits between Claude Code and the Anthropic API, forwarding
+every API request unchanged and keeping a Recording of it. Claude Code only goes
+through it when told to; a Claude Code session pointed at a Recorder that is not
+running cannot reach the API. The Recorder runs on its own, independently of
+the app, which shows whether it is running and can start it.
+_Avoid_: proxy (in the UI), capture tool.
+
+### Recording
+
+What the Recorder keeps: every API request it forwarded, with its response. A
+Recording is a source in its own right, alongside the conversation logs — unlike
+the database, it cannot be rebuilt from anything else.
+_Avoid_: capture, trace.
+
+### API request
+
+One request Claude Code sent to the Anthropic API, and its response, as the
+Recorder saw it: the system prompt, the tool definitions, every message exactly
+as sent, the response, its token usage and its timings. Most API requests are a
+Turn of some Agent; the rest are Side requests.
+_Avoid_: exchange, call (clashes with Tool call).
+
+### Side request
+
+An API request that is not a Turn of any Agent: Claude Code's own background
+requests, such as naming the session, probing the quota, the safety monitor or
+suggestions. Side requests never appear in the conversation logs, so their usage
+is only known for Recorded Conversations.
+
+### Recorded
+
+A Conversation is **recorded** when its Turns have matching API requests in a
+Recording, **partially recorded** when only some do (the Recorder was started or
+stopped mid-way), and **unrecorded** otherwise. An unrecorded Conversation is
+shown exactly as from its logs alone; recording only ever adds to it.
+_Avoid_: thread (the Recorder's old word for an Agent).

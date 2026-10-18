@@ -3,7 +3,7 @@
 ## Status
 
 accepted. Supersedes ADR-0002's Refresh paragraph and its "SSE deferred"
-consequence.
+consequence. Live amends the start rules below.
 
 ## Context
 
@@ -37,7 +37,10 @@ time: a start while one runs joins it, a start after it settled begins a new
 one, and a failure rejects every waiter and leaves the next start to run
 fresh. A throw in the worker, or an exit before the summary (where an
 out-of-memory crash lands), is such a failure. There is no cancel and no start
-at boot. The runner keeps the current
+at boot, except when Live was left on: it then starts watching and runs a
+catch-up Refresh. A change Live sees while a Refresh runs does not join it, since
+that run may already have read the file; it queues exactly one more Refresh
+after it. The runner keeps the current
 state: idle, running with the latest `{ done, total }`, or the last summary or
 error. It takes the job as a dependency, so its logic is tested in-process. The
 process-wide instance lives in a `globalThis[Symbol.for(…)]` slot, created on
