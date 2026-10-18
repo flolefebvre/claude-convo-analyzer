@@ -1,6 +1,6 @@
 // The fake-log generator behind `pnpm seed`: realistic, obviously invented
 // Claude Code JSONL transcripts, written under a logs root in the real on-disk
-// layout (`<project folder>/<session>.jsonl` + `<session>/subagents/…`), so the
+// layout (`<log folder>/<session>.jsonl` + `<session>/subagents/…`), so the
 // genuine `refresh()` parses them like any other log.
 //
 // Re-entrant by construction: every call builds its own generator state (the
@@ -537,7 +537,10 @@ function spawnSubAgent(
 type ResumePoint = { uuid: string; ms: number };
 
 type Conversation = {
-  folder: string;
+  /** The log folder Claude Code files it in (see {@link logFolderNameOf}). */
+  logFolderName: string;
+  /** The Project it belongs to (GLOSSARY.md, Project). */
+  projectPath: string;
   sessionId: string;
   mainLines: string[];
   subAgents: SubAgent[];
@@ -564,8 +567,8 @@ function buildConversation(
   } = {},
 ): Conversation {
   const cwd = project.path;
-  const folder = cwd.replace(/\//g, "-");
-  const sessionId = `seed-${folder.slice(1)}-${index}`;
+  const logFolderName = logFolderNameOf(cwd);
+  const sessionId = `seed-${logFolderName.slice(1)}-${index}`;
 
   const start =
     opts.resumeFrom === undefined
@@ -646,7 +649,8 @@ function buildConversation(
   }
 
   return {
-    folder,
+    logFolderName,
+    projectPath: cwd,
     sessionId,
     mainLines: lines,
     subAgents,
@@ -805,8 +809,8 @@ function taskNotificationXml(taskId: string, status: string, summary: string, re
 function agentMessagesConversation(g: Gen, index: number): Conversation {
   const project = PROJECTS[5];
   const cwd = project.path;
-  const folder = cwd.replace(/\//g, "-");
-  const sessionId = `seed-${folder.slice(1)}-${index}`;
+  const logFolderName = logFolderNameOf(cwd);
+  const sessionId = `seed-${logFolderName.slice(1)}-${index}`;
   const model = MODELS[0];
   let t = g.now - 3 * 3_600_000;
   const at = (seconds: number) => (t += seconds * 1_000);
@@ -935,7 +939,8 @@ function agentMessagesConversation(g: Gen, index: number): Conversation {
   );
 
   return {
-    folder,
+    logFolderName,
+    projectPath: cwd,
     sessionId,
     mainLines: lines,
     subAgents: [worker, stopped],
@@ -967,8 +972,8 @@ const LONG_FOLLOW_UPS = [
 function longConversation(g: Gen, index: number): Conversation {
   const project = PROJECTS[4];
   const cwd = project.path;
-  const folder = cwd.replace(/\//g, "-");
-  const sessionId = `seed-${folder.slice(1)}-${index}`;
+  const logFolderName = logFolderNameOf(cwd);
+  const sessionId = `seed-${logFolderName.slice(1)}-${index}`;
   const model = g.pick(MODELS);
   const rounds = 225;
   let t = g.now - 9 * DAY;
@@ -995,12 +1000,76 @@ function longConversation(g: Gen, index: number): Conversation {
     lines.push(userPrompt(g, t, cwd, round === 150 ? LONG_PAGE_TWO_TEXT : g.pick(LONG_FOLLOW_UPS)));
   }
   return {
-    folder,
+    logFolderName,
+    projectPath: cwd,
     sessionId,
     mainLines: lines,
     subAgents: [],
     resumePoint: { uuid: lastAssistantUuid(lines), ms: t },
   };
+}
+
+/** The name of the log folder Claude Code files a session run in `dir` under:
+ *  the path with every `/` and `.` replaced by `-`. */
+function logFolderNameOf(dir: string): string {
+  return dir.replace(/[/.]/g, "-");
+}
+
+/** `line` with its record's `cwd` replaced by `cwd`, or removed when `cwd` is null;
+ *  a record without one (a title, a PR link) is left as is. */
+function withCwd(line: string, cwd: string | null): string {
+  const record = JSON.parse(line) as Record<string, unknown>;
+  if (!("cwd" in record)) return line;
+  if (cwd === null) delete record.cwd;
+  else record.cwd = cwd;
+  return JSON.stringify(record);
+}
+
+/** The seeded Conversation that enters a git worktree after its first prompt (issue #119). */
+export const WORKTREE_SWITCH_TITLE = "Fix the flaky auth test in a worktree";
+
+/** The worktree {@link WORKTREE_SWITCH_TITLE} moves into, and therefore its Project. */
+export const WORKTREE_SWITCH_PROJECT_PATH = `${PROJECTS[0].path}/.claude/worktrees/fix-auth-flake`;
+
+/** The seeded Conversation whose records state no `cwd` (issue #119). */
+export const CWD_LESS_TITLE = "Recover a session whose records state no cwd";
+
+/**
+ * The two Conversations whose Project is not their first `cwd` (issue #119),
+ * both started in the first Project:
+ *
+ *  - one that enters a worktree of it after its first prompt, filed — as
+ *    Claude Code files it — under the worktree's log folder, so it belongs to
+ *    the worktree;
+ *  - one whose records state no `cwd`, filed under the first Project's log
+ *    folder, so it borrows that Project from its siblings (the folder name
+ *    alone would decode to a path that does not exist).
+ *
+ * Drawn last, so every earlier Conversation keeps its draws.
+ */
+function projectPathConversations(g: Gen, startIndex: number): Conversation[] {
+  const repo = PROJECTS[0];
+  const worktree = WORKTREE_SWITCH_PROJECT_PATH;
+  const switching = buildConversation(g, repo, startIndex, { title: WORKTREE_SWITCH_TITLE });
+  // Lines 0 and 1 are the title and the first prompt, run in the repo.
+  const intoWorktree = (lines: string[], from: number) =>
+    lines.map((line, i) => (i < from ? line : withCwd(line, worktree)));
+  const cwdLess = buildConversation(g, repo, startIndex + 1, { title: CWD_LESS_TITLE });
+  const withoutCwd = (lines: string[]) => lines.map((line) => withCwd(line, null));
+  return [
+    {
+      ...switching,
+      logFolderName: logFolderNameOf(worktree),
+      projectPath: worktree,
+      mainLines: intoWorktree(switching.mainLines, 2),
+      subAgents: switching.subAgents.map((sub) => ({ ...sub, lines: intoWorktree(sub.lines, 0) })),
+    },
+    {
+      ...cwdLess,
+      mainLines: withoutCwd(cwdLess.mainLines),
+      subAgents: cwdLess.subAgents.map((sub) => ({ ...sub, lines: withoutCwd(sub.lines) })),
+    },
+  ];
 }
 
 /** Every seeded Conversation, its conversations starting up to three weeks before `anchor`. */
@@ -1017,6 +1086,7 @@ function buildCorpus(anchor: number): Conversation[] {
   conversations.push(...coverage);
   conversations.push(agentMessagesConversation(g, total + families.length + coverage.length));
   conversations.push(longConversation(g, conversations.length));
+  conversations.push(...projectPathConversations(g, conversations.length));
   return conversations;
 }
 
@@ -1037,7 +1107,7 @@ export type FakeLogsCounts = {
   conversations: number;
   /** Sub-agent transcripts, across every Conversation. */
   subAgents: number;
-  /** Distinct Projects (log folders) the Conversations span. */
+  /** Distinct Projects (by path) the Conversations belong to. */
   projects: number;
 };
 
@@ -1045,9 +1115,9 @@ export type FakeLogsCounts = {
  * Write the fake logs under `logsRoot`, their timeline ending at `now`: 30
  * standalone Conversations across six Projects, two continuation families
  * (seven more), 23 covering pagination, unpriced usage and API errors, one
- * where agents message each other, then one long enough to span three
- * Transcript pages — 62 in all. The same `now` always writes the
- * same bytes.
+ * where agents message each other, one long enough to span three Transcript
+ * pages, then one that enters a worktree and one that states no cwd — 64 in
+ * all. The same `now` always writes the same bytes.
  *
  * @example
  * const counts = generateFakeLogs({ logsRoot: "data/seed/projects", now: new Date() });
@@ -1061,7 +1131,7 @@ export function generateFakeLogs(opts: { logsRoot: string; now: Date }): FakeLog
 
   let subAgents = 0;
   for (const convo of conversations) {
-    const projectDir = path.join(opts.logsRoot, convo.folder);
+    const projectDir = path.join(opts.logsRoot, convo.logFolderName);
     mkdirSync(projectDir, { recursive: true });
     writeFileSync(path.join(projectDir, `${convo.sessionId}.jsonl`), convo.mainLines.join("\n") + "\n");
 
@@ -1078,6 +1148,6 @@ export function generateFakeLogs(opts: { logsRoot: string; now: Date }): FakeLog
   return {
     conversations: conversations.length,
     subAgents,
-    projects: new Set(conversations.map((c) => c.folder)).size,
+    projects: new Set(conversations.map((c) => c.projectPath)).size,
   };
 }
