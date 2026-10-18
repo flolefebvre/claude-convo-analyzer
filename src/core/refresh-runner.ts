@@ -1,9 +1,16 @@
 // The refresh runner (ADR-0004): owns the one Refresh the server process runs at
 // a time. A start while a Refresh runs joins it; the Refresh outlives the
 // request that started it. The runner takes the job as a dependency, so its
-// logic runs in-process under test, without a worker.
+// logic runs in-process under test, without a worker; the process-wide runner
+// runs each Refresh in a worker thread, off the main thread.
+
+import { Worker } from "node:worker_threads";
 
 import type { RefreshProgress, RefreshSummary } from "@/core/refresh";
+
+/** What `refresh.worker.ts` posts: each progress report, then the summary. */
+export type RefreshWorkerMessage =
+  { type: "progress"; progress: RefreshProgress } | { type: "summary"; summary: RefreshSummary };
 
 /** The work of one Refresh: reports progress as it goes, resolves to its summary. */
 export type RefreshJob = (onProgress: (progress: RefreshProgress) => void) => Promise<RefreshSummary>;
@@ -66,4 +73,66 @@ export function createRefreshRunner(job: RefreshJob): RefreshRunner {
     start: () => (runningRefresh ??= runRefresh()),
     state: () => runState,
   };
+}
+
+/** How a worker-backed job spawns its worker; the defaults are production's. */
+type WorkerRefreshJobOptions = {
+  /** The worker script; defaults to `refresh.worker.ts`. */
+  workerUrl?: URL;
+  /** Node flags for the worker, e.g. `["--import", "tsx"]` to run `.ts` outside the bundler. */
+  execArgv?: string[];
+};
+
+/**
+ * A job that runs each Refresh in a fresh worker thread, which opens its own
+ * database connection and reads a copy of `process.env` (`CCA_DB_PATH`,
+ * `CCA_LOGS_ROOT`). It relays the worker's progress and resolves to its summary;
+ * the worker then exits on its own. A throw in the worker, or an exit before the
+ * summary (out of memory lands here), rejects with an `Error`.
+ *
+ * @example
+ * const runner = createRefreshRunner(createWorkerRefreshJob());
+ */
+export function createWorkerRefreshJob({ workerUrl, execArgv }: WorkerRefreshJobOptions = {}): RefreshJob {
+  return (onProgress) =>
+    new Promise((resolve, reject) => {
+      // The production worker stays a literal `new Worker(new URL(…))`: that is
+      // the pattern Turbopack bundles as a worker entry.
+      const worker =
+        workerUrl === undefined
+          ? new Worker(new URL("./refresh.worker.ts", import.meta.url), { execArgv })
+          : new Worker(workerUrl, { execArgv });
+      let hasPostedSummary = false;
+
+      worker.on("message", (message: RefreshWorkerMessage) => {
+        if (message.type === "progress") {
+          onProgress(message.progress);
+          return;
+        }
+        hasPostedSummary = true;
+        resolve(message.summary);
+      });
+      worker.on("error", (cause) => reject(new Error("Refresh failed in its worker", { cause })));
+      worker.on("exit", (exitCode) => {
+        if (hasPostedSummary) return;
+        reject(new Error(`Refresh worker stopped with exit code ${exitCode} before its summary`));
+      });
+    });
+}
+
+const refreshRunnerSlot = Symbol.for("claude-convo-analyzer.refreshRunner");
+
+const globalForRefreshRunner = globalThis as unknown as { [refreshRunnerSlot]?: RefreshRunner };
+
+/**
+ * The process-wide refresh runner, running each Refresh in a worker thread.
+ * Created on first call and kept on `globalThis`, so a dev re-evaluation of this
+ * module joins the running Refresh instead of starting a second one.
+ *
+ * @example
+ * const summary = await getRefreshRunner().start();
+ */
+export function getRefreshRunner(): RefreshRunner {
+  globalForRefreshRunner[refreshRunnerSlot] ??= createRefreshRunner(createWorkerRefreshJob());
+  return globalForRefreshRunner[refreshRunnerSlot];
 }
