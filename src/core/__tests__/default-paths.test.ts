@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultDbPath } from "@/core/db";
 import { defaultLogsRoot } from "@/core/discovery";
 import { listConversations } from "@/core/read";
+import { defaultRecordingsRoot } from "@/core/recording";
 import { refresh } from "@/core/refresh";
 
 const FIXTURES_ROOT = path.join(import.meta.dirname, "fixtures", "logs");
@@ -68,5 +69,26 @@ describe("default logs root", () => {
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("default Recordings root", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("is ~/.claude-convo-analyzer/recordings when CCA_RECORDINGS_ROOT is unset", () => {
+    vi.stubEnv("CCA_RECORDINGS_ROOT", undefined);
+    expect(defaultRecordingsRoot()).toBe(path.join(os.homedir(), ".claude-convo-analyzer", "recordings"));
+  });
+
+  it("treats an empty CCA_RECORDINGS_ROOT as unset", () => {
+    vi.stubEnv("CCA_RECORDINGS_ROOT", "");
+    expect(defaultRecordingsRoot()).toBe(path.join(os.homedir(), ".claude-convo-analyzer", "recordings"));
+  });
+
+  it("resolves a relative CCA_RECORDINGS_ROOT against the cwd", () => {
+    vi.stubEnv("CCA_RECORDINGS_ROOT", "data/recordings");
+    expect(defaultRecordingsRoot()).toBe(path.join(process.cwd(), "data", "recordings"));
   });
 });

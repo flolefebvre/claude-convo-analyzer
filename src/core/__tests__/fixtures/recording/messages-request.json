@@ -1,0 +1,20 @@
+{
+  "model": "claude-opus-4-8",
+  "max_tokens": 32000,
+  "stream": true,
+  "metadata": {
+    "user_id": "{\"device_id\":\"device-fixture-7f3a\",\"account_uuid\":\"account-fixture-9c1e\",\"session_id\":\"sess-recorded\"}"
+  },
+  "system": [
+    { "type": "text", "text": "You are Claude Code, Anthropic's official CLI for Claude." },
+    { "type": "text", "text": "Answer briefly.", "cache_control": { "type": "ephemeral" } }
+  ],
+  "tools": [
+    {
+      "name": "Bash",
+      "description": "Run a shell command.",
+      "input_schema": { "type": "object", "properties": { "command": { "type": "string" } }, "required": ["command"] }
+    }
+  ],
+  "messages": [{ "role": "user", "content": [{ "type": "text", "text": "List the files here." }] }]
+}
