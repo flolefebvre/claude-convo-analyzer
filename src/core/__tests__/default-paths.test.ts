@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultDbPath } from "@/core/db";
 import { defaultLogsRoot } from "@/core/discovery";
 import { listConversations } from "@/core/read";
+import { defaultRecorderPort, defaultRecorderUpstream } from "@/core/recorder";
 import { defaultRecordingsRoot } from "@/core/recording";
 import { refresh } from "@/core/refresh";
 
@@ -90,5 +91,32 @@ describe("default Recordings root", () => {
   it("resolves a relative CCA_RECORDINGS_ROOT against the cwd", () => {
     vi.stubEnv("CCA_RECORDINGS_ROOT", "data/recordings");
     expect(defaultRecordingsRoot()).toBe(path.join(process.cwd(), "data", "recordings"));
+  });
+});
+
+describe("default Recorder port and upstream", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("are 4242 and https://api.anthropic.com when CCA_RECORDER_PORT and CCA_RECORDER_UPSTREAM are empty", () => {
+    vi.stubEnv("CCA_RECORDER_PORT", "");
+    vi.stubEnv("CCA_RECORDER_UPSTREAM", "");
+    expect(defaultRecorderPort()).toBe(4242);
+    expect(defaultRecorderUpstream()).toBe("https://api.anthropic.com");
+  });
+
+  it("are CCA_RECORDER_PORT and CCA_RECORDER_UPSTREAM when set", () => {
+    vi.stubEnv("CCA_RECORDER_PORT", "5151");
+    vi.stubEnv("CCA_RECORDER_UPSTREAM", "https://gateway.example/anthropic");
+    expect(defaultRecorderPort()).toBe(5151);
+    expect(defaultRecorderUpstream()).toBe("https://gateway.example/anthropic");
+  });
+
+  it("rejects a CCA_RECORDER_PORT that is not a port number", () => {
+    vi.stubEnv("CCA_RECORDER_PORT", "42a");
+    expect(() => defaultRecorderPort()).toThrow(/CCA_RECORDER_PORT/);
+    vi.stubEnv("CCA_RECORDER_PORT", "70000");
+    expect(() => defaultRecorderPort()).toThrow(/CCA_RECORDER_PORT/);
   });
 });
