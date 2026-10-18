@@ -8,6 +8,7 @@
 // write byte-identical files, in one process or across runs.
 
 import { mkdirSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 /** One call's generator state: a deterministic PRNG (LCG), an id counter, and
@@ -48,14 +49,28 @@ function createGen(now: number): Gen {
 }
 
 // ── Generic demo content (safe for a public README) ──────────────────────────
-const PROJECTS = [
-  { path: "/home/dev/acme-api", repo: "acme/acme-api" },
-  { path: "/home/dev/web-dashboard", repo: "acme/web-dashboard" },
-  { path: "/home/dev/billing-service", repo: "acme/billing-service" },
-  { path: "/home/dev/mobile-app", repo: "acme/mobile-app" },
-  { path: "/home/dev/data-pipeline", repo: "acme/data-pipeline" },
-  { path: "/home/dev/docs-site", repo: "acme/docs-site" },
-] as const;
+
+/** A seeded Project: its path, and the GitHub repo its pull requests link to. */
+type SeedProject = { path: string; repo: string };
+
+/** The seeded repos, under the real home directory so the folder tree shows `~` as on a real machine. */
+const PROJECTS: readonly SeedProject[] = [
+  { path: path.join(os.homedir(), "dev", "acme-api"), repo: "acme/acme-api" },
+  { path: path.join(os.homedir(), "dev", "web-dashboard"), repo: "acme/web-dashboard" },
+  { path: path.join(os.homedir(), "dev", "billing-service"), repo: "acme/billing-service" },
+  { path: path.join(os.homedir(), "dev", "mobile-app"), repo: "acme/mobile-app" },
+  { path: path.join(os.homedir(), "dev", "data-pipeline"), repo: "acme/data-pipeline" },
+  { path: path.join(os.homedir(), "dev", "docs-site"), repo: "acme/docs-site" },
+];
+
+/** The git worktree of the first repo that a continuation is resumed in (issue #120). */
+export const FAMILY_WORKTREE_PROJECT_PATH = `${PROJECTS[0].path}/.claude/worktrees/billing-spike`;
+
+/** The scratch directory whose per-session subdirectories each hold one Conversation (issue #120). */
+export const SCRATCH_PARENT_PATH = "/tmp/scratch";
+
+/** The per-session subdirectories of {@link SCRATCH_PARENT_PATH}, one Project each. */
+const SCRATCH_SESSIONS = ["20260612-091204", "20260615-142530", "20260618-170012"] as const;
 
 const TITLES = [
   "Add pagination to the users endpoint",
@@ -550,7 +565,7 @@ type Conversation = {
 
 function buildConversation(
   g: Gen,
-  project: (typeof PROJECTS)[number],
+  project: SeedProject,
   index: number,
   opts: {
     /** Makes this a CONTINUATION of an earlier session (issue #46): its first
@@ -673,8 +688,8 @@ function lastAssistantUuid(lines: readonly string[]): string {
  * badge, the panel's family tree and the transcript banner:
  *
  *  - a FORKED family in the first project: a root sitting, two continuations of
- *    it, a continuation of the first one, and one resumed from ANOTHER project
- *    (a worktree — five members, depth 3, one cross-directory);
+ *    it, a continuation of the first one, and one resumed in a git worktree of
+ *    it, ANOTHER Project (five members, depth 3, one cross-directory);
  *  - a plain two-sitting chain in the second project.
  *
  * Indices continue after the standalone conversations so their session ids —
@@ -703,7 +718,7 @@ function continuationFamilies(g: Gen, startIndex: number): Conversation[] {
 
   // Resumed from a git worktree of the same repo: Claude Code launches there in
   // its own directory, so the sitting belongs to a DIFFERENT Project (GLOSSARY.md).
-  const inWorktree = buildConversation(g, PROJECTS[2], i++, {
+  const inWorktree = buildConversation(g, { ...forkProject, path: FAMILY_WORKTREE_PROJECT_PATH }, i++, {
     resumeFrom: secondBranch.resumePoint,
     title: "Billing split — event-sourced spike, in a worktree",
   });
@@ -1087,7 +1102,21 @@ function buildCorpus(anchor: number): Conversation[] {
   conversations.push(agentMessagesConversation(g, total + families.length + coverage.length));
   conversations.push(longConversation(g, conversations.length));
   conversations.push(...projectPathConversations(g, conversations.length));
+  conversations.push(...scratchConversations(g, conversations.length));
   return conversations;
+}
+
+/**
+ * One Conversation per subdirectory of {@link SCRATCH_PARENT_PATH} — the way a
+ * session-per-directory tool leaves them — so the folder tree shows a `/tmp`
+ * root whose parent Folder holds many single-session sub-Folders (issue #120).
+ *
+ * Drawn last, so every earlier Conversation keeps its draws.
+ */
+function scratchConversations(g: Gen, startIndex: number): Conversation[] {
+  return SCRATCH_SESSIONS.map((session, n) =>
+    buildConversation(g, { path: `${SCRATCH_PARENT_PATH}/${session}`, repo: "acme/scratch" }, startIndex + n),
+  );
 }
 
 /** The newest record timestamp, main threads and sub-agents alike, in epoch ms. */
@@ -1116,8 +1145,9 @@ export type FakeLogsCounts = {
  * standalone Conversations across six Projects, two continuation families
  * (seven more), 23 covering pagination, unpriced usage and API errors, one
  * where agents message each other, one long enough to span three Transcript
- * pages, then one that enters a worktree and one that states no cwd — 64 in
- * all. The same `now` always writes the same bytes.
+ * pages, one that enters a worktree and one that states no cwd, then three in
+ * per-session scratch directories under `/tmp` — 67 in all. The same `now`
+ * always writes the same bytes.
  *
  * @example
  * const counts = generateFakeLogs({ logsRoot: "data/seed/projects", now: new Date() });

@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import os, { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -10,15 +10,17 @@ import { seedEnvironment } from "./environment";
 import {
   AGENT_MESSAGES_TITLE,
   CWD_LESS_TITLE,
+  FAMILY_WORKTREE_PROJECT_PATH,
   LONG_PAGE_TWO_TEXT,
   LONG_TITLE,
+  SCRATCH_PARENT_PATH,
   WORKTREE_SWITCH_PROJECT_PATH,
   WORKTREE_SWITCH_TITLE,
 } from "./fake-logs";
 
 const NOW = new Date("2026-06-22T17:00:00.000Z");
 
-// A full seed is a real ingest of 142 files (~3s); two per test outrun the 5s
+// A full seed is a real ingest of 148 files (~3s); two per test outrun the 5s
 // default when the suite runs in parallel.
 describe("seedEnvironment", { timeout: 30_000 }, () => {
   let tmpDir = "";
@@ -38,8 +40,8 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     expect(seed.summary.duplicateSessionsSkipped).toEqual([]);
 
     const conversations = await listConversations({ dbPath: seed.dbPath });
-    expect(conversations).toHaveLength(64);
-    expect(conversations.reduce((sum, c) => sum + c.subAgentCount, 0)).toBe(78);
+    expect(conversations).toHaveLength(67);
+    expect(conversations.reduce((sum, c) => sum + c.subAgentCount, 0)).toBe(81);
 
     const continued = conversations.filter((c) => c.continuedFromId !== null);
     expect(continued).toHaveLength(5);
@@ -56,7 +58,18 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     const switching = conversations.find((c) => c.title === WORKTREE_SWITCH_TITLE);
     expect(switching?.project.path).toBe(WORKTREE_SWITCH_PROJECT_PATH);
     const cwdLess = conversations.find((c) => c.title === CWD_LESS_TITLE);
-    expect(cwdLess?.project.path).toBe("/home/dev/acme-api");
+    expect(cwdLess?.project.path).toBe(path.join(os.homedir(), "dev", "acme-api"));
+  });
+
+  it("seeds a repo with two worktree Projects, and a /tmp parent with per-session sub-Folders", async () => {
+    const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
+
+    const projectPaths = new Set((await listConversations({ dbPath: seed.dbPath })).map((c) => c.project.path));
+    const worktreesOfRepo = path.join(os.homedir(), "dev", "acme-api", ".claude", "worktrees");
+    expect([...projectPaths].filter((p) => p.startsWith(`${worktreesOfRepo}/`)).sort()).toEqual(
+      [FAMILY_WORKTREE_PROJECT_PATH, WORKTREE_SWITCH_PROJECT_PATH].sort(),
+    );
+    expect([...projectPaths].filter((p) => p.startsWith(`${SCRATCH_PARENT_PATH}/`))).toHaveLength(3);
   });
 
   it("seeds a second page of Conversations, one with unpriced usage and another with API errors", async () => {
@@ -144,7 +157,7 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     const after = await seedEnvironment({ dir, now: NOW });
 
     expect(existsSync(leftover)).toBe(false);
-    expect(await listConversations({ dbPath: after.dbPath })).toHaveLength(64);
+    expect(await listConversations({ dbPath: after.dbPath })).toHaveLength(67);
   });
 });
 
