@@ -4,6 +4,9 @@
 // `getPublishedRefreshRunner()`, so the bridge is attached before anything can
 // start a Refresh or read its state.
 
+import type { Snapshot } from "@flefebvre/next-sse/client";
+
+import { refreshActivityOf, type RefreshActivity } from "@/app/_lib/refresh-activity";
 import { sse } from "@/app/_lib/sse";
 import { getRefreshRunner, type RefreshRunner, type RefreshRunState } from "@/core/refresh-runner";
 
@@ -60,6 +63,17 @@ export function startOrJoinRefresh(runner: RefreshRunner): RefreshStart {
 const refreshEventsSlot = Symbol.for("claude-convo-analyzer.refreshEvents");
 
 const globalForRefreshEvents = globalThis as unknown as { [refreshEventsSlot]?: () => void };
+
+/**
+ * The process-wide Refresh's activity as of now, sealed with the `refresh`
+ * Channel's position taken just before, so the control that spends it misses
+ * no event. Request-time state: call it after `connection()`.
+ *
+ * @example const snapshot = await snapshotRefreshActivity();
+ */
+export function snapshotRefreshActivity(): Promise<Snapshot<RefreshActivity>> {
+  return sse.snapshot(() => refreshActivityOf(getPublishedRefreshRunner().state()));
+}
 
 /**
  * The process-wide refresh runner, publishing on the `refresh` Channel. The

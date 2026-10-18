@@ -1,62 +1,139 @@
 "use client";
 
-// The Refresh control (slice 3). A client component so it can manage pending
-// state and show the result inline — but it touches core ONLY through the
-// `refreshConversations` server action (ADR-0002: no core import from a client
-// file). On click it awaits the action, then shows what changed in plain words.
+// The Refresh control. A click starts the process-wide Refresh or joins the one
+// running, through the `refreshConversations` server action, which returns at
+// once (ADR-0002: no core import from a client file). Everything after that
+// arrives on the `refresh` Channel: every open page's control follows the same
+// run, with `n / m conversations` as its label while it runs.
 //
-// The spinner is driven by an OWN pending flag (set true on click, cleared in
-// `finally`), NOT by `useTransition`. A transition's pending state stays true
-// until the action's `revalidatePath("/")` re-render of the list commits — and if
-// that re-render ever throws (e.g. a hydration mismatch under Cache Components,
-// issue #20), the transition never settles and the button freezes forever.
-// Tying the flag to the action promise alone means the button always frees when
-// the scan finishes; the list still revalidates (the action's revalidation is
-// applied by the router regardless of a transition).
+// It starts from a Snapshot of the run taken by its server part
+// (`live-refresh-button.tsx`), so a page opened mid-run shows the count at once,
+// and resumes the Channel from that Snapshot's position, so no event is missed.
 //
-// While scanning only the icon changes (it spins), so the button keeps its width
-// and nothing around it moves. The result appears in a small bubble under the
-// button that fades after a few seconds or can be dismissed; a failure stays
-// until dismissed. A persistent, visually hidden live region announces both.
+// The spinner is driven by OWN flags, NOT by `useTransition`: a transition's
+// pending state stays true until the re-render it causes commits, and if that
+// re-render ever throws (a hydration mismatch under Cache Components, issue
+// #20), the transition never settles and the button freezes forever.
+//
+// One control per page `reportsOutcome` (the app bar's): it re-renders the page
+// during the run (`isRerenderDue`) and once at its end, and shows the summary in
+// a small bubble under the button that fades after a few seconds or can be
+// dismissed; a failure stays until dismissed. A persistent, visually hidden live
+// region announces both. The parser-update banner's control only follows the
+// count, so the page gets one bubble and one re-render schedule.
 
+import type { Snapshot } from "@flefebvre/next-sse/client";
 import { RefreshCw, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState, useTransition } from "react";
 
 import { refreshConversations } from "@/app/actions";
-import { formatDuplicateSessionDetail, formatRefreshSummary } from "@/app/_lib/refresh-summary";
+import { isRerenderDue, type RefreshActivity } from "@/app/_lib/refresh-activity";
+import { formatDuplicateSessionDetail, formatRefreshProgress, formatRefreshSummary } from "@/app/_lib/refresh-summary";
+import { channels, useChannel } from "@/app/_lib/sse.client";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils-cn";
 
 /** How long a success message stays up. */
 const MESSAGE_MS = 6000;
 
+/** The line shown when a Refresh failed; the failure's own message is its detail. */
+const FAILURE_TEXT = "Refresh failed. Check that your Claude Code logs are readable, then try again.";
+
 type Message = {
   text: string;
-  /** Multi-line detail behind the line (the duplicate log files), as a tooltip. */
+  /** Multi-line detail behind the line (the duplicate log files, the failure), as a tooltip. */
   detail: string | null;
   tone: "status" | "error";
   /** Distinguishes two identical results, so each restarts the fade timer. */
   id: number;
 };
 
-/**
- * The Refresh button: re-scans the Claude Code logs and refreshes the page.
- * `collapsible` hides the label below the `sm` breakpoint, leaving the icon
- * (the app bar's phone layout).
- *
- * @example <RefreshButton variant="outline" collapsible />
- */
-export function RefreshButton({
-  variant = "default",
-  size = "default",
-  collapsible = false,
-}: {
+/** How the button looks: its shadcn variant and size, and whether its label collapses on phones. */
+type RefreshButtonLook = {
   variant?: React.ComponentProps<typeof Button>["variant"];
   size?: React.ComponentProps<typeof Button>["size"];
+  /** Hides the label below the `sm` breakpoint, leaving the icon (the app bar's phone layout). */
   collapsible?: boolean;
-}) {
-  const [isPending, setIsPending] = useState(false);
+};
+
+/** The props of {@link RefreshButton}. */
+export type RefreshButtonProps = RefreshButtonLook & {
+  /** The run as the server part read it, with the Channel position just before. */
+  snapshot: Snapshot<RefreshActivity>;
+  /** Whether this control re-renders the page and shows the outcome; one per page. */
+  reportsOutcome?: boolean;
+};
+
+/**
+ * The Refresh button: starts or joins the Refresh and follows it live.
+ *
+ * @example <RefreshButton variant="outline" collapsible snapshot={snapshot} reportsOutcome />
+ */
+export function RefreshButton({ snapshot, reportsOutcome = false, ...look }: RefreshButtonProps) {
+  const router = useRouter();
+  const [activity, setActivity] = useState(snapshot.data);
+  // A new Snapshot (a re-render of the page) is the run as it stands now.
+  const [seenSnapshot, setSeenSnapshot] = useState(snapshot);
+  if (seenSnapshot !== snapshot) {
+    setSeenSnapshot(snapshot);
+    setActivity(snapshot.data);
+  }
+  // From the click until the action answers.
+  const [isClickPending, setIsClickPending] = useState(false);
+  // From the click until the Channel's first word on the run it started or joined.
+  const [isAwaitingRun, setIsAwaitingRun] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
+
+  const [isRerenderPending, startRerender] = useTransition();
+  const isRerenderPendingRef = useRef(isRerenderPending);
+  useEffect(() => {
+    isRerenderPendingRef.current = isRerenderPending;
+  });
+  const lastRerenderAtMs = useRef<number | null>(null);
+
+  function rerenderPage() {
+    lastRerenderAtMs.current = Date.now();
+    startRerender(() => router.refresh());
+  }
+
+  useChannel(
+    channels.refresh(),
+    {
+      progress: (progress) => {
+        setActivity({ isRunning: true, progress });
+        setIsAwaitingRun(false);
+        const isDue = isRerenderDue({
+          nowMs: Date.now(),
+          lastRerenderAtMs: lastRerenderAtMs.current,
+          isTabVisible: document.visibilityState === "visible",
+          isRerenderPending: isRerenderPendingRef.current,
+        });
+        if (reportsOutcome && isDue) rerenderPage();
+      },
+      finished: ({ summary }) => {
+        setActivity({ isRunning: false });
+        setIsAwaitingRun(false);
+        if (!reportsOutcome) return;
+        setMessage({
+          text: formatRefreshSummary(summary),
+          detail: formatDuplicateSessionDetail(summary),
+          tone: "status",
+          id: Date.now(),
+        });
+        rerenderPage();
+      },
+      failed: ({ message: failure }) => {
+        setActivity({ isRunning: false });
+        setIsAwaitingRun(false);
+        if (!reportsOutcome) return;
+        setMessage({ text: FAILURE_TEXT, detail: failure, tone: "error", id: Date.now() });
+        // The batches committed before the failure are stored.
+        rerenderPage();
+      },
+    },
+    { snapshot },
+  );
 
   // A success line clears itself; an error waits for the reader.
   useEffect(() => {
@@ -67,43 +144,32 @@ export function RefreshButton({
 
   async function handleClick() {
     setMessage(null);
-    setIsPending(true);
+    setIsClickPending(true);
+    setIsAwaitingRun(true);
     try {
-      const result = await refreshConversations();
-      setMessage({
-        text: formatRefreshSummary(result.data),
-        detail: formatDuplicateSessionDetail(result.data),
-        tone: "status",
-        id: Date.now(),
-      });
+      await refreshConversations();
     } catch {
-      setMessage({
-        text: "Refresh failed. Check that your Claude Code logs are readable, then try again.",
-        detail: null,
-        tone: "error",
-        id: Date.now(),
-      });
+      setIsAwaitingRun(false);
+      setMessage({ text: FAILURE_TEXT, detail: null, tone: "error", id: Date.now() });
     } finally {
-      setIsPending(false);
+      setIsClickPending(false);
     }
   }
+
+  const isRunning = activity.isRunning || isAwaitingRun;
+  const label = activity.isRunning && activity.progress !== null ? formatRefreshProgress(activity.progress) : "Refresh";
 
   return (
     // `relative` so the result bubble can hang below the button without growing
     // this box — the app bar keeps its height.
     <div className="relative flex shrink-0">
-      <Button
-        variant={variant}
-        size={size}
+      <RefreshButtonFace
+        {...look}
+        label={label}
+        isRunning={isRunning}
+        isDisabled={isClickPending}
         onClick={handleClick}
-        disabled={isPending}
-        aria-busy={isPending}
-        title="Re-scan your Claude Code logs"
-        className={cn(collapsible && "max-sm:w-8 max-sm:px-0")}
-      >
-        <RefreshCw className={cn(isPending && "animate-spin")} aria-hidden />
-        <span className={cn(collapsible && "max-sm:sr-only")}>Refresh</span>
-      </Button>
+      />
 
       <p aria-live="polite" className="sr-only">
         {message?.tone === "status" ? message.text : ""}
@@ -133,5 +199,45 @@ export function RefreshButton({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * The Refresh button as the static shell draws it, until its live part streams
+ * in: idle, and inert for that moment.
+ *
+ * @example <Suspense fallback={<IdleRefreshButton variant="outline" collapsible />}>…</Suspense>
+ */
+export function IdleRefreshButton(look: RefreshButtonLook) {
+  return (
+    <div className="relative flex shrink-0">
+      <RefreshButtonFace {...look} label="Refresh" isRunning={false} isDisabled={false} />
+    </div>
+  );
+}
+
+/** The button itself: the icon spins while a Refresh runs, the label carries its count. */
+function RefreshButtonFace({
+  variant = "default",
+  size = "default",
+  collapsible = false,
+  label,
+  isRunning,
+  isDisabled,
+  onClick,
+}: RefreshButtonLook & { label: string; isRunning: boolean; isDisabled: boolean; onClick?: () => void }) {
+  return (
+    <Button
+      variant={variant}
+      size={size}
+      onClick={onClick}
+      disabled={isDisabled}
+      aria-busy={isRunning}
+      title="Re-scan your Claude Code logs"
+      className={cn("tabular-nums", collapsible && "max-sm:w-8 max-sm:px-0")}
+    >
+      <RefreshCw className={cn(isRunning && "animate-spin")} aria-hidden />
+      <span className={cn(collapsible && "max-sm:sr-only")}>{label}</span>
+    </Button>
   );
 }

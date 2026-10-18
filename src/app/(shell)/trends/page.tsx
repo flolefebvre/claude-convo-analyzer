@@ -22,7 +22,7 @@ import { EmptyState, EmptyStateLink } from "@/app/_components/empty-state";
 import { LoadingRegion } from "@/app/_components/loading-region";
 import { PageHeader } from "@/app/_components/page-header";
 import { RangePicker, RangePickerFallback } from "@/app/_components/range-picker";
-import { RefreshButton } from "@/app/_components/refresh-button";
+import { LiveRefreshButton } from "@/app/_components/live-refresh-button";
 import { Stat, StatSkeleton, StatStrip } from "@/app/_components/stat-strip";
 import { TrendsChart } from "@/app/_components/trends-chart";
 import { loadDailySpend } from "@/app/_lib/conversations";
@@ -161,7 +161,7 @@ function EmptyTrends({ range, folder }: { range: RangeKey; folder: string | unde
               Show all folders
             </EmptyStateLink>,
           ]
-        : ["Scan your Claude Code logs to see what they cost.", <RefreshButton key="refresh" />];
+        : ["Scan your Claude Code logs to see what they cost.", <LiveRefreshButton key="refresh" />];
   return (
     <EmptyState icon={ChartNoAxesColumn} title={`No priced usage ${rangePhrase(range)}`} action={action}>
       {description}

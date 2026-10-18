@@ -1,12 +1,11 @@
-// Pure presentation helpers for the Refresh result (slice 3). Like the sibling
-// `format` module, this is free of React, I/O, and any runtime dependency on
-// `src/core` (the only core touch is a type-only `RefreshSummary` import, erased
-// at compile time). The RefreshButton and the parser-update banner render these
-// strings; keeping the
-// logic here means it is unit-tested in the node vitest environment.
+// Pure presentation helpers for the Refresh's progress and result. Like the
+// sibling `format` module, this is free of React, I/O, and any runtime
+// dependency on `src/core` (its core imports are type-only, erased at compile
+// time). The RefreshButton and the parser-update banner render these strings;
+// keeping the logic here means it is unit-tested in the node vitest environment.
 
 import { formatCount } from "@/app/_lib/format";
-import type { RefreshSummary } from "@/core/refresh";
+import type { RefreshProgress, RefreshSummary } from "@/core/refresh";
 
 /** `n` and its noun, singular at exactly one: `plural(3, "log line")` → "3 log lines". */
 function plural(n: number, noun: string): string {
@@ -36,6 +35,15 @@ export function formatRefreshSummary(summary: RefreshSummary): string {
   const duplicates = summary.duplicateSessionsSkipped.length;
   if (duplicates > 0) segments.push(`${plural(duplicates, "duplicate log file")} ignored`);
   return segments.join(", ");
+}
+
+/**
+ * A running Refresh's progress, for the Refresh control's label.
+ *
+ * @example formatRefreshProgress({ done: 1200, total: 2450 }) // "1,200 / 2,450 conversations"
+ */
+export function formatRefreshProgress({ done, total }: RefreshProgress): string {
+  return `${formatCount(done)} / ${formatCount(total)} conversations`;
 }
 
 /**
