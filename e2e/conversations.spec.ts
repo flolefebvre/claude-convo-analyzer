@@ -84,6 +84,18 @@ test.describe("Folder tree", () => {
     await page.waitForURL((url) => url.searchParams.get("folder")?.endsWith("/.claude/worktrees") ?? false);
     await expect(chevron(tree, ".claude/worktrees")).toHaveAttribute("aria-expanded", "true");
     await expect(page.getByRole("navigation", { name: "Folder scope" })).toContainText(".claude/worktrees");
+
+    // A scope reached from outside the tree opens its path again, even one the user closed.
+    await folderLink(tree, "fix-auth-flake").click();
+    await page.waitForURL((url) => url.searchParams.get("folder") === WORKTREE);
+    await chevron(tree, "dev").click();
+    await expect(folderLink(tree, "fix-auth-flake")).toHaveCount(0);
+    await folderLink(tree, "All folders").click();
+    await page.waitForURL((url) => !url.searchParams.has("folder"));
+    await page.goBack();
+    await page.waitForURL((url) => url.searchParams.get("folder") === WORKTREE);
+    await expect(folderLink(tree, "fix-auth-flake")).toBeVisible();
+    await expect(folderLink(tree, "fix-auth-flake")).toHaveAttribute("aria-current", "true");
   });
 
   test.describe("on a phone", () => {

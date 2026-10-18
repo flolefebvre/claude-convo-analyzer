@@ -3,9 +3,9 @@
 // The sidebar's folder tree (GLOSSARY.md, **Folder**). Each row is two
 // targets: the chevron only opens or closes the Folder — no navigation — and
 // the name only selects it as the scope, never toggling it. Folders start
-// closed except the roots (one level) and the path down to the active scope;
-// the open state lives in this component alone and is not remembered between
-// visits.
+// closed except the roots (one level) and the path down to the active scope,
+// which a later scope change opens too (never closing anything); the open
+// state lives in this component alone and is not remembered between visits.
 //
 // A client component because both the open state and the active scope come
 // from the browser: the shell layout cannot read `searchParams`, so the
@@ -22,7 +22,7 @@ import { useId, useState } from "react";
 import { FolderRow } from "@/app/_components/folder-rows";
 import { SidebarLink } from "@/app/_components/sidebar-link";
 import { resolveLiveFolderScope } from "@/app/_lib/folder-scope";
-import { type FolderNode, initiallyOpenFolderPaths } from "@/app/_lib/folder-tree";
+import { type FolderNode, initiallyOpenFolderPaths, openPathsDownToScope } from "@/app/_lib/folder-tree";
 
 /**
  * The folder tree's rows, below the "All folders" anchor.
@@ -37,8 +37,16 @@ export function FolderTree({
   /** The spend across every Project: every cost bar, at any depth, is a share of it. */
   totalCostUsd: number;
 }) {
-  const params = useSearchParams();
-  const [openPaths, setOpenPaths] = useState(() => initiallyOpenFolderPaths(roots, resolveLiveFolderScope(params)));
+  const scope = resolveLiveFolderScope(useSearchParams());
+  const scopeKey = `${scope.folder ?? ""}|${scope.thisFolderOnly}`;
+  const [openPaths, setOpenPaths] = useState(() => initiallyOpenFolderPaths(roots, scope));
+  // The tree outlives navigation (it sits in the shell layout), so a scope
+  // reached from elsewhere — Back included — opens its path too, during render.
+  const [openedForScopeKey, setOpenedForScopeKey] = useState(scopeKey);
+  if (openedForScopeKey !== scopeKey) {
+    setOpenedForScopeKey(scopeKey);
+    setOpenPaths(openPathsDownToScope(openPaths, roots, scope));
+  }
   const toggle = (path: string) =>
     setOpenPaths((current) => {
       const next = new Set(current);

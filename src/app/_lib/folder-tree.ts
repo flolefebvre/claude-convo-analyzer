@@ -162,7 +162,18 @@ export function findFolderNode(roots: FolderNode[], path: string): FolderNode | 
  * @example const [openPaths, setOpenPaths] = useState(() => initiallyOpenFolderPaths(roots, scope))
  */
 export function initiallyOpenFolderPaths(roots: FolderNode[], scope: FolderScope): Set<string> {
-  const open = new Set(roots.map((root) => root.path));
+  return openPathsDownToScope(new Set(roots.map((root) => root.path)), roots, scope);
+}
+
+/**
+ * `openPaths` plus the path down to the selected Folder (the Folder itself too
+ * when narrowed to this folder) — so a scope change, Back included, never
+ * leaves the active row inside a closed Folder. Never closes anything.
+ *
+ * @example setOpenPaths((current) => openPathsDownToScope(current, roots, scope))
+ */
+export function openPathsDownToScope(openPaths: Set<string>, roots: FolderNode[], scope: FolderScope): Set<string> {
+  const open = new Set(openPaths);
   const selected = scope.folder;
   if (!selected) return open;
   const walk = (nodes: FolderNode[]) => {

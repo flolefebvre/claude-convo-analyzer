@@ -7,6 +7,7 @@ import {
   folderScopeLabel,
   type FolderNode,
   initiallyOpenFolderPaths,
+  openPathsDownToScope,
 } from "@/app/_lib/folder-tree";
 
 import { summary } from "./helpers/summaries";
@@ -202,6 +203,20 @@ describe("initiallyOpenFolderPaths", () => {
   it("opens the selected Folder too when narrowed to this folder, whose row is its child", () => {
     expect(initiallyOpenFolderPaths(roots, { folder: repo, thisFolderOnly: true }).has(repo)).toBe(true);
     expect(initiallyOpenFolderPaths(roots, { folder: repo }).has(repo)).toBe(false);
+  });
+
+  describe("openPathsDownToScope", () => {
+    // The user closed `~` and opened `/tmp/scratch`.
+    const userOpened = new Set(["/tmp", "/tmp/scratch"]);
+
+    it("adds the path down to a new scope to the open Folders, leaving the user's as they were", () => {
+      const open = openPathsDownToScope(userOpened, roots, { folder: `${repo}/.claude/worktrees/one` });
+      expect([...open].sort()).toEqual([...userOpened, HOME, repo, `${repo}/.claude/worktrees`].sort());
+    });
+
+    it("opens nothing for All folders, and closes nothing", () => {
+      expect([...openPathsDownToScope(userOpened, roots, {})]).toEqual([...userOpened]);
+    });
   });
 });
 
