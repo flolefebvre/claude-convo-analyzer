@@ -14,7 +14,14 @@ import { connection } from "next/server";
 
 import { getConversationErrors } from "@/core/errors";
 import { buildFamily, familySizes } from "@/core/family";
-import { getConversation, getDailySpend, getToolCallBody, getTranscript, listConversations } from "@/core/read";
+import {
+  countConversationsWithOutdatedParserVersion,
+  getConversation,
+  getDailySpend,
+  getToolCallBody,
+  getTranscript,
+  listConversations,
+} from "@/core/read";
 import { searchConversations } from "@/core/search";
 import { getToolCallSamples, getToolStats } from "@/core/tool-stats";
 
@@ -27,6 +34,17 @@ import { getToolCallSamples, getToolStats } from "@/core/tool-stats";
 export const loadConversations = cache(async () => {
   await connection();
   return listConversations();
+});
+
+/**
+ * Count the Conversations whose parser version is not the current one, for the
+ * parser-update banner. Same request-time gating as {@link loadConversations}.
+ *
+ * @example const outdatedCount = await loadOutdatedParserVersionCount();
+ */
+export const loadOutdatedParserVersionCount = cache(async () => {
+  await connection();
+  return countConversationsWithOutdatedParserVersion();
 });
 
 /**
