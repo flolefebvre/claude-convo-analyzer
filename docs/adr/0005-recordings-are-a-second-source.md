@@ -52,7 +52,7 @@ how it fits in:
 - **The proxy writing straight into the database**: it would compete with
   Refresh's per-Conversation delete-and-rewrite, and a database reset would lose
   data nothing can rebuild.
-- **Each API request stored in full**, as the earlier standalone recorder did:
+- **Each API request stored in full**:
   simplest, but quadratic in size.
 - **Plain `node` with type stripping instead of tsx**: needs Node 22.18+, above
   the 20.9 that Next accepts; tsx is installed with the repo anyway.
