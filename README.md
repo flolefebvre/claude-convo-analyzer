@@ -168,9 +168,10 @@ approach and fixtures.
 
 For demo data, `pnpm seed` builds a self-contained seed environment in
 `data/seed/`: invented logs in `data/seed/projects/`, ingested into
-`data/seed/seed.db`. Each run wipes and rebuilds that directory; your real
-database and logs are never read or written. To seed and serve the app on it in
-one step:
+`data/seed/seed.db`, and invented Recordings of some of them in
+`data/seed/recordings/`. Each run wipes and rebuilds that directory; your real
+database, logs and Recordings are never read or written. To seed and serve the
+app on it in one step:
 
 ```bash
 pnpm dev:seed
@@ -178,15 +179,16 @@ pnpm dev:seed
 
 It prints `Seeded app: http://localhost:<port>` — the first free port from
 3001, or `PORT` when set — so several checkouts can each run their own. Refresh
-in that app re-reads only the seeded logs.
+in that app re-reads only the seeded logs and Recordings.
 
 The seeded activity ends now. `pnpm seed` also takes `--now=<ISO>`, and the same
 `--now` always yields the same data, which is what screenshots want; point the
-app at that seed with the two variables above:
+app at that seed with the two variables above, and `CCA_RECORDINGS_ROOT` at its
+Recordings:
 
 ```bash
 pnpm seed --now=2026-06-22T17:00:00Z
-CCA_DB_PATH=data/seed/seed.db CCA_LOGS_ROOT=data/seed/projects pnpm dev
+CCA_DB_PATH=data/seed/seed.db CCA_LOGS_ROOT=data/seed/projects CCA_RECORDINGS_ROOT=data/seed/recordings pnpm dev
 ```
 
 ## Was this made with AI?
