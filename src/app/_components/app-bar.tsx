@@ -15,11 +15,14 @@
 //
 // A server component: the URL-dependent pieces (active tab, the search box's
 // query) are client leaves inside their own <Suspense>, so the bar prerenders.
+// So is the live Refresh control, which reads the running Refresh per request;
+// its fallback is the idle button, so the shell always has the control.
 
 import Link from "next/link";
 import { Suspense } from "react";
 
-import { RefreshButton } from "@/app/_components/refresh-button";
+import { LiveRefreshButton } from "@/app/_components/live-refresh-button";
+import { IdleRefreshButton } from "@/app/_components/refresh-button";
 import { SearchBox } from "@/app/_components/search-box";
 import { SectionNav, SectionTabs } from "@/app/_components/section-nav";
 import { ThemeToggle } from "@/app/_components/theme-toggle";
@@ -41,7 +44,9 @@ export function AppBar() {
         <SearchBox className="order-4 w-full md:order-2 md:w-60 lg:order-3 lg:ml-auto" />
         <div className="order-2 flex items-center gap-2 md:order-3 lg:order-4">
           <ThemeToggle />
-          <RefreshButton variant="outline" collapsible />
+          <Suspense fallback={<IdleRefreshButton variant="outline" collapsible />}>
+            <LiveRefreshButton variant="outline" collapsible reportsOutcome />
+          </Suspense>
         </div>
       </div>
     </header>

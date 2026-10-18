@@ -4,6 +4,7 @@
 // logic runs in-process under test, without a worker; the process-wide runner
 // runs each Refresh in a worker thread, off the main thread.
 
+import { randomUUID } from "node:crypto";
 import { Worker } from "node:worker_threads";
 
 import type { RefreshProgress, RefreshSummary } from "@/core/refresh";
@@ -22,13 +23,16 @@ export type RefreshWorkerMessage =
 /** The work of one Refresh: reports progress as it goes, resolves to its summary. */
 export type RefreshJob = (onProgress: (progress: RefreshProgress) => void) => Promise<RefreshSummary>;
 
+/** Which Refresh a state belongs to: opaque, and unique across server processes. */
+export type RefreshRunId = string;
+
 /** Where the runner stands: no Refresh yet, one running, or the last one's outcome. */
 export type RefreshRunState =
   | { status: "idle" }
   /** `progress` is null until the Refresh knows its total. */
-  | { status: "running"; progress: RefreshProgress | null }
-  | { status: "succeeded"; summary: RefreshSummary }
-  | { status: "failed"; error: Error };
+  | { status: "running"; runId: RefreshRunId; progress: RefreshProgress | null }
+  | { status: "succeeded"; runId: RefreshRunId; summary: RefreshSummary }
+  | { status: "failed"; runId: RefreshRunId; error: Error };
 
 /** The handle onto the shared Refresh. */
 export type RefreshRunner = {
@@ -36,6 +40,8 @@ export type RefreshRunner = {
   start: () => Promise<RefreshSummary>;
   /** The current state, as of this call. */
   state: () => RefreshRunState;
+  /** Call `listener` with each state the runner moves to; returns the unsubscribe. */
+  subscribe: (listener: (state: RefreshRunState) => void) => () => void;
 };
 
 /**
@@ -50,27 +56,30 @@ export type RefreshRunner = {
 export function createRefreshRunner(job: RefreshJob): RefreshRunner {
   let runState: RefreshRunState = { status: "idle" };
   let runningRefresh: Promise<RefreshSummary> | null = null;
+  const listeners = new Set<(state: RefreshRunState) => void>();
+
+  function moveTo(state: RefreshRunState): void {
+    runState = state;
+    for (const listener of listeners) listener(state);
+  }
 
   function runRefresh(): Promise<RefreshSummary> {
-    runState = { status: "running", progress: null };
+    const runId: RefreshRunId = randomUUID();
+    moveTo({ status: "running", runId, progress: null });
     // The executor turns a job that throws synchronously into a rejection too.
     const jobSummary = new Promise<RefreshSummary>((resolve) =>
-      resolve(
-        job((progress) => {
-          runState = { status: "running", progress };
-        }),
-      ),
+      resolve(job((progress) => moveTo({ status: "running", runId, progress }))),
     );
     return jobSummary.then(
       (summary) => {
-        runState = { status: "succeeded", summary };
         runningRefresh = null;
+        moveTo({ status: "succeeded", runId, summary });
         return summary;
       },
       (cause: unknown) => {
         const error = cause instanceof Error ? cause : new Error(String(cause));
-        runState = { status: "failed", error };
         runningRefresh = null;
+        moveTo({ status: "failed", runId, error });
         throw error;
       },
     );
@@ -79,6 +88,10 @@ export function createRefreshRunner(job: RefreshJob): RefreshRunner {
   return {
     start: () => (runningRefresh ??= runRefresh()),
     state: () => runState,
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
   };
 }
 
