@@ -94,6 +94,10 @@ const SUGGESTION_SYSTEM =
 /** What the suggestion Side request answers. */
 const SUGGESTED_PROMPT = "Open a pull request for the audit trail.";
 
+/** What the unattributed API request asks, and what it is answered. */
+const UNATTRIBUTED_PROMPT = "List the open pull requests on acme/acme-api.";
+const UNATTRIBUTED_REPLY = "There are three open pull requests: two dependency bumps and the rate-limit change.";
+
 /** The placeholder credential and account ids the writer redacts. */
 const PLACEHOLDER_AUTHORIZATION = "Bearer seed-placeholder-token";
 const PLACEHOLDER_DEVICE_ID = "seed-device-0001";
@@ -117,6 +121,9 @@ export const SIDE_REQUEST_IDS = {
 
 /** The `request-id` of the overloaded (529) attempt Claude Code retried before one of the recorded Conversation's Turns. */
 export const FAILED_ATTEMPT_REQUEST_ID = "req-attempt-overloaded";
+
+/** The `request-id` of the one API request no session could be found for, so filed as unattributed. */
+export const UNATTRIBUTED_REQUEST_ID = "req-unattributed";
 
 /** The recorded Conversation's main-agent Turn (1-based) that {@link FAILED_ATTEMPT_REQUEST_ID} precedes. */
 const RETRIED_TURN = 3;
@@ -528,6 +535,56 @@ function failedAttemptBefore(retry: RecordedApiRequest): RecordedApiRequest {
   };
 }
 
+/**
+ * An API request no session can be found for: no session header, no
+ * `metadata.user_id`, and no other session active, so the Recorder files it
+ * as unattributed. It matches no seeded Conversation.
+ */
+function unattributedApiRequest(endedMs: number): RecordedApiRequest {
+  const timings = timingsEndingAt(endedMs);
+  return {
+    sessionId: null,
+    agentId: null,
+    method: "POST",
+    path: "/v1/messages",
+    query: "beta=true",
+    headers: {
+      "anthropic-version": "2023-06-01",
+      authorization: PLACEHOLDER_AUTHORIZATION,
+      "content-type": "application/json",
+      "user-agent": `claude-cli/${CC_VERSION} (external, cli)`,
+      "x-app": "cli",
+    },
+    body: {
+      model: SIDE_REQUEST_MODEL,
+      max_tokens: 1_024,
+      stream: true,
+      messages: [{ role: "user", content: UNATTRIBUTED_PROMPT }],
+    },
+    response: {
+      status: 200,
+      requestId: UNATTRIBUTED_REQUEST_ID,
+      headers: {
+        "content-type": "text/event-stream",
+        "request-id": UNATTRIBUTED_REQUEST_ID,
+        ...rateLimitHeaders(Date.parse(timings.arrivedAt)),
+      },
+      body: {
+        id: "msg-unattributed",
+        type: "message",
+        role: "assistant",
+        model: SIDE_REQUEST_MODEL,
+        content: [{ type: "text", text: UNATTRIBUTED_REPLY }],
+        stop_reason: "end_turn",
+        stop_sequence: null,
+        usage: { input_tokens: 24, output_tokens: 31, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      isStreamed: true,
+    },
+    timings,
+  };
+}
+
 /** The seeded Conversation of `sessionId`. */
 function conversationOf(conversations: readonly Conversation[], sessionId: string): Conversation {
   const conversation = conversations.find((c) => c.sessionId === sessionId);
@@ -554,6 +611,7 @@ export async function writeFakeRecordings(opts: {
     ...recordedTurns,
     failedAttemptBefore(recordedTurns.filter((r) => r.agentId === null)[RETRIED_TURN - 1]),
     ...sideApiRequests(recorded),
+    unattributedApiRequest(Date.parse(turnsInLog(recorded.mainLines)[0].record.timestamp) - HOUR),
     ...partiallyRecordedApiRequests(conversationOf(opts.conversations, PARTIALLY_RECORDED_SESSION_ID)),
   ].sort((a, b) => a.timings.arrivedAt.localeCompare(b.timings.arrivedAt));
   const writer = openRecordingWriter(opts.recordingsRoot);

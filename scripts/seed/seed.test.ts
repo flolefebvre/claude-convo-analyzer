@@ -26,6 +26,7 @@ import {
   SIDE_REQUEST_IDS,
   SYSTEM_PROMPT_CHANGE_TURN,
   TOOL_DEFINITION_CHANGE_TURN,
+  UNATTRIBUTED_REQUEST_ID,
 } from "./fake-recordings";
 
 const NOW = new Date("2026-06-22T17:00:00.000Z");
@@ -254,6 +255,22 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
       changedBetween(TOOL_DEFINITION_CHANGE_TURN, "system"),
       changedBetween(TOOL_DEFINITION_CHANGE_TURN, "tools"),
     ]).toEqual([0, 1]);
+  });
+
+  it("records the two recorded sessions, plus one unattributed API request that matches no Conversation", async () => {
+    const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
+
+    const apiRequests = readRecordings(seed.recordingsRoot);
+    expect([...new Set(apiRequests.map((r) => r.sessionId))].sort()).toEqual(
+      [PARTIALLY_RECORDED_SESSION_ID, RECORDED_SESSION_ID, null].sort(),
+    );
+    const unattributed = apiRequests.filter((r) => r.sessionId === null);
+    expect(unattributed.map((r) => r.response.requestId)).toEqual([UNATTRIBUTED_REQUEST_ID]);
+    const messageId = (unattributed[0].response.body as { id: string }).id;
+    const logs = Object.values(readTree(seed.logsRoot));
+    expect(logs.some((log) => log.includes(`"${UNATTRIBUTED_REQUEST_ID}"`) || log.includes(`"${messageId}"`))).toBe(
+      false,
+    );
   });
 
   it("writes byte-identical Recordings for the same anchor", async () => {
