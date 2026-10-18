@@ -51,8 +51,12 @@ describe("refresh events", () => {
     expect(progressReports.length).toBeGreaterThanOrEqual(2);
     await vi.waitFor(async () =>
       expect(await published()).toEqual([
-        ...progressReports.map((progress) => ({ channel: "refresh", event: "progress", payload: progress })),
-        { channel: "refresh", event: "finished", payload: { summary } },
+        ...progressReports.map((progress) => ({
+          channel: "refresh",
+          event: "progress",
+          payload: { runId: 1, ...progress },
+        })),
+        { channel: "refresh", event: "finished", payload: { runId: 1, summary } },
       ]),
     );
   });
@@ -69,8 +73,12 @@ describe("refresh events", () => {
 
     await vi.waitFor(async () =>
       expect(await published()).toEqual([
-        { channel: "refresh", event: "progress", payload: { done: 0, total: 3 } },
-        { channel: "refresh", event: "failed", payload: { message: "Refresh failed in its worker: disk gone" } },
+        { channel: "refresh", event: "progress", payload: { runId: 1, done: 0, total: 3 } },
+        {
+          channel: "refresh",
+          event: "failed",
+          payload: { runId: 1, message: "Refresh failed in its worker: disk gone" },
+        },
       ]),
     );
   });
@@ -91,7 +99,30 @@ describe("refresh events", () => {
     await vi.waitFor(async () => expect(await published()).toHaveLength(1));
 
     expect(runCount).toBe(1);
-    expect(await published()).toEqual([{ channel: "refresh", event: "finished", payload: { summary: SUMMARY } }]);
+    expect(await published()).toEqual([
+      { channel: "refresh", event: "finished", payload: { runId: 1, summary: SUMMARY } },
+    ]);
+  });
+
+  it("carries one run id on all of a run's events, and the next one on the next run's", async () => {
+    const runner = createRefreshRunner(async (onProgress) => {
+      onProgress({ done: 1, total: 1 });
+      return SUMMARY;
+    });
+    publishRefreshEvents(runner);
+    const published = await recordPublishes();
+
+    await runner.start();
+    await runner.start();
+
+    await vi.waitFor(async () =>
+      expect(await published()).toEqual([
+        { channel: "refresh", event: "progress", payload: { runId: 1, done: 1, total: 1 } },
+        { channel: "refresh", event: "finished", payload: { runId: 1, summary: SUMMARY } },
+        { channel: "refresh", event: "progress", payload: { runId: 2, done: 1, total: 1 } },
+        { channel: "refresh", event: "finished", payload: { runId: 2, summary: SUMMARY } },
+      ]),
+    );
   });
 
   it("stops publishing once unsubscribed", async () => {

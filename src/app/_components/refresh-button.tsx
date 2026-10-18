@@ -28,7 +28,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 
 import { refreshConversations } from "@/app/actions";
-import { isRerenderDue, type RefreshActivity } from "@/app/_lib/refresh-activity";
+import { isRerenderDue, type RefreshActivity, type RefreshRunId } from "@/app/_lib/refresh-activity";
 import { formatDuplicateSessionDetail, formatRefreshProgress, formatRefreshSummary } from "@/app/_lib/refresh-summary";
 import { channels, useChannel } from "@/app/_lib/sse.client";
 import { Button } from "@/components/ui/button";
@@ -97,11 +97,22 @@ export function RefreshButton({ snapshot, reportsOutcome = false, ...look }: Ref
     startRerender(() => router.refresh());
   }
 
+  // The run whose outcome this control last reported. A new Snapshot reopens the
+  // Channel from its own position, so the replay can bring that outcome again.
+  const handledOutcomeRunId = useRef<RefreshRunId | null>(null);
+
+  /** Whether `runId`'s outcome is not reported yet; records it as reported. */
+  function claimOutcome(runId: RefreshRunId): boolean {
+    if (handledOutcomeRunId.current === runId) return false;
+    handledOutcomeRunId.current = runId;
+    return true;
+  }
+
   useChannel(
     channels.refresh(),
     {
-      progress: (progress) => {
-        setActivity({ isRunning: true, progress });
+      progress: ({ runId, ...progress }) => {
+        setActivity({ isRunning: true, runId, progress });
         setIsAwaitingRun(false);
         const isDue = isRerenderDue({
           nowMs: Date.now(),
@@ -111,10 +122,10 @@ export function RefreshButton({ snapshot, reportsOutcome = false, ...look }: Ref
         });
         if (reportsOutcome && isDue) rerenderPage();
       },
-      finished: ({ summary }) => {
+      finished: ({ runId, summary }) => {
         setActivity({ isRunning: false });
         setIsAwaitingRun(false);
-        if (!reportsOutcome) return;
+        if (!reportsOutcome || !claimOutcome(runId)) return;
         setMessage({
           text: formatRefreshSummary(summary),
           detail: formatDuplicateSessionDetail(summary),
@@ -123,10 +134,10 @@ export function RefreshButton({ snapshot, reportsOutcome = false, ...look }: Ref
         });
         rerenderPage();
       },
-      failed: ({ message: failure }) => {
+      failed: ({ runId, message: failure }) => {
         setActivity({ isRunning: false });
         setIsAwaitingRun(false);
-        if (!reportsOutcome) return;
+        if (!reportsOutcome || !claimOutcome(runId)) return;
         setMessage({ text: FAILURE_TEXT, detail: failure, tone: "error", id: Date.now() });
         // The batches committed before the failure are stored.
         rerenderPage();

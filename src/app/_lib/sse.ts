@@ -9,7 +9,11 @@ import { z } from "zod";
 
 import type { RefreshSummary } from "@/core/refresh";
 
+/** Which Refresh an event belongs to (the runner's `RefreshRunId`). */
+const refreshRunIdSchema = z.number().int().positive();
+
 const refreshProgressSchema = z.object({
+  runId: refreshRunIdSchema,
   done: z.number().int().nonnegative(),
   total: z.number().int().nonnegative(),
 });
@@ -41,17 +45,18 @@ const { channel, createSSE } = initSSE({ transport: createMemoryTransport() });
 /**
  * The Registry: `sse.refresh()` is the Handle publishing the Refresh's
  * `progress` (absolute `{ done, total }`, once per committed batch), then its
- * `finished { summary }` or `failed { message }`.
+ * `finished { summary }` or `failed { message }`, each with the `runId` of its
+ * Refresh.
  *
- * @example await sse.refresh().progress({ done: 50, total: 2450 });
+ * @example await sse.refresh().progress({ runId: 1, done: 50, total: 2450 });
  */
 export const sse = createSSE({
   refresh: channel({
     pattern: "refresh",
     events: {
       progress: refreshProgressSchema,
-      finished: z.object({ summary: refreshSummarySchema }),
-      failed: z.object({ message: z.string() }),
+      finished: z.object({ runId: refreshRunIdSchema, summary: refreshSummarySchema }),
+      failed: z.object({ runId: refreshRunIdSchema, message: z.string() }),
     },
     // Local-only app: every page may follow the Refresh.
     authorize: () => true,

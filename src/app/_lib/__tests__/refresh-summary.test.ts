@@ -45,6 +45,14 @@ describe("formatRefreshSummary", () => {
     expect(formatRefreshSummary(summary({ conversationsDeleted: 1 }))).toBe("1 conversation removed");
   });
 
+  it("writes every count with thousands separators", () => {
+    expect(
+      formatRefreshSummary(
+        summary({ conversationsParsed: 2481, conversationsDeleted: 1200, malformedLinesSkipped: 1500 }),
+      ),
+    ).toBe("2,481 conversations updated, 1,200 removed, 1,500 log lines could not be read");
+  });
+
   it("adds the log lines it could not read, singular at one", () => {
     expect(formatRefreshSummary(summary({ conversationsParsed: 2, malformedLinesSkipped: 3 }))).toBe(
       "2 conversations updated, 3 log lines could not be read",

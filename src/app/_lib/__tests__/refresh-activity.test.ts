@@ -5,13 +5,20 @@ import { isRerenderDue, refreshActivityOf, RERENDER_INTERVAL_MS } from "@/app/_l
 describe("refreshActivityOf", () => {
   it("is idle before any Refresh and after one settled", () => {
     expect(refreshActivityOf({ status: "idle" })).toEqual({ isRunning: false });
-    expect(refreshActivityOf({ status: "failed", error: new Error("disk gone") })).toEqual({ isRunning: false });
+    expect(refreshActivityOf({ status: "failed", runId: 1, error: new Error("disk gone") })).toEqual({
+      isRunning: false,
+    });
   });
 
-  it("is running with the latest progress, or none before the total is known", () => {
-    expect(refreshActivityOf({ status: "running", progress: null })).toEqual({ isRunning: true, progress: null });
-    expect(refreshActivityOf({ status: "running", progress: { done: 50, total: 120 } })).toEqual({
+  it("is running with its run id and latest progress, or none before the total is known", () => {
+    expect(refreshActivityOf({ status: "running", runId: 2, progress: null })).toEqual({
       isRunning: true,
+      runId: 2,
+      progress: null,
+    });
+    expect(refreshActivityOf({ status: "running", runId: 2, progress: { done: 50, total: 120 } })).toEqual({
+      isRunning: true,
+      runId: 2,
       progress: { done: 50, total: 120 },
     });
   });

@@ -7,9 +7,9 @@
 import { formatCount } from "@/app/_lib/format";
 import type { RefreshProgress, RefreshSummary } from "@/core/refresh";
 
-/** `n` and its noun, singular at exactly one: `plural(3, "log line")` → "3 log lines". */
+/** `n` and its noun, singular at exactly one: `plural(1200, "log line")` → "1,200 log lines". */
 function plural(n: number, noun: string): string {
-  return `${n} ${noun}${n === 1 ? "" : "s"}`;
+  return `${formatCount(n)} ${noun}${n === 1 ? "" : "s"}`;
 }
 
 /**
@@ -26,7 +26,8 @@ export function formatRefreshSummary(summary: RefreshSummary): string {
   const segments: string[] = [];
   if (parsed > 0) segments.push(`${plural(parsed, "conversation")} updated`);
   // "3 conversations updated, 1 removed": the noun is said once.
-  if (deleted > 0) segments.push(parsed > 0 ? `${deleted} removed` : `${plural(deleted, "conversation")} removed`);
+  if (deleted > 0)
+    segments.push(parsed > 0 ? `${formatCount(deleted)} removed` : `${plural(deleted, "conversation")} removed`);
   if (segments.length === 0) segments.push("Everything is up to date");
   if (summary.malformedLinesSkipped > 0) {
     const lines = summary.malformedLinesSkipped;

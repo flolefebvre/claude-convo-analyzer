@@ -22,13 +22,16 @@ export type RefreshWorkerMessage =
 /** The work of one Refresh: reports progress as it goes, resolves to its summary. */
 export type RefreshJob = (onProgress: (progress: RefreshProgress) => void) => Promise<RefreshSummary>;
 
+/** Which Refresh of this runner a state belongs to: 1 for its first, counting up. */
+export type RefreshRunId = number;
+
 /** Where the runner stands: no Refresh yet, one running, or the last one's outcome. */
 export type RefreshRunState =
   | { status: "idle" }
   /** `progress` is null until the Refresh knows its total. */
-  | { status: "running"; progress: RefreshProgress | null }
-  | { status: "succeeded"; summary: RefreshSummary }
-  | { status: "failed"; error: Error };
+  | { status: "running"; runId: RefreshRunId; progress: RefreshProgress | null }
+  | { status: "succeeded"; runId: RefreshRunId; summary: RefreshSummary }
+  | { status: "failed"; runId: RefreshRunId; error: Error };
 
 /** The handle onto the shared Refresh. */
 export type RefreshRunner = {
@@ -59,22 +62,26 @@ export function createRefreshRunner(job: RefreshJob): RefreshRunner {
     for (const listener of listeners) listener(state);
   }
 
+  let lastRunId: RefreshRunId = 0;
+
   function runRefresh(): Promise<RefreshSummary> {
-    moveTo({ status: "running", progress: null });
+    lastRunId += 1;
+    const runId = lastRunId;
+    moveTo({ status: "running", runId, progress: null });
     // The executor turns a job that throws synchronously into a rejection too.
     const jobSummary = new Promise<RefreshSummary>((resolve) =>
-      resolve(job((progress) => moveTo({ status: "running", progress }))),
+      resolve(job((progress) => moveTo({ status: "running", runId, progress }))),
     );
     return jobSummary.then(
       (summary) => {
         runningRefresh = null;
-        moveTo({ status: "succeeded", summary });
+        moveTo({ status: "succeeded", runId, summary });
         return summary;
       },
       (cause: unknown) => {
         const error = cause instanceof Error ? cause : new Error(String(cause));
         runningRefresh = null;
-        moveTo({ status: "failed", error });
+        moveTo({ status: "failed", runId, error });
         throw error;
       },
     );

@@ -53,7 +53,9 @@ with `started` or `already running`.
 **Progress streams** to every open page over next-sse's in-memory transport
 (#112). The runner tells subscribers each state it moves to, and an app-side
 bridge publishes them on the `refresh` Channel: a `progress { done, total }` per
-committed batch, then one `finished { summary }` or `failed { message }`. Core
+committed batch, then one `finished { summary }` or `failed { message }`, each
+carrying the run id the runner gives every Refresh, so a page reports one
+outcome once even when a reconnect replays it. Core
 stays framework-free, and the worker never publishes. A page opened mid-run
 starts from a Snapshot of the runner's state, taken with the Channel position
 just before, so it misses no event. One server process serves this local app, so

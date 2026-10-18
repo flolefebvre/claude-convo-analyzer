@@ -4,19 +4,24 @@
 // reached by type only (ADR-0002).
 
 import type { RefreshProgress } from "@/core/refresh";
-import type { RefreshRunState } from "@/core/refresh-runner";
+import type { RefreshRunId, RefreshRunState } from "@/core/refresh-runner";
 
-/** Whether a Refresh runs; while it does, its latest progress, or null before the total is known. */
-export type RefreshActivity = { isRunning: false } | { isRunning: true; progress: RefreshProgress | null };
+export type { RefreshRunId };
+
+/** Whether a Refresh runs; while it does, its run id and latest progress, or null before the total is known. */
+export type RefreshActivity =
+  { isRunning: false } | { isRunning: true; runId: RefreshRunId; progress: RefreshProgress | null };
 
 /**
  * The activity a runner state stands for: the last outcome is not carried, a
  * page opened after it shows the idle control.
  *
- * @example refreshActivityOf(runner.state()) // { isRunning: true, progress: { done: 50, total: 2450 } }
+ * @example refreshActivityOf(runner.state()) // { isRunning: true, runId: 3, progress: { done: 50, total: 2450 } }
  */
 export function refreshActivityOf(state: RefreshRunState): RefreshActivity {
-  return state.status === "running" ? { isRunning: true, progress: state.progress } : { isRunning: false };
+  return state.status === "running"
+    ? { isRunning: true, runId: state.runId, progress: state.progress }
+    : { isRunning: false };
 }
 
 /** The shortest gap between two re-renders of the open page during a Refresh. */
