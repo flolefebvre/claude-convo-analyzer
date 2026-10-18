@@ -219,6 +219,11 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
   let duplicateSessionsSkipped: DuplicateSessionSkip[] = [];
 
   try {
+    // A per-connection setting, so it goes on this writer: commits skip their
+    // fsync, and a power cut may lose the last ones — acceptable, since the
+    // database is a cache rebuildable from the logs.
+    await prisma.$executeRawUnsafe("PRAGMA synchronous = NORMAL");
+
     // Two files may carry the same session id (a copied transcript). Resolve
     // that HERE, before the incremental compare, so every pass below sees one
     // file per session id (see `dedupeBySessionId`).

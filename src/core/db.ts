@@ -60,6 +60,13 @@ function applyMigrations(dbPath: string): void {
 
   const db = new Database(dbPath);
   try {
+    // WAL belongs to the database FILE, so setting it on this first connection
+    // puts every later one in WAL too: readers then run beside the one writer
+    // instead of hitting SQLITE_BUSY while it commits.
+    db.pragma("journal_mode = WAL");
+    // Commits skip the fsync per transaction: a power cut may lose the last
+    // ones, acceptable since the database is a cache rebuildable from the logs.
+    db.pragma("synchronous = NORMAL");
     db.exec(
       `CREATE TABLE IF NOT EXISTS "${MIGRATION_LEDGER}" (
          "migration_name" TEXT NOT NULL PRIMARY KEY,

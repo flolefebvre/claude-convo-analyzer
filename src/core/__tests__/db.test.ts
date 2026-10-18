@@ -55,4 +55,18 @@ describe("core persistence foundation", () => {
     expect(found?.path).toBe("/Users/me/dev/demo");
     expect(found?.folderName).toBe("-Users-me-dev-demo");
   });
+
+  it("runs a fresh database in WAL mode, and keeps it in WAL mode when re-opened", async () => {
+    expect(await journalMode(prisma)).toBe("wal");
+    await prisma.$disconnect();
+
+    prisma = createPrismaClient(dbPath);
+    expect(await journalMode(prisma)).toBe("wal");
+  });
 });
+
+/** The journal mode the client's connection reports (lower-case, e.g. `wal`). */
+async function journalMode(prisma: PrismaClient): Promise<string | undefined> {
+  const rows = await prisma.$queryRawUnsafe<{ journal_mode: string }[]>("PRAGMA journal_mode");
+  return rows[0]?.journal_mode;
+}
