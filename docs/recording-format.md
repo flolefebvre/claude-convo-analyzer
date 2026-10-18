@@ -121,8 +121,9 @@ the same piece. A message that differs in any byte — e.g. a moved
 Applied by the writer before anything is serialized, so no caller can write a
 secret:
 
-- the `authorization`, `x-api-key`, `cookie` and `set-cookie` headers (request
-  and response) are stored as `"<redacted>"` (each value, for a list);
+- the `authorization`, `x-api-key`, `cookie`, `set-cookie`,
+  `anthropic-organization-id` and `anthropic-workspace-id` headers (request and
+  response) are stored as `"<redacted>"` (each value, for a list);
 - `body.metadata.user_id` keeps only its session id:
   - JSON shape — `{"device_id":"…","account_uuid":"…","session_id":"…"}` — every
     field but `session_id` becomes `"<redacted>"`;
@@ -132,3 +133,8 @@ secret:
 
 The device id goes with the account: a Recording is a file a user may share,
 and nothing downstream needs either.
+
+Headers are redacted; content is not. The system blocks, tool definitions and
+messages are kept exactly as sent, so a Recording holds whatever Claude Code
+sent — including the user context it injects, such as an email address — just
+as the conversation logs do. Share a Recording as you would share a log file.

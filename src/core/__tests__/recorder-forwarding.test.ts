@@ -149,9 +149,13 @@ describe("forwarding through the Recorder", () => {
     });
   });
 
-  it("never writes the auth and cookie headers or the metadata.user_id account and device parts to any file", async () => {
+  it("never writes the auth, cookie and organization headers or the metadata.user_id account and device parts to any file", async () => {
     const upstream = await harness.startUpstream((_request, response) => {
-      response.writeHead(200, { "content-type": "text/event-stream", "set-cookie": "upstream=cookie-secret" });
+      response.writeHead(200, {
+        "content-type": "text/event-stream",
+        "set-cookie": "upstream=cookie-secret",
+        "anthropic-organization-id": "org-fixture-51d0",
+      });
       response.end(MESSAGES_RESPONSE_SSE);
     });
     const recorder = await harness.startRecorder(upstream.url);
@@ -160,7 +164,14 @@ describe("forwarding through the Recorder", () => {
     await (await postMessages(recorder, { headers: SESSION_HEADERS })).text();
     await recorder.stop();
 
-    const secrets = [AUTH_TOKEN, "sk-ant-api03-secret", "cookie-secret", "account-fixture-9c1e", "device-fixture-7f3a"];
+    const secrets = [
+      AUTH_TOKEN,
+      "sk-ant-api03-secret",
+      "cookie-secret",
+      "org-fixture-51d0",
+      "account-fixture-9c1e",
+      "device-fixture-7f3a",
+    ];
     for (const fileName of readdirSync(harness.recordingsRoot)) {
       const text = gunzipSync(readFileSync(path.join(harness.recordingsRoot, fileName))).toString("utf8");
       for (const secret of secrets) expect(text).not.toContain(secret);

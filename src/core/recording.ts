@@ -15,8 +15,15 @@ const gzipAsync = promisify(gzip);
 
 /** The value stored in place of a secret. */
 const REDACTED = "<redacted>";
-/** Headers whose values are never written (request and response alike). */
-const SECRET_HEADER_NAMES = new Set(["authorization", "x-api-key", "cookie", "set-cookie"]);
+/** Headers whose values are never written (request and response alike): credentials, and the account's ids. */
+const SECRET_HEADER_NAMES = new Set([
+  "authorization",
+  "x-api-key",
+  "cookie",
+  "set-cookie",
+  "anthropic-organization-id",
+  "anthropic-workspace-id",
+]);
 /** The file stem of the API requests no session could be found for. */
 const UNATTRIBUTED_FILE_STEM = "unattributed";
 /** The session ids that can name a file: anything else is filed as unattributed. */

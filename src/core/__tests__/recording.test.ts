@@ -195,6 +195,22 @@ function redactedUserId(body: object): object {
 }
 
 describe("redaction in a Recording", () => {
+  it("never writes the organization and workspace ids the API sends back", async () => {
+    const response = {
+      ...apiRequest().response,
+      headers: { "anthropic-organization-id": "org-fixture-51d0", "anthropic-workspace-id": "wrk-fixture-77e2" },
+    };
+    await openRecordingWriter(recordingsRoot).append(apiRequest({ response }));
+
+    const text = gunzipSync(readFileSync(path.join(recordingsRoot, "sess-recorded.jsonl.gz"))).toString("utf8");
+    expect(text).not.toContain("org-fixture-51d0");
+    expect(text).not.toContain("wrk-fixture-77e2");
+    expect(readRecordings(recordingsRoot)[0].response.headers).toEqual({
+      "anthropic-organization-id": "<redacted>",
+      "anthropic-workspace-id": "<redacted>",
+    });
+  });
+
   it("never writes the auth and cookie headers, nor the account and device parts of metadata.user_id", async () => {
     const legacyUserId = "user_device-fixture-7f3a_account_account-fixture-9c1e_session_sess-recorded";
     const writer = openRecordingWriter(recordingsRoot);
