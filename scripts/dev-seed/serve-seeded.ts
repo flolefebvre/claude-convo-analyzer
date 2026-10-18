@@ -1,8 +1,8 @@
 // What `pnpm dev:seed` and `pnpm e2e:server` share: rebuild the seed environment
 // in `data/seed/` (timeline ending now), pick the port, then run their Next
 // commands one after another against the seed, with `CCA_DB_PATH`,
-// `CCA_LOGS_ROOT` and `CCA_RECORDINGS_ROOT` pointing at it so Refresh re-reads
-// only the fake logs and Recordings.
+// `CCA_LOGS_ROOT` and `CCA_RECORDINGS_ROOT` pointing at it so the app reads only
+// the fake logs and Recordings.
 //
 // The port is `PORT` when set, else the first free one from 3001, so several
 // worktrees can each serve their own seeded app at once. The URL is printed as

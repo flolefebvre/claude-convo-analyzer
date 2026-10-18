@@ -329,12 +329,16 @@ function conversationApiRequests(conversation: Conversation): RecordedApiRequest
   ];
 }
 
-/** A Side request of the main agent, answered with plain JSON, its response ending at `endedMs`. */
+/** A Side request of the main agent, answered with plain JSON, arriving at `arrivedMs`. */
 function sideApiRequest(
   agent: RecordedAgent,
-  opts: { path: string; body: object; requestId: string; responseBody: object; endedMs: number },
+  opts: { path: string; body: object; requestId: string; responseBody: object; arrivedMs: number },
 ): RecordedApiRequest {
-  const timings = timingsEndingAt(opts.endedMs);
+  const timings = {
+    arrivedAt: new Date(opts.arrivedMs).toISOString(),
+    firstByteAt: new Date(opts.arrivedMs + 0.6 * SECOND).toISOString(),
+    endedAt: new Date(opts.arrivedMs + 0.9 * SECOND).toISOString(),
+  };
   return {
     sessionId: agent.sessionId,
     agentId: null,
@@ -376,7 +380,7 @@ function sideRequestMessage(
   };
 }
 
-function quotaProbeApiRequest(agent: RecordedAgent, endedMs: number): RecordedApiRequest {
+function quotaProbeApiRequest(agent: RecordedAgent, arrivedMs: number): RecordedApiRequest {
   const requestId = SIDE_REQUEST_IDS.quotaProbe;
   return sideApiRequest(agent, {
     path: "/v1/messages",
@@ -388,11 +392,11 @@ function quotaProbeApiRequest(agent: RecordedAgent, endedMs: number): RecordedAp
     },
     requestId,
     responseBody: sideRequestMessage(requestId, "#", { input_tokens: 8, output_tokens: 1 }),
-    endedMs,
+    arrivedMs,
   });
 }
 
-function sessionNamingApiRequest(agent: RecordedAgent, firstPrompt: string, endedMs: number): RecordedApiRequest {
+function sessionNamingApiRequest(agent: RecordedAgent, firstPrompt: string, arrivedMs: number): RecordedApiRequest {
   const requestId = SIDE_REQUEST_IDS.sessionNaming;
   return sideApiRequest(agent, {
     path: "/v1/messages",
@@ -408,11 +412,11 @@ function sessionNamingApiRequest(agent: RecordedAgent, firstPrompt: string, ende
       input_tokens: 164,
       output_tokens: 18,
     }),
-    endedMs,
+    arrivedMs,
   });
 }
 
-function safetyMonitorApiRequest(agent: RecordedAgent, command: string, endedMs: number): RecordedApiRequest {
+function safetyMonitorApiRequest(agent: RecordedAgent, command: string, arrivedMs: number): RecordedApiRequest {
   const requestId = SIDE_REQUEST_IDS.safetyMonitor;
   return sideApiRequest(agent, {
     path: "/v1/messages",
@@ -425,11 +429,11 @@ function safetyMonitorApiRequest(agent: RecordedAgent, command: string, endedMs:
     },
     requestId,
     responseBody: sideRequestMessage(requestId, "safe", { input_tokens: 92, output_tokens: 2 }),
-    endedMs,
+    arrivedMs,
   });
 }
 
-function suggestionApiRequest(agent: RecordedAgent, lastReply: unknown, endedMs: number): RecordedApiRequest {
+function suggestionApiRequest(agent: RecordedAgent, lastReply: unknown, arrivedMs: number): RecordedApiRequest {
   const requestId = SIDE_REQUEST_IDS.suggestion;
   return sideApiRequest(agent, {
     path: "/v1/messages",
@@ -442,12 +446,12 @@ function suggestionApiRequest(agent: RecordedAgent, lastReply: unknown, endedMs:
     },
     requestId,
     responseBody: sideRequestMessage(requestId, SUGGESTED_PROMPT, { input_tokens: 311, output_tokens: 9 }),
-    endedMs,
+    arrivedMs,
   });
 }
 
 /** Counting the tokens of what `turn` sends: the same system, tools and messages. */
-function tokenCountApiRequest(agent: RecordedAgent, turn: AgentTurn, endedMs: number): RecordedApiRequest {
+function tokenCountApiRequest(agent: RecordedAgent, turn: AgentTurn, arrivedMs: number): RecordedApiRequest {
   return sideApiRequest(agent, {
     path: "/v1/messages/count_tokens",
     body: {
@@ -458,7 +462,7 @@ function tokenCountApiRequest(agent: RecordedAgent, turn: AgentTurn, endedMs: nu
     },
     requestId: SIDE_REQUEST_IDS.tokenCount,
     responseBody: { input_tokens: 21_384 },
-    endedMs,
+    arrivedMs,
   });
 }
 
@@ -479,12 +483,13 @@ function sideApiRequests(conversation: Conversation): RecordedApiRequest[] {
     .flatMap((turn) => turn.record.message.content.map((block) => ({ turn, block })))
     .find(({ block }) => block.type === "tool_use" && block.name === "Bash")!;
   const lastTurn = turns.at(-1)!;
+  // A Turn's response ends 0.4s after its record's timestamp; its tool result comes 2s or more after it.
   return [
-    quotaProbeApiRequest(agent, firstPromptMs + 1 * SECOND),
-    sessionNamingApiRequest(agent, firstPrompt.message.content, firstPromptMs + 2.5 * SECOND),
-    tokenCountApiRequest(agent, turns[2], timestampMs(turns[2]) + 2 * SECOND),
-    safetyMonitorApiRequest(agent, String(bashCall.block.input?.command), timestampMs(bashCall.turn) + 1.5 * SECOND),
-    suggestionApiRequest(agent, lastTurn.record.message.content, timestampMs(lastTurn) + 2 * SECOND),
+    quotaProbeApiRequest(agent, firstPromptMs + 0.5 * SECOND),
+    sessionNamingApiRequest(agent, firstPrompt.message.content, firstPromptMs + 1 * SECOND),
+    tokenCountApiRequest(agent, turns[2], timestampMs(turns[2]) + 1 * SECOND),
+    safetyMonitorApiRequest(agent, String(bashCall.block.input?.command), timestampMs(bashCall.turn) + 0.6 * SECOND),
+    suggestionApiRequest(agent, lastTurn.record.message.content, timestampMs(lastTurn) + 1 * SECOND),
   ];
 }
 

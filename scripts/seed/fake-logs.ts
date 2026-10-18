@@ -467,8 +467,9 @@ function toolResultText(g: Gen, kind: (typeof TOOL_KINDS)[number], isError: bool
 /**
  * Build a sub-agent transcript file + the parent's spawn ledger tool_result.
  * `canFail: false` rules out its failed turns, without drawing for them.
- * `stopsOnlyAtItsLastTurn: true` makes every earlier Turn call a tool, so each
- * later Turn answers a tool result, as in a real sub-agent's transcript.
+ * `stopsOnlyAtItsLastTurn: true` makes every earlier Turn call a tool and the
+ * last one only reply, so each later Turn answers a tool result and the
+ * sub-agent ends on its reply, as in a real sub-agent's transcript.
  */
 function spawnSubAgent(
   g: Gen,
@@ -495,10 +496,9 @@ function spawnSubAgent(
     const turnMs = ms + 5_000 + i * 30_000;
     const u = makeUsage(g, 0.6);
     const subKind = pickToolKind(g);
-    const subToolUse =
-      (stopsOnlyAtItsLastTurn && i < turns - 1) || g.chance(0.6)
-        ? { type: "tool_use", id: g.uid("tu"), name: subKind.name, input: subKind.input(g) }
-        : null;
+    const subToolUse = (stopsOnlyAtItsLastTurn ? i < turns - 1 : g.chance(0.6))
+      ? { type: "tool_use", id: g.uid("tu"), name: subKind.name, input: subKind.input(g) }
+      : null;
     const subText = g.pick(SUB_AGENT_REPLIES);
     subTotal += u.input_tokens + u.output_tokens + u.cache_creation_input_tokens + u.cache_read_input_tokens;
     subLines.push(

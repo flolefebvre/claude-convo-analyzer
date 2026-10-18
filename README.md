@@ -179,7 +179,8 @@ pnpm dev:seed
 
 It prints `Seeded app: http://localhost:<port>` — the first free port from
 3001, or `PORT` when set — so several checkouts can each run their own. Refresh
-in that app re-reads only the seeded logs and Recordings.
+in that app re-reads only the seeded logs, and `CCA_RECORDINGS_ROOT` points at
+the seeded Recordings.
 
 The seeded activity ends now. `pnpm seed` also takes `--now=<ISO>`, and the same
 `--now` always yields the same data, which is what screenshots want; point the
