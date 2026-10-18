@@ -4,6 +4,31 @@
 // the in-memory Conversation its log was written from, so the join ingestion
 // makes (`requestId`, then `message.id`) holds by construction. Nothing reads
 // the clock or draws at random: the same Conversations write the same bytes.
+//
+// What tells each API request apart, by its request alone (path, `max_tokens`,
+// the system prompt's opening line, the model):
+//
+//   Turn             POST /v1/messages, `max_tokens: 32000`, three system
+//                    blocks opening "You are Claude Code, Anthropic's official
+//                    CLI for Claude.", the Agent's own model, the tool
+//                    definitions, and the history as `messages`
+//   session naming   POST /v1/messages, one system block opening "Name this
+//                    coding session", a small model (Haiku), `max_tokens: 512`
+//   quota probe      POST /v1/messages, `max_tokens: 1`, no system prompt, one
+//                    tiny user message ("quota"), a small model
+//   safety monitor   POST /v1/messages, one system block opening "Decide
+//                    whether the shell command below is safe", a small model,
+//                    `max_tokens: 256`
+//   suggestion       POST /v1/messages, one system block opening "Suggest the
+//                    prompt the user is most likely to send next", a small
+//                    model, `max_tokens: 128`
+//   token count      POST /v1/messages/count_tokens: no `max_tokens`, no
+//                    response message, only `{ input_tokens }`
+//
+// Side requests carry no `x-claude-code-agent-id`, and a `request-id` and
+// `message.id` no log record has. Streaming is NOT a distinguishing feature:
+// the seed sends Turns streamed and Side requests not, as a simplification;
+// real Side requests may stream.
 
 import { openRecordingWriter, type RecordedApiRequest, type RecordedHeaders } from "@/core/recording";
 
@@ -12,6 +37,7 @@ import {
   type Conversation,
   PARTIALLY_RECORDED_SESSION_ID,
   RECORDED_SESSION_ID,
+  RECORDED_TITLE,
   type SeedToolName,
 } from "./fake-logs";
 
@@ -51,6 +77,20 @@ const MAIN_AGENT_INSTRUCTIONS =
 const SUB_AGENT_INSTRUCTIONS =
   "You are a sub-agent of Claude Code. Complete the task you are given, then report back in a few sentences.";
 
+/** The small model Side requests run on. */
+const SIDE_REQUEST_MODEL = "claude-haiku-4-5-20251001";
+
+/** Each Side request's one system block, its opening line telling the kind apart. */
+const SESSION_NAMING_SYSTEM =
+  "Name this coding session.\nReply with a JSON object holding a short, sentence-case title.";
+const SAFETY_MONITOR_SYSTEM =
+  "Decide whether the shell command below is safe to run without asking the user.\nReply with safe or unsafe.";
+const SUGGESTION_SYSTEM =
+  "Suggest the prompt the user is most likely to send next.\nReply with the prompt alone, in a few words.";
+
+/** What the suggestion Side request answers. */
+const SUGGESTED_PROMPT = "Open a pull request for the audit trail.";
+
 /** The placeholder credential and account ids the writer redacts. */
 const PLACEHOLDER_AUTHORIZATION = "Bearer seed-placeholder-token";
 const PLACEHOLDER_DEVICE_ID = "seed-device-0001";
@@ -63,6 +103,15 @@ const PLACEHOLDER_ACCOUNT_UUID = "seed-account-0001";
  */
 export const PARTIALLY_RECORDED_FROM_TURN = 4;
 
+/** The `request-id` of each kind of Side request, all on the recorded Conversation's session. */
+export const SIDE_REQUEST_IDS = {
+  sessionNaming: "req-side-session-naming",
+  quotaProbe: "req-side-quota-probe",
+  safetyMonitor: "req-side-safety-monitor",
+  suggestion: "req-side-suggestion",
+  tokenCount: "req-side-token-count",
+} as const;
+
 const SECOND = 1_000;
 const HOUR = 3_600_000;
 
@@ -71,11 +120,14 @@ const HOUR = 3_600_000;
 /** A message of a Messages request, as Claude Code sends it. */
 type ApiMessage = { role: "user" | "assistant"; content: unknown };
 
+/** A content block of an assistant message; `name` and `input` are a `tool_use` block's. */
+type ContentBlock = { type: string; name?: string; input?: Record<string, unknown> };
+
 /** An assistant record of a seeded log, as far as an API request needs it. */
 type AssistantRecord = {
   requestId: string;
   timestamp: string;
-  message: { id: string; model: string; content: { type: string }[]; usage: unknown };
+  message: { id: string; model: string; content: ContentBlock[]; usage: unknown };
 };
 
 /** A Turn of one Agent: its record, its 1-based position, and the messages sent before it. */
@@ -226,7 +278,7 @@ function turnApiRequest(agent: RecordedAgent, turn: AgentTurn): RecordedApiReque
 /** The API request of every Turn of `conversation`, main agent and sub-agents alike. */
 function conversationApiRequests(conversation: Conversation): RecordedApiRequest[] {
   const cwd = conversation.projectPath;
-  const mainAgent: RecordedAgent = { sessionId: conversation.sessionId, agentId: null, cwd };
+  const mainAgent = mainAgentOf(conversation);
   return [
     ...turnsInLog(conversation.mainLines).map((turn) => turnApiRequest(mainAgent, turn)),
     ...conversation.subAgents.flatMap((sub) => {
@@ -234,6 +286,175 @@ function conversationApiRequests(conversation: Conversation): RecordedApiRequest
       return turnsInLog(sub.lines).map((turn) => turnApiRequest(subAgent, turn));
     }),
   ];
+}
+
+/** A Side request of the main agent, answered with plain JSON, its response ending at `endedMs`. */
+function sideApiRequest(
+  agent: RecordedAgent,
+  opts: { path: string; body: object; requestId: string; responseBody: object; endedMs: number },
+): RecordedApiRequest {
+  const timings = timingsEndingAt(opts.endedMs);
+  return {
+    sessionId: agent.sessionId,
+    agentId: null,
+    method: "POST",
+    path: opts.path,
+    query: "beta=true",
+    headers: requestHeaders(agent),
+    body: opts.body,
+    response: {
+      status: 200,
+      requestId: opts.requestId,
+      headers: {
+        "content-type": "application/json",
+        "request-id": opts.requestId,
+        ...rateLimitHeaders(Date.parse(timings.arrivedAt)),
+      },
+      body: opts.responseBody,
+      isStreamed: false,
+    },
+    timings,
+  };
+}
+
+/** The message a Side request is answered with: `text`, from the small model. */
+function sideRequestMessage(
+  requestId: string,
+  text: string,
+  usage: { input_tokens: number; output_tokens: number },
+): object {
+  return {
+    id: requestId.replace(/^req-/, "msg-"),
+    type: "message",
+    role: "assistant",
+    model: SIDE_REQUEST_MODEL,
+    content: [{ type: "text", text }],
+    stop_reason: usage.output_tokens === 1 ? "max_tokens" : "end_turn",
+    stop_sequence: null,
+    usage: { ...usage, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+  };
+}
+
+function quotaProbeApiRequest(agent: RecordedAgent, endedMs: number): RecordedApiRequest {
+  const requestId = SIDE_REQUEST_IDS.quotaProbe;
+  return sideApiRequest(agent, {
+    path: "/v1/messages",
+    body: {
+      model: SIDE_REQUEST_MODEL,
+      max_tokens: 1,
+      metadata: metadataOf(agent),
+      messages: [{ role: "user", content: "quota" }],
+    },
+    requestId,
+    responseBody: sideRequestMessage(requestId, "#", { input_tokens: 8, output_tokens: 1 }),
+    endedMs,
+  });
+}
+
+function sessionNamingApiRequest(agent: RecordedAgent, firstPrompt: string, endedMs: number): RecordedApiRequest {
+  const requestId = SIDE_REQUEST_IDS.sessionNaming;
+  return sideApiRequest(agent, {
+    path: "/v1/messages",
+    body: {
+      model: SIDE_REQUEST_MODEL,
+      max_tokens: 512,
+      metadata: metadataOf(agent),
+      system: [{ type: "text", text: SESSION_NAMING_SYSTEM }],
+      messages: [{ role: "user", content: firstPrompt }],
+    },
+    requestId,
+    responseBody: sideRequestMessage(requestId, JSON.stringify({ title: RECORDED_TITLE }), {
+      input_tokens: 164,
+      output_tokens: 18,
+    }),
+    endedMs,
+  });
+}
+
+function safetyMonitorApiRequest(agent: RecordedAgent, command: string, endedMs: number): RecordedApiRequest {
+  const requestId = SIDE_REQUEST_IDS.safetyMonitor;
+  return sideApiRequest(agent, {
+    path: "/v1/messages",
+    body: {
+      model: SIDE_REQUEST_MODEL,
+      max_tokens: 256,
+      metadata: metadataOf(agent),
+      system: [{ type: "text", text: SAFETY_MONITOR_SYSTEM }],
+      messages: [{ role: "user", content: command }],
+    },
+    requestId,
+    responseBody: sideRequestMessage(requestId, "safe", { input_tokens: 92, output_tokens: 2 }),
+    endedMs,
+  });
+}
+
+function suggestionApiRequest(agent: RecordedAgent, lastReply: unknown, endedMs: number): RecordedApiRequest {
+  const requestId = SIDE_REQUEST_IDS.suggestion;
+  return sideApiRequest(agent, {
+    path: "/v1/messages",
+    body: {
+      model: SIDE_REQUEST_MODEL,
+      max_tokens: 128,
+      metadata: metadataOf(agent),
+      system: [{ type: "text", text: SUGGESTION_SYSTEM }],
+      messages: [{ role: "user", content: lastReply }],
+    },
+    requestId,
+    responseBody: sideRequestMessage(requestId, SUGGESTED_PROMPT, { input_tokens: 311, output_tokens: 9 }),
+    endedMs,
+  });
+}
+
+/** Counting the tokens of what `turn` sends: the same system, tools and messages. */
+function tokenCountApiRequest(agent: RecordedAgent, turn: AgentTurn, endedMs: number): RecordedApiRequest {
+  return sideApiRequest(agent, {
+    path: "/v1/messages/count_tokens",
+    body: {
+      model: turn.record.message.model,
+      system: systemBlocks(agent),
+      tools: toolDefinitions(agent),
+      messages: turn.history,
+    },
+    requestId: SIDE_REQUEST_IDS.tokenCount,
+    responseBody: { input_tokens: 21_384 },
+    endedMs,
+  });
+}
+
+/**
+ * One Side request of each kind, on `conversation`'s session: the quota probe
+ * and the session naming right after its first prompt, a token count after
+ * its third Turn, the safety monitor before its `Bash` call runs, and a
+ * suggestion after its last Turn.
+ */
+function sideApiRequests(conversation: Conversation): RecordedApiRequest[] {
+  const agent = mainAgentOf(conversation);
+  const turns = turnsInLog(conversation.mainLines);
+  const firstPrompt = conversation.mainLines
+    .map((line) => JSON.parse(line) as { type?: string; timestamp: string; message: { content: string } })
+    .find((record) => record.type === "user")!;
+  const firstPromptMs = Date.parse(firstPrompt.timestamp);
+  const bashCall = turns
+    .flatMap((turn) => turn.record.message.content.map((block) => ({ turn, block })))
+    .find(({ block }) => block.type === "tool_use" && block.name === "Bash")!;
+  const lastTurn = turns.at(-1)!;
+  return [
+    quotaProbeApiRequest(agent, firstPromptMs + 1 * SECOND),
+    sessionNamingApiRequest(agent, firstPrompt.message.content, firstPromptMs + 2.5 * SECOND),
+    tokenCountApiRequest(agent, turns[2], timestampMs(turns[2]) + 2 * SECOND),
+    safetyMonitorApiRequest(agent, String(bashCall.block.input?.command), timestampMs(bashCall.turn) + 1.5 * SECOND),
+    suggestionApiRequest(agent, lastTurn.record.message.content, timestampMs(lastTurn) + 2 * SECOND),
+  ];
+}
+
+/** When a Turn's log record was written, in epoch ms. */
+function timestampMs(turn: AgentTurn): number {
+  return Date.parse(turn.record.timestamp);
+}
+
+/** The main agent of `conversation`. */
+function mainAgentOf(conversation: Conversation): RecordedAgent {
+  return { sessionId: conversation.sessionId, agentId: null, cwd: conversation.projectPath };
 }
 
 /**
@@ -268,8 +489,10 @@ export async function writeFakeRecordings(opts: {
   recordingsRoot: string;
   conversations: readonly Conversation[];
 }): Promise<void> {
+  const recorded = conversationOf(opts.conversations, RECORDED_SESSION_ID);
   const apiRequests = [
-    ...conversationApiRequests(conversationOf(opts.conversations, RECORDED_SESSION_ID)),
+    ...conversationApiRequests(recorded),
+    ...sideApiRequests(recorded),
     ...partiallyRecordedApiRequests(conversationOf(opts.conversations, PARTIALLY_RECORDED_SESSION_ID)),
   ].sort((a, b) => a.timings.arrivedAt.localeCompare(b.timings.arrivedAt));
   const writer = openRecordingWriter(opts.recordingsRoot);

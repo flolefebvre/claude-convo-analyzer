@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { PAGE_SIZE } from "@/app/_lib/list-view";
 import { getTranscript, listConversations } from "@/core/read";
-import { readRecordings } from "@/core/recording";
+import { readRecordings, type RecordedApiRequest } from "@/core/recording";
 
 import { seedEnvironment } from "./environment";
 import {
@@ -20,7 +20,7 @@ import {
   WORKTREE_SWITCH_PROJECT_PATH,
   WORKTREE_SWITCH_TITLE,
 } from "./fake-logs";
-import { PARTIALLY_RECORDED_FROM_TURN } from "./fake-recordings";
+import { PARTIALLY_RECORDED_FROM_TURN, SIDE_REQUEST_IDS } from "./fake-recordings";
 
 const NOW = new Date("2026-06-22T17:00:00.000Z");
 
@@ -187,6 +187,27 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     expect(messages.filter((m) => m.role === "assistant")).toHaveLength(PARTIALLY_RECORDED_FROM_TURN - 1);
   });
 
+  it("records each kind of Side request on the recorded session, under ids no log record has", async () => {
+    const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
+
+    const logs = Object.values(readTree(seed.logsRoot));
+    const apiRequests = readRecordings(seed.recordingsRoot);
+    const sideRequests = Object.values(SIDE_REQUEST_IDS).map((requestId) =>
+      apiRequests.find((r) => r.response.requestId === requestId),
+    );
+    for (const sideRequest of sideRequests) {
+      expect(sideRequest).toMatchObject({ sessionId: RECORDED_SESSION_ID, agentId: null });
+      const messageId = (sideRequest?.response.body as { id?: string }).id;
+      const ids = [sideRequest?.response.requestId, ...(messageId === undefined ? [] : [messageId])];
+      expect(ids.filter((id) => logs.some((log) => log.includes(`"${id}"`)))).toEqual([]);
+    }
+
+    const [firstTurn] = turnsInLog(seed.logsRoot, RECORDED_SESSION_ID);
+    const turn = apiRequests.find((r) => r.response.requestId === firstTurn.requestId);
+    const fingerprints = new Set([turn, ...sideRequests].map((r) => requestFingerprint(r)));
+    expect(fingerprints.size).toBe(sideRequests.length + 1);
+  });
+
   it("writes byte-identical Recordings for the same anchor", async () => {
     const first = await seedEnvironment({ dir: path.join(tmpDir, "first"), now: NOW });
     const second = await seedEnvironment({ dir: path.join(tmpDir, "second"), now: NOW });
@@ -221,7 +242,14 @@ function readTree(root: string, encoding: BufferEncoding = "utf8"): Record<strin
   );
 }
 
-/** A Turn as a log has it: the ids an API request is joined on, and its usage. */
+/** What tells API requests apart by their request alone: path, model, `max_tokens`, system prompt's opening line. */
+function requestFingerprint(apiRequest: RecordedApiRequest | undefined): string {
+  const body = apiRequest?.body as { model?: string; max_tokens?: number; system?: { text: string }[] } | undefined;
+  const systemOpening = body?.system?.[0]?.text.split("\n")[0] ?? null;
+  return JSON.stringify([apiRequest?.path, body?.model, body?.max_tokens ?? null, systemOpening]);
+}
+
+/** A Turn as a log has it:the ids an API request is joined on, and its usage. */
 type LoggedTurn = { requestId: string; agentId: string | null; messageId: string; usage: unknown };
 
 /** Every Turn in the logs of `sessionId`, its main agent's then each sub-agent's, in log order. */
