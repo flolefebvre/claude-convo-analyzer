@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { PAGE_SIZE } from "@/app/_lib/list-view";
 import { getTranscript, listConversations } from "@/core/read";
+import { readRecordings, type RecordedApiRequest } from "@/core/recording";
 
 import { seedEnvironment } from "./environment";
 import {
@@ -13,10 +14,20 @@ import {
   FAMILY_WORKTREE_PROJECT_PATH,
   LONG_PAGE_TWO_TEXT,
   LONG_TITLE,
+  PARTIALLY_RECORDED_SESSION_ID,
+  RECORDED_SESSION_ID,
   SCRATCH_PARENT_PATH,
   WORKTREE_SWITCH_PROJECT_PATH,
   WORKTREE_SWITCH_TITLE,
 } from "./fake-logs";
+import {
+  FAILED_ATTEMPT_REQUEST_ID,
+  PARTIALLY_RECORDED_FROM_TURN,
+  SIDE_REQUEST_IDS,
+  SYSTEM_PROMPT_CHANGE_TURN,
+  TOOL_DEFINITION_CHANGE_TURN,
+  UNATTRIBUTED_REQUEST_ID,
+} from "./fake-recordings";
 
 const NOW = new Date("2026-06-22T17:00:00.000Z");
 
@@ -40,8 +51,8 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     expect(seed.summary.duplicateSessionsSkipped).toEqual([]);
 
     const conversations = await listConversations({ dbPath: seed.dbPath });
-    expect(conversations).toHaveLength(67);
-    expect(conversations.reduce((sum, c) => sum + c.subAgentCount, 0)).toBe(81);
+    expect(conversations).toHaveLength(69);
+    expect(conversations.reduce((sum, c) => sum + c.subAgentCount, 0)).toBe(83);
 
     const continued = conversations.filter((c) => c.continuedFromId !== null);
     expect(continued).toHaveLength(5);
@@ -147,6 +158,130 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     expect(readTree(second.logsRoot)).toEqual(files);
   });
 
+  it("records every Turn of the recorded Conversation, its sub-agent's included, as its log has it", async () => {
+    const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
+
+    const turns = turnsInLog(seed.logsRoot, RECORDED_SESSION_ID);
+    expect(turns.some((turn) => turn.agentId !== null)).toBe(true);
+    const apiRequests = readRecordings(seed.recordingsRoot).filter((r) => r.sessionId === RECORDED_SESSION_ID);
+    const recordedTurns = turns.map((turn) => {
+      const apiRequest = apiRequests.find((r) => r.response.requestId === turn.requestId);
+      const body = apiRequest?.response.body as { id?: string; usage?: unknown } | undefined;
+      return {
+        requestId: apiRequest?.response.requestId,
+        agentId: apiRequest?.agentId,
+        messageId: body?.id,
+        usage: body?.usage,
+      };
+    });
+    expect(recordedTurns).toEqual(turns);
+  });
+
+  it("records the partially recorded Conversation only from a later Turn on, repeating the history before it", async () => {
+    const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
+
+    const mainTurns = turnsInLog(seed.logsRoot, PARTIALLY_RECORDED_SESSION_ID).filter((t) => t.agentId === null);
+    const apiRequests = readRecordings(seed.recordingsRoot).filter(
+      (r) => r.sessionId === PARTIALLY_RECORDED_SESSION_ID,
+    );
+    const isRecorded = mainTurns.map((turn) => apiRequests.some((r) => r.response.requestId === turn.requestId));
+    expect(isRecorded).toEqual(mainTurns.map((_, i) => i + 1 >= PARTIALLY_RECORDED_FROM_TURN));
+
+    const firstRecorded = apiRequests.find(
+      (r) => r.response.requestId === mainTurns[PARTIALLY_RECORDED_FROM_TURN - 1].requestId,
+    );
+    const { messages } = firstRecorded?.body as { messages: { role: string }[] };
+    expect(messages.filter((m) => m.role === "assistant")).toHaveLength(PARTIALLY_RECORDED_FROM_TURN - 1);
+  });
+
+  it("records each kind of Side request on the recorded session, under ids no log record has", async () => {
+    const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
+
+    const logs = Object.values(readTree(seed.logsRoot));
+    const apiRequests = readRecordings(seed.recordingsRoot);
+    const sideRequests = Object.values(SIDE_REQUEST_IDS).map((requestId) =>
+      apiRequests.find((r) => r.response.requestId === requestId),
+    );
+    for (const sideRequest of sideRequests) {
+      expect(sideRequest).toMatchObject({ sessionId: RECORDED_SESSION_ID, agentId: null });
+      const messageId = (sideRequest?.response.body as { id?: string }).id;
+      const ids = [sideRequest?.response.requestId, ...(messageId === undefined ? [] : [messageId])];
+      expect(ids.filter((id) => logs.some((log) => log.includes(`"${id}"`)))).toEqual([]);
+    }
+
+    const [firstTurn] = turnsInLog(seed.logsRoot, RECORDED_SESSION_ID);
+    const turn = apiRequests.find((r) => r.response.requestId === firstTurn.requestId);
+    const fingerprints = new Set([turn, ...sideRequests].map((r) => requestFingerprint(r)));
+    expect(fingerprints.size).toBe(sideRequests.length + 1);
+  });
+
+  it("records a failed attempt before a Turn, then the retry that succeeds as the Turn", async () => {
+    const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
+
+    const apiRequests = readRecordings(seed.recordingsRoot);
+    const failedAt = apiRequests.findIndex((r) => r.response.requestId === FAILED_ATTEMPT_REQUEST_ID);
+    const failedAttempt = apiRequests[failedAt];
+    expect(failedAttempt).toMatchObject({
+      sessionId: RECORDED_SESSION_ID,
+      agentId: null,
+      response: { status: 529, isStreamed: false, body: { type: "error", error: { type: "overloaded_error" } } },
+    });
+    const retry = apiRequests[failedAt + 1];
+    expect(retry.body).toEqual(failedAttempt.body);
+    const retriedTurn = turnsInLog(seed.logsRoot, RECORDED_SESSION_ID).find(
+      (turn) => turn.requestId === retry.response.requestId,
+    );
+    expect(retriedTurn?.messageId).toBe((retry.response.body as { id: string }).id);
+    expect(Object.values(readTree(seed.logsRoot)).some((log) => log.includes(FAILED_ATTEMPT_REQUEST_ID))).toBe(false);
+  });
+
+  it("changes one system block, then one tool definition, between two Turns of the recorded main agent", async () => {
+    const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
+
+    const apiRequests = readRecordings(seed.recordingsRoot);
+    const bodies = turnsInLog(seed.logsRoot, RECORDED_SESSION_ID)
+      .filter((turn) => turn.agentId === null)
+      .map((turn) => apiRequests.find((r) => r.response.requestId === turn.requestId)?.body as TurnBody);
+    const changedBetween = (ordinal: number, part: "system" | "tools") => {
+      const [before, after] = [bodies[ordinal - 2][part], bodies[ordinal - 1][part]];
+      return after.filter((piece, i) => JSON.stringify(piece) !== JSON.stringify(before[i])).length;
+    };
+
+    expect([
+      changedBetween(SYSTEM_PROMPT_CHANGE_TURN, "system"),
+      changedBetween(SYSTEM_PROMPT_CHANGE_TURN, "tools"),
+    ]).toEqual([1, 0]);
+    expect([
+      changedBetween(TOOL_DEFINITION_CHANGE_TURN, "system"),
+      changedBetween(TOOL_DEFINITION_CHANGE_TURN, "tools"),
+    ]).toEqual([0, 1]);
+  });
+
+  it("records the two recorded sessions, plus one unattributed API request that matches no Conversation", async () => {
+    const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
+
+    const apiRequests = readRecordings(seed.recordingsRoot);
+    expect([...new Set(apiRequests.map((r) => r.sessionId))].sort()).toEqual(
+      [PARTIALLY_RECORDED_SESSION_ID, RECORDED_SESSION_ID, null].sort(),
+    );
+    const unattributed = apiRequests.filter((r) => r.sessionId === null);
+    expect(unattributed.map((r) => r.response.requestId)).toEqual([UNATTRIBUTED_REQUEST_ID]);
+    const messageId = (unattributed[0].response.body as { id: string }).id;
+    const logs = Object.values(readTree(seed.logsRoot));
+    expect(logs.some((log) => log.includes(`"${UNATTRIBUTED_REQUEST_ID}"`) || log.includes(`"${messageId}"`))).toBe(
+      false,
+    );
+  });
+
+  it("writes byte-identical Recordings for the same anchor", async () => {
+    const first = await seedEnvironment({ dir: path.join(tmpDir, "first"), now: NOW });
+    const second = await seedEnvironment({ dir: path.join(tmpDir, "second"), now: NOW });
+
+    const files = readTree(first.recordingsRoot, "base64");
+    expect(Object.keys(files).length).toBeGreaterThan(0);
+    expect(readTree(second.recordingsRoot, "base64")).toEqual(files);
+  });
+
   it("rebuilds from a clean slate, leaving nothing from a previous run", async () => {
     const dir = path.join(tmpDir, "seed");
     const before = await seedEnvironment({ dir, now: NOW });
@@ -157,17 +292,50 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     const after = await seedEnvironment({ dir, now: NOW });
 
     expect(existsSync(leftover)).toBe(false);
-    expect(await listConversations({ dbPath: after.dbPath })).toHaveLength(67);
+    expect(await listConversations({ dbPath: after.dbPath })).toHaveLength(69);
   });
 });
 
-/** Every file under `root`, by relative path, with its contents. */
-function readTree(root: string): Record<string, string> {
+/** Every file under `root`, by relative path, with its contents in `encoding`. */
+function readTree(root: string, encoding: BufferEncoding = "utf8"): Record<string, string> {
   const files = readdirSync(root, { recursive: true, withFileTypes: true }).filter((e) => e.isFile());
   return Object.fromEntries(
     files.map((e) => {
       const file = path.join(e.parentPath, e.name);
-      return [path.relative(root, file), readFileSync(file, "utf8")];
+      return [path.relative(root, file), readFileSync(file, encoding)];
     }),
+  );
+}
+
+/** What tells API requests apart by their request alone: path, model, `max_tokens`, system prompt's opening line. */
+function requestFingerprint(apiRequest: RecordedApiRequest | undefined): string {
+  const body = apiRequest?.body as { model?: string; max_tokens?: number; system?: { text: string }[] } | undefined;
+  const systemOpening = body?.system?.[0]?.text.split("\n")[0] ?? null;
+  return JSON.stringify([apiRequest?.path, body?.model, body?.max_tokens ?? null, systemOpening]);
+}
+
+/** The parts of a Turn's request body that the Recording stores as pieces. */
+type TurnBody = { system: unknown[]; tools: unknown[] };
+
+/** A Turn as a log has it: the ids an API request is joined on, and its usage. */
+type LoggedTurn = { requestId: string; agentId: string | null; messageId: string; usage: unknown };
+
+/** Every Turn in the logs of `sessionId`, its main agent's then each sub-agent's, in log order. */
+function turnsInLog(logsRoot: string, sessionId: string): LoggedTurn[] {
+  const logFiles = Object.entries(readTree(logsRoot))
+    .filter(([file]) => path.basename(file) === `${sessionId}.jsonl` || file.includes(`/${sessionId}/subagents/`))
+    .sort(([a], [b]) => a.length - b.length || a.localeCompare(b));
+  return logFiles.flatMap(([, text]) =>
+    text
+      .split("\n")
+      .filter((line) => line !== "")
+      .map((line) => JSON.parse(line))
+      .filter((record) => record.type === "assistant")
+      .map((record) => ({
+        requestId: record.requestId,
+        agentId: record.agentId ?? null,
+        messageId: record.message.id,
+        usage: record.message.usage,
+      })),
   );
 }
