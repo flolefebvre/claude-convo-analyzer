@@ -82,7 +82,17 @@ export type RefreshSummary = {
   /** Files dropped for sharing a session id with an already-claimed file. */
   duplicateSessionsSkipped: DuplicateSessionSkip[];
   durationMs: number;
+  /** Where `durationMs` went, in fractional milliseconds per phase (see `RefreshPhase`). */
+  durationMsByPhase: Record<RefreshPhase, number>;
 };
+
+/**
+ * A stretch of a Refresh, timed on its own: `discovery` (find the files, read
+ * the stored rows, delete vanished Conversations, pick what to re-parse),
+ * `parse` and `write` (summed over every Conversation), `links` (continued-from)
+ * and `stamp` (the parser-version commit mark).
+ */
+export type RefreshPhase = "discovery" | "parse" | "write" | "links" | "stamp";
 
 type RefreshOptions = {
   logsRoot?: string;
@@ -218,6 +228,15 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
   // Assigned by the dedupe below, before anything else looks at the file set.
   let duplicateSessionsSkipped: DuplicateSessionSkip[] = [];
 
+  const durationMsByPhase: Record<RefreshPhase, number> = { discovery: 0, parse: 0, write: 0, links: 0, stamp: 0 };
+  let phaseStart = start;
+  /** Add the time since the previous call (or the run's start) to `phase`. */
+  const endPhase = (phase: RefreshPhase) => {
+    const now = performance.now();
+    durationMsByPhase[phase] += now - phaseStart;
+    phaseStart = now;
+  };
+
   try {
     // A per-connection setting, so it goes on this writer: commits skip their
     // fsync, and a power cut may lose the last ones — acceptable, since the
@@ -305,6 +324,7 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     }
 
     const total = sessionsToReparse.length;
+    endPhase("discovery");
     opts.onProgress?.({ done: 0, total });
 
     // Pass 1 — parse, write, report, one conversation at a time: its parsed
@@ -312,11 +332,14 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     // logs grow. Each write replaces any prior row atomically.
     const writtenConversations: WrittenConversation[] = [];
     for (const sessionToReparse of sessionsToReparse) {
+      phaseStart = performance.now();
       const parsedConversation = parseConversation(sessionToReparse);
       malformedLinesSkipped += parsedConversation.parsed.malformedLines;
       for (const sub of parsedConversation.subAgents) malformedLinesSkipped += sub.parsed.malformedLines;
+      endPhase("parse");
 
       await writeConversation(prisma, parsedConversation);
+      endPhase("write");
       writtenConversations.push({
         sessionId: parsedConversation.session.sessionId,
         firstMessageParentUuid: parsedConversation.parsed.messages[0]?.parentUuid ?? null,
@@ -327,12 +350,15 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
 
     // Pass 2 — resolve continued-from over the (re)written conversations,
     // authoritatively against the persisted message uuids of ALL conversations.
+    phaseStart = performance.now();
     await resolveContinuedFrom(prisma, writtenConversations);
+    endPhase("links");
 
     // Pass 3 — only NOW are these conversations complete: stamp them, so the
     // next run may skip them. An abort before this point leaves them unstamped
     // and therefore re-parseable (see `UNSTAMPED_PARSER_VERSION`).
     await stampParserVersion(prisma, writtenConversations);
+    endPhase("stamp");
   } finally {
     await prisma.$disconnect();
   }
@@ -344,6 +370,7 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     malformedLinesSkipped,
     duplicateSessionsSkipped,
     durationMs: Math.round(performance.now() - start),
+    durationMsByPhase,
   };
 }
 
