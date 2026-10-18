@@ -62,6 +62,15 @@ describe("formatRefreshSummary", () => {
       "1 conversation updated, 2 duplicate log files ignored",
     );
   });
+
+  it("adds the log files that vanished during the refresh, singular at one", () => {
+    expect(formatRefreshSummary(summary({ conversationsParsed: 2, vanishedLogFilesSkipped: 1 }))).toBe(
+      "2 conversations updated, 1 log file vanished during the refresh",
+    );
+    expect(formatRefreshSummary(summary({ vanishedLogFilesSkipped: 3 }))).toBe(
+      "Everything is up to date, 3 log files vanished during the refresh",
+    );
+  });
 });
 
 describe("formatDuplicateSessionDetail", () => {
