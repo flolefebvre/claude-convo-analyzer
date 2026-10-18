@@ -19,7 +19,8 @@ This repo is **single-context**: one `GLOSSARY.md` + `docs/adr/` at the repo roo
 ├── docs/adr/
 │   ├── 0001-token-accounting-and-data-model.md
 │   ├── 0002-local-architecture-and-persistence.md
-│   └── 0003-cost-model-and-pricing-policy.md
+│   ├── 0003-cost-model-and-pricing-policy.md
+│   └── 0004-refresh-runs-off-the-main-thread.md
 └── src/
 ```
 

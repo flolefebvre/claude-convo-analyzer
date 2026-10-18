@@ -2,7 +2,8 @@
 
 ## Status
 
-accepted
+accepted. The Refresh paragraph and the "SSE deferred" consequence are
+superseded by ADR-0004.
 
 ## Context
 
@@ -32,7 +33,8 @@ instead of blocking on its commits, with **`synchronous=NORMAL`** on the
 connections that commit: a power cut may lose the last commits, which is
 acceptable for a cache that can always be rebuilt from the logs.
 
-**Refresh.** User-triggered via a Next **server action** (synchronous, with a
+**Refresh.** _Superseded by ADR-0004 (Refresh runs off the main thread): a
+worker thread runs it, owned by a shared refresh runner._ User-triggered via a Next **server action** (synchronous, with a
 spinner) that calls `core.refresh()` and returns a summary. Refresh is
 **incremental**: each `conversation` row stores its source file's `mtime`+`size`;
 on refresh the core re-parses only new/changed conversation files (replacing
@@ -55,4 +57,5 @@ rows for deleted files. The first (cold) refresh parses everything
   missed; in practice the parent file is appended (the `Agent` tool result) when
   a sub-agent runs, so this is safe, and a full rebuild is always available as a
   fallback.
-- Streamed refresh progress (SSE) was deferred; the sync action is the v1.
+- _Superseded by ADR-0004, which plans streamed progress over next-sse._
+  Streamed refresh progress (SSE) was deferred; the sync action is the v1.
