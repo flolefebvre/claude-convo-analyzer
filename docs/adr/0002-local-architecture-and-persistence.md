@@ -27,6 +27,10 @@ local tool). `schema.prisma` and the generated client live under `src/core/`.
 Schema changes use **versioned `prisma migrate`** (the schema will grow as the
 deferred doors open). The database file is **`./data/analyzer.db`**, gitignored.
 A `globalThis` singleton prevents duplicate clients under dev hot-reload.
+The database runs in **WAL** mode, so readers run beside the one Refresh writer
+instead of blocking on its commits, with **`synchronous=NORMAL`** on the
+connections that commit: a power cut may lose the last commits, which is
+acceptable for a cache that can always be rebuilt from the logs.
 
 **Refresh.** User-triggered via a Next **server action** (synchronous, with a
 spinner) that calls `core.refresh()` and returns a summary. Refresh is
