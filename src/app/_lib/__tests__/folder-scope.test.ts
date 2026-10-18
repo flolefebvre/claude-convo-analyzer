@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  folderLabelInScope,
   folderScopeHref,
   isProjectInFolderScope,
   isSameFolderScope,
@@ -55,6 +56,29 @@ describe("isProjectInFolderScope", () => {
 
   it("spans every Project when unscoped", () => {
     expect(isProjectInFolderScope("/x", {})).toBe(true);
+  });
+});
+
+describe("folderLabelInScope", () => {
+  it("names a Project by its basename under All folders", () => {
+    expect(folderLabelInScope("/home/me/dev/api/.claude/worktrees/spike", {})).toBe("spike");
+  });
+
+  it("names the selected Folder's own Project this folder", () => {
+    expect(folderLabelInScope("/home/me/dev/api", { folder: "/home/me/dev/api" })).toBe("this folder");
+    expect(folderLabelInScope("/home/me/dev/api", { folder: "/home/me/dev/api", thisFolderOnly: true })).toBe(
+      "this folder",
+    );
+  });
+
+  it("names a Project below the selected Folder by its path relative to it", () => {
+    expect(folderLabelInScope("/home/me/dev/api/.claude/worktrees/spike", { folder: "/home/me/dev/api" })).toBe(
+      ".claude/worktrees/spike",
+    );
+  });
+
+  it("falls back to the basename for a Project outside the scope", () => {
+    expect(folderLabelInScope("/a/bc", { folder: "/a/b" })).toBe("bc");
   });
 });
 

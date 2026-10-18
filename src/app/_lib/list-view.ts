@@ -4,7 +4,7 @@
 // the page's ConversationTable):
 //
 //   deriveFolders → filterByFolder → sortConversations → grandTotal → paginate
-//                 → deriveOverview → topProjectsByCost
+//                 → deriveOverview
 //
 // Collapsing it here guarantees the pipeline order (filter BEFORE sort, scope
 // composes with sort) and derives the folder set ONCE per call (it used to run
@@ -74,8 +74,6 @@ export type ListViewBase = {
   folderTree: FolderNode[];
   /** The headline overview-band aggregate. */
   overview: Overview;
-  /** The cost-ranked top Projects for the overview band (a subset of `folders`). */
-  topProjects: FolderEntry[];
   /** The "All folders" anchor totals for the sidebar. */
   totals: ListTotals;
 };
@@ -108,8 +106,6 @@ export type GrandTotal = {
   costUsd: number;
   hasUnpriced: boolean;
 };
-
-const TOP_PROJECTS_LIMIT = 5;
 
 /** How many conversations one page of the list shows. Fixed — there is no
  *  `?size=` param. */
@@ -144,7 +140,7 @@ export function pageRange(page: number, rowCount: number, pageSize: number): { f
  * Build the conversation-list view model from ALL rows + already-resolved intent.
  *
  * Always returns the scope-independent base (`folders`, `folderTree`,
- * `overview`, `topProjects`, `totals`) — derived from one `deriveFolders` pass,
+ * `overview`, `totals`) — derived from one `deriveFolders` pass,
  * the tree rooted at `home` (`~`). When `intent` (with a `sort`) is given, ALSO
  * returns the table slice (`rows`, `scoped`, `selectedFolder`,
  * `isFolderColumnHidden`, `grandTotal`, page metadata), filtering by folder BEFORE
@@ -170,15 +166,14 @@ export function buildListView(
   home: string,
   intent?: ListViewIntent,
 ): ListViewBase | (ListViewBase & ListViewTable) {
-  // The single folder derive that feeds the sidebar tree, the top-Projects
-  // ranking, the sidebar totals, AND the table breadcrumb lookup.
+  // The single folder derive that feeds the sidebar tree, the sidebar totals,
+  // AND the table breadcrumb lookup.
   const folders = deriveFolders(rows);
   const folderTree = deriveFolderTree(folders, home);
   const base: ListViewBase = {
     folders,
     folderTree,
     overview: deriveOverview(rows),
-    topProjects: topProjectsByCost(folders, TOP_PROJECTS_LIMIT),
     totals: {
       count: rows.length,
       costUsd: folders.reduce((sum, f) => sum + f.costUsd, 0),
@@ -340,12 +335,4 @@ function deriveOverview(summaries: ConversationSummary[]): Overview {
     earliest,
     latest,
   };
-}
-
-/**
- * The `limit` highest-cost Projects, cost descending. Returns a new array — the
- * input order is preserved (the sidebar keeps its own newest-first ordering).
- */
-function topProjectsByCost(entries: FolderEntry[], limit: number): FolderEntry[] {
-  return [...entries].sort((a, b) => b.costUsd - a.costUsd).slice(0, limit);
 }

@@ -13,15 +13,8 @@ const HOME = "/home/me";
 const ASC_COST: SortState = { sortBy: "cost", dir: "asc" };
 const DESC_COST: SortState = { sortBy: "cost", dir: "desc" };
 
-/** Three Projects with distinct costs: beta ($30) > gamma ($12) > alpha ($5). */
-const THREE_PROJECTS = [
-  summary({ id: "a", path: "/p/alpha", costUsd: 5 }),
-  summary({ id: "b", path: "/p/beta", costUsd: 30 }),
-  summary({ id: "c", path: "/p/gamma", costUsd: 12 }),
-];
-
 describe("buildListView — scope-independent slice (no sort)", () => {
-  it("returns folders/overview/topProjects/totals but NO table slice when no sort is given", () => {
+  it("returns folders/overview/totals but NO table slice when no sort is given", () => {
     const rows = [
       summary({ id: "a", path: "/p/alpha", costUsd: 5 }),
       summary({ id: "b", path: "/p/beta", costUsd: 30 }),
@@ -30,7 +23,6 @@ describe("buildListView — scope-independent slice (no sort)", () => {
 
     expect(view.folders.map((f) => f.path).sort()).toEqual(["/p/alpha", "/p/beta"]);
     expect(view.overview.conversationCount).toBe(2);
-    expect(view.topProjects.length).toBeGreaterThan(0);
     expect(view.totals).toEqual({ count: 2, costUsd: 35, unpriced: false });
 
     // The table slice is skipped — no wasted sort/filter work.
@@ -51,14 +43,6 @@ describe("buildListView — scope-independent slice (no sort)", () => {
     expect(view.totals.count).toBe(2);
     expect(view.totals.costUsd).toBeCloseTo(15);
     expect(view.totals.unpriced).toBe(true);
-  });
-
-  it("derives folders ONCE and feeds both topProjects and folders (topProjects ⊆ folders)", () => {
-    const view = buildListView(THREE_PROJECTS, HOME);
-    // Every topProjects entry is the SAME object derived for the folder list.
-    for (const top of view.topProjects) {
-      expect(view.folders).toContain(top);
-    }
   });
 });
 
@@ -143,26 +127,6 @@ describe("buildListView — overview aggregate (migrated from deriveOverview)", 
     expect(overview.cacheReadRatio).toBe(0);
     expect(overview.earliest).toBe("");
     expect(overview.latest).toBe("");
-  });
-});
-
-describe("buildListView — topProjects (migrated from topProjectsByCost)", () => {
-  it("orders Projects by cost descending, limited to the top 5", () => {
-    const { topProjects } = buildListView(THREE_PROJECTS, HOME);
-    expect(topProjects.map((e) => e.label)).toEqual(["beta", "gamma", "alpha"]);
-  });
-
-  it("does not reorder the sidebar folder list (folders keep newest-first ordering)", () => {
-    const at = "2026-05-01T00:00:00.000Z";
-    const ordered = [
-      summary({ id: "a", path: "/p/old", endedAt: "2026-01-01T00:00:00.000Z", costUsd: 99 }),
-      summary({ id: "b", path: "/p/new", endedAt: at, costUsd: 1 }),
-    ];
-    const { folders, topProjects } = buildListView(ordered, HOME);
-    // Sidebar: newest-first regardless of cost.
-    expect(folders.map((f) => f.path)).toEqual(["/p/new", "/p/old"]);
-    // topProjects: highest cost first.
-    expect(topProjects.map((f) => f.path)).toEqual(["/p/old", "/p/new"]);
   });
 });
 

@@ -9,8 +9,11 @@ import { type RouteShell, expectData, expectInstantLoad } from "./route-shell";
 // A seeded conversation title (`scripts/seed/fake-logs.ts`).
 const TITLE = "Split the billing service out of the monolith";
 
-// A seeded worktree Project of the seeded `~/dev/acme-api` repo.
-const WORKTREE = path.join(os.homedir(), "dev", "acme-api", ".claude", "worktrees", "fix-auth-flake");
+// The seeded `~/dev/acme-api` repo, a Project with worktree Projects below it.
+const REPO = path.join(os.homedir(), "dev", "acme-api");
+
+// A seeded worktree Project of {@link REPO}.
+const WORKTREE = path.join(REPO, ".claude", "worktrees", "fix-auth-flake");
 
 const header = (page: Page) => page.getByRole("heading", { level: 1, name: "Conversations" });
 /** A Folder's chevron, in whichever folder tree (desktop sidebar or phone picker) `scope` holds. */
@@ -111,5 +114,18 @@ test.describe("Folder tree", () => {
       await expect(folderLink(tree, "fix-auth-flake")).toHaveAttribute("aria-current", "true");
       await expect(chevron(tree, "acme-api")).toHaveAttribute("aria-expanded", "true");
     });
+  });
+});
+
+test.describe("Folder cell", () => {
+  // Wide enough for the table's `@4xl` Folder column beside the sidebar.
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  test("names each Project relative to the selected Folder", async ({ page }) => {
+    await page.goto(`/?${new URLSearchParams({ folder: REPO }).toString()}`);
+    const table = page.locator("#conversations");
+
+    await expect(table.getByRole("cell", { name: "this folder", exact: true }).first()).toBeVisible();
+    await expect(table.getByRole("cell", { name: /^\.claude\/worktrees\// }).first()).toBeVisible();
   });
 });
