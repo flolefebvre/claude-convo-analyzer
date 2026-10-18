@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -77,6 +77,39 @@ describe("Slice 4 side tables", () => {
       expect(durations).toHaveLength(1);
       expect(Number(durations[0]?.durationMs)).toBe(11487);
       expect(durations[0]?.messageCount).toBe(6);
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+
+  it("stores a log number that is no integer as missing: a fractional duration or token count, a string PR number", async () => {
+    const logsRoot = path.join(tmpDir, "logs");
+    const projectDir = path.join(logsRoot, "-Users-me-dev-malformed-numbers");
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(
+      path.join(projectDir, "sess-malformed-numbers.jsonl"),
+      [
+        '{"type":"user","uuid":"n-u1","timestamp":"2026-06-20T09:00:00.000Z","cwd":"/Users/me/dev/malformed-numbers","version":"2.1.180","message":{"role":"user","content":"hello"}}',
+        '{"type":"assistant","uuid":"n-a1","parentUuid":"n-u1","requestId":"nreq-1","timestamp":"2026-06-20T09:00:05.000Z","cwd":"/Users/me/dev/malformed-numbers","version":"2.1.180","message":{"id":"nmsg-1","role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":7.5,"output_tokens":3,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}}}',
+        '{"type":"pr-link","prNumber":"42","prUrl":"https://github.com/me/demo/pull/42","prRepository":"me/demo","timestamp":"2026-06-20T09:00:08.000Z"}',
+        '{"type":"system","subtype":"turn_duration","durationMs":12.5,"messageCount":2,"timestamp":"2026-06-20T09:00:09.000Z"}',
+        "",
+      ].join("\n"),
+    );
+
+    await refresh({ logsRoot, dbPath });
+    const prisma = createPrismaClient(dbPath);
+    try {
+      const assistant = await prisma.message.findFirst({ where: { role: "assistant" } });
+      expect(assistant?.inputTokens).toBe(0);
+      expect(assistant?.outputTokens).toBe(3);
+
+      const prLinks = await prisma.prLink.findMany();
+      expect(prLinks.map((p) => p.prNumber)).toEqual([null]);
+
+      const durations = await prisma.turnDuration.findMany();
+      expect(durations.map((d) => Number(d.durationMs))).toEqual([0]);
+      expect(durations[0]?.messageCount).toBe(2);
     } finally {
       await prisma.$disconnect();
     }

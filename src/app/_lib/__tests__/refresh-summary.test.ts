@@ -12,6 +12,7 @@ function summary(partial: Partial<RefreshSummary> = {}): RefreshSummary {
     malformedLinesSkipped: partial.malformedLinesSkipped ?? 0,
     duplicateSessionsSkipped: partial.duplicateSessionsSkipped ?? [],
     durationMs: partial.durationMs ?? 0,
+    durationMsByPhase: partial.durationMsByPhase ?? { discovery: 0, parse: 0, write: 0, links: 0, stamp: 0 },
   };
 }
 

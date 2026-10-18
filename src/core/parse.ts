@@ -421,8 +421,7 @@ function extractAgentSpawn(record: Record<string, unknown>, toolUseId: string): 
     toolUseId,
     agentType: asString(tur.agentType),
     resolvedModel: asString(tur.resolvedModel),
-    totalTokens:
-      typeof tur.totalTokens === "number" ? tur.totalTokens : usage === undefined ? null : sumUsageTokens(usage),
+    totalTokens: asInteger(tur.totalTokens) ?? (usage === undefined ? null : sumUsageTokens(usage)),
   };
 }
 
@@ -442,13 +441,13 @@ function parseUsage(usage: RawUsage | undefined): {
 } {
   const cc = usage?.cache_creation;
   return {
-    inputTokens: usage?.input_tokens ?? 0,
-    outputTokens: usage?.output_tokens ?? 0,
+    inputTokens: asInteger(usage?.input_tokens) ?? 0,
+    outputTokens: asInteger(usage?.output_tokens) ?? 0,
     // The top-level cache_creation_input_tokens is the SUM of these two tiers
     // (finding #3); we store the tiers, never the sum, to avoid double counting.
-    cacheCreation5mTokens: cc?.ephemeral_5m_input_tokens ?? 0,
-    cacheCreation1hTokens: cc?.ephemeral_1h_input_tokens ?? 0,
-    cacheReadTokens: usage?.cache_read_input_tokens ?? 0,
+    cacheCreation5mTokens: asInteger(cc?.ephemeral_5m_input_tokens) ?? 0,
+    cacheCreation1hTokens: asInteger(cc?.ephemeral_1h_input_tokens) ?? 0,
+    cacheReadTokens: asInteger(usage?.cache_read_input_tokens) ?? 0,
   };
 }
 
@@ -460,6 +459,14 @@ function toEpochMs(ts: unknown): number | null {
 
 function asString(v: unknown): string | null {
   return typeof v === "string" && v.length > 0 ? v : null;
+}
+
+/**
+ * The value if it is an integer, else null. Every log number bound for an
+ * integer column goes through here: a fraction or a string is treated as missing.
+ */
+function asInteger(v: unknown): number | null {
+  return Number.isInteger(v) ? (v as number) : null;
 }
 
 /**
@@ -515,7 +522,7 @@ export function parseSessionLines(lines: Iterable<string>): ParsedSession {
       const prUrl = asString(record.prUrl);
       if (prUrl !== null) {
         prLinks.push({
-          prNumber: typeof record.prNumber === "number" ? record.prNumber : null,
+          prNumber: asInteger(record.prNumber),
           prUrl,
           prRepository: asString(record.prRepository),
         });
@@ -526,8 +533,8 @@ export function parseSessionLines(lines: Iterable<string>): ParsedSession {
     if (type === "system") {
       if (record.subtype === "turn_duration") {
         turnDurations.push({
-          durationMs: typeof record.durationMs === "number" ? record.durationMs : 0,
-          messageCount: typeof record.messageCount === "number" ? record.messageCount : 0,
+          durationMs: asInteger(record.durationMs) ?? 0,
+          messageCount: asInteger(record.messageCount) ?? 0,
         });
       }
       continue; // other system subtypes (compaction, retries) not modeled.

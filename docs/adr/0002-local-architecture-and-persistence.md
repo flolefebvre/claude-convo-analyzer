@@ -3,7 +3,8 @@
 ## Status
 
 accepted. The Refresh paragraph and the "SSE deferred" consequence are
-superseded by ADR-0004.
+superseded by ADR-0004. The Persistence paragraph is amended by ADR-0005: the
+Refresh writes through bare better-sqlite3, not Prisma.
 
 ## Context
 
@@ -22,7 +23,9 @@ never writes queries itself. A separate workspace package was considered and
 rejected for now as heavier than needed — the boundary is convention-enforced,
 and `src/core/` can be promoted to a package later without changing callers.
 
-**Persistence.** SQLite via **Prisma 7** — the `prisma-client` generator plus
+**Persistence.** _Amended by ADR-0005 (The Refresh writes through bare
+better-sqlite3): Prisma owns the schema, the migrations and every read; the
+Refresh writes without it._ SQLite via **Prisma 7** — the `prisma-client` generator plus
 the `@prisma/adapter-better-sqlite3` driver adapter (synchronous, ideal for a
 local tool). `schema.prisma` and the generated client live under `src/core/`.
 Schema changes use **versioned `prisma migrate`** (the schema will grow as the

@@ -12,16 +12,23 @@ import { refresh } from "@/core/refresh";
 
 /**
  * A reader probe on a second connection. When `sessionId` is armed, the moment
- * a Refresh transaction is about to insert that Conversation's row — after any
- * delete of its prior row in the same transaction, before the insert — the
- * probe reads the Conversation's rows through a raw better-sqlite3 connection
- * (not the writer's), records what it saw, then disarms.
+ * a Refresh transaction is about to insert its next Conversation row — after
+ * any delete of its prior row in the same transaction, before the insert — the
+ * probe reads that Conversation's rows through a connection of its own (not the
+ * writer's), records what it saw, then disarms.
  */
 const probe = vi.hoisted(() => ({
   sessionId: null as string | null,
   dbPath: "",
   titlesSeen: null as (string | null)[] | null,
 }));
+
+/** Run the armed probe, if any, then disarm it. */
+function runArmedProbe(): void {
+  if (probe.sessionId === null) return;
+  probe.titlesSeen = readTitlesOnSecondConnection(probe.dbPath, probe.sessionId);
+  probe.sessionId = null;
+}
 
 /** Read a Conversation's rows the way a concurrent reader would. */
 function readTitlesOnSecondConnection(dbPath: string, sessionId: string): (string | null)[] {
@@ -36,46 +43,19 @@ function readTitlesOnSecondConnection(dbPath: string, sessionId: string): (strin
   }
 }
 
-/** Wrap a transaction client so `conversation.create` fires the armed probe first. */
-function withProbeBeforeConversationInsert(tx: object): object {
-  return new Proxy(tx, {
-    get(target, prop, receiver) {
-      const value: unknown = Reflect.get(target, prop, receiver);
-      if (prop !== "conversation") return value;
-      return new Proxy(value as object, {
-        get(model, method, modelReceiver) {
-          const original: unknown = Reflect.get(model, method, modelReceiver);
-          if (method !== "create" || typeof original !== "function") return original;
-          return (args: { data: { sessionId: string } }) => {
-            if (probe.sessionId !== null && args.data.sessionId === probe.sessionId) {
-              probe.titlesSeen = readTitlesOnSecondConnection(probe.dbPath, probe.sessionId);
-              probe.sessionId = null;
-            }
-            return (original as (a: unknown) => unknown).call(model, args);
-          };
-        },
-      });
-    },
-  });
-}
-
+// The Refresh connection, with the probe run before each Conversation insert.
 vi.mock("@/core/db", async (importOriginal) => {
   const db = await importOriginal<typeof import("@/core/db")>();
-  /** `createPrismaClient`, whose transactions run their callback on a probed client. */
-  const createProbedPrismaClient = (dbPath?: string) =>
-    new Proxy(db.createPrismaClient(dbPath), {
-      get(client, prop, receiver) {
-        const transaction: unknown = Reflect.get(client, prop, receiver);
-        if (prop !== "$transaction" || typeof transaction !== "function") return transaction;
-        return (run: (tx: object) => Promise<unknown>, options?: unknown) =>
-          (transaction as (r: unknown, o?: unknown) => Promise<unknown>).call(
-            client,
-            (tx: object) => run(withProbeBeforeConversationInsert(tx)),
-            options,
-          );
-      },
-    });
-  return { ...db, createPrismaClient: createProbedPrismaClient };
+  const { hookStatements } = await import("./helpers/refresh-connection");
+  return {
+    ...db,
+    openRefreshConnection: (dbPath?: string) =>
+      hookStatements(
+        db.openRefreshConnection(dbPath),
+        (sql) => sql.startsWith('INSERT INTO "conversation"'),
+        runArmedProbe,
+      ),
+  };
 });
 
 const FIXTURES_ROOT = path.join(import.meta.dirname, "fixtures", "logs");

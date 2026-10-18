@@ -8,45 +8,40 @@ import { refresh } from "@/core/refresh";
 
 /**
  * Fault injection for the "interrupted refresh" test: when ARMED, the next
- * `message.findFirst` on a client handed out by `createPrismaClient` throws,
- * then disarms.
+ * lookup of a message's owning Conversation by `uuid`, on the connection
+ * `openRefreshConnection` hands out, throws, then disarms.
  *
- * WHY `message.findFirst`: it is the FIRST database call of the
- * continued-from resolution pass (`resolveContinuedFrom` in refresh.ts) and the
- * ONLY `findFirst` in core — the read seams never call it. Arming it therefore
- * aborts a refresh at exactly the hazard window this suite pins: after every
- * conversation has been written, before any continuation link is resolved. If a
- * refactor moves or renames that call, this injection stops reproducing the
+ * WHY that lookup: it is the first statement of the continued-from pass
+ * (`resolveContinuedFrom` in refresh.ts), which opens the final transaction,
+ * after every batch of Conversations has committed — and the only statement of
+ * a Refresh that reads `message` by `uuid`. Arming it therefore aborts a
+ * refresh at exactly the hazard window this suite pins: every conversation
+ * written, no continuation link resolved, nothing stamped. If a refactor moves
+ * that lookup or changes its SQL, this injection stops reproducing the
  * interruption — the test guards against that by asserting the aborted run DID
  * write its conversation rows, so a crash that drifts earlier fails loudly
  * instead of passing vacuously.
  */
 const crash = vi.hoisted(() => ({ armed: false }));
 
+/** Throw the simulated interruption once, when armed. */
+function throwWhenArmed(): void {
+  if (!crash.armed) return;
+  crash.armed = false;
+  throw new Error("simulated interruption");
+}
+
 vi.mock("@/core/db", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/core/db")>();
+  const { hookStatements } = await import("./helpers/refresh-connection");
   return {
     ...actual,
-    createPrismaClient: (dbPath?: string) => {
-      const client = actual.createPrismaClient(dbPath);
-      return new Proxy(client, {
-        get(target, prop, receiver) {
-          const value: unknown = Reflect.get(target, prop, receiver);
-          if (prop !== "message") return value;
-          return new Proxy(value as object, {
-            get(model, method, modelReceiver) {
-              if (method === "findFirst" && crash.armed) {
-                return () => {
-                  crash.armed = false;
-                  throw new Error("simulated interruption");
-                };
-              }
-              return Reflect.get(model, method, modelReceiver) as unknown;
-            },
-          });
-        },
-      });
-    },
+    openRefreshConnection: (dbPath?: string) =>
+      hookStatements(
+        actual.openRefreshConnection(dbPath),
+        (sql) => sql.includes('FROM "message" WHERE "uuid" = ?'),
+        throwWhenArmed,
+      ),
   };
 });
 

@@ -8,7 +8,7 @@
 - TypeScript 5, `strict`
 - Tailwind CSS v4, shadcn/ui (Radix + lucide)
 - Next-pipe (`@flefebvre/next-pipe`) for server entry points, zod 4 for validation
-- Prisma 7 on SQLite, through the `@prisma/adapter-better-sqlite3` driver adapter
+- Prisma 7 on SQLite, through the `@prisma/adapter-better-sqlite3` driver adapter, for the schema, migrations and reads; the Refresh writes through bare better-sqlite3 (ADR-0005)
 - Vitest 4, ESLint 10, Prettier 3 (sorts Tailwind classes)
 - Playwright (`@playwright/test` + `@next/playwright`), for the e2e specs
 - tsx, for the repo scripts
@@ -44,6 +44,7 @@ pnpm seed          Rebuild the fake-data seed environment in data/seed/ (seed.db
 pnpm gen           Regenerate the typed route builders in src/generated/routes/ (next-pipe gen); run after adding, moving or removing a route
 pnpm dev:seed      Seed, then run next dev on it; prints `Seeded app: http://localhost:<port>` (first free from 3001, or $PORT)
 pnpm e2e:server    Seed, then next build with the testing API exposed and next start on it ($PORT, as dev:seed) — what pnpm e2e serves
+pnpm bench:refresh Cold Refresh of $CCA_LOGS_ROOT (default ~/.claude/projects) into a scratch DB; prints phase split, peak heap, longest stall. Not in check/gate/CI
 pnpm check         Format check, lint, duplication, typecheck, then the tests affected since $CHECK_BASE (default origin/main) — the inner loop
 pnpm gate          Format check, lint, duplication, typecheck, then test and build, then e2e — the full check
 pnpm format        Prettier, rewriting files in place

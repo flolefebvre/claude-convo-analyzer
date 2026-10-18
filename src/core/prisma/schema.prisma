@@ -2,6 +2,9 @@
 // Seven tables per ADR-0001 (docs/adr/0001-token-accounting-and-data-model.md).
 // Prisma 7: `prisma-client` generator + @prisma/adapter-better-sqlite3 driver adapter.
 // The generated client output is gitignored (commit schema + migrations only).
+// The Refresh writes these tables WITHOUT Prisma (ADR-0005): mirror any column
+// change in `refresh-statements.ts`, beside this file. The equivalence test
+// (`stored-data-equivalence.test.ts`) catches a miss.
 
 generator client {
   provider = "prisma-client"

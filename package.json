@@ -12,6 +12,7 @@
   "scripts": {
     "dev": "next dev",
     "seed": "tsx scripts/seed.ts",
+    "bench:refresh": "tsx scripts/bench-refresh.ts",
     "dev:seed": "tsx scripts/dev-seed.ts",
     "e2e:server": "tsx scripts/e2e-server.ts",
     "check": "tsx scripts/gate.ts format:check+lint+duplication+typecheck,test:changed",

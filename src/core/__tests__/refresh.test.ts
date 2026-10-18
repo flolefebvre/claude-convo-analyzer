@@ -20,6 +20,20 @@ describe("core ingest spine", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  it("splits its duration into the discovery, parse, write, links and stamp phases", async () => {
+    const summary = await refresh({ logsRoot: FIXTURES_ROOT, dbPath });
+
+    const phases = Object.keys(summary.durationMsByPhase).sort();
+    expect(phases).toEqual(["discovery", "links", "parse", "stamp", "write"]);
+    for (const durationMs of Object.values(summary.durationMsByPhase)) {
+      expect(durationMs).toBeGreaterThanOrEqual(0);
+    }
+    const phaseTotalMs = Object.values(summary.durationMsByPhase).reduce((sum, durationMs) => sum + durationMs, 0);
+    expect(phaseTotalMs).toBeLessThanOrEqual(summary.durationMs + 5);
+    expect(summary.durationMsByPhase.parse).toBeGreaterThan(0);
+    expect(summary.durationMsByPhase.write).toBeGreaterThan(0);
+  });
+
   it("parses a basic conversation with assistant and user turns and a title", async () => {
     const summary = await refresh({ logsRoot: FIXTURES_ROOT, dbPath });
 
