@@ -2,13 +2,11 @@
 // fake upstream on 127.0.0.1: no test touches the network. A Recording is read
 // after `stop()`, which flushes every append.
 
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import http from "node:http";
-import { tmpdir } from "node:os";
 import path from "node:path";
 import { gunzipSync } from "node:zlib";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { startRecorder, type RunningRecorder } from "@/core/recorder";
+import { describe, expect, it } from "vitest";
 import { readRecordings } from "@/core/recording";
 import {
   deferred,
@@ -16,11 +14,10 @@ import {
   MESSAGES_RESPONSE_SSE,
   respondWithEventStream,
   startFakeUpstream,
-  type FakeUpstream,
 } from "./helpers/fake-upstream";
+import { AUTH_TOKEN, postMessages, setUpRecorderHarness } from "./helpers/recorder-harness";
 
-const SESSION_ID = "sess-recorded";
-const AUTH_TOKEN = "sk-ant-oat01-secret";
+const SESSION_HEADERS = { "x-claude-code-session-id": "sess-recorded" };
 
 const REASSEMBLED_MESSAGE = {
   id: "msg_fixture01",
@@ -43,77 +40,42 @@ const REASSEMBLED_MESSAGE = {
   },
 };
 
-let tmpDir: string;
-let recordingsRoot: string;
-let upstream: FakeUpstream | undefined;
-let recorder: RunningRecorder | undefined;
-let loggedMessages: string[];
+const harness = setUpRecorderHarness();
 
-beforeEach(() => {
-  tmpDir = mkdtempSync(path.join(tmpdir(), "cca-recorder-"));
-  recordingsRoot = path.join(tmpDir, "recordings");
-  loggedMessages = [];
-});
+/** The fixture's events, each with its blank line. */
+const EVENTS = MESSAGES_RESPONSE_SSE.split(/(?<=\n\n)/);
 
-afterEach(async () => {
-  await recorder?.stop();
-  await upstream?.close();
-  recorder = undefined;
-  upstream = undefined;
-  rmSync(tmpDir, { recursive: true, force: true });
-});
-
-/** Start a Recorder on a free port, in front of `upstreamUrl`. */
-async function startTestRecorder(upstreamUrl: string, root = recordingsRoot): Promise<RunningRecorder> {
-  recorder = await startRecorder({
-    port: 0,
-    upstreamUrl,
-    recordingsRoot: root,
-    log: (message) => loggedMessages.push(message),
-  });
-  return recorder;
-}
-
-/** POST the fixture body to the Recorder, as Claude Code does. */
-function postMessages(runningRecorder: RunningRecorder, init: RequestInit = {}): Promise<Response> {
-  return fetch(`http://127.0.0.1:${runningRecorder.port}/v1/messages?beta=true`, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${AUTH_TOKEN}`,
-      "content-type": "application/json",
-      "x-claude-code-session-id": SESSION_ID,
-      cookie: "session=cookie-secret",
-    },
-    body: MESSAGES_REQUEST_JSON,
-    ...init,
-  });
+/** POST the fixture over raw http (fetch refuses hop-by-hop headers), handing its response to `onResponse`. */
+function rawPost(
+  port: number,
+  headers: http.OutgoingHttpHeaders,
+  onResponse: (response: http.IncomingMessage, clientRequest: http.ClientRequest) => void,
+): void {
+  const clientRequest = http.request(
+    { host: "127.0.0.1", port, method: "POST", path: "/v1/messages?beta=true", headers },
+    (response) => onResponse(response, clientRequest),
+  );
+  clientRequest.end(MESSAGES_REQUEST_JSON);
 }
 
 describe("forwarding through the Recorder", () => {
   it("sends the same method, path, query, body and auth upstream, without hop-by-hop headers or accept-encoding", async () => {
-    upstream = await startFakeUpstream(respondWithEventStream);
-    const runningRecorder = await startTestRecorder(upstream.url);
+    const upstream = await harness.startUpstream(respondWithEventStream);
+    const recorder = await harness.startRecorder(upstream.url);
 
-    // Raw http, since fetch refuses to set hop-by-hop headers.
-    await new Promise<void>((resolve) => {
-      const clientRequest = http.request(
+    await new Promise<void>((resolve) =>
+      rawPost(
+        recorder.port,
         {
-          host: "127.0.0.1",
-          port: runningRecorder.port,
-          method: "POST",
-          path: "/v1/messages?beta=true",
-          headers: {
-            authorization: `Bearer ${AUTH_TOKEN}`,
-            connection: "keep-alive, x-hop",
-            "keep-alive": "timeout=5",
-            "x-hop": "1",
-            "accept-encoding": "gzip",
-          },
+          authorization: `Bearer ${AUTH_TOKEN}`,
+          connection: "keep-alive, x-hop",
+          "keep-alive": "timeout=5",
+          "x-hop": "1",
+          "accept-encoding": "gzip",
         },
         (response) => response.resume().on("end", resolve),
-      );
-      clientRequest.end(MESSAGES_REQUEST_JSON);
-    });
+      ),
+    );
 
     const [received] = upstream.receivedRequests;
     expect(received).toMatchObject({ method: "POST", url: "/v1/messages?beta=true", body: MESSAGES_REQUEST_JSON });
@@ -125,28 +87,27 @@ describe("forwarding through the Recorder", () => {
   });
 
   it("forwards under the path of an upstream behind a gateway", async () => {
-    upstream = await startFakeUpstream(respondWithEventStream);
-    const runningRecorder = await startTestRecorder(`${upstream.url}/gateway/anthropic/`);
+    const upstream = await harness.startUpstream(respondWithEventStream);
+    const recorder = await harness.startRecorder(`${upstream.url}/gateway/anthropic/`);
 
-    await (await postMessages(runningRecorder)).text();
+    await (await postMessages(recorder)).text();
 
     expect(upstream.receivedRequests[0].url).toBe("/gateway/anthropic/v1/messages?beta=true");
   });
 
   it("streams a response back chunk by chunk, before the upstream finishes", async () => {
     const releaseRest = deferred();
-    const [firstEvent, ...restEvents] = MESSAGES_RESPONSE_SSE.split(/(?<=\n\n)/);
-    upstream = await startFakeUpstream((_request, response) => {
+    const upstream = await harness.startUpstream((_request, response) => {
       response.writeHead(200, { "content-type": "text/event-stream" });
-      response.write(firstEvent);
-      void releaseRest.promise.then(() => response.end(restEvents.join("")));
+      response.write(EVENTS[0]);
+      void releaseRest.promise.then(() => response.end(EVENTS.slice(1).join("")));
     });
-    const runningRecorder = await startTestRecorder(upstream.url);
+    const recorder = await harness.startRecorder(upstream.url);
 
-    const response = await postMessages(runningRecorder);
+    const response = await postMessages(recorder, { headers: SESSION_HEADERS });
     const reader = response.body!.getReader();
     const firstChunk = new TextDecoder().decode((await reader.read()).value);
-    expect(firstChunk).toBe(firstEvent);
+    expect(firstChunk).toBe(EVENTS[0]);
 
     releaseRest.resolve();
     let rest = "";
@@ -157,15 +118,20 @@ describe("forwarding through the Recorder", () => {
   });
 
   it("records the reassembled response, its usage with the cache split, its status, request-id and timings", async () => {
-    upstream = await startFakeUpstream(respondWithEventStream);
-    const runningRecorder = await startTestRecorder(upstream.url);
+    const upstream = await harness.startUpstream(respondWithEventStream);
+    const recorder = await harness.startRecorder(upstream.url);
     const sentAt = Date.now();
 
-    await (await postMessages(runningRecorder)).text();
-    await runningRecorder.stop();
+    await (await postMessages(recorder, { headers: SESSION_HEADERS })).text();
+    await recorder.stop();
 
-    const [recorded] = readRecordings(recordingsRoot);
-    expect(recorded).toMatchObject({ sessionId: SESSION_ID, method: "POST", path: "/v1/messages", query: "beta=true" });
+    const [recorded] = readRecordings(harness.recordingsRoot);
+    expect(recorded).toMatchObject({
+      sessionId: "sess-recorded",
+      method: "POST",
+      path: "/v1/messages",
+      query: "beta=true",
+    });
     expect(recorded.response).toMatchObject({ status: 200, requestId: "req_fixture01", isStreamed: true });
     expect(recorded.response.headers["content-type"]).toBe("text/event-stream");
     expect(recorded.response.body).toEqual(REASSEMBLED_MESSAGE);
@@ -182,43 +148,39 @@ describe("forwarding through the Recorder", () => {
 
   it("records a non-streamed JSON response as it came", async () => {
     const countTokensResponse = { input_tokens: 1234 };
-    upstream = await startFakeUpstream((_request, response) => {
+    const upstream = await harness.startUpstream((_request, response) => {
       response.writeHead(200, { "content-type": "application/json" });
       response.end(JSON.stringify(countTokensResponse));
     });
-    const runningRecorder = await startTestRecorder(upstream.url);
+    const recorder = await harness.startRecorder(upstream.url);
 
-    const response = await postMessages(runningRecorder);
+    const response = await postMessages(recorder);
     expect(await response.json()).toEqual(countTokensResponse);
-    await runningRecorder.stop();
+    await recorder.stop();
 
-    expect(readRecordings(recordingsRoot)[0].response).toMatchObject({ body: countTokensResponse, isStreamed: false });
+    expect(readRecordings(harness.recordingsRoot)[0].response).toMatchObject({
+      body: countTokensResponse,
+      isStreamed: false,
+    });
   });
 
   it("never writes the auth and cookie headers or the metadata.user_id account and device parts to any file", async () => {
-    upstream = await startFakeUpstream((_request, response) => {
+    const upstream = await harness.startUpstream((_request, response) => {
       response.writeHead(200, { "content-type": "text/event-stream", "set-cookie": "upstream=cookie-secret" });
       response.end(MESSAGES_RESPONSE_SSE);
     });
-    const runningRecorder = await startTestRecorder(upstream.url);
+    const recorder = await harness.startRecorder(upstream.url);
 
-    await (await postMessages(runningRecorder, { headers: { "x-api-key": "sk-ant-api03-secret" } })).text();
-    await (await postMessages(runningRecorder)).text();
-    await runningRecorder.stop();
+    await (await postMessages(recorder, { headers: { "x-api-key": "sk-ant-api03-secret" } })).text();
+    await (await postMessages(recorder, { headers: SESSION_HEADERS })).text();
+    await recorder.stop();
 
-    for (const fileName of readdirSync(recordingsRoot)) {
-      const text = gunzipText(path.join(recordingsRoot, fileName));
-      for (const secret of [
-        AUTH_TOKEN,
-        "sk-ant-api03-secret",
-        "cookie-secret",
-        "account-fixture-9c1e",
-        "device-fixture-7f3a",
-      ]) {
-        expect(text).not.toContain(secret);
-      }
+    const secrets = [AUTH_TOKEN, "sk-ant-api03-secret", "cookie-secret", "account-fixture-9c1e", "device-fixture-7f3a"];
+    for (const fileName of readdirSync(harness.recordingsRoot)) {
+      const text = gunzipSync(readFileSync(path.join(harness.recordingsRoot, fileName))).toString("utf8");
+      for (const secret of secrets) expect(text).not.toContain(secret);
     }
-    expect(readRecordings(recordingsRoot)).toHaveLength(2);
+    expect(readRecordings(harness.recordingsRoot)).toHaveLength(2);
   });
 });
 
@@ -226,70 +188,56 @@ describe("a failing upstream or disk", () => {
   it("answers 502 with an Anthropic-shaped proxy_error when the upstream is unreachable, and records it", async () => {
     const unreachable = await startFakeUpstream(respondWithEventStream);
     await unreachable.close();
-    const runningRecorder = await startTestRecorder(unreachable.url);
+    const recorder = await harness.startRecorder(unreachable.url);
 
-    const response = await postMessages(runningRecorder);
+    const response = await postMessages(recorder);
     expect(response.status).toBe(502);
     expect(await response.json()).toMatchObject({ type: "error", error: { type: "proxy_error" } });
-    await runningRecorder.stop();
+    await recorder.stop();
 
-    const [recorded] = readRecordings(recordingsRoot);
+    const [recorded] = readRecordings(harness.recordingsRoot);
     expect(recorded.response.status).toBe(502);
     expect(recorded.proxyError).toEqual(expect.any(String));
     expect(recorded.timings.firstByteAt).toBeNull();
   });
 
   it("still forwards the response when the Recording cannot be written, and logs the failure", async () => {
-    const notADirectory = path.join(tmpDir, "a-file");
+    const notADirectory = path.join(harness.tmpDir, "a-file");
     writeFileSync(notADirectory, "");
-    upstream = await startFakeUpstream(respondWithEventStream);
-    const runningRecorder = await startTestRecorder(upstream.url, notADirectory);
+    const upstream = await harness.startUpstream(respondWithEventStream);
+    const recorder = await harness.startRecorder(upstream.url, { recordingsRoot: notADirectory });
 
-    const firstResponse = await postMessages(runningRecorder);
+    const firstResponse = await postMessages(recorder);
     expect(await firstResponse.text()).toBe(MESSAGES_RESPONSE_SSE);
-    const secondResponse = await postMessages(runningRecorder);
+    const secondResponse = await postMessages(recorder);
     expect(await secondResponse.text()).toBe(MESSAGES_RESPONSE_SSE);
-    await runningRecorder.stop();
+    await recorder.stop();
 
-    expect(loggedMessages.some((message) => message.includes("could not record"))).toBe(true);
+    expect(harness.loggedMessages.some((message) => message.includes("could not record"))).toBe(true);
   });
 
   it("aborts the upstream request when the client disconnects, and records what came back", async () => {
     const upstreamRequestClosed = deferred();
-    const [firstEvent] = MESSAGES_RESPONSE_SSE.split(/(?<=\n\n)/);
-    upstream = await startFakeUpstream((request, response) => {
+    const upstream = await harness.startUpstream((_request, response) => {
       response.writeHead(200, { "content-type": "text/event-stream" });
-      response.write(firstEvent);
+      response.write(EVENTS[0]);
       response.on("close", upstreamRequestClosed.resolve);
     });
-    const runningRecorder = await startTestRecorder(upstream.url);
+    const recorder = await harness.startRecorder(upstream.url);
 
-    await new Promise<void>((resolve) => {
-      const clientRequest = http.request(
-        {
-          host: "127.0.0.1",
-          port: runningRecorder.port,
-          method: "POST",
-          path: "/v1/messages",
-          headers: { "x-claude-code-session-id": SESSION_ID },
-        },
-        (response) =>
-          response.once("data", () => {
-            clientRequest.destroy();
-            resolve();
-          }),
-      );
-      clientRequest.end(MESSAGES_REQUEST_JSON);
-    });
+    await new Promise<void>((resolve) =>
+      rawPost(recorder.port, SESSION_HEADERS, (response, clientRequest) =>
+        response.once("data", () => {
+          clientRequest.destroy();
+          resolve();
+        }),
+      ),
+    );
     await upstreamRequestClosed.promise;
-    await runningRecorder.stop();
+    await recorder.stop();
 
-    const [recorded] = readRecordings(recordingsRoot);
+    const [recorded] = readRecordings(harness.recordingsRoot);
     expect(recorded.isClientAborted).toBe(true);
     expect(recorded.response.body).toMatchObject({ id: "msg_fixture01", content: [] });
   });
 });
-
-function gunzipText(filePath: string): string {
-  return gunzipSync(readFileSync(filePath)).toString("utf8");
-}
