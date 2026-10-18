@@ -3,8 +3,9 @@
 // Project paths — no worktree-specific rule — by rolling up the per-Project
 // `FolderEntry` aggregates of `deriveFolders` (one place sums cost and count).
 //
-// The roots are the home directory, labelled `~`, and the top-level directory
-// of every other path (`/tmp`, `/opt`); a root always keeps its own row. Below
+// The roots are the home directory, labelled `~`, and for every other path the
+// first directory that leaves home's own path (`/tmp`, `/home/other`); a root
+// always keeps its own row. Below
 // the roots, a directory that is not a Project and holds a single sub-Folder is
 // compacted into it (`dev/mylibs`, `.claude/worktrees`).
 //
@@ -79,16 +80,23 @@ function emptyDirectory(path: string): Directory {
 }
 
 /**
- * The root a Project path falls under: the home directory, or the path's
- * top-level directory (`/` itself for the path `/`), plus the segments below it.
+ * The root a Project path falls under, plus the segments below it: the home
+ * directory, or else the first directory on the path that leaves home's own
+ * path — `/tmp` for `/tmp/x`, `/home/other` (a sibling of `~`) for
+ * `/home/other/x`. A root is therefore never an ancestor of `~`, so its totals
+ * and its scope cover the same Projects. Only a Project at an ancestor of home
+ * (or at `/`) roots at its own path.
  */
 function rootOf(projectPath: string, home: string): { rootPath: string; label: string; below: string[] } {
   if (isProjectInFolderScope(projectPath, { folder: home })) {
     return { rootPath: home, label: "~", below: segments(projectPath.slice(home.length)) };
   }
-  const [top, ...below] = segments(projectPath);
-  if (top === undefined) return { rootPath: "/", label: "/", below: [] };
-  return { rootPath: `/${top}`, label: `/${top}`, below };
+  const pathSegments = segments(projectPath);
+  const homeSegments = segments(home);
+  const leavesHomeAt = pathSegments.findIndex((segment, i) => segment !== homeSegments[i]);
+  const rootDepth = leavesHomeAt === -1 ? pathSegments.length : leavesHomeAt + 1;
+  const rootPath = `/${pathSegments.slice(0, rootDepth).join("/")}`;
+  return { rootPath, label: rootPath, below: pathSegments.slice(rootDepth) };
 }
 
 /** Non-empty `/`-separated segments of a path. */
@@ -138,7 +146,10 @@ function folderNode(start: Directory, startLabel: string, isRoot = true): Folder
 export function findFolderNode(roots: FolderNode[], path: string): FolderNode | undefined {
   for (const node of roots) {
     if (node.path === path) return node;
-    if (isProjectInFolderScope(path, { folder: node.path })) return findFolderNode(node.children, path);
+    // Roots can nest by path (`/home` holds `~`), so a miss below one root
+    // goes on to the next.
+    const below = isProjectInFolderScope(path, { folder: node.path }) ? findFolderNode(node.children, path) : undefined;
+    if (below) return below;
   }
   return undefined;
 }

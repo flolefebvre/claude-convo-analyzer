@@ -142,11 +142,40 @@ describe("deriveFolderTree", () => {
     expect(roots[0].thisFolder).toEqual({ count: 1, costUsd: 0, unpriced: false });
   });
 
-  it("does not take a sibling of the home directory for part of it", () => {
-    const roots = treeOf([`${HOME}/dev/api`, "/home/meow/x"]);
+  it("roots another user's directory beside `~`, never at an ancestor of it, with disjoint totals", () => {
+    const roots = deriveFolderTree(
+      deriveFolders([
+        summary({ id: "a", path: `${HOME}/dev/api`, costUsd: 100 }),
+        summary({ id: "b", path: `${HOME}/dev/web`, costUsd: 50 }),
+        summary({ id: "c", path: "/home/other/proj", costUsd: 1 }),
+      ]),
+      HOME,
+    );
 
-    expect(roots.map((r) => r.label).sort()).toEqual(["/home", "~"]);
-    expect(nodeAt(roots, "/home").children.map((c) => c.label)).toEqual(["meow/x"]);
+    expect(roots.map((r) => [r.label, r.path, r.count, r.costUsd]).sort()).toEqual([
+      ["/home/other", "/home/other", 1, 1],
+      ["~", HOME, 2, 150],
+    ]);
+    // `/home/meow` shares the `me` prefix with no `/` boundary: still not home.
+    expect(treeOf(["/home/meow/x"]).map((r) => r.path)).toEqual(["/home/meow"]);
+  });
+});
+
+describe("findFolderNode", () => {
+  it("finds a Folder under `~` when another root sorts first", () => {
+    // Timestamps tie, so `/home/other` sorts before `~` by label.
+    const roots = treeOf([`${HOME}/dev/api`, "/home/other/x"]);
+    expect(roots[0].label).toBe("/home/other");
+
+    expect(findFolderNode(roots, `${HOME}/dev/api`)?.label).toBe("dev/api");
+    expect(findFolderNode(roots, "/home/other/x")?.label).toBe("x");
+  });
+
+  it("finds a Folder under `~` past a Project rooted at an ancestor of home", () => {
+    const roots = treeOf([`${HOME}/dev/api`, "/home"]);
+    expect(roots.map((r) => r.label)).toEqual(["/home", "~"]);
+
+    expect(findFolderNode(roots, `${HOME}/dev/api`)?.label).toBe("dev/api");
   });
 });
 
