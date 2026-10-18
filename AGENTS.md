@@ -8,7 +8,7 @@
 - TypeScript 5, `strict`
 - Tailwind CSS v4, shadcn/ui (Radix + lucide)
 - Next-pipe (`@flefebvre/next-pipe`) for server entry points, zod 4 for validation
-- Prisma 7 on SQLite, through the `@prisma/adapter-better-sqlite3` driver adapter
+- Prisma 7 on SQLite, through the `@prisma/adapter-better-sqlite3` driver adapter, for the schema, migrations and reads; the Refresh writes through bare better-sqlite3 (ADR-0005)
 - Vitest 4, ESLint 10, Prettier 3 (sorts Tailwind classes)
 - Playwright (`@playwright/test` + `@next/playwright`), for the e2e specs
 - tsx, for the repo scripts
