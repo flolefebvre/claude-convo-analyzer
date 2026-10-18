@@ -1,9 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { databaseCtor } = vi.hoisted(() => ({ databaseCtor: vi.fn() }));
+const { databaseCtor, workerCtor } = vi.hoisted(() => ({ databaseCtor: vi.fn(), workerCtor: vi.fn() }));
 
-// Observe whether merely importing the core module opens a sqlite connection.
+// Observe whether merely importing a core module opens a sqlite connection or
+// spawns a worker thread.
 vi.mock("better-sqlite3", () => ({ default: databaseCtor }));
+vi.mock("node:worker_threads", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("node:worker_threads")>()),
+  Worker: workerCtor,
+}));
 
 /**
  * The app's server entry points (`src/app/page.tsx`, `src/app/actions.ts`)
@@ -17,11 +22,18 @@ vi.mock("better-sqlite3", () => ({ default: databaseCtor }));
 describe("core module import is side-effect-free", () => {
   beforeEach(() => {
     databaseCtor.mockClear();
+    workerCtor.mockClear();
     vi.resetModules();
   });
 
   it("opens no database connection at import time", async () => {
     await import("@/core/refresh");
     expect(databaseCtor).not.toHaveBeenCalled();
+  });
+
+  it("opens no database connection and spawns no worker when the refresh runner is imported", async () => {
+    await import("@/core/refresh-runner");
+    expect(databaseCtor).not.toHaveBeenCalled();
+    expect(workerCtor).not.toHaveBeenCalled();
   });
 });
