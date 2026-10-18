@@ -12,20 +12,20 @@ const DESC_COST: SortState = { sortBy: "cost", dir: "desc" };
 
 /** Three Projects with distinct costs: beta ($30) > gamma ($12) > alpha ($5). */
 const THREE_PROJECTS = [
-  summary({ id: "a", folder: "fA", path: "/p/alpha", costUsd: 5 }),
-  summary({ id: "b", folder: "fB", path: "/p/beta", costUsd: 30 }),
-  summary({ id: "c", folder: "fC", path: "/p/gamma", costUsd: 12 }),
+  summary({ id: "a", path: "/p/alpha", costUsd: 5 }),
+  summary({ id: "b", path: "/p/beta", costUsd: 30 }),
+  summary({ id: "c", path: "/p/gamma", costUsd: 12 }),
 ];
 
 describe("buildListView — scope-independent slice (no sort)", () => {
   it("returns folders/overview/topProjects/totals but NO table slice when no sort is given", () => {
     const rows = [
-      summary({ id: "a", folder: "fA", path: "/p/alpha", costUsd: 5 }),
-      summary({ id: "b", folder: "fB", path: "/p/beta", costUsd: 30 }),
+      summary({ id: "a", path: "/p/alpha", costUsd: 5 }),
+      summary({ id: "b", path: "/p/beta", costUsd: 30 }),
     ];
     const view = buildListView(rows);
 
-    expect(view.folders.map((f) => f.folder).sort()).toEqual(["fA", "fB"]);
+    expect(view.folders.map((f) => f.path).sort()).toEqual(["/p/alpha", "/p/beta"]);
     expect(view.overview.conversationCount).toBe(2);
     expect(view.topProjects.length).toBeGreaterThan(0);
     expect(view.totals).toEqual({ count: 2, costUsd: 35, unpriced: false });
@@ -39,8 +39,8 @@ describe("buildListView — scope-independent slice (no sort)", () => {
 
   it("totals sum cost across folders and flag unpriced when any Project is unpriced", () => {
     const view = buildListView([
-      summary({ id: "a", folder: "fA", costUsd: 10 }),
-      summary({ id: "b", folder: "fB", costUsd: 5, unpriced: true }),
+      summary({ id: "a", path: "/p/fA", costUsd: 10 }),
+      summary({ id: "b", path: "/p/fB", costUsd: 5, unpriced: true }),
     ]);
     expect(view.totals.count).toBe(2);
     expect(view.totals.costUsd).toBeCloseTo(15);
@@ -59,9 +59,9 @@ describe("buildListView — scope-independent slice (no sort)", () => {
 describe("buildListView — overview aggregate (migrated from deriveOverview)", () => {
   it("counts conversations and distinct Projects", () => {
     const { overview } = buildListView([
-      summary({ id: "a", folder: "fA" }),
-      summary({ id: "b", folder: "fA" }),
-      summary({ id: "c", folder: "fB" }),
+      summary({ id: "a", path: "/p/fA" }),
+      summary({ id: "b", path: "/p/fA" }),
+      summary({ id: "c", path: "/p/fB" }),
     ]);
     expect(overview.conversationCount).toBe(3);
     expect(overview.projectCount).toBe(2);
@@ -138,26 +138,26 @@ describe("buildListView — topProjects (migrated from topProjectsByCost)", () =
   it("does not reorder the sidebar folder list (folders keep newest-first ordering)", () => {
     const at = "2026-05-01T00:00:00.000Z";
     const ordered = [
-      summary({ id: "a", folder: "fOld", path: "/p/old", endedAt: "2026-01-01T00:00:00.000Z", costUsd: 99 }),
-      summary({ id: "b", folder: "fNew", path: "/p/new", endedAt: at, costUsd: 1 }),
+      summary({ id: "a", path: "/p/old", endedAt: "2026-01-01T00:00:00.000Z", costUsd: 99 }),
+      summary({ id: "b", path: "/p/new", endedAt: at, costUsd: 1 }),
     ];
     const { folders, topProjects } = buildListView(ordered);
     // Sidebar: newest-first regardless of cost.
-    expect(folders.map((f) => f.folder)).toEqual(["fNew", "fOld"]);
+    expect(folders.map((f) => f.path)).toEqual(["/p/new", "/p/old"]);
     // topProjects: highest cost first.
-    expect(topProjects.map((f) => f.folder)).toEqual(["fOld", "fNew"]);
+    expect(topProjects.map((f) => f.path)).toEqual(["/p/old", "/p/new"]);
   });
 });
 
 describe("buildListView — table slice (with sort)", () => {
   it("filters BEFORE sorting: scoped rows come back in sorted order", () => {
     const rows = [
-      summary({ id: "a", folder: "fA", costUsd: 9 }),
-      summary({ id: "b", folder: "fB", costUsd: 100 }),
-      summary({ id: "c", folder: "fA", costUsd: 1 }),
-      summary({ id: "d", folder: "fA", costUsd: 5 }),
+      summary({ id: "a", path: "/p/fA", costUsd: 9 }),
+      summary({ id: "b", path: "/p/fB", costUsd: 100 }),
+      summary({ id: "c", path: "/p/fA", costUsd: 1 }),
+      summary({ id: "d", path: "/p/fA", costUsd: 5 }),
     ];
-    const view = buildListView(rows, { folder: "fA", sort: ASC_COST });
+    const view = buildListView(rows, { folder: "/p/fA", sort: ASC_COST });
     // Only fA rows, ordered by cost ascending: c(1), d(5), a(9).
     expect(view.rows.map((r) => r.id)).toEqual(["c", "d", "a"]);
     expect(view.scoped).toBe(true);
@@ -165,26 +165,26 @@ describe("buildListView — table slice (with sort)", () => {
 
   it("grandTotal reflects the SCOPED rows only, not all rows", () => {
     const rows = [
-      summary({ id: "a", folder: "fA", costUsd: 9, tokens: { total: 90 } }),
-      summary({ id: "b", folder: "fB", costUsd: 100, tokens: { total: 1000 } }),
-      summary({ id: "c", folder: "fA", costUsd: 1, tokens: { total: 10 } }),
+      summary({ id: "a", path: "/p/fA", costUsd: 9, tokens: { total: 90 } }),
+      summary({ id: "b", path: "/p/fB", costUsd: 100, tokens: { total: 1000 } }),
+      summary({ id: "c", path: "/p/fA", costUsd: 1, tokens: { total: 10 } }),
     ];
-    const view = buildListView(rows, { folder: "fA", sort: DESC_COST });
+    const view = buildListView(rows, { folder: "/p/fA", sort: DESC_COST });
     expect(view.grandTotal.costUsd).toBeCloseTo(10);
     expect(view.grandTotal.tokens.total).toBe(100);
     expect(view.grandTotal.hasUnpriced).toBe(false);
   });
 
   it("returns rows: [] and scoped: true for a stale ?folder= (folder no longer present)", () => {
-    const rows = [summary({ id: "a", folder: "fA", costUsd: 9 }), summary({ id: "b", folder: "fB", costUsd: 100 })];
-    const view = buildListView(rows, { folder: "fGhost", sort: DESC_COST });
+    const rows = [summary({ id: "a", path: "/p/fA", costUsd: 9 }), summary({ id: "b", path: "/p/fB", costUsd: 100 })];
+    const view = buildListView(rows, { folder: "/p/fGhost", sort: DESC_COST });
     expect(view.rows).toEqual([]);
     expect(view.scoped).toBe(true);
     expect(view.selectedFolder).toBeUndefined();
   });
 
   it("treats an empty/undefined folder as 'All folders' (unscoped)", () => {
-    const rows = [summary({ id: "a", folder: "fA", costUsd: 9 }), summary({ id: "b", folder: "fB", costUsd: 100 })];
+    const rows = [summary({ id: "a", path: "/p/fA", costUsd: 9 }), summary({ id: "b", path: "/p/fB", costUsd: 100 })];
     const view = buildListView(rows, { sort: DESC_COST });
     expect(view.rows.map((r) => r.id)).toEqual(["b", "a"]);
     expect(view.scoped).toBe(false);
@@ -193,10 +193,10 @@ describe("buildListView — table slice (with sort)", () => {
 
   it("an unpriced-in-scope conversation propagates to BOTH the scoped grandTotal and the overview", () => {
     const rows = [
-      summary({ id: "a", folder: "fA", costUsd: 9, unpriced: true }),
-      summary({ id: "b", folder: "fB", costUsd: 100, unpriced: false }),
+      summary({ id: "a", path: "/p/fA", costUsd: 9, unpriced: true }),
+      summary({ id: "b", path: "/p/fB", costUsd: 100, unpriced: false }),
     ];
-    const view = buildListView(rows, { folder: "fA", sort: DESC_COST });
+    const view = buildListView(rows, { folder: "/p/fA", sort: DESC_COST });
     expect(view.grandTotal.hasUnpriced).toBe(true);
     // Overview is scope-independent: it still flags unpriced from row a.
     expect(view.overview.hasUnpriced).toBe(true);
@@ -204,20 +204,20 @@ describe("buildListView — table slice (with sort)", () => {
 
   it("exposes the selected FolderEntry for the breadcrumb when the folder is known", () => {
     const rows = [
-      summary({ id: "a", folder: "fA", path: "/p/alpha", costUsd: 9 }),
-      summary({ id: "b", folder: "fB", path: "/p/beta", costUsd: 100 }),
+      summary({ id: "a", path: "/p/alpha", costUsd: 9 }),
+      summary({ id: "b", path: "/p/beta", costUsd: 100 }),
     ];
-    const view = buildListView(rows, { folder: "fA", sort: DESC_COST });
-    expect(view.selectedFolder?.folder).toBe("fA");
+    const view = buildListView(rows, { folder: "/p/alpha", sort: DESC_COST });
+    expect(view.selectedFolder?.path).toBe("/p/alpha");
     expect(view.selectedFolder?.label).toBe("alpha");
     // The selected entry is the SAME object as in the folder list.
     expect(view.folders).toContain(view.selectedFolder);
   });
 
   it("does not mutate the input rows array", () => {
-    const rows = [summary({ id: "a", folder: "fA", costUsd: 9 }), summary({ id: "b", folder: "fA", costUsd: 1 })];
+    const rows = [summary({ id: "a", path: "/p/fA", costUsd: 9 }), summary({ id: "b", path: "/p/fA", costUsd: 1 })];
     const before = rows.map((r) => r.id);
-    buildListView(rows, { folder: "fA", sort: ASC_COST });
+    buildListView(rows, { folder: "/p/fA", sort: ASC_COST });
     expect(rows.map((r) => r.id)).toEqual(before);
   });
 });
@@ -265,9 +265,9 @@ describe("buildListView — grandTotal bucket sums (migrated from grandTotal)", 
 
 describe("buildListView — errors-only filter (issue #47)", () => {
   const rows = [
-    summary({ id: "a", folder: "fA", costUsd: 9, errorCount: 2 }),
-    summary({ id: "b", folder: "fB", costUsd: 100, errorCount: 1 }),
-    summary({ id: "c", folder: "fA", costUsd: 1, errorCount: 0 }),
+    summary({ id: "a", path: "/p/fA", costUsd: 9, errorCount: 2 }),
+    summary({ id: "b", path: "/p/fB", costUsd: 100, errorCount: 1 }),
+    summary({ id: "c", path: "/p/fA", costUsd: 1, errorCount: 0 }),
   ];
 
   it("shows every row when the filter is off (the default)", () => {
@@ -282,7 +282,7 @@ describe("buildListView — errors-only filter (issue #47)", () => {
 
   it("composes with folder scoping and sorting", () => {
     const view = buildListView(rows, {
-      folder: "fA",
+      folder: "/p/fA",
       sort: DESC_COST,
       errorsOnly: true,
     });
@@ -389,9 +389,9 @@ describe("buildListView — pagination (issue #63)", () => {
   it("paginates what the folder scope and the errors filter left, not the raw set", () => {
     const rows = [
       ...costRankedRows(60),
-      ...Array.from({ length: 5 }, (_, i) => summary({ id: `x${i}`, folder: "fOther", errorCount: 1 })),
+      ...Array.from({ length: 5 }, (_, i) => summary({ id: `x${i}`, path: "/p/fOther", errorCount: 1 })),
     ];
-    const scoped = buildListView(rows, { sort: DESC_COST, folder: "fOther" });
+    const scoped = buildListView(rows, { sort: DESC_COST, folder: "/p/fOther" });
     expect(scoped.rowCount).toBe(5);
     expect(scoped.pageCount).toBe(1);
     expect(scoped.rows).toHaveLength(5);

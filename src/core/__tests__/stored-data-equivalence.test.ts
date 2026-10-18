@@ -101,7 +101,7 @@ describe("stored data equivalence", () => {
     await refresh({ logsRoot, dbPath });
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
-      project: { rowCount: 15, sha256: "904575c30a1111cff6e36e35d24ef9f9fa634effa19328321a5d64a5ce98f9be" },
+      project: { rowCount: 15, sha256: "d79302a905b975c08cfd6c217e6ae3eaa17e44ca45bb318cdfeefa1ae7b0e329" },
       conversation: { rowCount: 21, sha256: "ec13fb2991f53c6329da9baf2a29b777f5fdadc179c3af0f65ce57c8cd5e412c" },
       agent: { rowCount: 35, sha256: "bcf922290517994e489068e748364ff9de40929e4a8ddfbcb68c6f6014836468" },
       message: { rowCount: 125, sha256: "efde03aefa67065d8cc0e7f5c061c6d75b5d6a3211263c175dee68f0862b48c5" },
@@ -116,7 +116,7 @@ describe("stored data equivalence", () => {
     await refresh({ logsRoot, dbPath });
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
-      project: { rowCount: 1, sha256: "20c78bce80a338fbedbbeb0388672273ebcaceb0f2a5da01ca8277ca6fb4c7ec" },
+      project: { rowCount: 1, sha256: "5d55ed2d1c37a5a354777b7e27dfce7bb9f299e0e7237d17a32956fee0357675" },
       conversation: { rowCount: 1, sha256: "e05057e42150d9fe0eef4ac1f6f7c557c18099372b73722dfb561b0350b49b1a" },
       agent: { rowCount: 2, sha256: "9cddce4d56d246718241b05d406551e917f8d9c1d9a116799eb257bc48089a61" },
       message: { rowCount: 28, sha256: "cfdb0c9218cd0184517845f99b348d217ec655bd135e7c723999498fba0260dd" },
@@ -131,7 +131,7 @@ describe("stored data equivalence", () => {
     await refresh({ logsRoot, dbPath });
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
-      project: { rowCount: 1, sha256: "a63e2b3438be0b5a00279aa043204a8cb6665a36490d05c8860c753a271d250d" },
+      project: { rowCount: 1, sha256: "c39a0134a2be51dcdd6348bf0657691be4b1d4092d6e1616117c4d0f4f58a771" },
       conversation: { rowCount: 4, sha256: "8a6fcecf9e81ca04a71f1b54e8fb4766b36e7ad7d23899c9dd1f6528a930bc4b" },
       agent: { rowCount: 5, sha256: "c0938e2f66085f42e8e7e5ee608867bb0974528d74f6dd4ead50afad13e0e8a1" },
       message: { rowCount: 17, sha256: "897eb312a4eb322388b382eeb8fefdf153a78cd7ef9b579df7438c4b530d01d1" },

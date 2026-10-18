@@ -29,8 +29,8 @@ export function defaultLogsRoot(): string {
 
 /** A discovered top-level session file plus its on-disk change keys. */
 export type DiscoveredSession = {
-  /** The on-disk project folder name (dash-encoded cwd). */
-  folder: string;
+  /** Name of the log folder the session is filed in (its directory, dash-encoded). */
+  logFolderName: string;
   /** The session id (file stem of `<sessionId>.jsonl`). */
   sessionId: string;
   /** Absolute path to the `.jsonl` file. */
@@ -63,8 +63,8 @@ export function discoverSessions(logsRoot: string): DiscoveredSession[] {
   const sessions: DiscoveredSession[] = [];
   for (const projectEntry of projectEntries) {
     if (!projectEntry.isDirectory()) continue;
-    const folder = projectEntry.name;
-    const projectDir = path.join(logsRoot, folder);
+    const logFolderName = projectEntry.name;
+    const projectDir = path.join(logsRoot, logFolderName);
 
     let fileEntries;
     try {
@@ -86,7 +86,7 @@ export function discoverSessions(logsRoot: string): DiscoveredSession[] {
       const sessionId = fileEntry.name.slice(0, -".jsonl".length);
       const stat = statSync(sourcePath);
       sessions.push({
-        folder,
+        logFolderName,
         sessionId,
         sourcePath,
         sourceMtime: Math.floor(stat.mtimeMs),
@@ -132,10 +132,11 @@ export function discoverSubAgents(projectDir: string, sessionId: string): Discov
 }
 
 /**
- * Decode a dash-encoded project folder name back to an absolute path
+ * Decode a dash-encoded log folder name back to an absolute path
  * (`/` ⇐ `-`). Lossy/ambiguous on a real `-` (finding #10) — used only as a
- * fallback when no `cwd` is present on any record.
+ * last resort when neither a Conversation nor any sibling in its log folder
+ * states a `cwd` (see `resolveProjectPath` in refresh.ts).
  */
-export function decodeFolderName(folder: string): string {
-  return folder.replace(/-/g, "/");
+export function decodeLogFolderName(logFolderName: string): string {
+  return logFolderName.replace(/-/g, "/");
 }

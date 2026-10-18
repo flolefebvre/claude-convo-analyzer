@@ -74,7 +74,7 @@ async function Sidebar() {
         className="lg:hidden"
         totalCost={cost(totals.costUsd, totals.unpriced)}
         folders={folders.map((entry) => ({
-          folder: entry.folder,
+          folder: entry.path,
           label: entry.label,
           cost: cost(entry.costUsd, entry.unpriced),
         }))}

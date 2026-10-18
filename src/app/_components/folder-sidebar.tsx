@@ -52,7 +52,7 @@ export function FolderSidebar({
         <AllFoldersRow count={totalCount} cost={totalCost} unpriced={totalUnpriced} />
       </SidebarLink>
       {folders.map((entry) => (
-        <SidebarLink key={entry.folder} folder={entry.folder} title={entry.path}>
+        <SidebarLink key={entry.path} folder={entry.path} title={entry.path}>
           <FolderRow entry={entry} total={totalCost} />
         </SidebarLink>
       ))}

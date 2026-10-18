@@ -79,7 +79,7 @@ describe("buildFamily", () => {
 
     // A member resumed in a different Project keeps its own project label.
     const elsewhere = family.members.find((m) => m.id === "sess-fam-e");
-    expect(elsewhere?.project.folder).toBe("-Users-me-dev-family-alt");
+    expect(elsewhere?.project.path).toBe("/Users/me/dev/family-alt");
     expect(elsewhere?.title).toBe("Family resumed elsewhere");
   });
 

@@ -44,7 +44,7 @@ describe("core persistence foundation", () => {
 
   it("round-trips a project row through the typed client", async () => {
     const created = await prisma.project.create({
-      data: { path: "/Users/me/dev/demo", folderName: "-Users-me-dev-demo" },
+      data: { path: "/Users/me/dev/demo" },
     });
 
     const found = await prisma.project.findUnique({
@@ -53,7 +53,6 @@ describe("core persistence foundation", () => {
 
     expect(found).not.toBeNull();
     expect(found?.path).toBe("/Users/me/dev/demo");
-    expect(found?.folderName).toBe("-Users-me-dev-demo");
   });
 
   it("runs a fresh database in WAL mode, and keeps it in WAL mode when re-opened", async () => {

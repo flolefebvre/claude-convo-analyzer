@@ -57,7 +57,7 @@ const COLUMNS = {
   folder: {
     kind: "string",
     defaultDir: "asc",
-    value: (r) => r.project.folder,
+    value: (r) => r.project.path,
   },
   title: {
     kind: "string",
@@ -231,7 +231,7 @@ export function errorsHref(ctx: ListLinkContext): string {
  * (`?from=`), so the transcript's "All conversations" link returns to this
  * exact view — open row included.
  *
- * @example listReturnQuery(links, expandedId) // "sortBy=date&dir=desc&folder=-home-dev-api&page=2"
+ * @example listReturnQuery(links, expandedId) // "sortBy=date&dir=desc&folder=%2Fhome%2Fdev%2Fapi&page=2"
  */
 export function listReturnQuery(ctx: ListLinkContext, expanded?: string): string {
   return buildHref(ctx, expanded).slice(1);

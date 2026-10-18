@@ -16,7 +16,7 @@ import type { Prisma, PrismaClient } from "@/core/prisma/generated/client";
 export type ConversationSummary = {
   id: string;
   title: string | null;
-  project: { folder: string; path: string };
+  project: { path: string };
   startedAt: string;
   endedAt: string;
   models: { dominant: string; distinctCount: number };
@@ -660,7 +660,7 @@ export type DailySpend = {
 };
 
 type DailySpendOptions = {
-  /** Scope to one Project by its `folderName` (the `?folder=` key); all Projects when omitted. */
+  /** Scope to one Project by its path (the `?folder=` value); all Projects when omitted. */
   folder?: string;
   /** Range length in days, ending today (inclusive). All time when omitted. */
   days?: number;
@@ -706,7 +706,7 @@ export async function getDailySpend(opts: DailySpendOptions = {}): Promise<Daily
           lt: BigInt(addLocalDays(today, 1).getTime()),
           ...(from === null ? {} : { gte: BigInt(from.getTime()) }),
         },
-        ...(opts.folder === undefined ? {} : { conversation: { project: { folderName: opts.folder } } }),
+        ...(opts.folder === undefined ? {} : { conversation: { project: { path: opts.folder } } }),
       },
       select: {
         timestamp: true,
@@ -1356,7 +1356,7 @@ type ConversationRow = {
   sessionId: string;
   title: string | null;
   continuedFromConversationId: number | null;
-  project: { folderName: string; path: string };
+  project: { path: string };
 };
 
 /**
@@ -1568,7 +1568,7 @@ function assembleSummary(
   return {
     id: convo.sessionId,
     title: convo.title,
-    project: { folder: convo.project.folderName, path: convo.project.path },
+    project: { path: convo.project.path },
     startedAt: parts.bounds.startedAt,
     endedAt: parts.bounds.endedAt,
     models: { dominant, distinctCount: parts.groups.length },

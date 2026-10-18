@@ -57,11 +57,11 @@ export type FamilyLinkContext = ListLinkContext;
  * would land on a list that cannot show that row.
  */
 export function familyView(family: ConversationFamily, ctx: FamilyLinkContext, now: Date = new Date()): FamilyView {
-  const currentFolder = family.members.find((m) => m.isCurrent)?.project.folder;
+  const currentProjectPath = family.members.find((m) => m.isCurrent)?.project.path;
   return {
     rows: family.members.map((member) => {
       const date = formatDate(member.startedAt, now);
-      const inScope = ctx.folder === undefined || ctx.folder === member.project.folder;
+      const inScope = ctx.folder === undefined || ctx.folder === member.project.path;
       return {
         id: member.id,
         title: member.title,
@@ -71,7 +71,7 @@ export function familyView(family: ConversationFamily, ctx: FamilyLinkContext, n
         dateAbsolute: date.absolute,
         costUsd: member.costUsd,
         unpriced: member.unpriced,
-        projectLabel: member.project.folder === currentFolder ? null : friendlyFolderName(member.project.path),
+        projectLabel: member.project.path === currentProjectPath ? null : friendlyFolderName(member.project.path),
         href: expandHref(
           member.id,
           // Never a toggle: clicking a member always EXPANDS it, even the one

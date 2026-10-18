@@ -30,7 +30,7 @@ describe("rangeDays", () => {
 
 describe("rangeHref", () => {
   it("keeps the active folder scope so both axes compose", () => {
-    expect(rangeHref("7", "-Users-me-dev-app")).toBe("?range=7&folder=-Users-me-dev-app");
+    expect(rangeHref("7", "/Users/me/dev/app")).toBe("?range=7&folder=%2FUsers%2Fme%2Fdev%2Fapp");
   });
 
   it("omits an absent or empty folder scope", () => {

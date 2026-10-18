@@ -149,14 +149,14 @@ describe("resolveListReturn", () => {
   });
 
   it("restores the list view the transcript was opened from", () => {
-    const from = "sortBy=cost&dir=asc&folder=-home-dev-api&expanded=sess-a&range=7&errors=1&page=2";
+    const from = "sortBy=cost&dir=asc&folder=%2Fhome%2Fdev%2Fapi&expanded=sess-a&range=7&errors=1&page=2";
     expect(resolveListReturn(from)).toEqual({ href: `/?${from}`, from });
   });
 
   it("keeps only the list's own view-state params", () => {
-    expect(resolveListReturn("folder=-home-dev-api&agent=a2&q=x&page=")).toEqual({
-      href: "/?folder=-home-dev-api",
-      from: "folder=-home-dev-api",
+    expect(resolveListReturn("folder=%2Fhome%2Fdev%2Fapi&agent=a2&q=x&page=")).toEqual({
+      href: "/?folder=%2Fhome%2Fdev%2Fapi",
+      from: "folder=%2Fhome%2Fdev%2Fapi",
     });
   });
 

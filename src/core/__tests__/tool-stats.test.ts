@@ -7,10 +7,10 @@ import { seededTempDb } from "./helpers/temp-db";
 
 const FIXTURES_ROOT = path.join(import.meta.dirname, "fixtures", "logs");
 
-/** The Project the tool-stats fixture lives in (the `?folder=` scope key). */
-const TOOLS_FOLDER = "-Users-me-dev-toolstats";
+/** The Project the tool-stats fixture lives in (its path, the `?folder=` scope). */
+const TOOLS_FOLDER = "/Users/me/dev/toolstats";
 /** A second Project with one Bash call, used for scope assertions. */
-const OTHER_FOLDER = "-Users-me-dev-toolscope";
+const OTHER_FOLDER = "/Users/me/dev/toolscope";
 /** "Now" for every read — the day the fixture's tool calls ran. */
 const NOW = Date.parse("2026-06-20T18:00:00.000Z");
 

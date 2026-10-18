@@ -7,8 +7,8 @@ import { seededTempDb } from "./helpers/temp-db";
 
 const FIXTURES_ROOT = path.join(import.meta.dirname, "fixtures", "logs");
 
-/** The Project the daily-spend fixture lives in (the `?folder=` scope key). */
-const TRENDS_FOLDER = "-Users-me-dev-trends";
+/** The Project the daily-spend fixture lives in (its path, the `?folder=` scope). */
+const TRENDS_FOLDER = "/Users/me/dev/trends";
 
 /**
  * The local calendar day of an instant, derived here with plain `Date` accessors
@@ -150,7 +150,7 @@ describe("getDailySpend", () => {
     const all = await getDailySpend({ dbPath: db.dbPath, now: NOW });
     const other = await getDailySpend({
       dbPath: db.dbPath,
-      folder: "-Users-me-dev-demo",
+      folder: "/Users/me/dev/demo",
       now: NOW,
     });
 

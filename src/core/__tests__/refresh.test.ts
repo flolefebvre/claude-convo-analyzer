@@ -48,7 +48,6 @@ describe("core ingest spine", () => {
     if (!basic) return;
 
     expect(basic.title).toBe("Refactor the parser");
-    expect(basic.project.folder).toBe("-Users-me-dev-demo");
     expect(basic.project.path).toBe("/Users/me/dev/demo");
 
     // dominant = model with most OUTPUT tokens → sonnet (500 > 50)
@@ -105,7 +104,7 @@ describe("core ingest spine", () => {
 
     expect(synth.unpriced).toBe(true);
     expect(synth.costUsd).toBe(0);
-    expect(synth.project.folder).toBe("-Users-me-dev-synth");
+    expect(synth.project.path).toBe("/Users/me/dev/synth");
   });
 
   it("skips and counts a malformed JSONL line without failing the parse", async () => {

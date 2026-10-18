@@ -33,7 +33,7 @@ function prepareInsert<Field extends string>(
   return (row) => Number(statement.run(fields.map((field) => toSqlValue(row[field]))).lastInsertRowid);
 }
 
-const PROJECT_COLUMN_BY_FIELD = { path: "path", folderName: "folder_name" } as const;
+const PROJECT_COLUMN_BY_FIELD = { path: "path" } as const;
 
 const CONVERSATION_COLUMN_BY_FIELD = {
   sessionId: "session_id",

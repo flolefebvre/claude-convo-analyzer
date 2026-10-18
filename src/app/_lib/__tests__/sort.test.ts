@@ -151,9 +151,9 @@ describe("sortHref", () => {
     expect(
       sortHref("title", {
         sort: { sortBy: "cost", dir: "desc" },
-        folder: "-Users-me-dev-demo",
+        folder: "/Users/me/dev/demo",
       }),
-    ).toBe("?sortBy=title&dir=asc&folder=-Users-me-dev-demo");
+    ).toBe("?sortBy=title&dir=asc&folder=%2FUsers%2Fme%2Fdev%2Fdemo");
   });
 
   it("omits the folder param when there is no active scope", () => {
@@ -178,10 +178,10 @@ describe("range preservation across list links", () => {
     expect(
       expandHref("s1", undefined, {
         sort: DEFAULT_SORT,
-        folder: "-Users-me-dev-demo",
+        folder: "/Users/me/dev/demo",
         range: "7",
       }),
-    ).toBe("?sortBy=date&dir=desc&folder=-Users-me-dev-demo&expanded=s1&range=7");
+    ).toBe("?sortBy=date&dir=desc&folder=%2FUsers%2Fme%2Fdev%2Fdemo&expanded=s1&range=7");
   });
 
   it("adds no range param when the URL carries none", () => {
@@ -192,8 +192,8 @@ describe("range preservation across list links", () => {
 
 describe("folderHref", () => {
   it("sets the folder param while preserving the active sort", () => {
-    expect(folderHref("-Users-me-dev-demo", { sort: { sortBy: "cost", dir: "desc" } })).toBe(
-      "?sortBy=cost&dir=desc&folder=-Users-me-dev-demo",
+    expect(folderHref("/Users/me/dev/demo", { sort: { sortBy: "cost", dir: "desc" } })).toBe(
+      "?sortBy=cost&dir=desc&folder=%2FUsers%2Fme%2Fdev%2Fdemo",
     );
   });
 
@@ -202,12 +202,12 @@ describe("folderHref", () => {
   });
 
   it("preserves an active trends range so folder and range compose", () => {
-    expect(folderHref("-Users-me-dev-demo", { sort: DEFAULT_SORT, range: "90" })).toBe(
-      "?sortBy=date&dir=desc&folder=-Users-me-dev-demo&range=90",
+    expect(folderHref("/Users/me/dev/demo", { sort: DEFAULT_SORT, range: "90" })).toBe(
+      "?sortBy=date&dir=desc&folder=%2FUsers%2Fme%2Fdev%2Fdemo&range=90",
     );
     // No range in the URL (the conversation list) -> no range param.
-    expect(folderHref("-Users-me-dev-demo", { sort: DEFAULT_SORT })).toBe(
-      "?sortBy=date&dir=desc&folder=-Users-me-dev-demo",
+    expect(folderHref("/Users/me/dev/demo", { sort: DEFAULT_SORT })).toBe(
+      "?sortBy=date&dir=desc&folder=%2FUsers%2Fme%2Fdev%2Fdemo",
     );
   });
 
@@ -239,9 +239,9 @@ describe("expandHref", () => {
     expect(
       expandHref("sess-basic", undefined, {
         sort: { sortBy: "cost", dir: "desc" },
-        folder: "-Users-me-dev-demo",
+        folder: "/Users/me/dev/demo",
       }),
-    ).toBe("?sortBy=cost&dir=desc&folder=-Users-me-dev-demo&expanded=sess-basic");
+    ).toBe("?sortBy=cost&dir=desc&folder=%2FUsers%2Fme%2Fdev%2Fdemo&expanded=sess-basic");
   });
 
   it("expands a collapsed row while ANOTHER row is expanded (replaces it)", () => {
@@ -252,9 +252,9 @@ describe("expandHref", () => {
     expect(
       expandHref("sess-basic", "sess-basic", {
         sort: { sortBy: "cost", dir: "desc" },
-        folder: "-Users-me-dev-demo",
+        folder: "/Users/me/dev/demo",
       }),
-    ).toBe("?sortBy=cost&dir=desc&folder=-Users-me-dev-demo");
+    ).toBe("?sortBy=cost&dir=desc&folder=%2FUsers%2Fme%2Fdev%2Fdemo");
   });
 
   it("omits the folder param when there is no active scope", () => {
@@ -300,7 +300,7 @@ describe("modelLabel", () => {
 function summary(over: {
   id: string;
   title?: string | null;
-  folder?: string;
+  projectBasename?: string;
   dominant?: string;
   startedAt?: string;
   tokens?: Partial<ConversationSummary["tokens"]>;
@@ -309,7 +309,7 @@ function summary(over: {
   return {
     id: over.id,
     title: over.title === undefined ? `t-${over.id}` : over.title,
-    project: { folder: over.folder ?? "f", path: `/p/${over.folder ?? "f"}` },
+    project: { path: `/p/${over.projectBasename ?? "f"}` },
     startedAt: over.startedAt ?? "2026-01-01T00:00:00.000Z",
     endedAt: "2026-01-01T01:00:00.000Z",
     models: { dominant: over.dominant ?? "opus", distinctCount: 1 },
@@ -386,9 +386,9 @@ describe("sortConversations", () => {
 
   it("sorts folder as a case-insensitive string", () => {
     const rows = [
-      summary({ id: "a", folder: "Zebra" }),
-      summary({ id: "b", folder: "apple" }),
-      summary({ id: "c", folder: "Mango" }),
+      summary({ id: "a", projectBasename: "Zebra" }),
+      summary({ id: "b", projectBasename: "apple" }),
+      summary({ id: "c", projectBasename: "Mango" }),
     ];
     // Case-sensitive ASCII would sort uppercase before lowercase (Z < a);
     // case-insensitive must give apple < Mango < Zebra.
@@ -458,9 +458,9 @@ describe("errorsHref", () => {
     expect(
       errorsHref({
         sort: { sortBy: "cost", dir: "desc" },
-        folder: "-Users-me-dev-demo",
+        folder: "/Users/me/dev/demo",
       }),
-    ).toBe("?sortBy=cost&dir=desc&folder=-Users-me-dev-demo&errors=1");
+    ).toBe("?sortBy=cost&dir=desc&folder=%2FUsers%2Fme%2Fdev%2Fdemo&errors=1");
   });
 
   it("turns the filter OFF when it is already on", () => {
@@ -479,8 +479,8 @@ describe("the errors filter travels with every other list link", () => {
   });
 
   it("survives a folder change and a row expand", () => {
-    expect(folderHref("-Users-me-dev-demo", { sort: DEFAULT_SORT, errorsOnly: true })).toBe(
-      "?sortBy=date&dir=desc&folder=-Users-me-dev-demo&errors=1",
+    expect(folderHref("/Users/me/dev/demo", { sort: DEFAULT_SORT, errorsOnly: true })).toBe(
+      "?sortBy=date&dir=desc&folder=%2FUsers%2Fme%2Fdev%2Fdemo&errors=1",
     );
     expect(expandHref("s1", undefined, { sort: DEFAULT_SORT, errorsOnly: true })).toBe(
       "?sortBy=date&dir=desc&expanded=s1&errors=1",
@@ -497,11 +497,11 @@ describe("pageHref", () => {
     expect(
       pageHref(3, {
         sort: { sortBy: "cost", dir: "desc" },
-        folder: "-Users-me-dev-demo",
+        folder: "/Users/me/dev/demo",
         range: "7",
         errorsOnly: true,
       }),
-    ).toBe("?sortBy=cost&dir=desc&folder=-Users-me-dev-demo&range=7&errors=1&page=3");
+    ).toBe("?sortBy=cost&dir=desc&folder=%2FUsers%2Fme%2Fdev%2Fdemo&range=7&errors=1&page=3");
   });
 
   it("omits the param for page 1 — the bare URL IS page 1", () => {
@@ -517,7 +517,7 @@ describe("the page axis resets on a filter change and travels with the rest", ()
   });
 
   it("folderHref drops the page: a new scope starts at page 1", () => {
-    expect(folderHref("-Users-me-dev-demo", ON_PAGE_4)).toBe("?sortBy=date&dir=desc&folder=-Users-me-dev-demo");
+    expect(folderHref("/Users/me/dev/demo", ON_PAGE_4)).toBe("?sortBy=date&dir=desc&folder=%2FUsers%2Fme%2Fdev%2Fdemo");
   });
 
   it("errorsHref drops the page: a re-filtered list starts at page 1", () => {
@@ -534,9 +534,9 @@ describe("listReturnQuery", () => {
   it("carries the whole list view — sort, folder, filter, range, page and the open row — as a query", () => {
     expect(
       listReturnQuery(
-        { sort: { sortBy: "cost", dir: "asc" }, folder: "-home-dev-api", range: "7", errorsOnly: true, page: 2 },
+        { sort: { sortBy: "cost", dir: "asc" }, folder: "/home/dev/api", range: "7", errorsOnly: true, page: 2 },
         "sess-a",
       ),
-    ).toBe("sortBy=cost&dir=asc&folder=-home-dev-api&expanded=sess-a&range=7&errors=1&page=2");
+    ).toBe("sortBy=cost&dir=asc&folder=%2Fhome%2Fdev%2Fapi&expanded=sess-a&range=7&errors=1&page=2");
   });
 });

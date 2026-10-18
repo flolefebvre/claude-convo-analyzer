@@ -11,12 +11,10 @@ import type { ConversationSummary } from "@/core/read";
 /**
  * A `ConversationSummary` with every unstated field defaulted to an inert value.
  *
- * @example summary({ id: "a", folder: "fA", path: "/p/alpha", costUsd: 5 })
+ * @example summary({ id: "a", path: "/p/alpha", costUsd: 5 })
  */
 export function summary(over: {
   id: string;
-  /** Folder key; defaults to the dash-encoded `path`, the way the core derives it. */
-  folder?: string;
   path?: string;
   startedAt?: string;
   endedAt?: string;
@@ -27,13 +25,10 @@ export function summary(over: {
   errorCount?: number;
 }): ConversationSummary {
   const path = over.path ?? "/Users/me/dev/demo";
-  // Dash-encode the path the way the core does, unless an explicit folder key is
-  // supplied (so a test can force a folder identity independent of its path).
-  const folder = over.folder ?? path.replace(/\//g, "-");
   return {
     id: over.id,
     title: `t-${over.id}`,
-    project: { folder, path },
+    project: { path },
     startedAt: over.startedAt ?? "2026-01-01T00:00:00.000Z",
     endedAt: over.endedAt ?? "2026-01-01T01:00:00.000Z",
     models: { dominant: "opus", distinctCount: 1 },

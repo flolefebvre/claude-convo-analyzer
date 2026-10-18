@@ -39,7 +39,7 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { defaultDbPath, openRefreshConnection } from "@/core/db";
 import {
-  decodeFolderName,
+  decodeLogFolderName,
   defaultLogsRoot,
   type DiscoveredSession,
   discoverSessions,
@@ -454,10 +454,10 @@ function parseConversation({ session, subAgentPaths, priorConversationId }: Sess
   };
 }
 
-/** Resolve (find-or-create) the project row for an on-disk folder. */
-function upsertProject(statements: RefreshStatements, folder: string, parsed: ParsedSession): number {
-  const projectPath = parsed.projectPath ?? decodeFolderName(folder);
-  return statements.selectProjectId(projectPath) ?? statements.insertProject({ path: projectPath, folderName: folder });
+/** Resolve (find-or-create) the row of the Project a parsed Conversation belongs to. */
+function upsertProject(statements: RefreshStatements, logFolderName: string, parsed: ParsedSession): number {
+  const projectPath = parsed.projectPath ?? decodeLogFolderName(logFolderName);
+  return statements.selectProjectId(projectPath) ?? statements.insertProject({ path: projectPath });
 }
 
 /** The `message` row of one parsed message (FK columns + accounting). */
@@ -575,7 +575,7 @@ function writeConversation(statements: RefreshStatements, parsedConversation: Pa
     continuingConversationIds = statements.selectContinuingConversationIds(priorConversationId);
     statements.deleteConversation(priorConversationId);
   }
-  const projectId = upsertProject(statements, session.folder, parsed);
+  const projectId = upsertProject(statements, session.logFolderName, parsed);
 
   const conversationId = statements.insertConversation({
     sessionId: session.sessionId,
