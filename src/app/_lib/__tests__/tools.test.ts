@@ -109,6 +109,14 @@ describe("tool table hrefs", () => {
       "?sortBy=calls&dir=desc&folder=%2FUsers%2Fme%2Fdev%2Fapp&range=7",
     );
   });
+
+  it("keeps a this-folder narrowing on every link", () => {
+    const narrowed = { ...STATE, thisFolderOnly: true };
+    const scope = "folder=%2FUsers%2Fme%2Fdev%2Fapp&thisFolder=1";
+    expect(toolSortHref("volume", narrowed)).toBe(`?sortBy=volume&dir=desc&${scope}&range=7`);
+    expect(toolRangeHref("all", narrowed)).toBe(`?sortBy=calls&dir=desc&${scope}&range=all`);
+    expect(toolExpandHref("Bash", narrowed)).toBe(`?sortBy=calls&dir=desc&${scope}&range=7&expanded=Bash`);
+  });
 });
 
 describe("toolLabel", () => {

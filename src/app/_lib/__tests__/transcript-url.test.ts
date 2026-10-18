@@ -149,7 +149,7 @@ describe("resolveListReturn", () => {
   });
 
   it("restores the list view the transcript was opened from", () => {
-    const from = "sortBy=cost&dir=asc&folder=%2Fhome%2Fdev%2Fapi&expanded=sess-a&range=7&errors=1&page=2";
+    const from = "sortBy=cost&dir=asc&folder=%2Fhome%2Fdev%2Fapi&thisFolder=1&expanded=sess-a&range=7&errors=1&page=2";
     expect(resolveListReturn(from)).toEqual({ href: `/?${from}`, from });
   });
 

@@ -12,6 +12,7 @@
 // ordinary rows here and are therefore INCLUDED — they are the same friction.
 
 import { readClient } from "@/core/db";
+import { conversationInFolderScope, type FolderScopeOptions } from "@/core/folder-scope";
 import type { PrismaClient } from "@/core/prisma/generated/client";
 import { addLocalDays, startOfLocalDay } from "@/core/local-day";
 
@@ -50,9 +51,7 @@ export type ToolStats = {
 };
 
 /** Scope of a tool-analytics read — the same axes as the Trends read. */
-export type ToolStatsOptions = {
-  /** Scope to one Project by its path (the `?folder=` value); all Projects when omitted. */
-  folder?: string;
+export type ToolStatsOptions = FolderScopeOptions & {
   /** Range length in days, ending today (inclusive). All time when omitted. */
   days?: number;
   /** Clock injection point — the instant "today" is derived from. Defaults to now. */
@@ -80,7 +79,7 @@ export async function getToolStats(opts: ToolStatsOptions = {}): Promise<ToolSta
   const { prisma, owned } = readClient(opts.dbPath);
   try {
     const rows = await prisma.toolCall.findMany({
-      where: scopeWhere(opts),
+      where: await scopeWhere(prisma, opts),
       select: { name: true, isError: true, resultCharSize: true },
     });
     return assembleToolStats(rows);
@@ -170,7 +169,7 @@ function byCallsDesc(a: ToolStat, b: ToolStat): number {
  * never satisfies a comparison, which is exactly the "cannot be scoped →
  * excluded" policy.
  */
-function scopeWhere(opts: ToolStatsOptions) {
+async function scopeWhere(prisma: Pick<PrismaClient, "project">, opts: ToolStatsOptions) {
   const today = startOfLocalDay(opts.now ?? Date.now());
   // `days` counts back from today inclusive: 7 days = today and the 6 before.
   const from = opts.days === undefined ? null : addLocalDays(today, 1 - opts.days);
@@ -180,7 +179,7 @@ function scopeWhere(opts: ToolStatsOptions) {
         lt: BigInt(addLocalDays(today, 1).getTime()),
         ...(from === null ? {} : { gte: BigInt(from.getTime()) }),
       },
-      ...(opts.folder === undefined ? {} : { conversation: { project: { path: opts.folder } } }),
+      ...(await conversationInFolderScope(prisma, opts)),
     },
   };
 }
@@ -262,8 +261,8 @@ export type ToolCallSamplesOptions = ToolStatsOptions & {
 export async function getToolCallSamples(name: string, opts: ToolCallSamplesOptions = {}): Promise<ToolCallSamples> {
   const limit = opts.limit ?? DEFAULT_SAMPLE_LIMIT;
   const { prisma, owned } = readClient(opts.dbPath);
-  const where = { name, ...scopeWhere(opts) };
   try {
+    const where = { name, ...(await scopeWhere(prisma, opts)) };
     // Both lists are ordered and capped BY THE DATABASE: expanding a heavily
     // used tool over an all-time range must not drag every matching row — each
     // carrying up to ~10k of `resultText` — into memory to keep five of them.

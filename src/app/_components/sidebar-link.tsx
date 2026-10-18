@@ -4,64 +4,48 @@
 // the sidebar lives in the shell layout, which CANNOT read `searchParams`
 // (they would go stale — Next local docs, layout.md "Query params"), so two
 // things that depend on the live URL are decided here via `useSearchParams`:
-//   1. the active-folder HIGHLIGHT (which entry is the current `?folder=` scope);
-//   2. the link HREF, so clicking a folder PRESERVES the rest of the active view
+//   1. the active HIGHLIGHT (which entry is the current Folder scope);
+//   2. the link HREF, so clicking a Folder PRESERVES the rest of the active view
 //      state — sort, range — which the layout cannot read to thread server-side.
 // The component re-renders on client-side `<Link>` navigation, so both track the
 // live params without a full reload.
 //
-// ADR-0002 boundary: this imports NO core values — the friendly label + count
-// come in as server-rendered `children`. Data filtering stays server-side from
-// the URL.
+// ADR-0002 boundary: this imports NO core values — the label and figures come
+// in as `children`. Data filtering stays server-side from the URL.
 
 import { useSearchParams } from "next/navigation";
 
 import { PendingLink } from "@/app/_components/pending-link";
+import { folderScopeHref, isSameFolderScope, resolveLiveFolderScope, type FolderScope } from "@/app/_lib/folder-scope";
 import { cn } from "@/lib/utils-cn";
 
 /**
- * A single sidebar link, highlighted when its Project is the active scope and
- * targeting an href that preserves the rest of the active view state. `folder` is the entry's
- * `?folder=` key, or `null` for the "All folders" entry (active when the URL
- * carries no folder scope). The friendly label + count badge are passed as
- * `children` (server-rendered).
+ * A single sidebar link, highlighted when its scope is the active one and
+ * targeting an href that preserves the rest of the active view state. `scope`
+ * is the entry's Folder scope — `{}` for the "All folders" entry (active when
+ * the URL carries no folder scope).
+ *
+ * @example <SidebarLink scope={{ folder: node.path }} title={node.path}>{row}</SidebarLink>
  */
 export function SidebarLink({
-  folder,
+  scope,
   title,
+  className,
   children,
 }: {
-  /** This entry's `?folder=` key, or `null` for the "All folders" entry. */
-  folder: string | null;
+  /** The Folder scope this entry selects; `{}` for "All folders". */
+  scope: FolderScope;
   title?: string;
+  className?: string;
   children: React.ReactNode;
 }) {
   const params = useSearchParams();
-  const rawFolder = params.get("folder");
-  const activeFolder = rawFolder ? rawFolder : undefined;
-  const active = activeFolder === (folder ?? undefined);
-  // Build the href from the LIVE query so changing folder keeps everything else
-  // the current surface put there — the list's sort, Trends' range, the Tools
-  // table's own sort (the layout can't read any of it to pass down). The href
-  // stays a bare query string, so every surface re-scopes IN PLACE instead of
-  // navigating away. Only `?expanded=` is dropped: a row opened under the old
-  // scope means nothing under the new one, and the page count changes with it.
-  const next = new URLSearchParams(params.toString());
-  if (folder) {
-    next.set("folder", folder);
-  } else {
-    next.delete("folder");
-  }
-  next.delete("expanded");
-  // …and `?page=`: the new scope is a different (shorter) list, so it starts at
-  // page 1 — the server-side `folderHref` does the same (issue #63).
-  next.delete("page");
-  const href = `?${next.toString()}`;
+  const active = isSameFolderScope(resolveLiveFolderScope(params), scope);
   return (
     // `scroll={false}`: re-scoping keeps your place on the page; the content
     // dims while the new scope loads (PendingLink).
     <PendingLink
-      href={href}
+      href={folderScopeHref(params.toString(), scope)}
       scroll={false}
       title={title}
       aria-current={active ? "true" : undefined}
@@ -73,6 +57,7 @@ export function SidebarLink({
         active
           ? "bg-cost-muted text-foreground before:absolute before:top-1/2 before:left-0 before:h-7 before:w-[3px] before:-translate-y-1/2 before:rounded-r before:bg-cost"
           : "text-muted-foreground hover:bg-muted/50 hover:text-foreground has-data-link-pending:bg-muted/50 has-data-link-pending:text-foreground",
+        className,
       )}
     >
       {children}

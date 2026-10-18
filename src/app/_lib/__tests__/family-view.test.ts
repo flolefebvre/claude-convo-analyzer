@@ -86,6 +86,20 @@ describe("familyView", () => {
     for (const row of view.rows) expect(row.href).toContain("range=30");
   });
 
+  it("keeps the folder scope for a member in a Folder below it, unless narrowed to this folder", () => {
+    const worktreeFamily = family([
+      member({ id: "a", isCurrent: true }),
+      member({ id: "b", project: { path: "/home/dev/app/.claude/worktrees/wt" } }),
+    ]);
+
+    const subtree = familyView(worktreeFamily, { sort: SORT, folder: "/home/dev/app" }, NOW);
+    for (const row of subtree.rows) expect(row.href).toContain("folder=%2Fhome%2Fdev%2Fapp");
+
+    const own = familyView(worktreeFamily, { sort: SORT, folder: "/home/dev/app", thisFolderOnly: true }, NOW);
+    expect(own.rows[0].href).toContain("folder=%2Fhome%2Fdev%2Fapp&thisFolder=1");
+    expect(own.rows[1].href).not.toContain("folder=");
+  });
+
   it("drops the errors filter, which could hide a member that never failed", () => {
     const view = familyView(
       family([member({ id: "a", isCurrent: true }), member({ id: "b" })]),

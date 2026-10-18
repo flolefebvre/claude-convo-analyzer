@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
 
-import { firstParam, resolvePage } from "@/app/_lib/search-params";
+import { firstParam, resolvePage, sectionSwitchQuery } from "@/app/_lib/search-params";
+
+describe("sectionSwitchQuery", () => {
+  it("carries the Folder scope, this-folder narrowing included, and the range", () => {
+    expect(sectionSwitchQuery("sortBy=cost&folder=%2Fa&thisFolder=1&expanded=s1&range=7&page=2")).toBe(
+      "folder=%2Fa&thisFolder=1&range=7",
+    );
+  });
+
+  it("carries nothing from a bare URL", () => {
+    expect(sectionSwitchQuery("")).toBe("");
+  });
+});
 
 describe("firstParam", () => {
   it("returns a single value unchanged", () => {

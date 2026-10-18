@@ -18,6 +18,7 @@ export type ViewSearchParams = {
   sortBy?: string | string[];
   dir?: string | string[];
   folder?: string | string[];
+  thisFolder?: string | string[];
   expanded?: string | string[];
   range?: string | string[];
   errors?: string | string[];
@@ -32,6 +33,26 @@ export type ViewSearchParams = {
  */
 export function firstParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
+}
+
+/** The view params worth carrying across a surface switch: the Folder scope and the range. */
+const SECTION_CARRIED_PARAMS = ["folder", "thisFolder", "range"] as const;
+
+/**
+ * The query (no `?`) a section tab carries from the live one: only the Folder
+ * scope and the range — `?sortBy=`/`?expanded=` are per-surface table state and
+ * mean nothing on the next surface.
+ *
+ * @example sectionSwitchQuery("folder=%2Fa&sortBy=cost&range=7") // "folder=%2Fa&range=7"
+ */
+export function sectionSwitchQuery(liveQuery: string): string {
+  const live = new URLSearchParams(liveQuery);
+  const carried = new URLSearchParams();
+  for (const key of SECTION_CARRIED_PARAMS) {
+    const value = live.get(key);
+    if (value) carried.set(key, value);
+  }
+  return carried.toString();
 }
 
 /** The first (and default) page of a paged view — `?page=` is 1-based. */

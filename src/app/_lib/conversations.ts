@@ -9,6 +9,7 @@
 // import is a real value here (a server module, never imported from a client
 // file), matching how page.tsx imported it before this seam existed.
 
+import os from "node:os";
 import { cache } from "react";
 import { connection } from "next/server";
 
@@ -24,6 +25,15 @@ import {
 } from "@/core/read";
 import { searchConversations } from "@/core/search";
 import { getToolCallSamples, getToolStats } from "@/core/tool-stats";
+
+/**
+ * The home directory of the user running the app — the folder tree's `~` root.
+ *
+ * @example buildListView(await loadConversations(), homeDirectory())
+ */
+export function homeDirectory(): string {
+  return os.homedir();
+}
 
 /**
  * Read every conversation summary once per request. Wrapped in React `cache()`
@@ -88,13 +98,13 @@ export const loadFamily = cache(async (id: string) => buildFamily(await loadConv
 
 /**
  * Read the Trends view's daily spend: per-day, per-model priced rows for one
- * range, optionally scoped to a Project (`?folder=`). Same request-time gating
+ * range, optionally scoped to a Folder (`?folder=`, `?thisFolder=`). Same request-time gating
  * as {@link loadConversations}; `days` is `undefined` for "all time". `cache()`
- * dedupes to a single core read per `(folder, days)` within a request.
+ * dedupes to a single core read per `(folder, thisFolderOnly, days)` within a request.
  */
-export const loadDailySpend = cache(async (folder?: string, days?: number) => {
+export const loadDailySpend = cache(async (folder?: string, thisFolderOnly?: boolean, days?: number) => {
   await connection();
-  return getDailySpend({ folder, days });
+  return getDailySpend({ folder, thisFolderOnly, days });
 });
 
 /**
@@ -133,14 +143,14 @@ export const loadToolCallBody = cache(async (id: number) => {
 });
 
 /**
- * Read the Tools view's per-tool analytics for one folder + range scope
+ * Read the Tools view's per-tool analytics for one Folder + range scope
  * (`?folder=`/`?range=`). Same request-time gating as {@link loadConversations};
  * `days` is `undefined` for "all time". `cache()` dedupes to a single core read
- * per `(folder, days)` within a request.
+ * per `(folder, thisFolderOnly, days)` within a request.
  */
-export const loadToolStats = cache(async (folder?: string, days?: number) => {
+export const loadToolStats = cache(async (folder?: string, thisFolderOnly?: boolean, days?: number) => {
   await connection();
-  return getToolStats({ folder, days });
+  return getToolStats({ folder, thisFolderOnly, days });
 });
 
 /**
@@ -160,7 +170,9 @@ export const loadSearch = cache(async (query: string) => {
  * breakdown) over the SAME scope as {@link loadToolStats}. Called only when a
  * row is expanded (`?expanded=<tool>`), so the table never pays for it.
  */
-export const loadToolCallSamples = cache(async (name: string, folder?: string, days?: number) => {
-  await connection();
-  return getToolCallSamples(name, { folder, days });
-});
+export const loadToolCallSamples = cache(
+  async (name: string, folder?: string, thisFolderOnly?: boolean, days?: number) => {
+    await connection();
+    return getToolCallSamples(name, { folder, thisFolderOnly, days });
+  },
+);

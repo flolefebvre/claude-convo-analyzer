@@ -6,6 +6,7 @@
 
 import type { ConversationFamily } from "@/core/family";
 
+import { isProjectInFolderScope } from "@/app/_lib/folder-scope";
 import { formatDate } from "@/app/_lib/format";
 import { friendlyFolderName } from "@/app/_lib/folders";
 import { expandHref, type ListLinkContext } from "@/app/_lib/sort";
@@ -52,8 +53,8 @@ export type FamilyLinkContext = ListLinkContext;
  * Order and depth come from the core walk (chronological, indented by fork), so
  * this only formats: relative dates against ONE request-time `now`, the
  * cross-project label, and each member's expand link. A member link drops any
- * filter that could hide its target — the folder scope when the member lives in
- * another Project, the errors filter always, and the page — otherwise the click
+ * filter that could hide its target — the folder scope when the member lives
+ * outside it, the errors filter always, and the page — otherwise the click
  * would land on a list that cannot show that row.
  */
 export function familyView(family: ConversationFamily, ctx: FamilyLinkContext, now: Date = new Date()): FamilyView {
@@ -61,7 +62,7 @@ export function familyView(family: ConversationFamily, ctx: FamilyLinkContext, n
   return {
     rows: family.members.map((member) => {
       const date = formatDate(member.startedAt, now);
-      const inScope = ctx.folder === undefined || ctx.folder === member.project.path;
+      const inScope = isProjectInFolderScope(member.project.path, ctx);
       return {
         id: member.id,
         title: member.title,
@@ -79,9 +80,10 @@ export function familyView(family: ConversationFamily, ctx: FamilyLinkContext, n
           undefined,
           {
             ...ctx,
-            // A member in a DIFFERENT Project gets the scope DROPPED — the click
+            // A member outside the Folder scope gets the scope DROPPED — the click
             // would otherwise land on a filtered list that cannot show that row.
             folder: inScope ? ctx.folder : undefined,
+            thisFolderOnly: inScope ? ctx.thisFolderOnly : undefined,
             // Same reasoning for the errors filter, but unconditional: a family
             // member that never failed is invisible under `?errors=1`, and the
             // family view does not know which members failed. Following a family

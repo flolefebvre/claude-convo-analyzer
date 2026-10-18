@@ -130,7 +130,7 @@ export function withListReturn(href: string, from: string | undefined): string {
 }
 
 /** The conversation list's own view-state params — all a `?from=` may restore. */
-const LIST_VIEW_PARAMS = ["sortBy", "dir", "folder", "expanded", "range", "errors", "page"] as const;
+const LIST_VIEW_PARAMS = ["sortBy", "dir", "folder", "thisFolder", "expanded", "range", "errors", "page"] as const;
 
 /**
  * Resolve the raw `?from=` search param into the transcript's way back: `href`

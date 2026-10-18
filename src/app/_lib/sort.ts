@@ -14,6 +14,7 @@
 
 import type { ConversationSummary } from "@/core/read";
 
+import { type FolderScope, writeFolderScope } from "@/app/_lib/folder-scope";
 import { FIRST_PAGE, firstParam } from "@/app/_lib/search-params";
 
 export type SortDir = "asc" | "desc";
@@ -141,11 +142,9 @@ export function toggleSort(field: SortableField, current: SortState): SortState 
  * one value rather than a growing tail of positional arguments — each new list
  * axis then reaches every link by extending this type, not every signature.
  */
-export type ListLinkContext = {
+export type ListLinkContext = FolderScope & {
   /** The resolved sort state. */
   sort: SortState;
-  /** The active `?folder=` scope, or `undefined`/empty for "All folders". */
-  folder?: string;
   /** The active Trends range, carried verbatim so Trends keeps its selection. */
   range?: string;
   /** True when the list is filtered to conversations WITH API errors (`?errors=1`). */
@@ -164,7 +163,7 @@ function buildHref(ctx: ListLinkContext, expanded?: string): string {
     sortBy: ctx.sort.sortBy,
     dir: ctx.sort.dir,
   });
-  if (ctx.folder) params.set("folder", ctx.folder);
+  writeFolderScope(params, ctx);
   if (expanded) params.set("expanded", expanded);
   if (ctx.range) params.set("range", ctx.range);
   if (ctx.errorsOnly) params.set("errors", ERRORS_ON);
@@ -184,14 +183,16 @@ export function sortHref(field: SortableField, ctx: ListLinkContext): string {
 }
 
 /**
- * Query-string href for a sidebar folder link: scopes to `folder` (or clears
- * the scope, "All folders", when `undefined`/empty) while PRESERVING every other
- * axis, so changing folder composes with the current sort — and, since the
- * sidebar is shared with Trends, never resets the selected range. The page
- * resets, though: page 7 of one Project says nothing about the next.
+ * Query-string href for a folder link: scopes to `scope` (or clears the scope,
+ * "All folders", when it names no Folder) while PRESERVING every other axis, so
+ * changing folder composes with the current sort — and, since the sidebar is
+ * shared with Trends, never resets the selected range. The page resets, though:
+ * page 7 of one Folder says nothing about the next.
+ *
+ * @example folderHref({}, links) // the "All folders" link
  */
-export function folderHref(folder: string | undefined, ctx: ListLinkContext): string {
-  return buildHref({ ...ctx, folder, page: FIRST_PAGE });
+export function folderHref(scope: FolderScope, ctx: ListLinkContext): string {
+  return buildHref({ ...ctx, folder: scope.folder, thisFolderOnly: scope.thisFolderOnly, page: FIRST_PAGE });
 }
 
 /**

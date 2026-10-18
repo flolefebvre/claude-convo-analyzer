@@ -1,12 +1,25 @@
+import os from "node:os";
+import path from "node:path";
+
 import { instant } from "@next/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { type RouteShell, expectData, expectInstantLoad } from "./route-shell";
 
 // A seeded conversation title (`scripts/seed/fake-logs.ts`).
 const TITLE = "Split the billing service out of the monolith";
 
+// A seeded worktree Project of the seeded `~/dev/acme-api` repo.
+const WORKTREE = path.join(os.homedir(), "dev", "acme-api", ".claude", "worktrees", "fix-auth-flake");
+
 const header = (page: Page) => page.getByRole("heading", { level: 1, name: "Conversations" });
+/** A Folder's chevron, in whichever folder tree (desktop sidebar or phone picker) `scope` holds. */
+const chevron = (scope: Page | Locator, label: string) =>
+  scope.getByRole("button", { name: `${label} sub-folders`, exact: true });
+/** A Folder's name link, whose accessible name starts with its label. */
+const folderLink = (scope: Locator, label: string) =>
+  scope.getByRole("link", { name: new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}\\W`) });
+
 const conversations: RouteShell = {
   shell: (page) => [header(page)],
   fallbacks: (page) => [
@@ -16,6 +29,7 @@ const conversations: RouteShell = {
   ],
   data: (page) => [
     page.getByRole("navigation", { name: "Folders" }),
+    chevron(page, "~"),
     page.getByRole("heading", { level: 2, name: /All projects/ }),
     page.getByText(TITLE, { exact: true }),
   ],
@@ -40,5 +54,62 @@ test.describe("Conversations (/)", () => {
       await expect(page.getByText(TITLE, { exact: true })).toHaveCount(0);
     });
     await expectData(page, conversations);
+  });
+});
+
+test.describe("Folder tree", () => {
+  test("opens the ~ and /tmp roots one level, and nests a worktree under its opened repo", async ({ page }) => {
+    await page.goto("/");
+    const tree = page.getByRole("complementary").getByRole("navigation", { name: "Folders" });
+
+    await expect(chevron(tree, "~")).toHaveAttribute("aria-expanded", "true");
+    await expect(chevron(tree, "/tmp")).toHaveAttribute("aria-expanded", "true");
+    await expect(folderLink(tree, "dev")).toBeVisible();
+    await expect(folderLink(tree, "scratch")).toBeVisible();
+    await expect(folderLink(tree, "20260612-091204")).toHaveCount(0);
+    await expect(folderLink(tree, "fix-auth-flake")).toHaveCount(0);
+
+    // The chevron only opens: no navigation.
+    const before = page.url();
+    await chevron(tree, "dev").click();
+    await chevron(tree, "acme-api").click();
+    await expect(folderLink(tree, "fix-auth-flake")).toHaveCount(0);
+    await chevron(tree, ".claude/worktrees").click();
+    await expect(folderLink(tree, "fix-auth-flake")).toBeVisible();
+    await expect(folderLink(tree, "(this folder)")).toBeVisible();
+    expect(page.url()).toBe(before);
+
+    // The name only scopes: the Folder stays as it was.
+    await folderLink(tree, ".claude/worktrees").click();
+    await page.waitForURL((url) => url.searchParams.get("folder")?.endsWith("/.claude/worktrees") ?? false);
+    await expect(chevron(tree, ".claude/worktrees")).toHaveAttribute("aria-expanded", "true");
+    await expect(page.getByRole("navigation", { name: "Folder scope" })).toContainText(".claude/worktrees");
+
+    // A scope reached from outside the tree opens its path again, even one the user closed.
+    await folderLink(tree, "fix-auth-flake").click();
+    await page.waitForURL((url) => url.searchParams.get("folder") === WORKTREE);
+    await chevron(tree, "dev").click();
+    await expect(folderLink(tree, "fix-auth-flake")).toHaveCount(0);
+    await folderLink(tree, "All folders").click();
+    await page.waitForURL((url) => !url.searchParams.has("folder"));
+    await page.goBack();
+    await page.waitForURL((url) => url.searchParams.get("folder") === WORKTREE);
+    await expect(folderLink(tree, "fix-auth-flake")).toBeVisible();
+    await expect(folderLink(tree, "fix-auth-flake")).toHaveAttribute("aria-current", "true");
+  });
+
+  test.describe("on a phone", () => {
+    test.use({ viewport: { width: 390, height: 844 } });
+
+    test("names the selected Folder and opens the same tree down to it", async ({ page }) => {
+      await page.goto(`/?${new URLSearchParams({ folder: WORKTREE }).toString()}`);
+      const picker = page.locator("details");
+
+      await expect(picker.locator("summary")).toContainText("fix-auth-flake");
+      await picker.locator("summary").click();
+      const tree = picker.getByRole("navigation", { name: "Folders" });
+      await expect(folderLink(tree, "fix-auth-flake")).toHaveAttribute("aria-current", "true");
+      await expect(chevron(tree, "acme-api")).toHaveAttribute("aria-expanded", "true");
+    });
   });
 });

@@ -26,6 +26,7 @@ import { LiveRefreshButton } from "@/app/_components/live-refresh-button";
 import { Stat, StatSkeleton, StatStrip } from "@/app/_components/stat-strip";
 import { TrendsChart } from "@/app/_components/trends-chart";
 import { loadDailySpend } from "@/app/_lib/conversations";
+import { type FolderScope, resolveFolderScope } from "@/app/_lib/folder-scope";
 import {
   formatCompactTokens,
   formatCost,
@@ -34,7 +35,7 @@ import {
   formatTokens,
 } from "@/app/_lib/format";
 import { type RangeKey, rangeDays, rangeHref, rangePhrase, resolveRange } from "@/app/_lib/range";
-import { type ViewSearchParams, firstParam } from "@/app/_lib/search-params";
+import { type ViewSearchParams } from "@/app/_lib/search-params";
 import { type TrendsView, buildTrendsView } from "@/app/_lib/trends";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -63,15 +64,15 @@ export default function Page({ searchParams }: { searchParams: Promise<ViewSearc
  */
 async function resolveTrendsState(
   searchParams: Promise<ViewSearchParams>,
-): Promise<{ range: RangeKey; folder: string | undefined }> {
+): Promise<{ range: RangeKey; scope: FolderScope }> {
   const params = await searchParams;
-  return { range: resolveRange(params.range), folder: firstParam(params.folder) || undefined };
+  return { range: resolveRange(params.range), scope: resolveFolderScope(params) };
 }
 
 /** The range presets, each keeping the folder scope. */
 async function TrendsRangePicker({ searchParams }: { searchParams: Promise<ViewSearchParams> }) {
-  const { range, folder } = await resolveTrendsState(searchParams);
-  return <RangePicker active={range} hrefFor={(preset) => rangeHref(preset, folder)} />;
+  const { range, scope } = await resolveTrendsState(searchParams);
+  return <RangePicker active={range} hrefFor={(preset) => rangeHref(preset, scope)} />;
 }
 
 /** The legend rows its skeleton draws: about as many models as a typical range has. */
@@ -123,14 +124,14 @@ function TrendsFallback() {
  * boundary (PPR).
  */
 async function TrendsSurface({ searchParams }: { searchParams: Promise<ViewSearchParams> }) {
-  const { range, folder } = await resolveTrendsState(searchParams);
+  const { range, scope } = await resolveTrendsState(searchParams);
 
-  const view = buildTrendsView(await loadDailySpend(folder, rangeDays(range)));
+  const view = buildTrendsView(await loadDailySpend(scope.folder, scope.thisFolderOnly, rangeDays(range)));
 
   return (
     <div className="flex flex-col gap-5">
       {view.isEmpty ? (
-        <EmptyTrends range={range} folder={folder} />
+        <EmptyTrends range={range} scope={scope} />
       ) : (
         <>
           <StatsRow view={view} />
@@ -145,16 +146,16 @@ async function TrendsSurface({ searchParams }: { searchParams: Promise<ViewSearc
  * Nothing priced in the range, and the widest way out: a longer range, then
  * every folder, then — with no usage at all — the first scan.
  */
-function EmptyTrends({ range, folder }: { range: RangeKey; folder: string | undefined }) {
+function EmptyTrends({ range, scope }: { range: RangeKey; scope: FolderScope }) {
   const [description, action] =
     range !== "all"
       ? [
           "Try a longer range.",
-          <EmptyStateLink key="all" href={rangeHref("all", folder)}>
+          <EmptyStateLink key="all" href={rangeHref("all", scope)}>
             Show all time
           </EmptyStateLink>,
         ]
-      : folder
+      : scope.folder
         ? [
             "This folder has no priced usage.",
             <EmptyStateLink key="folders" href={rangeHref("all")}>
