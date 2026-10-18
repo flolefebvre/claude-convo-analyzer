@@ -67,6 +67,9 @@ const TOOL_DEFINITIONS: Record<SeedToolName, { description: string; properties: 
   },
 };
 
+/** How the Linear MCP server describes its search tool once reconnected. */
+const RECONNECTED_LINEAR_SEARCH_DESCRIPTION = "Search the acme Linear workspace for issues, by title, label or cycle.";
+
 /** The system prompt's opening block, the same for every Agent. */
 const SYSTEM_IDENTITY = "You are Claude Code, Anthropic's official CLI for Claude.";
 
@@ -112,6 +115,18 @@ export const SIDE_REQUEST_IDS = {
   tokenCount: "req-side-token-count",
 } as const;
 
+/** The `request-id` of the overloaded (529) attempt Claude Code retried before one of the recorded Conversation's Turns. */
+export const FAILED_ATTEMPT_REQUEST_ID = "req-attempt-overloaded";
+
+/** The recorded Conversation's main-agent Turn (1-based) that {@link FAILED_ATTEMPT_REQUEST_ID} precedes. */
+const RETRIED_TURN = 3;
+
+/** The main-agent Turn (1-based) from which one system block reads differently. */
+export const SYSTEM_PROMPT_CHANGE_TURN = 5;
+
+/** The main-agent Turn (1-based) from which one tool definition reads differently. */
+export const TOOL_DEFINITION_CHANGE_TURN = 4;
+
 const SECOND = 1_000;
 const HOUR = 3_600_000;
 
@@ -152,26 +167,45 @@ function turnsInLog(lines: readonly string[]): AgentTurn[] {
   return turns;
 }
 
-/** The system blocks an Agent sends, the last one marked for caching. */
-function systemBlocks(agent: RecordedAgent): object[] {
+/** True when `turn` is a main-agent Turn at or after the main agent's Turn `ordinal`. */
+function isMainTurnFrom(agent: RecordedAgent, turn: AgentTurn, ordinal: number): boolean {
+  return agent.agentId === null && turn.ordinal >= ordinal;
+}
+
+/**
+ * The system blocks an Agent sends for `turn`, the last one marked for
+ * caching. From the main agent's Turn {@link SYSTEM_PROMPT_CHANGE_TURN} on,
+ * the environment block reports the files its `Bash` call changed.
+ */
+function systemBlocks(agent: RecordedAgent, turn: AgentTurn): object[] {
+  const gitStatus = isMainTurnFrom(agent, turn, SYSTEM_PROMPT_CHANGE_TURN) ? "2 files modified" : "clean";
   return [
     { type: "text", text: SYSTEM_IDENTITY },
     { type: "text", text: agent.agentId === null ? MAIN_AGENT_INSTRUCTIONS : SUB_AGENT_INSTRUCTIONS },
     {
       type: "text",
-      text: `Working directory: ${agent.cwd}\nPlatform: linux\nClaude Code version: ${CC_VERSION}`,
+      text: `Working directory: ${agent.cwd}\nPlatform: linux\nClaude Code version: ${CC_VERSION}\nGit status: ${gitStatus}`,
       cache_control: { type: "ephemeral" },
     },
   ];
 }
 
-/** The tool definitions an Agent sends: every tool, but a sub-agent cannot spawn one. */
-function toolDefinitions(agent: RecordedAgent): object[] {
+/**
+ * The tool definitions an Agent sends for `turn`: every tool, but a sub-agent
+ * cannot spawn one. From the main agent's Turn
+ * {@link TOOL_DEFINITION_CHANGE_TURN} on, the Linear MCP server, reconnected,
+ * describes its search tool anew.
+ */
+function toolDefinitions(agent: RecordedAgent, turn: AgentTurn): object[] {
+  const isLinearReconnected = isMainTurnFrom(agent, turn, TOOL_DEFINITION_CHANGE_TURN);
   return (Object.keys(TOOL_DEFINITIONS) as SeedToolName[])
     .filter((name) => agent.agentId === null || name !== "Agent")
     .map((name) => ({
       name,
-      description: TOOL_DEFINITIONS[name].description,
+      description:
+        name === "mcp__linear__search_issues" && isLinearReconnected
+          ? RECONNECTED_LINEAR_SEARCH_DESCRIPTION
+          : TOOL_DEFINITIONS[name].description,
       input_schema: {
         type: "object",
         properties: TOOL_DEFINITIONS[name].properties,
@@ -247,8 +281,8 @@ function turnApiRequest(agent: RecordedAgent, turn: AgentTurn): RecordedApiReque
       max_tokens: 32_000,
       stream: true,
       metadata: metadataOf(agent),
-      system: systemBlocks(agent),
-      tools: toolDefinitions(agent),
+      system: systemBlocks(agent, turn),
+      tools: toolDefinitions(agent, turn),
       messages: turn.history,
     },
     response: {
@@ -411,8 +445,8 @@ function tokenCountApiRequest(agent: RecordedAgent, turn: AgentTurn, endedMs: nu
     path: "/v1/messages/count_tokens",
     body: {
       model: turn.record.message.model,
-      system: systemBlocks(agent),
-      tools: toolDefinitions(agent),
+      system: systemBlocks(agent, turn),
+      tools: toolDefinitions(agent, turn),
       messages: turn.history,
     },
     requestId: SIDE_REQUEST_IDS.tokenCount,
@@ -469,6 +503,31 @@ function partiallyRecordedApiRequests(conversation: Conversation): RecordedApiRe
   return apiRequests.filter((r) => r.timings.arrivedAt >= recorderStartedAt);
 }
 
+/**
+ * The attempt the API turned away as overloaded, just before `retry`: the
+ * same request, answered `529` with an error body. Claude Code retries it
+ * without logging anything, so its `request-id` is in no log.
+ */
+function failedAttemptBefore(retry: RecordedApiRequest): RecordedApiRequest {
+  const retryArrivedMs = Date.parse(retry.timings.arrivedAt);
+  const endedAt = new Date(retryArrivedMs - 2.6 * SECOND).toISOString();
+  return {
+    ...retry,
+    response: {
+      status: 529,
+      requestId: FAILED_ATTEMPT_REQUEST_ID,
+      headers: {
+        "content-type": "application/json",
+        "request-id": FAILED_ATTEMPT_REQUEST_ID,
+        "x-should-retry": "true",
+      },
+      body: { type: "error", error: { type: "overloaded_error", message: "Overloaded" } },
+      isStreamed: false,
+    },
+    timings: { arrivedAt: new Date(retryArrivedMs - 3 * SECOND).toISOString(), firstByteAt: endedAt, endedAt },
+  };
+}
+
 /** The seeded Conversation of `sessionId`. */
 function conversationOf(conversations: readonly Conversation[], sessionId: string): Conversation {
   const conversation = conversations.find((c) => c.sessionId === sessionId);
@@ -490,8 +549,10 @@ export async function writeFakeRecordings(opts: {
   conversations: readonly Conversation[];
 }): Promise<void> {
   const recorded = conversationOf(opts.conversations, RECORDED_SESSION_ID);
+  const recordedTurns = conversationApiRequests(recorded);
   const apiRequests = [
-    ...conversationApiRequests(recorded),
+    ...recordedTurns,
+    failedAttemptBefore(recordedTurns.filter((r) => r.agentId === null)[RETRIED_TURN - 1]),
     ...sideApiRequests(recorded),
     ...partiallyRecordedApiRequests(conversationOf(opts.conversations, PARTIALLY_RECORDED_SESSION_ID)),
   ].sort((a, b) => a.timings.arrivedAt.localeCompare(b.timings.arrivedAt));

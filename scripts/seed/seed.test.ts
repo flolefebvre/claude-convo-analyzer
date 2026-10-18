@@ -20,7 +20,13 @@ import {
   WORKTREE_SWITCH_PROJECT_PATH,
   WORKTREE_SWITCH_TITLE,
 } from "./fake-logs";
-import { PARTIALLY_RECORDED_FROM_TURN, SIDE_REQUEST_IDS } from "./fake-recordings";
+import {
+  FAILED_ATTEMPT_REQUEST_ID,
+  PARTIALLY_RECORDED_FROM_TURN,
+  SIDE_REQUEST_IDS,
+  SYSTEM_PROMPT_CHANGE_TURN,
+  TOOL_DEFINITION_CHANGE_TURN,
+} from "./fake-recordings";
 
 const NOW = new Date("2026-06-22T17:00:00.000Z");
 
@@ -208,6 +214,48 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     expect(fingerprints.size).toBe(sideRequests.length + 1);
   });
 
+  it("records a failed attempt before a Turn, then the retry that succeeds as the Turn", async () => {
+    const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
+
+    const apiRequests = readRecordings(seed.recordingsRoot);
+    const failedAt = apiRequests.findIndex((r) => r.response.requestId === FAILED_ATTEMPT_REQUEST_ID);
+    const failedAttempt = apiRequests[failedAt];
+    expect(failedAttempt).toMatchObject({
+      sessionId: RECORDED_SESSION_ID,
+      agentId: null,
+      response: { status: 529, isStreamed: false, body: { type: "error", error: { type: "overloaded_error" } } },
+    });
+    const retry = apiRequests[failedAt + 1];
+    expect(retry.body).toEqual(failedAttempt.body);
+    const retriedTurn = turnsInLog(seed.logsRoot, RECORDED_SESSION_ID).find(
+      (turn) => turn.requestId === retry.response.requestId,
+    );
+    expect(retriedTurn?.messageId).toBe((retry.response.body as { id: string }).id);
+    expect(Object.values(readTree(seed.logsRoot)).some((log) => log.includes(FAILED_ATTEMPT_REQUEST_ID))).toBe(false);
+  });
+
+  it("changes one system block, then one tool definition, between two Turns of the recorded main agent", async () => {
+    const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
+
+    const apiRequests = readRecordings(seed.recordingsRoot);
+    const bodies = turnsInLog(seed.logsRoot, RECORDED_SESSION_ID)
+      .filter((turn) => turn.agentId === null)
+      .map((turn) => apiRequests.find((r) => r.response.requestId === turn.requestId)?.body as TurnBody);
+    const changedBetween = (ordinal: number, part: "system" | "tools") => {
+      const [before, after] = [bodies[ordinal - 2][part], bodies[ordinal - 1][part]];
+      return after.filter((piece, i) => JSON.stringify(piece) !== JSON.stringify(before[i])).length;
+    };
+
+    expect([
+      changedBetween(SYSTEM_PROMPT_CHANGE_TURN, "system"),
+      changedBetween(SYSTEM_PROMPT_CHANGE_TURN, "tools"),
+    ]).toEqual([1, 0]);
+    expect([
+      changedBetween(TOOL_DEFINITION_CHANGE_TURN, "system"),
+      changedBetween(TOOL_DEFINITION_CHANGE_TURN, "tools"),
+    ]).toEqual([0, 1]);
+  });
+
   it("writes byte-identical Recordings for the same anchor", async () => {
     const first = await seedEnvironment({ dir: path.join(tmpDir, "first"), now: NOW });
     const second = await seedEnvironment({ dir: path.join(tmpDir, "second"), now: NOW });
@@ -249,7 +297,10 @@ function requestFingerprint(apiRequest: RecordedApiRequest | undefined): string 
   return JSON.stringify([apiRequest?.path, body?.model, body?.max_tokens ?? null, systemOpening]);
 }
 
-/** A Turn as a log has it:the ids an API request is joined on, and its usage. */
+/** The parts of a Turn's request body that the Recording stores as pieces. */
+type TurnBody = { system: unknown[]; tools: unknown[] };
+
+/** A Turn as a log has it: the ids an API request is joined on, and its usage. */
 type LoggedTurn = { requestId: string; agentId: string | null; messageId: string; usage: unknown };
 
 /** Every Turn in the logs of `sessionId`, its main agent's then each sub-agent's, in log order. */
