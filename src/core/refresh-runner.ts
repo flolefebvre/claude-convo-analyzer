@@ -36,6 +36,8 @@ export type RefreshRunner = {
   start: () => Promise<RefreshSummary>;
   /** The current state, as of this call. */
   state: () => RefreshRunState;
+  /** Call `listener` with each state the runner moves to; returns the unsubscribe. */
+  subscribe: (listener: (state: RefreshRunState) => void) => () => void;
 };
 
 /**
@@ -50,27 +52,29 @@ export type RefreshRunner = {
 export function createRefreshRunner(job: RefreshJob): RefreshRunner {
   let runState: RefreshRunState = { status: "idle" };
   let runningRefresh: Promise<RefreshSummary> | null = null;
+  const listeners = new Set<(state: RefreshRunState) => void>();
+
+  function moveTo(state: RefreshRunState): void {
+    runState = state;
+    for (const listener of listeners) listener(state);
+  }
 
   function runRefresh(): Promise<RefreshSummary> {
-    runState = { status: "running", progress: null };
+    moveTo({ status: "running", progress: null });
     // The executor turns a job that throws synchronously into a rejection too.
     const jobSummary = new Promise<RefreshSummary>((resolve) =>
-      resolve(
-        job((progress) => {
-          runState = { status: "running", progress };
-        }),
-      ),
+      resolve(job((progress) => moveTo({ status: "running", progress }))),
     );
     return jobSummary.then(
       (summary) => {
-        runState = { status: "succeeded", summary };
         runningRefresh = null;
+        moveTo({ status: "succeeded", summary });
         return summary;
       },
       (cause: unknown) => {
         const error = cause instanceof Error ? cause : new Error(String(cause));
-        runState = { status: "failed", error };
         runningRefresh = null;
+        moveTo({ status: "failed", error });
         throw error;
       },
     );
@@ -79,6 +83,10 @@ export function createRefreshRunner(job: RefreshJob): RefreshRunner {
   return {
     start: () => (runningRefresh ??= runRefresh()),
     state: () => runState,
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
   };
 }
 

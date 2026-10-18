@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { RefreshProgress, RefreshSummary } from "@/core/refresh";
-import { createRefreshRunner } from "@/core/refresh-runner";
+import { createRefreshRunner, type RefreshRunState } from "@/core/refresh-runner";
 
 /** A summary whose `conversationsParsed` tells runs apart. */
 function summaryOfRun(conversationsParsed: number): RefreshSummary {
@@ -30,6 +30,15 @@ function controlledJob() {
       runs.push({ reportProgress: onProgress, succeed: resolve, fail: reject });
     });
   return { job, runs };
+}
+
+/** A runner over a {@link controlledJob}, with a subscriber recording every state it is told. */
+function observedRunner() {
+  const { job, runs } = controlledJob();
+  const runner = createRefreshRunner(job);
+  const states: RefreshRunState[] = [];
+  const unsubscribe = runner.subscribe((state) => states.push(state));
+  return { runner, runs, states, unsubscribe };
 }
 
 describe("refresh runner", () => {
@@ -114,5 +123,49 @@ describe("refresh runner", () => {
     await expect(start).rejects.toThrow();
 
     expect(runner.state()).toEqual({ status: "failed", error });
+  });
+
+  it("tells a subscriber each state it moves to: running, each progress, then the summary", async () => {
+    const { runner, runs, states } = observedRunner();
+
+    const start = runner.start();
+    runs[0]?.reportProgress({ done: 0, total: 2 });
+    runs[0]?.reportProgress({ done: 2, total: 2 });
+    runs[0]?.succeed(summaryOfRun(2));
+    await start;
+
+    expect(states).toEqual([
+      { status: "running", progress: null },
+      { status: "running", progress: { done: 0, total: 2 } },
+      { status: "running", progress: { done: 2, total: 2 } },
+      { status: "succeeded", summary: summaryOfRun(2) },
+    ]);
+  });
+
+  it("tells a subscriber the failure, and nothing for a start that joins the running Refresh", async () => {
+    const { runner, runs, states } = observedRunner();
+
+    const start = runner.start();
+    const joined = runner.start();
+    const error = new Error("disk gone");
+    runs[0]?.fail(error);
+    await expect(start).rejects.toThrow();
+    await expect(joined).rejects.toThrow();
+
+    expect(states).toEqual([
+      { status: "running", progress: null },
+      { status: "failed", error },
+    ]);
+  });
+
+  it("stops telling a subscriber once it unsubscribed", async () => {
+    const { runner, runs, states, unsubscribe } = observedRunner();
+
+    const start = runner.start();
+    unsubscribe();
+    runs[0]?.succeed(summaryOfRun(1));
+    await start;
+
+    expect(states).toEqual([{ status: "running", progress: null }]);
   });
 });
