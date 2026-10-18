@@ -23,6 +23,7 @@ import type { Tokens } from "@/core/cost";
 import type { ConversationSummary } from "@/core/read";
 
 import { type FolderScope, isProjectInFolderScope } from "@/app/_lib/folder-scope";
+import { deriveFolderTree, findFolderNode, type FolderNode } from "@/app/_lib/folder-tree";
 import { deriveFolders, type FolderEntry } from "@/app/_lib/folders";
 import { FIRST_PAGE } from "@/app/_lib/search-params";
 import { sortConversations, type SortState } from "@/app/_lib/sort";
@@ -67,8 +68,10 @@ export type ListTotals = {
 
 /** The scope-independent slice, always built (used by both layout regions). */
 export type ListViewBase = {
-  /** The left-sidebar folder list, newest-Project-first. */
+  /** One entry per Project, newest-Project-first. */
   folders: FolderEntry[];
+  /** The sidebar's folder tree: its root rows, newest first. */
+  folderTree: FolderNode[];
   /** The headline overview-band aggregate. */
   overview: Overview;
   /** The cost-ranked top Projects for the overview band (a subset of `folders`). */
@@ -89,9 +92,12 @@ export type ListViewTable = {
   rowCount: number;
   /** True when a (non-empty) `?folder=` scope is active. */
   scoped: boolean;
-  /** The selected Project's entry for the breadcrumb, or `undefined` when
-   *  unscoped or the key is unknown/stale. */
-  selectedFolder: FolderEntry | undefined;
+  /** The selected Folder's tree row for the breadcrumb, or `undefined` when
+   *  unscoped or the path names no row (unknown, stale, or inside a compacted chain). */
+  selectedFolder: FolderNode | undefined;
+  /** True when every row in scope comes from one Project — a leaf Folder, or
+   *  this folder — so the table's Folder column would only repeat it. */
+  isFolderColumnHidden: boolean;
   /** Aggregate of the SCOPED rows for the table footer. */
   grandTotal: GrandTotal;
 };
@@ -137,10 +143,11 @@ export function pageRange(page: number, rowCount: number, pageSize: number): { f
 /**
  * Build the conversation-list view model from ALL rows + already-resolved intent.
  *
- * Always returns the scope-independent base (`folders`, `overview`,
- * `topProjects`, `totals`) — derived from one `deriveFolders` pass. When `intent`
- * (with a `sort`) is given, ALSO returns the table slice (`rows`, `scoped`,
- * `selectedFolder`, `grandTotal`, page metadata), filtering by folder BEFORE
+ * Always returns the scope-independent base (`folders`, `folderTree`,
+ * `overview`, `topProjects`, `totals`) — derived from one `deriveFolders` pass,
+ * the tree rooted at `home` (`~`). When `intent` (with a `sort`) is given, ALSO
+ * returns the table slice (`rows`, `scoped`, `selectedFolder`,
+ * `isFolderColumnHidden`, `grandTotal`, page metadata), filtering by folder BEFORE
  * sorting so scope composes with sort, and paginating LAST so the footer's
  * `rowCount`/`grandTotal` still cover the whole scoped set. With no intent the
  * table slice is skipped (no wasted filter/sort work) — the layout's
@@ -152,17 +159,24 @@ export function pageRange(page: number, rowCount: number, pageSize: number): { f
  *
  * Pure: no mutation of `rows`.
  */
-export function buildListView(rows: ConversationSummary[]): ListViewBase;
-export function buildListView(rows: ConversationSummary[], intent: ListViewIntent): ListViewBase & ListViewTable;
+export function buildListView(rows: ConversationSummary[], home: string): ListViewBase;
 export function buildListView(
   rows: ConversationSummary[],
+  home: string,
+  intent: ListViewIntent,
+): ListViewBase & ListViewTable;
+export function buildListView(
+  rows: ConversationSummary[],
+  home: string,
   intent?: ListViewIntent,
 ): ListViewBase | (ListViewBase & ListViewTable) {
-  // The single folder derive that feeds the sidebar, the top-Projects ranking,
-  // the sidebar totals, AND the table breadcrumb lookup.
+  // The single folder derive that feeds the sidebar tree, the top-Projects
+  // ranking, the sidebar totals, AND the table breadcrumb lookup.
   const folders = deriveFolders(rows);
+  const folderTree = deriveFolderTree(folders, home);
   const base: ListViewBase = {
     folders,
+    folderTree,
     overview: deriveOverview(rows),
     topProjects: topProjectsByCost(folders, TOP_PROJECTS_LIMIT),
     totals: {
@@ -185,6 +199,7 @@ export function buildListView(
   const pageCount = Math.max(FIRST_PAGE, Math.ceil(sortedRows.length / PAGE_SIZE));
   const page = clampPage(intent.page ?? pageHolding(sortedRows, intent.expanded), pageCount);
   const start = (page - 1) * PAGE_SIZE;
+  const selectedFolder = activeFolder ? findFolderNode(folderTree, activeFolder) : undefined;
   return {
     ...base,
     rows: sortedRows.slice(start, start + PAGE_SIZE),
@@ -192,7 +207,10 @@ export function buildListView(
     pageCount,
     rowCount: sortedRows.length,
     scoped: activeFolder !== undefined,
-    selectedFolder: activeFolder ? folders.find((f) => f.path === activeFolder) : undefined,
+    selectedFolder,
+    isFolderColumnHidden:
+      activeFolder !== undefined &&
+      (Boolean(intent.thisFolderOnly) || (selectedFolder !== undefined && selectedFolder.children.length === 0)),
     grandTotal: grandTotal(sortedRows),
   };
 }

@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import { FolderDisclosure } from "@/app/_components/folder-disclosure";
 import { FolderSidebar } from "@/app/_components/folder-sidebar";
 import { LoadingRegion } from "@/app/_components/loading-region";
-import { loadConversations } from "@/app/_lib/conversations";
+import { homeDirectory, loadConversations } from "@/app/_lib/conversations";
 import { formatGrandTotalCost } from "@/app/_lib/format";
 import { buildListView } from "@/app/_lib/list-view";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -55,7 +55,7 @@ async function Sidebar() {
   // No sort intent -> the scope-independent slice only (folder list + totals);
   // the table slice is skipped. The "All folders" anchor totals are summed from
   // the already-derived per-folder entries (no extra core touch).
-  const { folders, totals } = buildListView(allRows);
+  const { folders, totals } = buildListView(allRows, homeDirectory());
   if (totals.count === 0) return null;
 
   const nav = (

@@ -9,6 +9,7 @@
 // import is a real value here (a server module, never imported from a client
 // file), matching how page.tsx imported it before this seam existed.
 
+import os from "node:os";
 import { cache } from "react";
 import { connection } from "next/server";
 
@@ -24,6 +25,15 @@ import {
 } from "@/core/read";
 import { searchConversations } from "@/core/search";
 import { getToolCallSamples, getToolStats } from "@/core/tool-stats";
+
+/**
+ * The home directory of the user running the app — the folder tree's `~` root.
+ *
+ * @example buildListView(await loadConversations(), homeDirectory())
+ */
+export function homeDirectory(): string {
+  return os.homedir();
+}
 
 /**
  * Read every conversation summary once per request. Wrapped in React `cache()`

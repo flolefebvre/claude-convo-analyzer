@@ -32,6 +32,7 @@ import { StatSkeleton } from "@/app/_components/stat-strip";
 import {
   loadConversationDetail,
   loadConversationErrors,
+  homeDirectory,
   loadConversations,
   loadFamily,
   loadFamilySizes,
@@ -39,8 +40,8 @@ import {
 import { footerLabelColSpan } from "@/app/_lib/columns";
 import { errorsView } from "@/app/_lib/errors-view";
 import { familyView } from "@/app/_lib/family-view";
-import { resolveFolderScope } from "@/app/_lib/folder-scope";
-import { type FolderEntry } from "@/app/_lib/folders";
+import { type FolderScope, resolveFolderScope } from "@/app/_lib/folder-scope";
+import { type FolderNode, findFolderNode, folderScopeLabel } from "@/app/_lib/folder-tree";
 import { formatCount, formatDate, formatGrandTotalCost, formatTokens } from "@/app/_lib/format";
 import { buildListView } from "@/app/_lib/list-view";
 import { type ViewSearchParams, firstParam, resolvePage } from "@/app/_lib/search-params";
@@ -149,13 +150,13 @@ async function Overview({ searchParams }: { searchParams: Promise<ViewSearchPara
   const params = await searchParams;
   const allRows = await loadConversations();
   // No sort intent -> scope-independent slice only.
-  const { overview, folders } = buildListView(allRows);
+  const { overview, folderTree } = buildListView(allRows, homeDirectory());
   // Before the first scan there is nothing to sum: the table's empty state
   // says what to do, and a row of zero cards would only look broken.
   if (overview.conversationCount === 0) return null;
-  const activeFolder = firstParam(params.folder) || undefined;
-  const selected = activeFolder ? folders.find((entry) => entry.path === activeFolder) : undefined;
-  return <OverviewBand overview={overview} selectedFolderLabel={selected?.label} />;
+  const scope = resolveFolderScope(params);
+  const selected = scope.folder ? findFolderNode(folderTree, scope.folder) : undefined;
+  return <OverviewBand overview={overview} selectedFolderLabel={selected && folderScopeLabel(selected, scope)} />;
 }
 
 /**
@@ -196,8 +197,9 @@ async function ConversationTable({ searchParams }: { searchParams: Promise<ViewS
     rowCount,
     scoped: isScoped,
     selectedFolder,
+    isFolderColumnHidden,
     grandTotal: total,
-  } = buildListView(allRows, {
+  } = buildListView(allRows, homeDirectory(), {
     ...scope,
     sort,
     errorsOnly,
@@ -251,7 +253,7 @@ async function ConversationTable({ searchParams }: { searchParams: Promise<ViewS
     if (!isScoped && !errorsOnly) return <EmptyList scoped={false} links={links} />;
     return (
       <>
-        <ListControls folder={selectedFolder} links={links} pager={null} />
+        <ListControls folder={selectedFolder} scope={scope} links={links} pager={null} />
         <EmptyList scoped={isScoped} links={links} />
       </>
     );
@@ -261,6 +263,7 @@ async function ConversationTable({ searchParams }: { searchParams: Promise<ViewS
     <>
       <ListControls
         folder={selectedFolder}
+        scope={scope}
         links={links}
         pager={<ListPager variant="compact" page={page} pageCount={pageCount} rowCount={rowCount} links={links} />}
       />
@@ -280,8 +283,8 @@ async function ConversationTable({ searchParams }: { searchParams: Promise<ViewS
               >
                 Date
               </ListSortableHead>
-              {/* The Folder column is hidden when scoped (redundant — see breadcrumb). */}
-              {!isScoped && (
+              {/* Hidden when every row in scope comes from one Project (see breadcrumb). */}
+              {!isFolderColumnHidden && (
                 <ListSortableHead field="folder" links={links} className={CONVERSATION_COLUMNS.folder}>
                   Folder
                 </ListSortableHead>
@@ -312,7 +315,7 @@ async function ConversationTable({ searchParams }: { searchParams: Promise<ViewS
                 key={row.id}
                 row={row}
                 date={formatDate(row.startedAt, now)}
-                scoped={isScoped}
+                isFolderColumnHidden={isFolderColumnHidden}
                 expanded={row.id === expandedRow?.id}
                 detail={row.id === expandedRow?.id ? expandedDetail : null}
                 familySize={familySize.get(row.id) ?? 1}
@@ -331,12 +334,15 @@ async function ConversationTable({ searchParams }: { searchParams: Promise<ViewS
           <TableFooter>
             <TableRow className="hover:bg-transparent">
               <TableCell
-                colSpan={footerLabelColSpan(isScoped, { compact: true })}
+                colSpan={footerLabelColSpan(isFolderColumnHidden, { compact: true })}
                 className="pl-4 font-medium @4xl:hidden"
               >
                 {footerLabel}
               </TableCell>
-              <TableCell colSpan={footerLabelColSpan(isScoped)} className="hidden pl-4 font-medium @4xl:table-cell">
+              <TableCell
+                colSpan={footerLabelColSpan(isFolderColumnHidden)}
+                className="hidden pl-4 font-medium @4xl:table-cell"
+              >
                 {footerLabel}
               </TableCell>
               <TableCell className={`${CONVERSATION_COLUMNS.total} text-right`}>
@@ -384,18 +390,21 @@ async function ConversationTable({ searchParams }: { searchParams: Promise<ViewS
  */
 function ListControls({
   folder,
+  scope,
   links,
   pager,
 }: {
-  /** The selected Project, when a `?folder=` scope is active. */
-  folder: FolderEntry | undefined;
+  /** The selected Folder, when a `?folder=` scope names a tree row. */
+  folder: FolderNode | undefined;
+  /** The active scope, which names the Folder narrowed to this folder. */
+  scope: FolderScope;
   links: ListLinkContext;
   /** The compact pager, or `null` when there are no rows to page. */
   pager: React.ReactNode;
 }) {
   return (
     <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-      {folder ? <FolderBreadcrumb folder={folder} links={links} /> : <span />}
+      {folder ? <FolderBreadcrumb folder={folder} scope={scope} links={links} /> : <span />}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         {pager}
         <ErrorsFilterToggle links={links} />
@@ -471,15 +480,18 @@ function EmptyList({
 }
 
 /**
- * The scope breadcrumb shown above the table when a single Project is selected.
- * Shows the Project's full path once (replacing the now-hidden Folder column)
- * with a link back to "All folders" that preserves the active sort.
+ * The scope breadcrumb shown above the table when a Folder is selected: its
+ * label, with its full path on hover, and a link back to "All folders" that
+ * preserves the active sort.
  */
 function FolderBreadcrumb({
   folder,
+  scope,
   links,
 }: {
-  folder: FolderEntry;
+  folder: FolderNode;
+  /** The active scope, which names the Folder narrowed to this folder. */
+  scope: FolderScope;
   /** The active view state, preserved by the "All folders" link. */
   links: ListLinkContext;
 }) {
@@ -492,7 +504,7 @@ function FolderBreadcrumb({
         /
       </span>
       <span className="font-medium" title={folder.path}>
-        {folder.label}
+        {folderScopeLabel(folder, scope)}
       </span>
     </nav>
   );

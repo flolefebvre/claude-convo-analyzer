@@ -51,17 +51,26 @@ export function deriveFolders(summaries: ConversationSummary[]): FolderEntry[] {
 
   disambiguateLabels(entries);
 
-  // Newest Project on top; ties broken by friendly label asc, then by the
-  // path asc, so the output is fully deterministic.
-  return entries.sort((a, b) => {
-    if (a.latestActivity !== b.latestActivity) {
-      // ISO strings (and "" for unknown) sort lexically; reverse for descending.
-      return a.latestActivity < b.latestActivity ? 1 : -1;
-    }
-    const byLabel = a.label.localeCompare(b.label);
-    if (byLabel !== 0) return byLabel;
-    return a.path.localeCompare(b.path);
-  });
+  return entries.sort(newestFirst);
+}
+
+/**
+ * The sidebar's order: newest activity on top; ties broken by label asc, then
+ * by path asc, so the order is fully deterministic.
+ *
+ * @example entries.sort(newestFirst)
+ */
+export function newestFirst(
+  a: { latestActivity: string; label: string; path: string },
+  b: { latestActivity: string; label: string; path: string },
+): number {
+  if (a.latestActivity !== b.latestActivity) {
+    // ISO strings (and "" for unknown) sort lexically; reverse for descending.
+    return a.latestActivity < b.latestActivity ? 1 : -1;
+  }
+  const byLabel = a.label.localeCompare(b.label);
+  if (byLabel !== 0) return byLabel;
+  return a.path.localeCompare(b.path);
 }
 
 /**

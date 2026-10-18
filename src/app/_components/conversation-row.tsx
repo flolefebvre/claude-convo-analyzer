@@ -56,12 +56,11 @@ export function ConversationRow({
   // The Date cell's label/title, formatted by the page against a single
   // request-time `now` so every row's relative label agrees (see page.tsx).
   date,
-  // `scoped` is true when the table is filtered to a single Project (an active
-  // `?folder=`). When scoped, every visible row shares that Project, so the
-  // Folder cell is redundant and hidden — the page shows the path once as a
-  // breadcrumb instead. The expand toggle therefore lives on the Date cell so
-  // rows stay expandable in BOTH states.
-  scoped = false,
+  // True when every row in scope comes from one Project (a leaf Folder, or
+  // this folder), so the Folder cell is redundant and hidden — the page shows
+  // the scope once as a breadcrumb instead. The expand toggle therefore lives
+  // on the Date cell so rows stay expandable in BOTH states.
+  isFolderColumnHidden = false,
   // True when this row is the URL's `?expanded=` target; `detail` is that
   // row's server-fetched panel data (`null` when collapsed or unknown id).
   expanded = false,
@@ -83,7 +82,7 @@ export function ConversationRow({
 }: {
   row: ConversationSummary;
   date: { label: string; absolute: string };
-  scoped?: boolean;
+  isFolderColumnHidden?: boolean;
   expanded?: boolean;
   detail?: ConversationDetail | null;
   familySize?: number;
@@ -101,7 +100,7 @@ export function ConversationRow({
           highlighted row would promise a click the row does not answer. */}
       <TableRow className="hover:bg-transparent">
         {/* The expand toggle lives here so it works whether or not the Folder
-            cell is rendered (it's hidden when scoped). Below `@xl` the column
+            cell is rendered. Below `@xl` the column
             narrows to the chevron and the date moves under the title. */}
         <TableCell className={`${CONVERSATION_COLUMNS.date} text-muted-foreground`}>
           <div className="flex items-center gap-1.5">
@@ -111,11 +110,11 @@ export function ConversationRow({
             </span>
           </div>
         </TableCell>
-        {/* When scoped to a single Project the Folder column is hidden (the page
-            shows the path once as a breadcrumb). When unscoped, show the friendly
+        {/* Hidden when every row in scope comes from one Project (the page shows
+            the scope once as a breadcrumb). Otherwise, show the friendly
             basename; the full Project path is available on hover via the cell's
             title (kept off-screen so long paths don't break the table — #14). */}
-        {!scoped && (
+        {!isFolderColumnHidden && (
           <TableCell
             title={row.project.path}
             className={`${CONVERSATION_COLUMNS.folder} truncate text-muted-foreground`}
@@ -170,13 +169,13 @@ export function ConversationRow({
               `@xl`, the folder until its own column appears at `@4xl`. */}
           <div
             className={`mt-0.5 flex min-w-0 items-center gap-1.5 text-xs font-normal text-muted-foreground ${
-              scoped ? "@xl:hidden" : "@4xl:hidden"
+              isFolderColumnHidden ? "@xl:hidden" : "@4xl:hidden"
             }`}
           >
             <span className="shrink-0 @xl:hidden" {...(date.absolute ? { title: date.absolute } : {})}>
               {date.label}
             </span>
-            {!scoped && (
+            {!isFolderColumnHidden && (
               <>
                 <span aria-hidden className="@xl:hidden">
                   ·
@@ -212,7 +211,7 @@ export function ConversationRow({
 
       {expanded && (
         <TableRow>
-          <TableCell colSpan={columnCount(scoped)} className="bg-muted/30 p-0">
+          <TableCell colSpan={columnCount(isFolderColumnHidden)} className="bg-muted/30 p-0">
             <DetailPanel detail={detail} row={row} family={family} errors={errors} listReturn={listReturn} />
           </TableCell>
         </TableRow>
