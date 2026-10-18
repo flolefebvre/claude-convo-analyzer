@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -269,6 +269,30 @@ describe("incremental refresh", () => {
     // Parent and child stay DISTINCT rows; the parent has no continuation.
     expect(origin?.continuedFromId).toBeNull();
     expect(child?.id).not.toBe(origin?.id);
+  });
+
+  it("keeps an unchanged child's continued_from when its parent is re-parsed", async () => {
+    // Continuation family: sess-resumed continues sess-origin. Re-parsing the
+    // parent replaces its row; the child, unchanged and so skipped, must still
+    // name the parent afterwards.
+    await refresh({ logsRoot, dbPath });
+    const before = await listConversations({ dbPath });
+    expect(before.find((c) => c.id === "sess-resumed")?.continuedFromId).toBe("sess-origin");
+
+    // Change only the parent: one user turn appended after its last message.
+    const originPath = path.join(logsRoot, "-Users-me-dev-resume", "sess-origin.jsonl");
+    const extra =
+      '{"type":"user","uuid":"orig-u2","parentUuid":"orig-a1","timestamp":"2026-06-19T10:01:00.000Z","cwd":"/Users/me/dev/resume","version":"2.1.180","message":{"role":"user","content":"one more"}}\n';
+    const original = readFileSync(originPath, "utf8");
+    writeFileSync(originPath, original.endsWith("\n") ? original + extra : `${original}\n${extra}`);
+    touchLater(originPath);
+
+    const second = await refresh({ logsRoot, dbPath });
+    expect(second.conversationsParsed).toBe(1);
+
+    const after = await listConversations({ dbPath });
+    expect(after.find((c) => c.id === "sess-resumed")?.continuedFromId).toBe("sess-origin");
+    expect(after.find((c) => c.id === "sess-origin")?.continuedFromId).toBeNull();
   });
 
   it("completes continued_from links left unresolved by an INTERRUPTED refresh", async () => {
