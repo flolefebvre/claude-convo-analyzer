@@ -199,3 +199,16 @@ within one Conversation.
 
 The user-triggered action that re-reads the conversation logs from disk and
 updates the local SQLite database, so the UI does not re-parse on every view.
+
+At most one Refresh runs at a time. A click starts one, or joins the one already
+running; it outlives the page that started it, and every open page sees its
+**progress** (conversations done out of conversations to re-parse) and its
+final summary. The app stays usable while it runs: pages show what is already
+stored, the open page updates now and then as Conversations land, and once
+more when the Refresh ends. A Refresh cannot
+be cancelled; an interrupted one is safe, and the next one picks up what it
+missed.
+
+A **cold** Refresh is one with nothing stored yet, so every Conversation is
+parsed. A Refresh right after the parser changes costs the same, since every
+Conversation must be re-parsed.
