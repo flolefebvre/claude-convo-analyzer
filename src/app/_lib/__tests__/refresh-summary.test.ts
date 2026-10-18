@@ -16,6 +16,7 @@ function summary(partial: Partial<RefreshSummary> = {}): RefreshSummary {
     conversationsDeleted: partial.conversationsDeleted ?? 0,
     malformedLinesSkipped: partial.malformedLinesSkipped ?? 0,
     duplicateSessionsSkipped: partial.duplicateSessionsSkipped ?? [],
+    vanishedLogFilesSkipped: partial.vanishedLogFilesSkipped ?? 0,
     durationMs: partial.durationMs ?? 0,
     durationMsByPhase: partial.durationMsByPhase ?? { discovery: 0, parse: 0, write: 0, links: 0, stamp: 0 },
   };
@@ -68,6 +69,15 @@ describe("formatRefreshSummary", () => {
     );
     expect(formatRefreshSummary(summary({ conversationsParsed: 1, duplicateSessionsSkipped: duplicates(2) }))).toBe(
       "1 conversation updated, 2 duplicate log files ignored",
+    );
+  });
+
+  it("adds the log files that vanished during the refresh, singular at one", () => {
+    expect(formatRefreshSummary(summary({ conversationsParsed: 2, vanishedLogFilesSkipped: 1 }))).toBe(
+      "2 conversations updated, 1 log file vanished during the refresh",
+    );
+    expect(formatRefreshSummary(summary({ vanishedLogFilesSkipped: 3 }))).toBe(
+      "Everything is up to date, 3 log files vanished during the refresh",
     );
   });
 });

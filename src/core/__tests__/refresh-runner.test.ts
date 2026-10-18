@@ -4,19 +4,7 @@
 import { describe, expect, it } from "vitest";
 import type { RefreshProgress, RefreshSummary } from "@/core/refresh";
 import { createRefreshRunner, type RefreshRunState } from "@/core/refresh-runner";
-
-/** A summary whose `conversationsParsed` tells runs apart. */
-function summaryOfRun(conversationsParsed: number): RefreshSummary {
-  return {
-    conversationsParsed,
-    conversationsSkipped: 0,
-    conversationsDeleted: 0,
-    malformedLinesSkipped: 0,
-    duplicateSessionsSkipped: [],
-    durationMs: 1,
-    durationMsByPhase: { discovery: 0, parse: 0, write: 1, links: 0, stamp: 0 },
-  };
-}
+import { refreshSummaryOfRun } from "./helpers/refresh-summary";
 
 /** A job the test settles by hand, recording each run it is asked for. */
 function controlledJob() {
@@ -48,11 +36,11 @@ describe("refresh runner", () => {
 
     const firstStart = runner.start();
     const secondStart = runner.start();
-    runs[0]?.succeed(summaryOfRun(7));
+    runs[0]?.succeed(refreshSummaryOfRun(7));
 
     expect(runs).toHaveLength(1);
-    await expect(firstStart).resolves.toEqual(summaryOfRun(7));
-    await expect(secondStart).resolves.toEqual(summaryOfRun(7));
+    await expect(firstStart).resolves.toEqual(refreshSummaryOfRun(7));
+    await expect(secondStart).resolves.toEqual(refreshSummaryOfRun(7));
   });
 
   it("begins a new Refresh on a start after the previous one settled", async () => {
@@ -60,14 +48,14 @@ describe("refresh runner", () => {
     const runner = createRefreshRunner(job);
 
     const firstStart = runner.start();
-    runs[0]?.succeed(summaryOfRun(1));
+    runs[0]?.succeed(refreshSummaryOfRun(1));
     await firstStart;
 
     const secondStart = runner.start();
-    runs[1]?.succeed(summaryOfRun(2));
+    runs[1]?.succeed(refreshSummaryOfRun(2));
 
     expect(runs).toHaveLength(2);
-    await expect(secondStart).resolves.toEqual(summaryOfRun(2));
+    await expect(secondStart).resolves.toEqual(refreshSummaryOfRun(2));
   });
 
   it("rejects every waiting start when the Refresh fails, and runs fresh on the next start", async () => {
@@ -82,10 +70,10 @@ describe("refresh runner", () => {
     await expect(secondStart).rejects.toThrow("disk gone");
 
     const retryStart = runner.start();
-    runs[1]?.succeed(summaryOfRun(3));
+    runs[1]?.succeed(refreshSummaryOfRun(3));
 
     expect(runs).toHaveLength(2);
-    await expect(retryStart).resolves.toEqual(summaryOfRun(3));
+    await expect(retryStart).resolves.toEqual(refreshSummaryOfRun(3));
   });
 
   it("reads idle before any Refresh, then running with its latest progress", () => {
@@ -107,10 +95,10 @@ describe("refresh runner", () => {
     const runner = createRefreshRunner(job);
 
     const start = runner.start();
-    runs[0]?.succeed(summaryOfRun(4));
+    runs[0]?.succeed(refreshSummaryOfRun(4));
     await start;
 
-    expect(runner.state()).toEqual({ status: "succeeded", runId: expect.any(String), summary: summaryOfRun(4) });
+    expect(runner.state()).toEqual({ status: "succeeded", runId: expect.any(String), summary: refreshSummaryOfRun(4) });
   });
 
   it("reads the error once the Refresh failed", async () => {
@@ -131,14 +119,14 @@ describe("refresh runner", () => {
     const start = runner.start();
     runs[0]?.reportProgress({ done: 0, total: 2 });
     runs[0]?.reportProgress({ done: 2, total: 2 });
-    runs[0]?.succeed(summaryOfRun(2));
+    runs[0]?.succeed(refreshSummaryOfRun(2));
     await start;
 
     expect(states).toEqual([
       { status: "running", runId: expect.any(String), progress: null },
       { status: "running", runId: expect.any(String), progress: { done: 0, total: 2 } },
       { status: "running", runId: expect.any(String), progress: { done: 2, total: 2 } },
-      { status: "succeeded", runId: expect.any(String), summary: summaryOfRun(2) },
+      { status: "succeeded", runId: expect.any(String), summary: refreshSummaryOfRun(2) },
     ]);
   });
 
@@ -163,7 +151,7 @@ describe("refresh runner", () => {
 
     const start = runner.start();
     unsubscribe();
-    runs[0]?.succeed(summaryOfRun(1));
+    runs[0]?.succeed(refreshSummaryOfRun(1));
     await start;
 
     expect(states).toEqual([{ status: "running", runId: expect.any(String), progress: null }]);
@@ -175,11 +163,11 @@ describe("refresh runner", () => {
 
     const firstStart = runner.start();
     void runner.start();
-    runs[0]?.succeed(summaryOfRun(1));
+    runs[0]?.succeed(refreshSummaryOfRun(1));
     await firstStart;
     const secondStart = runner.start();
     runs[1]?.reportProgress({ done: 0, total: 1 });
-    runs[1]?.succeed(summaryOfRun(2));
+    runs[1]?.succeed(refreshSummaryOfRun(2));
     await secondStart;
 
     const [firstRunId, , secondRunId] = runIdsOf(states);

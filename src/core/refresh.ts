@@ -30,11 +30,17 @@
 // now keeps ONE file per session id (smallest source path wins) and reports the
 // losers in `RefreshSummary.duplicateSessionsSkipped` (see `dedupeBySessionId`).
 //
+// VANISHED LOG FILES: a file the compare picked to re-parse may be deleted
+// before it is read (a scratch session cleaned up, a worktree removed). Such a
+// file is skipped and counted in `RefreshSummary.vanishedLogFilesSkipped`: a
+// main transcript is treated as gone (its stored row deleted), a sub-agent
+// transcript is left out of its parent. Only ENOENT counts as vanished; any
+// other error fails the run (see `vanished-file.ts`).
+//
 // ROLLUP DESIGN (ADR-0001): conversation totals/cost are SUM queries over ALL
 // messages of ALL agents in the conversation — so sub-agent tokens roll up
 // automatically, counted ONCE (the parent Agent aggregate is never summed in).
 
-import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { defaultDbPath, openRefreshConnection } from "@/core/db";
@@ -47,6 +53,7 @@ import {
 } from "@/core/discovery";
 import { type ParsedAgentSpawn, parseSessionLines, type ParsedSession } from "@/core/parse";
 import { type MessageRow, prepareRefreshStatements, type RefreshStatements } from "@/core/prisma/refresh-statements";
+import { readFileUnlessVanished, statUnlessVanished } from "@/core/vanished-file";
 
 /**
  * One `.jsonl` file dropped because another file already claimed its session id
@@ -68,6 +75,8 @@ export type RefreshSummary = {
   malformedLinesSkipped: number;
   /** Files dropped for sharing a session id with an already-claimed file. */
   duplicateSessionsSkipped: DuplicateSessionSkip[];
+  /** Log files (main or sub-agent) picked to re-parse, then gone before their read. */
+  vanishedLogFilesSkipped: number;
   durationMs: number;
   /** Where `durationMs` went, in fractional milliseconds per phase (see `RefreshPhase`). */
   durationMsByPhase: Record<RefreshPhase, number>;
@@ -230,6 +239,7 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
   let conversationsSkipped = 0;
   let conversationsDeleted = 0;
   let malformedLinesSkipped = 0;
+  let vanishedLogFilesSkipped = 0;
 
   // Assigned by the dedupe below, before anything else looks at the file set.
   let duplicateSessionsSkipped: DuplicateSessionSkip[] = [];
@@ -316,30 +326,49 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     const commitBatch = () => {
       statements.commitTransaction();
       batchOpenedAt = null;
+      // A batch holding only the deletes of vanished sessions moves no count.
+      const isDoneUnchanged = conversationsParsed === writtenConversations.length;
       conversationsParsed = writtenConversations.length;
       endPhase("write");
-      opts.onProgress?.({ done: conversationsParsed, total });
+      if (!isDoneUnchanged) opts.onProgress?.({ done: conversationsParsed, total });
     };
     // A cwd-less Conversation borrows its Project from the siblings already
     // written (see `resolveProjectPath`), so it is set aside and parsed again
     // after every other one: re-parsing these near-empty files beats holding them.
     const cwdLessSessions: SessionToReparse[] = [];
+    /** Open a write batch unless one is open; returns when the open one opened. */
+    const openBatchIfNone = (): number => {
+      if (batchOpenedAt !== null) return batchOpenedAt;
+      statements.beginTransaction();
+      batchOpenedAt = performance.now();
+      return batchOpenedAt;
+    };
     const parseAndWrite = (sessionToReparse: SessionToReparse, isCwdLessPass: boolean) => {
       phaseStart = performance.now();
-      const parsedConversation = parseConversation(sessionToReparse);
+      const { parsedConversation, vanishedSubAgentFileCount } = parseConversation(sessionToReparse);
+      if (parsedConversation === null) {
+        // Its main transcript vanished: the session is gone, as if discovery
+        // had not found it.
+        vanishedLogFilesSkipped += 1;
+        endPhase("parse");
+        if (sessionToReparse.priorConversationId === null) return;
+        openBatchIfNone();
+        statements.deleteConversation(sessionToReparse.priorConversationId);
+        conversationsDeleted += 1;
+        endPhase("write");
+        return;
+      }
       if (!isCwdLessPass && parsedConversation.parsed.projectPath === null) {
         cwdLessSessions.push(sessionToReparse);
         endPhase("parse");
         return;
       }
+      vanishedLogFilesSkipped += vanishedSubAgentFileCount;
       malformedLinesSkipped += parsedConversation.parsed.malformedLines;
       for (const sub of parsedConversation.subAgents) malformedLinesSkipped += sub.parsed.malformedLines;
       endPhase("parse");
 
-      if (batchOpenedAt === null) {
-        statements.beginTransaction();
-        batchOpenedAt = performance.now();
-      }
+      const currentBatchOpenedAt = openBatchIfNone();
       writtenConversations.push({
         conversationId: writeConversation(statements, parsedConversation),
         sessionId: parsedConversation.session.sessionId,
@@ -348,7 +377,7 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
       const conversationsInBatch = writtenConversations.length - conversationsParsed;
       const isBatchFull =
         conversationsInBatch >= MAX_CONVERSATIONS_PER_BATCH ||
-        performance.now() - batchOpenedAt >= MAX_BATCH_DURATION_MS;
+        performance.now() - currentBatchOpenedAt >= MAX_BATCH_DURATION_MS;
       if (isBatchFull) commitBatch();
       else endPhase("write");
     };
@@ -384,6 +413,7 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     conversationsDeleted,
     malformedLinesSkipped,
     duplicateSessionsSkipped,
+    vanishedLogFilesSkipped,
     durationMs: Math.round(performance.now() - start),
     durationMsByPhase,
   };
@@ -438,15 +468,15 @@ function discoverWithKeys(logsRoot: string): DiscoveredWithKey[] {
   const out: DiscoveredWithKey[] = [];
   for (const session of discoverSessions(logsRoot)) {
     const projectDir = path.dirname(session.sourcePath);
-    const subAgentPaths = discoverSubAgents(projectDir, session.sessionId).map((s) => ({
-      agentId: s.agentId,
-      sourcePath: s.sourcePath,
-    }));
+    const subAgentPaths: DiscoveredWithKey["subAgentPaths"] = [];
 
     let compositeMtime = session.sourceMtime;
     let compositeSize = session.sourceSize;
-    for (const sub of subAgentPaths) {
-      const stat = statSync(sub.sourcePath);
+    for (const sub of discoverSubAgents(projectDir, session.sessionId)) {
+      // Gone between its listing and its stat: absent at discovery.
+      const stat = statUnlessVanished(sub.sourcePath);
+      if (stat === null) continue;
+      subAgentPaths.push({ agentId: sub.agentId, sourcePath: sub.sourcePath });
       compositeMtime = Math.max(compositeMtime, Math.floor(stat.mtimeMs));
       compositeSize += stat.size;
     }
@@ -456,19 +486,34 @@ function discoverWithKeys(logsRoot: string): DiscoveredWithKey[] {
   return out;
 }
 
-/** Read + parse one transcript file (main or sub-agent — same per-turn shape). */
-function parseSession(sourcePath: string): ParsedSession {
-  return parseSessionLines(readFileSync(sourcePath, "utf8").split("\n"));
+/**
+ * Read + parse one transcript file (main or sub-agent — same per-turn shape),
+ * or null when it vanished since discovery.
+ */
+function parseSession(sourcePath: string): ParsedSession | null {
+  const text = readFileUnlessVanished(sourcePath);
+  return text === null ? null : parseSessionLines(text.split("\n"));
 }
 
-/** Parse a session's main transcript and every sub-agent transcript beside it. */
-function parseConversation({ session, subAgentPaths, priorConversationId }: SessionToReparse): ParsedConversation {
-  return {
-    session,
-    parsed: parseSession(session.sourcePath),
-    subAgents: subAgentPaths.map((sub) => ({ agentId: sub.agentId, parsed: parseSession(sub.sourcePath) })),
-    priorConversationId,
-  };
+/**
+ * Parse a session's main transcript and every sub-agent transcript beside it.
+ * The conversation is null when the main transcript vanished; a vanished
+ * sub-agent transcript is left out and counted.
+ */
+function parseConversation({ session, subAgentPaths, priorConversationId }: SessionToReparse): {
+  parsedConversation: ParsedConversation | null;
+  vanishedSubAgentFileCount: number;
+} {
+  const parsed = parseSession(session.sourcePath);
+  if (parsed === null) return { parsedConversation: null, vanishedSubAgentFileCount: 0 };
+  const subAgents: ParsedConversation["subAgents"] = [];
+  let vanishedSubAgentFileCount = 0;
+  for (const sub of subAgentPaths) {
+    const subParsed = parseSession(sub.sourcePath);
+    if (subParsed === null) vanishedSubAgentFileCount += 1;
+    else subAgents.push({ agentId: sub.agentId, parsed: subParsed });
+  }
+  return { parsedConversation: { session, parsed, subAgents, priorConversationId }, vanishedSubAgentFileCount };
 }
 
 /**
