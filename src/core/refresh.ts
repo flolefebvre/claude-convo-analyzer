@@ -540,7 +540,8 @@ async function writeAgentMessages(
  * Replace one conversation: delete its prior row (if any), then write it + root
  * agent + messages + tool_calls, then each sub-agent (its own agent row +
  * messages + tool_calls), then pr_links and
- * turn_durations — all in one transaction. Sub-agent `spawnedByMessageId` is
+ * turn_durations — all in one transaction. The conversations that continued
+ * from the prior row are re-pointed at the new one in that same transaction. Sub-agent `spawnedByMessageId` is
  * linked via the spawning `Agent` tool_use that produced the matching `agentId`
  * (log-format §4) — in whichever transcript that ledger lives, main thread or
  * another sub-agent (see `planSubAgents`); `agentType`/`resolvedModel` come from
@@ -553,8 +554,17 @@ async function writeConversation(prisma: PrismaClient, parsedConversation: Parse
     async (tx) => {
       // The prior row goes in the SAME transaction as its replacement (cascading
       // to every child table), so a reader on another connection sees the old
-      // version or the new one — never the conversation missing.
+      // version or the new one — never the conversation missing. The delete nulls
+      // the continued-from link of every child (`onDelete: SetNull`), so their ids
+      // are read first and re-pointed at the new row below — a skipped child is
+      // not re-linked by `resolveContinuedFrom`.
+      let continuingChildIds: number[] = [];
       if (priorConversationId !== null) {
+        const continuingChildren = await tx.conversation.findMany({
+          where: { continuedFromConversationId: priorConversationId },
+          select: { id: true },
+        });
+        continuingChildIds = continuingChildren.map((c) => c.id);
         await tx.conversation.delete({ where: { id: priorConversationId } });
       }
       const projectId = await upsertProject(tx, session.folder, parsed);
@@ -575,6 +585,12 @@ async function writeConversation(prisma: PrismaClient, parsedConversation: Parse
           continuedFromConversationId: null,
         },
       });
+      if (continuingChildIds.length > 0) {
+        await tx.conversation.updateMany({
+          where: { id: { in: continuingChildIds } },
+          data: { continuedFromConversationId: conversation.id },
+        });
+      }
 
       const rootAgent = await tx.agent.create({
         data: {
