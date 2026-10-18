@@ -3,6 +3,7 @@
 // module mirrors `schema.prisma` by hand: a column added, renamed or removed
 // there must be followed here. `stored-data-equivalence.test.ts` catches a miss.
 
+import path from "node:path";
 import type Database from "better-sqlite3";
 
 /** A value SQLite stores; booleans are written as 0/1 (see `toSqlValue`). */
@@ -38,6 +39,7 @@ const PROJECT_COLUMN_BY_FIELD = { path: "path" } as const;
 const CONVERSATION_COLUMN_BY_FIELD = {
   sessionId: "session_id",
   projectId: "project_id",
+  projectPathFromRecords: "project_path_from_records",
   title: "title",
   gitBranch: "git_branch",
   ccVersion: "cc_version",
@@ -163,6 +165,22 @@ export function prepareRefreshStatements(db: Database.Database) {
     `UPDATE "conversation" SET "parser_version" = ? WHERE "id" IN (SELECT "value" FROM json_each(?))`,
   );
   const selectProjectId = db.prepare(`SELECT "id" FROM "project" WHERE "path" = ?`).pluck();
+  // Conversations filed directly in the log folder: `source_path` starts with
+  // `@logFolderPrefix` and holds no further separator after it.
+  const selectBorrowableProjectPath = db
+    .prepare(
+      `SELECT "project"."path" FROM "conversation" JOIN "project" ON "project"."id" = "conversation"."project_id"
+        WHERE "conversation"."project_path_from_records" = 1
+          AND substr("conversation"."source_path", 1, length(@logFolderPrefix)) = @logFolderPrefix
+          AND instr(substr("conversation"."source_path", length(@logFolderPrefix) + 1), @separator) = 0
+        GROUP BY "project"."path"
+        ORDER BY COUNT(*) DESC, "project"."path" ASC
+        LIMIT 1`,
+    )
+    .pluck();
+  const deleteProjectsWithoutConversations = db.prepare(
+    `DELETE FROM "project" WHERE "id" NOT IN (SELECT "project_id" FROM "conversation")`,
+  );
   // `uuid` is not unique: the first message stored with it decides.
   const selectMessageOwner = db.prepare(
     `SELECT "id", "session_id" AS "sessionId" FROM "conversation"
@@ -189,6 +207,16 @@ export function prepareRefreshStatements(db: Database.Database) {
       void updateParserVersion.run(parserVersion, JSON.stringify(conversationIds)),
     /** Id of the project stored at `projectPath`, if any. */
     selectProjectId: (projectPath: string) => selectProjectId.get(projectPath) as number | undefined,
+    /**
+     * The Project path most of the Conversations filed in `logFolderPath`
+     * state through their own records, ties to the smallest path; undefined
+     * when none of them states one.
+     */
+    selectBorrowableProjectPath: (logFolderPath: string) =>
+      selectBorrowableProjectPath.get({ logFolderPrefix: logFolderPath + path.sep, separator: path.sep }) as
+        string | undefined,
+    /** Delete every Project no Conversation belongs to any more. */
+    deleteProjectsWithoutConversations: () => void deleteProjectsWithoutConversations.run(),
     /** The Conversation owning the first message stored with `uuid`, if any. */
     selectMessageOwner: (uuid: string) => selectMessageOwner.get(uuid) as { id: number; sessionId: string } | undefined,
     insertProject: prepareInsert(db, "project", PROJECT_COLUMN_BY_FIELD),

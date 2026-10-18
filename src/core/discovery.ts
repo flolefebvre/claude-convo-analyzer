@@ -136,6 +136,8 @@ export function discoverSubAgents(projectDir: string, sessionId: string): Discov
  * (`/` ⇐ `-`). Lossy/ambiguous on a real `-` (finding #10) — used only as a
  * last resort when neither a Conversation nor any sibling in its log folder
  * states a `cwd` (see `resolveProjectPath` in refresh.ts).
+ *
+ * @example decodeLogFolderName("-Users-me-dev-acme-api") // "/Users/me/dev/acme/api"
  */
 export function decodeLogFolderName(logFolderName: string): string {
   return logFolderName.replace(/-/g, "/");

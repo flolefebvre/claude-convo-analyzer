@@ -1,7 +1,8 @@
 // A Conversation's Project is identified by its path (GLOSSARY.md, Project):
 // the directory its records' `cwd` states, moved only by a switch into a git
 // worktree of that directory — never by ordinary `cd` drift, and never by the
-// lossy name of the log folder the Conversation is filed in.
+// lossy name of the log folder the Conversation is filed in while a sibling in
+// that folder states its `cwd`. Across Refreshes: `incremental.test.ts`.
 
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -36,5 +37,30 @@ describe("Project path", () => {
     const byId = await projectPathBySessionId(db.dbPath);
 
     expect(byId["sess-two-worktrees"]).toBe("/Users/me/dev/repo/.claude/worktrees/second");
+  });
+
+  it("puts a cwd-less Conversation in the Project of a sibling in its log folder, not the folder name's decode", async () => {
+    const byId = await projectPathBySessionId(db.dbPath);
+
+    // `-Users-me-dev-acme-api` decodes to /Users/me/dev/acme/api.
+    expect(byId["sess-acme-cwdless"]).toBe("/Users/me/dev/acme-api");
+  });
+
+  it("borrows the Project with the most Conversations in the log folder", async () => {
+    const byId = await projectPathBySessionId(db.dbPath);
+
+    expect(byId["sess-most-cwdless"]).toBe("/Users/me/dev/most/b");
+  });
+
+  it("breaks a tie between candidate Projects by the smallest path", async () => {
+    const byId = await projectPathBySessionId(db.dbPath);
+
+    expect(byId["sess-tied-cwdless"]).toBe("/Users/me/dev/tied/a");
+  });
+
+  it("decodes the log folder name only when no Conversation filed there states a cwd", async () => {
+    const byId = await projectPathBySessionId(db.dbPath);
+
+    expect(byId["sess-lone-cwdless"]).toBe("/Users/me/dev/lone/wolf");
   });
 });

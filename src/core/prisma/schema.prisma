@@ -32,6 +32,9 @@ model Conversation {
   /// The session id (file stem of `<sessionId>.jsonl`).
   sessionId String @unique @map("session_id")
   projectId Int    @map("project_id")
+  /// The Conversation's own records stated its Project path; false when it
+  /// was borrowed from a sibling in its log folder or decoded from the folder name.
+  projectPathFromRecords Boolean @default(false) @map("project_path_from_records")
 
   /// Human-readable name from an `ai-title` record (may be null).
   title     String?
