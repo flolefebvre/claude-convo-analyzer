@@ -2,7 +2,7 @@
 // Conversations this run re-parses and `done` counts the ones already
 // committed. Writes commit in batches, and each commit is reported once.
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
@@ -68,6 +68,40 @@ describe("refresh progress", () => {
       expect(conversationCount).toBe(done);
     }
     expect(await listConversations({ dbPath })).toHaveLength(summary.conversationsParsed);
+  });
+
+  it("commits a run larger than one batch in several batches, each readable elsewhere when reported", async () => {
+    // 60 copies of one small session under distinct session ids (file stems):
+    // more Conversations than one batch holds.
+    const logsRoot = path.join(tmpDir, "logs");
+    const projectDir = path.join(logsRoot, "-Users-me-dev-demo");
+    mkdirSync(projectDir, { recursive: true });
+    const basicSessionPath = path.join(FIXTURES_ROOT, "-Users-me-dev-demo", "sess-basic.jsonl");
+    for (let copy = 0; copy < 60; copy += 1) {
+      copyFileSync(basicSessionPath, path.join(projectDir, `sess-copy-${copy}.jsonl`));
+    }
+
+    const progressReports: RefreshProgress[] = [];
+    const conversationCountByDone = new Map<number, number>();
+    const summary = await refresh({
+      logsRoot,
+      dbPath,
+      onProgress: (progress) => {
+        progressReports.push(progress);
+        conversationCountByDone.set(progress.done, conversationCountOnSecondConnection(dbPath));
+      },
+    });
+
+    const total = summary.conversationsParsed;
+    expect(total).toBe(60);
+    expect(progressReports.some(({ done }) => done > 0 && done < total)).toBe(true);
+    expect(progressReports.at(-1)).toEqual({ done: total, total });
+    for (const [index, progress] of progressReports.entries()) {
+      if (index > 0) expect(progress.done).toBeGreaterThan(progressReports[index - 1]?.done ?? Infinity);
+    }
+    for (const [done, conversationCount] of conversationCountByDone) {
+      expect(conversationCount).toBe(done);
+    }
   });
 
   it("reports a total of 0 when nothing changed", async () => {
