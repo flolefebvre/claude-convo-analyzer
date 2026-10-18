@@ -8,9 +8,10 @@
 // children of a log folder), so a naive recursive walk does not conflate
 // them with sessions.
 
-import { readdirSync, statSync } from "node:fs";
+import { readdirSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { statUnlessVanished } from "@/core/vanished-file";
 
 /**
  * The logs root `refresh()` scans when given none: `CCA_LOGS_ROOT` (empty counts
@@ -84,7 +85,8 @@ export function discoverSessions(logsRoot: string): DiscoveredSession[] {
       if (isSubAgentPath(sourcePath)) continue;
 
       const sessionId = fileEntry.name.slice(0, -".jsonl".length);
-      const stat = statSync(sourcePath);
+      const stat = statUnlessVanished(sourcePath);
+      if (stat === null) continue;
       sessions.push({
         logFolderName,
         sessionId,

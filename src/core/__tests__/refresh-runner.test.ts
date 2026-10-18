@@ -13,6 +13,7 @@ function summaryOfRun(conversationsParsed: number): RefreshSummary {
     conversationsDeleted: 0,
     malformedLinesSkipped: 0,
     duplicateSessionsSkipped: [],
+    vanishedLogFilesSkipped: 0,
     durationMs: 1,
     durationMsByPhase: { discovery: 0, parse: 0, write: 1, links: 0, stamp: 0 },
   };
