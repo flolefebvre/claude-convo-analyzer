@@ -12,6 +12,7 @@ import { readClient } from "@/core/db";
 import { addLocalDays, localDayKey, startOfLocalDay } from "@/core/local-day";
 import { type MessageOrigin, messageOriginSchema } from "@/core/parse";
 import type { Prisma, PrismaClient } from "@/core/prisma/generated/client";
+import { PARSER_VERSION } from "@/core/refresh";
 
 export type ConversationSummary = {
   id: string;
@@ -619,6 +620,23 @@ export async function getToolCallBody(id: number, opts: DetailOptions = {}): Pro
   } finally {
     // Only a caller-owned (non-default) client is disconnected; the shared
     // default singleton stays open for the next request.
+    if (owned) await prisma.$disconnect();
+  }
+}
+
+/**
+ * How many stored Conversations carry a parser version other than the current
+ * {@link PARSER_VERSION} — produced by an older parser, or left unstamped by an
+ * interrupted Refresh. Not "Conversations needing a Refresh": one whose source
+ * files changed needs one too, and is not counted here.
+ *
+ * @example const outdatedCount = await countConversationsWithOutdatedParserVersion();
+ */
+export async function countConversationsWithOutdatedParserVersion(opts: DetailOptions = {}): Promise<number> {
+  const { prisma, owned } = readClient(opts.dbPath);
+  try {
+    return await prisma.conversation.count({ where: { parserVersion: { not: PARSER_VERSION } } });
+  } finally {
     if (owned) await prisma.$disconnect();
   }
 }

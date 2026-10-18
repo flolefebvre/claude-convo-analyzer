@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import type { RefreshSummary } from "@/core/refresh";
 
-import { formatDuplicateSessionDetail, formatRefreshSummary } from "@/app/_lib/refresh-summary";
+import {
+  formatDuplicateSessionDetail,
+  formatOutdatedParserNotice,
+  formatRefreshSummary,
+} from "@/app/_lib/refresh-summary";
 
 function summary(partial: Partial<RefreshSummary> = {}): RefreshSummary {
   return {
@@ -72,5 +76,19 @@ describe("formatDuplicateSessionDetail", () => {
 
   it("has nothing to report when no duplicate was skipped", () => {
     expect(formatDuplicateSessionDetail(summary())).toBeNull();
+  });
+});
+
+describe("formatOutdatedParserNotice", () => {
+  it("names how many conversations need a Refresh, with thousands separators", () => {
+    expect(formatOutdatedParserNotice(2445)).toBe(
+      "The parser was updated — 2,445 conversations need a Refresh to show the latest data.",
+    );
+  });
+
+  it("uses the singular for one conversation", () => {
+    expect(formatOutdatedParserNotice(1)).toBe(
+      "The parser was updated — 1 conversation needs a Refresh to show the latest data.",
+    );
   });
 });

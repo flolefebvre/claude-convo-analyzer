@@ -1,8 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Suspense } from "react";
 
 import "./globals.css";
 import { AppBar } from "@/app/_components/app-bar";
+import { ParserUpdateBanner } from "@/app/_components/parser-update-banner";
 import { ThemeProvider } from "@/app/_components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
@@ -41,7 +43,8 @@ export const viewport: Viewport = {
 const THEME_CHOICE_SCRIPT = `try{var c=localStorage.getItem("theme");document.documentElement.dataset.themeChoice=c==="light"||c==="dark"?c:"system"}catch(e){}`;
 
 // The ROOT layout: the document shell — <html>/<body>, the web fonts, the theme
-// provider — and the chrome every route shares: the skip link and the app bar.
+// provider — and the chrome every route shares: the skip link, the app bar and
+// the parser-update banner under it.
 // Each route renders its own <main id="main"> below the bar (the skip link's
 // target), so that landmark wraps the page content only: the shell's folder
 // sidebar and the transcript's agent tree sit beside it, not inside it.
@@ -74,6 +77,11 @@ export default function RootLayout({
         <ThemeProvider>
           <TooltipProvider delayDuration={200}>
             <AppBar />
+            {/* Absent in the normal state, so no skeleton: one would flash a
+                phantom banner on every load (docs/codebase/app-router.md). */}
+            <Suspense fallback={null}>
+              <ParserUpdateBanner />
+            </Suspense>
             {children}
           </TooltipProvider>
         </ThemeProvider>

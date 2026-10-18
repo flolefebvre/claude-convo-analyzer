@@ -111,7 +111,7 @@ type RefreshOptions = {
  *     git worktree belongs to the worktree, and a cwd-less one borrows the
  *     Project of a sibling in its log folder.
  */
-const PARSER_VERSION = 4;
+export const PARSER_VERSION = 4;
 
 /**
  * The version a conversation carries while it is written but NOT YET COMPLETE:
