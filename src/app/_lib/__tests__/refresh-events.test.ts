@@ -9,6 +9,7 @@ import { recordPublishes } from "@flefebvre/next-sse/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { publishRefreshEvents, startOrJoinRefresh } from "@/app/_lib/refresh-events";
 import { refresh, type RefreshProgress, type RefreshSummary } from "@/core/refresh";
+import { refreshSummaryOfRun } from "@/core/__tests__/helpers/refresh-summary";
 import { createRefreshRunner } from "@/core/refresh-runner";
 
 // A `REDIS_URL` in the environment must not move the app off its Memory
@@ -143,12 +144,4 @@ describe("refresh events", () => {
   });
 });
 
-const SUMMARY: RefreshSummary = {
-  conversationsParsed: 1,
-  conversationsSkipped: 0,
-  conversationsDeleted: 0,
-  malformedLinesSkipped: 0,
-  duplicateSessionsSkipped: [],
-  durationMs: 1,
-  durationMsByPhase: { discovery: 0, parse: 0, write: 1, links: 0, stamp: 0 },
-};
+const SUMMARY = refreshSummaryOfRun(1);
