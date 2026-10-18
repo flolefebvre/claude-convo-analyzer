@@ -4,7 +4,6 @@ import { FolderDisclosure } from "@/app/_components/folder-disclosure";
 import { FolderSidebar } from "@/app/_components/folder-sidebar";
 import { LoadingRegion } from "@/app/_components/loading-region";
 import { homeDirectory, loadConversations } from "@/app/_lib/conversations";
-import { formatGrandTotalCost } from "@/app/_lib/format";
 import { buildListView } from "@/app/_lib/list-view";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -15,10 +14,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 // the sidebar.
 //
 // Two columns from `lg` up; below that the page gets the full width and the
-// folder list folds into a one-line disclosure above the content, so a phone
+// folder tree folds into a one-line disclosure above the content, so a phone
 // does not scroll past every Project before reaching any data.
 //
-// The folder list is scope-independent (derived from ALL conversations), so
+// The folder tree is scope-independent (derived from ALL conversations), so
 // the layout can build it without reading `searchParams` (which layouts cannot
 // do anyway). Both this and the page call `loadConversations()`, but React
 // `cache()` dedupes it to one read per request.
@@ -29,7 +28,7 @@ export default function ShellLayout({
 }>) {
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row lg:items-start lg:gap-8 lg:py-8">
-      {/* The folder list is fetched at request time and its entries read the
+      {/* The folder tree is fetched at request time and its entries read the
           live URL — both reasons to keep it inside a Suspense boundary so the
           shell can prerender (Next local docs: use-search-params
           "Prerendering"). The fallback holds the sidebar's width so the page
@@ -45,40 +44,24 @@ export default function ShellLayout({
 }
 
 /**
- * The sidebar's data: derive the scope-independent folder list from ALL
+ * The sidebar's data: derive the scope-independent folder tree from ALL
  * conversations, and render it twice — as the desktop sidebar and as the
  * phone/tablet disclosure (CSS shows one). Nothing at all before the first
- * scan: an empty folder list is no navigation.
+ * scan: an empty folder tree is no navigation.
  */
 async function Sidebar() {
   const allRows = await loadConversations();
-  // No sort intent -> the scope-independent slice only (folder list + totals);
+  // No sort intent -> the scope-independent slice only (folder tree + totals);
   // the table slice is skipped. The "All folders" anchor totals are summed from
   // the already-derived per-folder entries (no extra core touch).
-  const { folders, totals } = buildListView(allRows, homeDirectory());
+  const { folderTree, totals } = buildListView(allRows, homeDirectory());
   if (totals.count === 0) return null;
 
-  const nav = (
-    <FolderSidebar
-      folders={folders}
-      totalCount={totals.count}
-      totalCost={totals.costUsd}
-      totalUnpriced={totals.unpriced}
-    />
-  );
-  const cost = (value: number, unpriced: boolean) => `${unpriced ? "~" : ""}${formatGrandTotalCost(value)}`;
+  const nav = <FolderSidebar folderTree={folderTree} totals={totals} />;
   return (
     <>
       <aside className="hidden w-64 shrink-0 lg:block">{nav}</aside>
-      <FolderDisclosure
-        className="lg:hidden"
-        totalCost={cost(totals.costUsd, totals.unpriced)}
-        folders={folders.map((entry) => ({
-          folder: entry.path,
-          label: entry.label,
-          cost: cost(entry.costUsd, entry.unpriced),
-        }))}
-      >
+      <FolderDisclosure className="lg:hidden" folderTree={folderTree} totals={totals}>
         {nav}
       </FolderDisclosure>
     </>

@@ -5,6 +5,7 @@ import {
   isProjectInFolderScope,
   isSameFolderScope,
   resolveFolderScope,
+  resolveLiveFolderScope,
   writeFolderScope,
 } from "@/app/_lib/folder-scope";
 
@@ -21,6 +22,19 @@ describe("resolveFolderScope", () => {
 
   it("only narrows on the canonical value", () => {
     expect(resolveFolderScope({ folder: "/a", thisFolder: "yes" }).thisFolderOnly).toBe(false);
+  });
+});
+
+describe("resolveLiveFolderScope", () => {
+  it("reads the same scope from a live query", () => {
+    expect(resolveLiveFolderScope(new URLSearchParams("folder=%2Fa&thisFolder=1"))).toEqual({
+      folder: "/a",
+      thisFolderOnly: true,
+    });
+    expect(resolveLiveFolderScope(new URLSearchParams("thisFolder=1"))).toEqual({
+      folder: undefined,
+      thisFolderOnly: false,
+    });
   });
 });
 

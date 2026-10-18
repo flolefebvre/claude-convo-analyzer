@@ -34,6 +34,21 @@ export function resolveFolderScope(
 }
 
 /**
+ * {@link resolveFolderScope} over a live `URLSearchParams`, as a client
+ * component's `useSearchParams()` hands it.
+ *
+ * @example const scope = resolveLiveFolderScope(useSearchParams())
+ */
+export function resolveLiveFolderScope(
+  params: Pick<URLSearchParams, "get">,
+): FolderScope & { thisFolderOnly: boolean } {
+  return resolveFolderScope({
+    folder: params.get("folder") ?? undefined,
+    thisFolder: params.get("thisFolder") ?? undefined,
+  });
+}
+
+/**
  * True when a Project at `projectPath` lies in the scope: its path is the
  * Folder's, or — unless narrowed to this folder — below it (`/a/b` holds
  * `/a/b/c` but not `/a/bc`).

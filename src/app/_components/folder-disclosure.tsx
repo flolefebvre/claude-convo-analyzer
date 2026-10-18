@@ -1,55 +1,63 @@
 "use client";
 
-// The folder list on phones and tablets: one line naming the current scope
-// ("Folder  acme-api  $12.40"), which opens to the same entries the desktop
-// sidebar shows. A native <details>, so it works without JavaScript — the URL is
-// the state, and every entry is a plain link.
+// The folder tree on phones and tablets: one line naming the current scope
+// ("Folder  acme-api  $12.40"), which opens to the same tree the desktop
+// sidebar shows, with the same chevron and name behaviour. A native <details>,
+// so the disclosure itself works without JavaScript — the URL is the state.
 //
-// A client component only to name the active folder in the summary: the shell
-// layout cannot read `searchParams`. The disclosure is keyed by that folder, so
-// picking an entry lands on a closed disclosure naming the new scope.
+// A client component only to name the selected Folder in the summary: the
+// shell layout cannot read `searchParams`. The disclosure is keyed by the
+// scope, so picking a Folder lands on a closed disclosure naming the new scope
+// (and a tree opened down to it).
 //
-// ADR-0002 boundary: no core import — the labels and formatted costs arrive as
-// props.
+// ADR-0002 boundary: no core import — the tree and totals arrive as props.
 
 import { ChevronDown, Folder } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 
+import { formatFolderCost } from "@/app/_components/folder-rows";
+import { resolveLiveFolderScope } from "@/app/_lib/folder-scope";
+import { type FolderNode, type FolderTotals, findFolderNode, folderScopeLabel } from "@/app/_lib/folder-tree";
 import { cn } from "@/lib/utils-cn";
 
 /**
  * The collapsible folder picker shown below `lg`, wrapping the folder `<nav>`.
  *
  * @example
- * <FolderDisclosure folders={[{ folder: "/home/dev/acme", label: "acme", cost: "$3.10" }]} totalCost="$3.10">
+ * <FolderDisclosure folderTree={folderTree} totals={totals}>
  *   {nav}
  * </FolderDisclosure>
  */
 export function FolderDisclosure({
-  folders,
-  totalCost,
+  folderTree,
+  totals,
   className,
   children,
 }: {
-  /** Each Project's `?folder=` key, label and formatted cost. */
-  folders: { folder: string; label: string; cost: string }[];
-  /** The formatted cost across all Projects. */
-  totalCost: string;
+  /** The folder tree's roots, to name the selected Folder. */
+  folderTree: FolderNode[];
+  /** The totals across all Projects, shown for "All folders". */
+  totals: FolderTotals;
   className?: string;
   /** The folder navigation, shown when open. */
   children: React.ReactNode;
 }) {
-  const params = useSearchParams();
-  const activeFolder = params.get("folder") || null;
-  const active = folders.find((entry) => entry.folder === activeFolder);
+  const scope = resolveLiveFolderScope(useSearchParams());
+  const selected = scope.folder ? findFolderNode(folderTree, scope.folder) : undefined;
+  const selectedTotals = selected && scope.thisFolderOnly ? (selected.thisFolder ?? selected) : selected;
 
   return (
-    <details key={activeFolder ?? ""} className={cn("group rounded-xl border bg-card", className)}>
+    <details
+      key={`${scope.folder ?? ""}|${scope.thisFolderOnly}`}
+      className={cn("group rounded-xl border bg-card", className)}
+    >
       <summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl px-4 py-3 text-sm [&::-webkit-details-marker]:hidden">
         <Folder className="size-4 shrink-0 text-muted-foreground" aria-hidden />
         <span className="text-muted-foreground">Folder</span>
-        <span className="min-w-0 truncate font-medium">{active?.label ?? "All folders"}</span>
-        <span className="ml-auto shrink-0 text-muted-foreground">{active?.cost ?? totalCost}</span>
+        <span className="min-w-0 truncate font-medium">
+          {selected ? folderScopeLabel(selected, scope) : "All folders"}
+        </span>
+        <span className="ml-auto shrink-0 text-muted-foreground">{formatFolderCost(selectedTotals ?? totals)}</span>
         <ChevronDown
           className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180"
           aria-hidden

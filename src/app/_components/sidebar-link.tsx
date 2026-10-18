@@ -16,7 +16,7 @@
 import { useSearchParams } from "next/navigation";
 
 import { PendingLink } from "@/app/_components/pending-link";
-import { folderScopeHref, isSameFolderScope, resolveFolderScope, type FolderScope } from "@/app/_lib/folder-scope";
+import { folderScopeHref, isSameFolderScope, resolveLiveFolderScope, type FolderScope } from "@/app/_lib/folder-scope";
 import { cn } from "@/lib/utils-cn";
 
 /**
@@ -40,13 +40,7 @@ export function SidebarLink({
   children: React.ReactNode;
 }) {
   const params = useSearchParams();
-  const active = isSameFolderScope(
-    resolveFolderScope({
-      folder: params.get("folder") ?? undefined,
-      thisFolder: params.get("thisFolder") ?? undefined,
-    }),
-    scope,
-  );
+  const active = isSameFolderScope(resolveLiveFolderScope(params), scope);
   return (
     // `scroll={false}`: re-scoping keeps your place on the page; the content
     // dims while the new scope loads (PendingLink).
