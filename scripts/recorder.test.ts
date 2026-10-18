@@ -100,12 +100,28 @@ describe("pnpm recorder", () => {
     expect(readRecordings(recordingsRoot).map((recorded) => recorded.sessionId)).toEqual(["sess-script"]);
   });
 
-  it("exits 1 at once on a second signal", async () => {
+  it("still drains when one Ctrl-C reaches it several times in a burst", async () => {
+    const reader = await startStreamedRequest(await startRecorderProcess());
+    const exited = exitCodeOf(recorderProcess!);
+
+    for (let delivery = 0; delivery < 3; delivery++) {
+      recorderProcess!.kill("SIGINT");
+      await new Promise((resolve) => setTimeout(resolve, 15));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(recorderProcess!.exitCode).toBeNull();
+    releaseRest();
+
+    await textUntilEnd(reader);
+    expect(await exited).toBe(0);
+  });
+
+  it("exits 1 at once on a second signal, a second or more after the first", async () => {
     await startStreamedRequest(await startRecorderProcess());
     const exited = exitCodeOf(recorderProcess!);
 
     recorderProcess!.kill("SIGTERM");
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 1100));
     recorderProcess!.kill("SIGINT");
 
     expect(await exited).toBe(1);

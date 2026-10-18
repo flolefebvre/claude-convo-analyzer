@@ -160,6 +160,23 @@ describe("a Recording", () => {
     expect(readRecordings(recordingsRoot)).toHaveLength(1);
   });
 
+  it("cuts off a member left short before appending after it, so the file stays whole", async () => {
+    await openRecordingWriter(recordingsRoot).append(apiRequest());
+    const filePath = path.join(recordingsRoot, "sess-recorded.jsonl.gz");
+    const sizeAfterFirst = statSync(filePath).size;
+    await openRecordingWriter(recordingsRoot).append(apiRequest({ body: nextTurnBody() }));
+    truncateSync(filePath, sizeAfterFirst + Math.floor((statSync(filePath).size - sizeAfterFirst) / 2));
+
+    await openRecordingWriter(recordingsRoot).append(apiRequest({ body: nextTurnBody() }));
+
+    expect(() => gunzipSync(readFileSync(filePath))).not.toThrow();
+    expect(readRecordings(recordingsRoot).map((recorded) => recorded.body)).toEqual([
+      redactedUserId(REQUEST_BODY),
+      redactedUserId(nextTurnBody()),
+    ]);
+    expect(readdirSync(recordingsRoot)).toEqual(["sess-recorded.jsonl.gz"]);
+  });
+
   it("files API requests per session, and those of no session or an unsafe one as unattributed", async () => {
     const writer = openRecordingWriter(recordingsRoot);
     await writer.append(apiRequest());

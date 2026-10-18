@@ -27,9 +27,12 @@ agree on, so a Recording can be read without that module.
 
 A file is a concatenation of complete **gzip members**, one per API request,
 each written with a single append. `gunzip` (or `zcat`) reads the whole file as
-one text. A crash can leave at most the last member cut short; a reader decodes
-what it can of it and drops the line cut short, so every API request before it
-survives.
+one text. A crash or a failed write can leave at most the last member cut short;
+a reader decodes what it can of it and drops the line cut short, so every API
+request before it survives. Before appending after such a member, the writer
+repairs the file: it keeps every line up to the last complete API request, as
+one member, and replaces the file by a rename. So a cut-short member is only
+ever the last one.
 
 The decoded text is JSON Lines. One member holds, in order, the **pieces** the
 API request introduced to this file, then the **API request** line. A piece

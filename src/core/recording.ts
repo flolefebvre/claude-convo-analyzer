@@ -5,7 +5,7 @@
 
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
-import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -150,7 +150,7 @@ export function openRecordingWriter(recordingsRoot: string): RecordingWriter {
     const fileState = fileStateByPath.get(filePath)!;
     if (!fileState.pieceHashes) {
       await mkdir(recordingsRoot, { recursive: true });
-      fileState.pieceHashes = await pieceHashesInFile(filePath);
+      fileState.pieceHashes = await pieceHashesInRepairedFile(filePath);
     }
     const newPieceLines: PieceLine[] = [];
     const storePiece = (content: unknown): string => {
@@ -167,7 +167,12 @@ export function openRecordingWriter(recordingsRoot: string): RecordingWriter {
     };
     const text = [...newPieceLines, apiRequestLine].map((line) => JSON.stringify(line) + "\n").join("");
     // One gzip member, one write: a crash leaves at most this member cut short.
-    await appendFile(filePath, await gzipAsync(text));
+    try {
+      await appendFile(filePath, await gzipAsync(text));
+    } catch (error) {
+      fileState.pieceHashes = null; // the write may have been partial: repair the file before the next append
+      throw error;
+    }
     for (const line of newPieceLines) fileState.pieceHashes.add(line.hash);
   }
 
@@ -205,7 +210,13 @@ export function readRecordings(recordingsRoot: string): RecordedApiRequest[] {
   return fileNames.sort().flatMap((fileName) => {
     const contentByHash = new Map<string, unknown>();
     const apiRequests: RecordedApiRequest[] = [];
-    for (const line of linesInFile(readFileSync(path.join(recordingsRoot, fileName)))) {
+    let lines: RecordingLine[];
+    try {
+      lines = linesInFile(readFileSync(path.join(recordingsRoot, fileName)));
+    } catch (error) {
+      throw new Error(`Recording ${fileName} is unreadable`, { cause: error });
+    }
+    for (const line of lines) {
       if (line.type === "piece") contentByHash.set(line.hash, line.content);
       else apiRequests.push({ ...withoutType(line), body: restoredBody(line.body, contentByHash) });
     }
@@ -311,7 +322,13 @@ function canonicalJson(value: unknown): string {
   );
 }
 
-async function pieceHashesInFile(filePath: string): Promise<Set<string>> {
+/**
+ * The piece hashes in a Recording file, once a last member cut short (by a
+ * crash or a failed write) is cut off, so the next append follows a whole
+ * member. The repair keeps every line up to the last complete API request, as
+ * one member, and replaces the file by a rename.
+ */
+async function pieceHashesInRepairedFile(filePath: string): Promise<Set<string>> {
   let bytes: Buffer;
   try {
     bytes = await readFile(filePath);
@@ -319,7 +336,23 @@ async function pieceHashesInFile(filePath: string): Promise<Set<string>> {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return new Set();
     throw error;
   }
-  return new Set(linesInFile(bytes).flatMap((line) => (line.type === "piece" ? [line.hash] : [])));
+  let lines = linesInFile(bytes);
+  if (!isWholeGzip(bytes)) {
+    lines = lines.slice(0, lines.findLastIndex((line) => line.type === "api_request") + 1);
+    const repairPath = `${filePath}.repair`;
+    await writeFile(repairPath, await gzipAsync(lines.map((line) => JSON.stringify(line) + "\n").join("")));
+    await rename(repairPath, filePath);
+  }
+  return new Set(lines.flatMap((line) => (line.type === "piece" ? [line.hash] : [])));
+}
+
+function isWholeGzip(bytes: Buffer): boolean {
+  try {
+    gunzipSync(bytes);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** The lines of a Recording file, its gzip members decoded; a line cut short at the end is dropped. */
