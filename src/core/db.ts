@@ -117,6 +117,28 @@ export function createPrismaClient(dbPath: string = defaultDbPath()): PrismaClie
   return new PrismaClient({ adapter });
 }
 
+/**
+ * Open the bare better-sqlite3 connection a Refresh writes through (ADR-0005),
+ * on the database at `dbPath`, its migrations applied first. Prisma stays the
+ * owner of the schema and of every read; the caller closes this connection.
+ *
+ * @example
+ * const db = openRefreshConnection(dbPath);
+ * try { prepareRefreshStatements(db).selectStoredConversations(); } finally { db.close(); }
+ */
+export function openRefreshConnection(dbPath: string = defaultDbPath()): Database.Database {
+  applyMigrations(dbPath);
+  const db = new Database(dbPath);
+  // Set explicitly, per connection: replacing a Conversation deletes its row,
+  // and the cascades are what remove its child rows and fire the search index's
+  // delete triggers. Without them the child rows would be orphaned.
+  db.pragma("foreign_keys = ON");
+  // Commits skip their fsync: a power cut may lose the last ones, acceptable
+  // since the database is a cache rebuildable from the logs.
+  db.pragma("synchronous = NORMAL");
+  return db;
+}
+
 const globalForPrisma = globalThis as unknown as {
   __ccaPrisma?: PrismaClient;
 };

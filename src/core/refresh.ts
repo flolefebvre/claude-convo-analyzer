@@ -1,6 +1,8 @@
 // Ingest spine (ADR-0001, ADR-0002). `refresh()` discovers top-level session
 // files + their sub-agent transcripts, parses them, and writes ALL seven tables.
 // The read seams (`listConversations()`, `getConversation()`) live in `read.ts`.
+// It writes through a bare better-sqlite3 connection, not Prisma (ADR-0005);
+// every statement it runs lives in `prisma/refresh-statements.ts`.
 //
 // ONE CONVERSATION AT A TIME: a conversation is parsed, written in a single
 // transaction (delete of its prior row + every insert), reported through
@@ -34,7 +36,7 @@
 import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
-import { createPrismaClient, defaultDbPath } from "@/core/db";
+import { defaultDbPath, openRefreshConnection } from "@/core/db";
 import {
   decodeFolderName,
   defaultLogsRoot,
@@ -43,23 +45,7 @@ import {
   discoverSubAgents,
 } from "@/core/discovery";
 import { type ParsedAgentSpawn, parseSessionLines, type ParsedSession } from "@/core/parse";
-import type { PrismaClient } from "@/core/prisma/generated/client";
-
-/** The interactive-transaction client handle (a subset of PrismaClient). */
-type PrismaTx = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
-
-/** One `tool_call` insert row. */
-type ToolCallData = {
-  messageId: number;
-  agentId: number;
-  toolUseId: string | null;
-  name: string;
-  inputJson: string;
-  resultText: string | null;
-  resultTruncated: boolean;
-  resultCharSize: number | null;
-  isError: boolean;
-};
+import { type MessageRow, prepareRefreshStatements, type RefreshStatements } from "@/core/prisma/refresh-statements";
 
 /**
  * One `.jsonl` file dropped because another file already claimed its session id
@@ -142,9 +128,6 @@ const PARSER_VERSION = 3;
  */
 const UNSTAMPED_PARSER_VERSION = 0;
 
-/** Upper bound on one conversation's write transaction (see `writeConversation`). */
-const WRITE_TRANSACTION_TIMEOUT_MS = 10 * 60_000;
-
 /** A discovered session whose stored conversation is missing or stale. */
 type SessionToReparse = {
   /** The session, its `sourceMtime`/`sourceSize` set to the COMPOSITE change key. */
@@ -165,6 +148,8 @@ type ParsedConversation = {
 
 /** What linking and stamping need of a conversation this run has written. */
 type WrittenConversation = {
+  /** Row id of the conversation as this run wrote it. */
+  conversationId: number;
   sessionId: string;
   /** `parentUuid` of its first message: where a resumed session continues from. */
   firstMessageParentUuid: string | null;
@@ -218,7 +203,7 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
   const start = performance.now();
   const logsRoot = opts.logsRoot ?? defaultLogsRoot();
   const dbPath = opts.dbPath ?? defaultDbPath();
-  const prisma = createPrismaClient(dbPath);
+  const db = openRefreshConnection(dbPath);
 
   let conversationsParsed = 0;
   let conversationsSkipped = 0;
@@ -237,62 +222,35 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     phaseStart = now;
   };
 
+  const statements = prepareRefreshStatements(db);
   try {
-    // A per-connection setting, so it goes on this writer: commits skip their
-    // fsync, and a power cut may lose the last ones — acceptable, since the
-    // database is a cache rebuildable from the logs.
-    await prisma.$executeRawUnsafe("PRAGMA synchronous = NORMAL");
-
     // Two files may carry the same session id (a copied transcript). Resolve
     // that HERE, before the incremental compare, so every pass below sees one
     // file per session id (see `dedupeBySessionId`).
     const { unique: discovered, duplicatesSkipped } = dedupeBySessionId(discoverWithKeys(logsRoot));
     duplicateSessionsSkipped = duplicatesSkipped;
 
-    // Existing rows, keyed by sessionId, for the skip/changed/delete decision.
-    const existing = new Map<
-      string,
-      {
-        id: number;
-        sourcePath: string;
-        mtime: bigint;
-        size: bigint;
-        parserVersion: number;
-      }
-    >();
-    for (const row of await prisma.conversation.findMany({
-      select: {
-        id: true,
-        sessionId: true,
-        sourcePath: true,
-        sourceMtime: true,
-        sourceSize: true,
-        parserVersion: true,
-      },
-    })) {
-      existing.set(row.sessionId, {
-        id: row.id,
-        sourcePath: row.sourcePath,
-        mtime: row.sourceMtime,
-        size: row.sourceSize,
-        parserVersion: row.parserVersion,
-      });
-    }
+    // Stored rows, for the skip/changed/delete decision.
+    const storedConversationBySessionId = new Map(
+      statements.selectStoredConversations().map((row) => [row.sessionId, row]),
+    );
 
     // Delete conversations whose source file is gone (single delete cascades).
     const onDisk = new Set(discovered.map((d) => d.session.sessionId));
-    for (const [sessionId, row] of existing) {
+    statements.beginTransaction();
+    for (const [sessionId, row] of storedConversationBySessionId) {
       if (onDisk.has(sessionId)) continue;
-      await prisma.conversation.delete({ where: { id: row.id } });
+      statements.deleteConversation(row.id);
       conversationsDeleted += 1;
     }
+    statements.commitTransaction();
 
     // Compare — pick the NEW or CHANGED sessions, without parsing anything, so
     // the run knows its total before its first write.
     const sessionsToReparse: SessionToReparse[] = [];
 
     for (const d of discovered) {
-      const prior = existing.get(d.session.sessionId);
+      const prior = storedConversationBySessionId.get(d.session.sessionId);
       // Rows written by another parser version are stale by definition, however
       // untouched their source files are — re-parse them (exactly once: the
       // rewrite stamps the current version).
@@ -307,8 +265,8 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
         prior !== undefined &&
         prior.parserVersion === PARSER_VERSION &&
         prior.sourcePath === d.session.sourcePath &&
-        prior.mtime === BigInt(d.compositeMtime) &&
-        prior.size === BigInt(d.compositeSize);
+        prior.sourceMtime === d.compositeMtime &&
+        prior.sourceSize === d.compositeSize;
       if (unchanged) {
         conversationsSkipped += 1;
         continue;
@@ -338,9 +296,12 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
       for (const sub of parsedConversation.subAgents) malformedLinesSkipped += sub.parsed.malformedLines;
       endPhase("parse");
 
-      await writeConversation(prisma, parsedConversation);
+      statements.beginTransaction();
+      const conversationId = writeConversation(statements, parsedConversation);
+      statements.commitTransaction();
       endPhase("write");
       writtenConversations.push({
+        conversationId,
         sessionId: parsedConversation.session.sessionId,
         firstMessageParentUuid: parsedConversation.parsed.messages[0]?.parentUuid ?? null,
       });
@@ -348,19 +309,25 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
       opts.onProgress?.({ done: conversationsParsed, total });
     }
 
+    // Passes 2 and 3 share one transaction.
+    phaseStart = performance.now();
+    statements.beginTransaction();
     // Pass 2 — resolve continued-from over the (re)written conversations,
     // authoritatively against the persisted message uuids of ALL conversations.
-    phaseStart = performance.now();
-    await resolveContinuedFrom(prisma, writtenConversations);
+    resolveContinuedFrom(statements, writtenConversations);
     endPhase("links");
 
     // Pass 3 — only NOW are these conversations complete: stamp them, so the
     // next run may skip them. An abort before this point leaves them unstamped
     // and therefore re-parseable (see `UNSTAMPED_PARSER_VERSION`).
-    await stampParserVersion(prisma, writtenConversations);
+    stampParserVersion(statements, writtenConversations);
+    statements.commitTransaction();
     endPhase("stamp");
   } finally {
-    await prisma.$disconnect();
+    // A throw mid-transaction rolls back only that transaction: what earlier
+    // ones committed stays, unstamped, for the next run to complete.
+    statements.rollbackOpenTransaction();
+    db.close();
   }
 
   return {
@@ -457,20 +424,13 @@ function parseConversation({ session, subAgentPaths, priorConversationId }: Sess
 }
 
 /** Resolve (find-or-create) the project row for an on-disk folder. */
-async function upsertProject(tx: PrismaTx, folder: string, parsed: ParsedSession): Promise<number> {
+function upsertProject(statements: RefreshStatements, folder: string, parsed: ParsedSession): number {
   const projectPath = parsed.cwd ?? decodeFolderName(folder);
-  const existing = await tx.project.findUnique({
-    where: { path: projectPath },
-  });
-  if (existing) return existing.id;
-  const created = await tx.project.create({
-    data: { path: projectPath, folderName: folder },
-  });
-  return created.id;
+  return statements.selectProjectId(projectPath) ?? statements.insertProject({ path: projectPath, folderName: folder });
 }
 
-/** The message-row shape written by `createMany` (FK columns + accounting). */
-function messageData(m: ParsedSession["messages"][number], conversationId: number, agentId: number) {
+/** The `message` row of one parsed message (FK columns + accounting). */
+function messageRow(m: ParsedSession["messages"][number], conversationId: number, agentId: number): MessageRow {
   return {
     conversationId,
     agentId,
@@ -494,7 +454,7 @@ function messageData(m: ParsedSession["messages"][number], conversationId: numbe
     permissionMode: m.permissionMode,
     isApiError: m.isApiError,
     apiErrorMessage: m.apiErrorMessage,
-    timestamp: m.timestamp === null ? null : BigInt(m.timestamp),
+    timestamp: m.timestamp,
   };
 }
 
@@ -507,13 +467,12 @@ const RESULT_TRUNCATE_CHARS = 10_000;
  * a token-cost proxy (ADR-0001). `messageRowByMsgId` maps an assistant
  * `message.id` to its written row id (tool_uses only live on assistant turns).
  */
-async function writeToolCalls(
-  tx: PrismaTx,
+function writeToolCalls(
+  statements: RefreshStatements,
   parsed: ParsedSession,
   agentId: number,
   messageRowByMsgId: Map<string, number>,
-): Promise<void> {
-  const rows: ToolCallData[] = [];
+): void {
   for (const msg of parsed.messages) {
     if (msg.toolUses.length === 0 || msg.messageId === null) continue;
     const messageRowId = messageRowByMsgId.get(msg.messageId);
@@ -523,7 +482,7 @@ async function writeToolCalls(
       const result = tu.toolUseId === null ? undefined : parsed.toolResults.get(tu.toolUseId);
       const fullResult = result?.resultText ?? null;
       const truncated = fullResult !== null && fullResult.length > RESULT_TRUNCATE_CHARS;
-      rows.push({
+      statements.insertToolCall({
         messageId: messageRowId,
         agentId,
         toolUseId: tu.toolUseId,
@@ -536,166 +495,143 @@ async function writeToolCalls(
       });
     }
   }
-  if (rows.length > 0) await tx.toolCall.createMany({ data: rows });
-}
-
-/** Insert `parsed.messages` for one agent and return a `message.id → row id` map. */
-async function writeAgentMessages(
-  tx: PrismaTx,
-  parsed: ParsedSession,
-  conversationId: number,
-  agentId: number,
-): Promise<Map<string, number>> {
-  if (parsed.messages.length > 0) {
-    await tx.message.createMany({
-      data: parsed.messages.map((m) => messageData(m, conversationId, agentId)),
-    });
-  }
-  // Map assistant message ids → row ids (for tool_call + spawnedBy linkage).
-  const rows = await tx.message.findMany({
-    where: { agentId, messageId: { not: null } },
-    select: { id: true, messageId: true },
-  });
-  const byMsgId = new Map<string, number>();
-  for (const r of rows) {
-    if (r.messageId !== null) byMsgId.set(r.messageId, r.id);
-  }
-  return byMsgId;
 }
 
 /**
- * Replace one conversation: delete its prior row (if any), then write it + root
- * agent + messages + tool_calls, then each sub-agent (its own agent row +
- * messages + tool_calls), then pr_links and
- * turn_durations — all in one transaction. The conversations that continued
- * from the prior row are re-pointed at the new one in that same transaction. Sub-agent `spawnedByMessageId` is
- * linked via the spawning `Agent` tool_use that produced the matching `agentId`
- * (log-format §4) — in whichever transcript that ledger lives, main thread or
- * another sub-agent (see `planSubAgents`); `agentType`/`resolvedModel` come from
- * that spawn ledger.
+ * Insert `parsed.messages` for one agent, in order, and return a
+ * `message.id → row id` map (for tool_call + spawnedBy linkage). When two rows
+ * share a `message.id`, the later row wins.
  */
-async function writeConversation(prisma: PrismaClient, parsedConversation: ParsedConversation): Promise<void> {
+function writeAgentMessages(
+  statements: RefreshStatements,
+  parsed: ParsedSession,
+  conversationId: number,
+  agentId: number,
+): Map<string, number> {
+  const messageRowByMsgId = new Map<string, number>();
+  for (const message of parsed.messages) {
+    const messageRowId = statements.insertMessage(messageRow(message, conversationId, agentId));
+    if (message.messageId !== null) messageRowByMsgId.set(message.messageId, messageRowId);
+  }
+  return messageRowByMsgId;
+}
+
+/**
+ * Replace one conversation, inside the caller's transaction: delete its prior
+ * row (if any), then write it + root agent + messages + tool_calls, then each
+ * sub-agent (its own agent row + messages + tool_calls), then pr_links and
+ * turn_durations, and return the new conversation's row id. The conversations
+ * that continued from the prior row are re-pointed at the new one. Sub-agent
+ * `spawnedByMessageId` is linked via the spawning `Agent` tool_use that produced
+ * the matching `agentId` (log-format §4) — in whichever transcript that ledger
+ * lives, main thread or another sub-agent (see `planSubAgents`);
+ * `agentType`/`resolvedModel` come from that spawn ledger.
+ *
+ * Rows go in this exact order, so a fresh database gets the same row ids on
+ * every run (`stored-data-equivalence.test.ts` pins them).
+ */
+function writeConversation(statements: RefreshStatements, parsedConversation: ParsedConversation): number {
   const { session, parsed, subAgents, priorConversationId } = parsedConversation;
 
-  await prisma.$transaction(
-    async (tx) => {
-      // The prior row goes in the SAME transaction as its replacement (cascading
-      // to every child table), so a reader on another connection sees the old
-      // version or the new one — never the conversation missing. The delete nulls
-      // the continued-from link of every child (`onDelete: SetNull`), so their ids
-      // are read first and re-pointed at the new row below — a skipped child is
-      // not re-linked by `resolveContinuedFrom`.
-      let continuingChildIds: number[] = [];
-      if (priorConversationId !== null) {
-        const continuingChildren = await tx.conversation.findMany({
-          where: { continuedFromConversationId: priorConversationId },
-          select: { id: true },
-        });
-        continuingChildIds = continuingChildren.map((c) => c.id);
-        await tx.conversation.delete({ where: { id: priorConversationId } });
-      }
-      const projectId = await upsertProject(tx, session.folder, parsed);
+  // The prior row goes in the SAME transaction as its replacement (cascading
+  // to every child table), so a reader on another connection sees the old
+  // version or the new one — never the conversation missing. The delete nulls
+  // the continued-from link of every child (`onDelete: SetNull`), so their ids
+  // are read first and re-pointed at the new row below — a skipped child is
+  // not re-linked by `resolveContinuedFrom`.
+  let continuingConversationIds: number[] = [];
+  if (priorConversationId !== null) {
+    continuingConversationIds = statements.selectContinuingConversationIds(priorConversationId);
+    statements.deleteConversation(priorConversationId);
+  }
+  const projectId = upsertProject(statements, session.folder, parsed);
 
-      const conversation = await tx.conversation.create({
-        data: {
-          sessionId: session.sessionId,
-          projectId,
-          title: parsed.title,
-          gitBranch: parsed.gitBranch,
-          ccVersion: parsed.ccVersion,
-          sourcePath: session.sourcePath,
-          sourceMtime: BigInt(session.sourceMtime),
-          sourceSize: BigInt(session.sourceSize),
-          // Not stamped yet — `stampParserVersion` does that once this refresh's
-          // continuation linking has run (see `UNSTAMPED_PARSER_VERSION`).
-          parserVersion: UNSTAMPED_PARSER_VERSION,
-          continuedFromConversationId: null,
-        },
-      });
-      if (continuingChildIds.length > 0) {
-        await tx.conversation.updateMany({
-          where: { id: { in: continuingChildIds } },
-          data: { continuedFromConversationId: conversation.id },
-        });
-      }
+  const conversationId = statements.insertConversation({
+    sessionId: session.sessionId,
+    projectId,
+    title: parsed.title,
+    gitBranch: parsed.gitBranch,
+    ccVersion: parsed.ccVersion,
+    sourcePath: session.sourcePath,
+    sourceMtime: session.sourceMtime,
+    sourceSize: session.sourceSize,
+    // Not stamped yet — pass 3 does that once this refresh's continuation
+    // linking has run (see `UNSTAMPED_PARSER_VERSION`).
+    parserVersion: UNSTAMPED_PARSER_VERSION,
+    continuedFromConversationId: null,
+  });
+  if (continuingConversationIds.length > 0) {
+    statements.updateContinuedFrom(continuingConversationIds, conversationId);
+  }
 
-      const rootAgent = await tx.agent.create({
-        data: {
-          conversationId: conversation.id,
-          parentAgentId: null,
-          agentType: null, // root/main thread
-          resolvedModel: parsed.dominantModel,
-        },
-      });
+  const rootAgentId = statements.insertAgent({
+    conversationId,
+    parentAgentId: null,
+    externalAgentId: null,
+    spawnedByMessageId: null,
+    agentType: null, // root/main thread
+    resolvedModel: parsed.dominantModel,
+  });
 
-      const rootByMsgId = await writeAgentMessages(tx, parsed, conversation.id, rootAgent.id);
-      await writeToolCalls(tx, parsed, rootAgent.id, rootByMsgId);
+  const rootByMsgId = writeAgentMessages(statements, parsed, conversationId, rootAgentId);
+  writeToolCalls(statements, parsed, rootAgentId, rootByMsgId);
 
-      // Sub-agents: each transcript is its own agent row (single source of truth
-      // for its tokens — the parent aggregate is NOT summed). Linked back to the
-      // spawning Agent tool_use via the spawn ledger's agentId → tool_use_id —
-      // that ledger may live in ANOTHER sub-agent's transcript (a sub-agent can
-      // itself spawn sub-agents), so parentage is resolved across every transcript
-      // and the rows are written parents-first.
-      const written = new Map<string, AgentWriteTarget>();
-      const rootTarget: AgentWriteTarget = {
-        agentRowId: rootAgent.id,
-        parsed,
-        messageRowByMsgId: rootByMsgId,
-      };
+  // Sub-agents: each transcript is its own agent row (single source of truth
+  // for its tokens — the parent aggregate is NOT summed). Linked back to the
+  // spawning Agent tool_use via the spawn ledger's agentId → tool_use_id —
+  // that ledger may live in ANOTHER sub-agent's transcript (a sub-agent can
+  // itself spawn sub-agents), so parentage is resolved across every transcript
+  // and the rows are written parents-first.
+  const written = new Map<string, AgentWriteTarget>();
+  const rootTarget: AgentWriteTarget = {
+    agentRowId: rootAgentId,
+    parsed,
+    messageRowByMsgId: rootByMsgId,
+  };
 
-      for (const plan of planSubAgents(parsed, subAgents)) {
-        const parent = plan.parentExternalId === null ? rootTarget : (written.get(plan.parentExternalId) ?? rootTarget);
-        const spawnedByMessageId =
-          plan.spawn?.toolUseId == null
-            ? null
-            : (toolUseToMessageRow(parent.parsed, plan.spawn.toolUseId, parent.messageRowByMsgId) ?? null);
+  for (const plan of planSubAgents(parsed, subAgents)) {
+    const parent = plan.parentExternalId === null ? rootTarget : (written.get(plan.parentExternalId) ?? rootTarget);
+    const spawnedByMessageId =
+      plan.spawn?.toolUseId == null
+        ? null
+        : (toolUseToMessageRow(parent.parsed, plan.spawn.toolUseId, parent.messageRowByMsgId) ?? null);
 
-        const subAgent = await tx.agent.create({
-          data: {
-            conversationId: conversation.id,
-            parentAgentId: parent.agentRowId,
-            externalAgentId: plan.agentId,
-            spawnedByMessageId,
-            agentType: plan.spawn?.agentType ?? null,
-            resolvedModel: plan.spawn?.resolvedModel ?? plan.parsed.dominantModel,
-          },
-        });
+    const subAgentId = statements.insertAgent({
+      conversationId,
+      parentAgentId: parent.agentRowId,
+      externalAgentId: plan.agentId,
+      spawnedByMessageId,
+      agentType: plan.spawn?.agentType ?? null,
+      resolvedModel: plan.spawn?.resolvedModel ?? plan.parsed.dominantModel,
+    });
 
-        const subByMsgId = await writeAgentMessages(tx, plan.parsed, conversation.id, subAgent.id);
-        await writeToolCalls(tx, plan.parsed, subAgent.id, subByMsgId);
-        written.set(plan.agentId, {
-          agentRowId: subAgent.id,
-          parsed: plan.parsed,
-          messageRowByMsgId: subByMsgId,
-        });
-      }
+    const subByMsgId = writeAgentMessages(statements, plan.parsed, conversationId, subAgentId);
+    writeToolCalls(statements, plan.parsed, subAgentId, subByMsgId);
+    written.set(plan.agentId, {
+      agentRowId: subAgentId,
+      parsed: plan.parsed,
+      messageRowByMsgId: subByMsgId,
+    });
+  }
 
-      if (parsed.prLinks.length > 0) {
-        await tx.prLink.createMany({
-          data: parsed.prLinks.map((p) => ({
-            conversationId: conversation.id,
-            prNumber: p.prNumber,
-            prUrl: p.prUrl,
-            prRepository: p.prRepository,
-          })),
-        });
-      }
+  for (const prLink of parsed.prLinks) {
+    statements.insertPrLink({
+      conversationId,
+      prNumber: prLink.prNumber,
+      prUrl: prLink.prUrl,
+      prRepository: prLink.prRepository,
+    });
+  }
 
-      if (parsed.turnDurations.length > 0) {
-        await tx.turnDuration.createMany({
-          data: parsed.turnDurations.map((t) => ({
-            conversationId: conversation.id,
-            durationMs: BigInt(t.durationMs),
-            messageCount: t.messageCount,
-          })),
-        });
-      }
-    },
-    // A huge conversation's delete + inserts can outlast Prisma's 5 s default,
-    // and aborting a local, user-triggered run on a timer is pure downside.
-    { timeout: WRITE_TRANSACTION_TIMEOUT_MS },
-  );
+  for (const turnDuration of parsed.turnDurations) {
+    statements.insertTurnDuration({
+      conversationId,
+      durationMs: turnDuration.durationMs,
+      messageCount: turnDuration.messageCount,
+    });
+  }
+
+  return conversationId;
 }
 
 /** An already-written agent: what a child needs to resolve its spawn linkage. */
@@ -806,32 +742,17 @@ function toolUseToMessageRow(
  * a skipped parent still resolves. An unresolved/own-session parentUuid leaves
  * the link null.
  */
-async function resolveContinuedFrom(prisma: PrismaClient, writtenConversations: WrittenConversation[]): Promise<void> {
-  for (const { sessionId, firstMessageParentUuid } of writtenConversations) {
+function resolveContinuedFrom(statements: RefreshStatements, writtenConversations: WrittenConversation[]): void {
+  for (const { conversationId, sessionId, firstMessageParentUuid } of writtenConversations) {
     if (firstMessageParentUuid === null) continue;
 
     // Find the conversation that OWNS a persisted message with this uuid.
-    const owner = await prisma.message.findFirst({
-      where: { uuid: firstMessageParentUuid },
-      select: { conversation: { select: { id: true, sessionId: true } } },
-    });
-    const from = owner?.conversation;
+    const from = statements.selectMessageOwner(firstMessageParentUuid);
     if (from === undefined || from.sessionId === sessionId) {
       continue; // unresolved, or points within the same session.
     }
 
-    const toId = (
-      await prisma.conversation.findUnique({
-        where: { sessionId },
-        select: { id: true },
-      })
-    )?.id;
-    if (toId === undefined) continue;
-
-    await prisma.conversation.update({
-      where: { id: toId },
-      data: { continuedFromConversationId: from.id },
-    });
+    statements.updateContinuedFrom([conversationId], from.id);
   }
 }
 
@@ -843,10 +764,9 @@ async function resolveContinuedFrom(prisma: PrismaClient, writtenConversations: 
  * the table is touched, so the incremental cost stays proportional to the work
  * actually done, not to the size of the database.
  */
-async function stampParserVersion(prisma: PrismaClient, writtenConversations: WrittenConversation[]): Promise<void> {
-  if (writtenConversations.length === 0) return;
-  await prisma.conversation.updateMany({
-    where: { sessionId: { in: writtenConversations.map((c) => c.sessionId) } },
-    data: { parserVersion: PARSER_VERSION },
-  });
+function stampParserVersion(statements: RefreshStatements, writtenConversations: WrittenConversation[]): void {
+  statements.updateParserVersion(
+    writtenConversations.map((c) => c.conversationId),
+    PARSER_VERSION,
+  );
 }
