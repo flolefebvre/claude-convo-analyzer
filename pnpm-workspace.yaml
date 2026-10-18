@@ -6,3 +6,7 @@ allowBuilds:
   "@prisma/engines": true
   prisma: true
   esbuild: true
+# Published by this project's author, sometimes for a ticket the same day: install the
+# latest rather than fall back to an older version under the 1-day minimum release age.
+minimumReleaseAgeExclude:
+  - "@flefebvre/next-sse"
