@@ -48,7 +48,7 @@ export const CONVERSATION_COLUMNS = {
 /**
  * One conversation as a table row, plus its detail panel row when expanded.
  *
- * @example <ConversationRow row={row} date={formatDate(row.startedAt, now)} toggleHref={expandHref(row.id, expandedId, links)} />
+ * @example <ConversationRow row={row} date={formatDate(row.startedAt, now)} folderLabel={folderLabelInScope(row.project.path, scope)} toggleHref={expandHref(row.id, expandedId, links)} />
  */
 export function ConversationRow({
   row,
@@ -117,11 +117,13 @@ export function ConversationRow({
             the full Project path is available on hover via the cell's title
             (kept off-screen so long paths don't break the table — #14). */}
         {!isFolderColumnHidden && (
+          // Right-to-left truncation keeps the label's tail, the part that tells
+          // two Projects apart; the inner span keeps its characters in order.
           <TableCell
             title={row.project.path}
-            className={`${CONVERSATION_COLUMNS.folder} truncate text-muted-foreground`}
+            className={`${CONVERSATION_COLUMNS.folder} truncate text-left text-muted-foreground [direction:rtl]`}
           >
-            {folderLabel}
+            <span dir="ltr">{folderLabel}</span>
           </TableCell>
         )}
         {/* The title deep-links into the Transcript view for this conversation
