@@ -1,9 +1,10 @@
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-// Renders an assistant turn's text as GitHub-flavoured markdown. Humans don't
-// write reliable markdown, so ONLY assistant turns go through this — prompts
-// render plain (see `TranscriptMessage`).
+// Renders agent-written text as GitHub-flavoured markdown: assistant turns,
+// Inter-agent message bodies and Task notification results. Humans don't write
+// reliable markdown, so prompts never go through this — they render plain (see
+// `TranscriptMessage`).
 //
 // Security: react-markdown escapes raw HTML by default and we deliberately do
 // NOT add `rehype-raw` (or any dangerous-HTML plugin), so a turn containing
@@ -22,7 +23,7 @@ const COMPONENTS: Components = {
 };
 
 /**
- * An assistant turn's markdown, rendered safely (no raw HTML).
+ * Agent-written markdown, rendered safely (no raw HTML).
  *
  * @example <TurnMarkdown text={message.text ?? ""} />
  */

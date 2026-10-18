@@ -22,11 +22,13 @@ import { Suspense } from "react";
 import { CONVERSATION_COLUMNS, ConversationRow } from "@/app/_components/conversation-row";
 import { EmptyState, EmptyStateLink } from "@/app/_components/empty-state";
 import { ListPager } from "@/app/_components/list-pager";
+import { LoadingRegion } from "@/app/_components/loading-region";
 import { OverviewBand } from "@/app/_components/overview-band";
 import { PageHeader } from "@/app/_components/page-header";
 import { PendingLink } from "@/app/_components/pending-link";
 import { RefreshButton } from "@/app/_components/refresh-button";
 import { SortableHead } from "@/app/_components/sortable-head";
+import { StatSkeleton } from "@/app/_components/stat-strip";
 import {
   loadConversationDetail,
   loadConversationErrors,
@@ -40,7 +42,7 @@ import { familyView } from "@/app/_lib/family-view";
 import { type FolderEntry } from "@/app/_lib/folders";
 import { formatCount, formatDate, formatGrandTotalCost, formatTokens } from "@/app/_lib/format";
 import { buildListView } from "@/app/_lib/list-view";
-import { type ViewSearchParams, firstParam } from "@/app/_lib/search-params";
+import { type ViewSearchParams, firstParam, resolvePage } from "@/app/_lib/search-params";
 import {
   type ListLinkContext,
   type SortableField,
@@ -50,10 +52,10 @@ import {
   listReturnQuery,
   resolveErrorsOnly,
   resolveExpanded,
-  resolvePage,
   resolveSort,
   sortHref,
 } from "@/app/_lib/sort";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableFooter, TableHeader, TableRow } from "@/components/ui/table";
 
 export const metadata: Metadata = { title: "Conversations" };
@@ -71,14 +73,66 @@ export default function Page({ searchParams }: { searchParams: Promise<ViewSearc
           Global (scope-independent) figures; it reads `searchParams` only to
           say so when a folder is selected. Its own Suspense boundary defers the
           request-time read out of prerendering (PPR). */}
-      <Suspense fallback={null}>
+      <Suspense fallback={<OverviewFallback />}>
         <Overview searchParams={searchParams} />
       </Suspense>
 
-      <Suspense fallback={<p className="text-sm text-muted-foreground">Loading conversations…</p>}>
+      {/* The table's controls (breadcrumb, pager, errors toggle) build their
+          hrefs from `searchParams`, so they stream in with the table and its
+          skeleton draws their strip. */}
+      <Suspense fallback={<ConversationTableFallback />}>
         <ConversationTable searchParams={searchParams} />
       </Suspense>
     </>
+  );
+}
+
+/** The overview band's skeleton: the heading line over the four-cell strip. */
+function OverviewFallback() {
+  return (
+    <LoadingRegion label="Loading overview" className="mb-6">
+      <div className="mb-2 flex h-5 items-center">
+        <Skeleton className="h-3.5 w-56" />
+      </div>
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-4">
+        {Array.from({ length: 4 }, (_, index) => (
+          <StatSkeleton key={index} />
+        ))}
+      </div>
+    </LoadingRegion>
+  );
+}
+
+/** The table rows its skeleton draws: enough to fill the first screen. */
+const SKELETON_ROWS = 8;
+
+/**
+ * The conversation table's skeleton: the controls strip, then the table card
+ * with its header row and a handful of rows, at the real rows' heights.
+ */
+function ConversationTableFallback() {
+  return (
+    <LoadingRegion label="Loading conversations">
+      <div className="mb-3 flex h-8 items-center justify-end gap-3">
+        <Skeleton className="h-8 w-28" />
+        <Skeleton className="h-8 w-32" />
+      </div>
+      <div className="@container overflow-hidden rounded-xl border bg-card">
+        <div className="flex h-[41px] items-center gap-4 border-b bg-muted/30 px-4">
+          <Skeleton className="h-3.5 w-6 @xl:w-12" />
+          <Skeleton className="h-3.5 w-12" />
+          <Skeleton className="ml-auto h-3.5 w-10" />
+        </div>
+        {Array.from({ length: SKELETON_ROWS }, (_, index) => (
+          <div key={index} className="flex h-[41px] items-center gap-4 border-b px-4 last:border-0">
+            <Skeleton className="size-5 shrink-0 @xl:w-24" />
+            <Skeleton className="h-3.5 flex-1" />
+            <Skeleton className="hidden h-3.5 w-16 @xl:block" />
+            <Skeleton className="h-3.5 w-14" />
+          </div>
+        ))}
+      </div>
+    </LoadingRegion>
   );
 }
 

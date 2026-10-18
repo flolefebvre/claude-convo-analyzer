@@ -113,14 +113,25 @@ assistant turns. An assistant Message carries token usage and Attribution; a
 user Message has neither (its tokens are billed into the following assistant
 Turn). Optionally carries the message `text`.
 
-A user Message is one of three **kinds**, all sharing `role = user` in the log:
+A user Message is one of five **kinds**, all sharing `role = user` in the log:
 
-- **Prompt** — text the human actually typed. The only kind that represents
-  the user speaking.
+- **Prompt** — text the human speaks to the Agent: typed, or inserted on their
+  behalf by a plugin. The only kind that represents the user speaking.
+- **Inter-agent message** — text another Agent addressed to this one: a
+  Sub-agent reporting to its spawner, the spawner steering a running Sub-agent,
+  or another Conversation's agent reaching this one. Always has a **sender**.
+  A **hand-back** is the one carrying a Sub-agent's final report.
+  _Avoid_: agent message (also reads as the Agent's reply to the user), peer
+  message.
+- **Task notification** — an event announcing that a background task or
+  Sub-agent stopped, with its status; machinery, not speech.
 - **Tool-result carrier** — a record delivering a `tool_result` back to the
   Agent; machinery, not speech.
 - **Meta** — machine-injected content (skill instructions, command output,
   system reminders), marked `isMeta` in the log.
+
+A Prompt or Inter-agent message can arrive **while the Agent is working**, in
+which case it lands mid-turn rather than between turns.
 
 ### Transcript
 
@@ -129,6 +140,12 @@ assistant Messages with their Tool calls. Every Agent (Main thread or
 Sub-agent) has exactly one Transcript. Distinct from the cost-aggregate
 **detail panel** (`ConversationDetail`) shown in the conversation list — the
 Transcript is _what was said and done_, not _what it cost_.
+
+A long Transcript is read one **Transcript page** at a time: a fixed-size
+window of its rendered Messages, in order. A page is only a view: what is said
+about the Agent as a whole (its turn and Tool-call counts, its effort) always
+describes the whole Transcript, never the page. A link to one Message opens the
+page that holds it.
 
 ### Attribution
 
@@ -145,6 +162,11 @@ block in a turn and paired with a `tool_result`. Carries the tool `name` (e.g.
 `Bash`, `Read`, `Skill`, `Agent`) and a tool-specific `input` (e.g. Bash's
 `command`, Skill's `skill` name). A Tool call belongs to exactly one Turn of one
 Agent.
+
+In a Transcript a Tool call reads in two parts. Its **summary** is the one line
+it shows collapsed: its kind, name, a snippet of its input, its result size and
+whether it failed. Its **body** is the full input and stored result, shown once
+the reader opens it.
 
 ### Skill invocation
 

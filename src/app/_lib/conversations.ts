@@ -14,7 +14,7 @@ import { connection } from "next/server";
 
 import { getConversationErrors } from "@/core/errors";
 import { buildFamily, familySizes } from "@/core/family";
-import { getConversation, getDailySpend, getTranscript, listConversations } from "@/core/read";
+import { getConversation, getDailySpend, getToolCallBody, getTranscript, listConversations } from "@/core/read";
 import { searchConversations } from "@/core/search";
 import { getToolCallSamples, getToolStats } from "@/core/tool-stats";
 
@@ -81,17 +81,37 @@ export const loadDailySpend = cache(async (folder?: string, days?: number) => {
 
 /**
  * Read one conversation's transcript for the `/conversation/<sessionId>` view —
- * the agent tree plus one agent's ordered messages/tool calls. `agentId` selects
- * which agent's transcript to shape; omitting it (or an unknown id) resolves to
- * the main agent inside the core reader. Same request-time gating as
- * {@link loadConversations}; returns `null` for an unknown session. `cache()`
- * dedupes to a single core read per `(id, agentId)` within a request.
+ * the agent tree plus one Transcript page of one agent's ordered messages/tool
+ * calls. `agentId` selects the agent (omitted or unknown: the main agent);
+ * `page` the Transcript page, and with none, the `anchoredMessage`/`anchoredCall`
+ * deep-link target picks the page holding it. Same request-time gating as
+ * {@link loadConversations}; returns `null` for an unknown session.
+ *
+ * The arguments stay positional primitives: `cache()` keys on argument
+ * identity, so an options object would be a fresh reference per call and the
+ * tree and the pane would no longer share their single read per request.
  *
  * ADR-0002: this seam is the ONLY place the app touches core for transcript data.
  */
-export const loadTranscript = cache(async (id: string, agentId?: string) => {
+export const loadTranscript = cache(
+  async (id: string, agentId?: string, page?: number, anchoredMessage?: string, anchoredCall?: string) => {
+    await connection();
+    return getTranscript(id, { agentId, page, anchoredMessage, anchoredCall });
+  },
+);
+
+/**
+ * Read one Tool call's body (input and stored result) by its row id — for the
+ * `?call=` anchored call server-side, and for `GET /api/tool-call/<id>` when
+ * the reader opens any other. Same request-time gating as
+ * {@link loadConversations}; `null` for an unknown id (the transcript was
+ * re-parsed since the page rendered).
+ *
+ * @example const body = await loadToolCallBody(call.id);
+ */
+export const loadToolCallBody = cache(async (id: number) => {
   await connection();
-  return getTranscript(id, { agentId });
+  return getToolCallBody(id);
 });
 
 /**

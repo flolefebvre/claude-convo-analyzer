@@ -12,6 +12,10 @@
 
 # testing
 /coverage
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
 
 # next.js
 /.next/
@@ -45,6 +49,9 @@ next-env.d.ts
 
 # generated Prisma client (commit schema + migrations only)
 /src/core/prisma/generated/
+
+# generated next-pipe route builders (`pnpm gen`, run by postinstall)
+/src/generated/routes/
 
 # playwright-cli session output: snapshots, screenshots, console logs
 /.playwright-cli/

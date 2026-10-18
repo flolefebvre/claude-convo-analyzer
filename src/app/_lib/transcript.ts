@@ -7,6 +7,9 @@
 
 import type { TranscriptAgentNode } from "@/core/read";
 
+/** A Tool call's body, as core reads it — re-exported so a client leaf can name it without touching core. */
+export type { ToolCallBody } from "@/core/read";
+
 import { subAgentLabel } from "@/app/_lib/detail";
 import { formatTokens } from "@/app/_lib/format";
 
@@ -198,16 +201,19 @@ export type EffortSummary = {
   /** True once two or more DISTINCT levels appear; the header then reads "mixed". */
   mixed: boolean;
   /**
-   * Ids of the turns whose effort differs from the previous effort-carrying
-   * turn — the only turns that get a change badge. The first effort-carrying
-   * turn is never in here: the header stat is its baseline.
+   * Ids of the page's turns whose effort differs from the previous
+   * effort-carrying turn, on this page or an earlier one — the only turns that
+   * get a change badge. The agent's first effort-carrying turn is never in
+   * here: the header stat is its baseline.
    */
   changedIds: Set<number>;
 };
 
 /**
  * Classify a transcript's reasoning effort for the pane: the header stat
- * (uniform level vs `mixed`) and the turns that changed it.
+ * (uniform level vs `mixed`), read from the WHOLE agent's distinct `levels`,
+ * and the turns of this Transcript page that changed it, compared from
+ * `before` — the effort carried on an earlier page (null on page 1).
  *
  * Turns carrying NO effort are ignored entirely — user prompts have none, and
  * roughly half of real assistant lines predate the field. A null therefore
@@ -215,25 +221,25 @@ export type EffortSummary = {
  * run against the previous EFFORT-CARRYING turn. Levels are compared as raw
  * strings and never validated, so a future level (`low`, `max`, …) flows
  * through to the UI verbatim.
+ *
+ * @example effortSummary(view.messages, { levels: view.effortLevels, before: view.effortBefore })
  */
-export function effortSummary(messages: { id: number; effort: string | null }[]): EffortSummary {
+export function effortSummary(
+  messages: { id: number; effort: string | null }[],
+  agent: { levels: string[]; before: string | null },
+): EffortSummary {
   const changedIds = new Set<number>();
-  let previous: string | null = null;
-  let mixed = false;
+  let previous = agent.before;
 
   for (const message of messages) {
     const effort = message.effort;
     if (effort === null) continue;
-    if (previous !== null && effort !== previous) {
-      changedIds.add(message.id);
-      mixed = true;
-    }
+    if (previous !== null && effort !== previous) changedIds.add(message.id);
     previous = effort;
   }
 
-  // `previous` is the last level seen; when nothing was mixed it is also the
-  // only one, i.e. the uniform level (null when no turn carried effort).
-  return { uniform: mixed ? null : previous, mixed, changedIds };
+  const mixed = agent.levels.length > 1;
+  return { uniform: mixed ? null : (agent.levels[0] ?? null), mixed, changedIds };
 }
 
 /**

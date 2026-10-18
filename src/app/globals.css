@@ -419,8 +419,16 @@ html:has(.tview) {
     max-height: 100dvh;
   }
 }
+/* The back link's row is fixed-height, so the header never shifts when the
+   link replaces its skeleton. */
+.tview .tree-back {
+  display: flex;
+  align-items: center;
+  height: 1rem;
+  margin: 16px 16px 10px;
+}
 .tview .tree-header {
-  padding: 16px 16px 12px;
+  padding: 0 16px 12px;
   border-bottom: 1px solid var(--border);
 }
 .tview .back-link {
@@ -428,9 +436,9 @@ html:has(.tview) {
   align-items: center;
   gap: 6px;
   font-size: var(--text-xs);
+  line-height: 1rem;
   color: var(--muted-foreground);
   text-decoration: none;
-  margin-bottom: 10px;
   border-radius: 4px;
 }
 .tview .back-link:hover {
@@ -786,9 +794,10 @@ html:has(.tview) {
 }
 
 /* ---- Assistant turn ---- */
-/* Reasoning-effort change marker: same chip as `.badge-err` but NEUTRAL — a
-   mid-conversation /effort flip is information, not a problem. */
-.tview .badge-effort {
+/* Reasoning-effort change marker, and the notes on a user row (via plugin,
+   sent while working, hand-back): same chip as `.badge-err` but NEUTRAL —
+   information, not a problem. */
+.tview :is(.badge-effort, .badge-note) {
   border-radius: 4px;
   padding: 1px 6px;
   white-space: nowrap;
@@ -1121,6 +1130,11 @@ html:has(.tview) {
   font-size: var(--text-xs);
   color: var(--muted-foreground);
 }
+/* The one line a body shows when it could not be loaded. */
+.tview .call-body-note {
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
+}
 .tview .open-agent {
   display: inline-flex;
   align-items: center;
@@ -1139,6 +1153,81 @@ html:has(.tview) {
   background: color-mix(in oklch, var(--agent) 20%, transparent);
 }
 
+/* ---- Inter-agent message ---- */
+/* The sender, when an agent of this conversation, links to its transcript. */
+.tview .sender-link {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--border);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  border-radius: 2px;
+}
+.tview .sender-link:hover {
+  text-decoration-color: currentColor;
+}
+/* A hand-back's report starts folded under a quiet disclosure. */
+.tview :is(details.handback, details.notice-result) > summary {
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
+  border-radius: 4px;
+}
+.tview :is(details.handback, details.notice-result) > summary::-webkit-details-marker {
+  display: none;
+}
+.tview :is(details.handback, details.notice-result) > summary:hover {
+  color: var(--foreground);
+}
+.tview :is(details.handback, details.notice-result)[open] > .turn-body {
+  margin-top: 6px;
+}
+
+/* ---- Task notification ---- */
+/* Machinery, not speech: one muted line, its result folded at its end and
+   taking the full width once opened. */
+.tview .notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  font-size: var(--text-xs);
+  line-height: var(--text-xs--line-height);
+  color: var(--muted-foreground);
+}
+.tview .notice .spacer {
+  flex: 1;
+}
+.tview .notice-summary {
+  color: var(--foreground);
+  overflow-wrap: anywhere;
+}
+.tview .notice .open-agent {
+  font-size: var(--text-xs);
+  padding: 1px 7px;
+  border-radius: 4px;
+}
+.tview .notice-result[open] {
+  flex-basis: 100%;
+  font-size: var(--text-ui);
+  line-height: normal;
+  color: var(--foreground);
+}
+.tview .notice-result[open] > summary {
+  font-size: var(--text-xs);
+}
+.tview .notice.anchored {
+  margin-inline: -10px;
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  background: var(--cost-muted);
+  box-shadow: inset 3px 0 0 var(--cost);
+}
+
 /* ---- Meta divider ---- */
 .tview .meta-hidden {
   display: flex;
@@ -1152,18 +1241,6 @@ html:has(.tview) {
   content: "";
   flex: 1;
   border-top: 1px dashed var(--border);
-}
-
-/* ---- Empty / not-found state ---- */
-.tview-empty {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 32px;
-  text-align: center;
 }
 
 /* Phones: the tree stacks above the transcript and scrolls with the page. */

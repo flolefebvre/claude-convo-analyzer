@@ -1,25 +1,28 @@
-import Link from "next/link";
 import { Fragment } from "react";
 
+import { PendingLink } from "@/app/_components/pending-link";
 import { formatCount, formatModelName } from "@/app/_lib/format";
 import { type AgentLabel, agentLineage, effortSummary } from "@/app/_lib/transcript";
-import { agentHref, withListReturn } from "@/app/_lib/transcript-url";
+import { agentHref, callAnchorId, messageAnchorId, withListReturn } from "@/app/_lib/transcript-url";
 import type { ConversationFamily } from "@/core/family";
 import type { TranscriptView } from "@/core/read";
 
 import { FamilyBanner } from "./family-banner";
+import { ScrollToAnchor } from "./scroll-to-anchor";
 import { TranscriptMessageRow } from "./transcript-message";
+import { TranscriptPager } from "./transcript-pager";
 import { AgentName, CostFigure, agentLabelText } from "./transcript-parts";
 
 /**
  * The right pane: the selected agent's transcript, topped by a sticky header
  * with the lineage breadcrumb (root → selected; ancestors are links) and the
  * turn/tool/model/cost stats; search and Refresh live in the app bar above.
- * The pane is the page's <main>, headed by the conversation title (visually
- * the agent tree shows it). Header, banner and transcript share one centred
- * column. Below the header the agent's messages render in order, with a
- * trailing "N meta records hidden" divider when the reader dropped meta rows
- * for this agent. On the main agent of a conversation that belongs to a
+ * It renders inside the route's <main>, headed by the conversation title
+ * (visually the agent tree shows it). Header, banner and transcript share one centred
+ * column. Below the header one Transcript page of the agent's messages renders
+ * in order, then a "N meta records hidden" divider on the last page when the
+ * reader dropped meta rows for this agent, and the pager when the transcript
+ * spans several pages. On the main agent of a conversation that belongs to a
  * continuation family, a one-line banner names the sitting before and the
  * sitting(s) after.
  */
@@ -55,16 +58,24 @@ export function TranscriptPane({
   const parent = lineage.length > 1 ? lineage[lineage.length - 2] : null;
   const promptAuthor = parent === null ? null : agentLabelText(labelOf(parent.id));
 
-  const turnCount = view.messages.filter((m) => m.role === "assistant").length;
-  const toolCount = view.messages.reduce((sum, m) => sum + m.toolCalls.length, 0);
+  // The stats describe the agent's whole transcript, not this page.
+  const turnCount = view.turnCount;
+  const toolCount = view.toolCallCount;
   // Reasoning effort across this agent's turns: one stat here (the level, or
   // "mixed"), and a badge on each turn that changed it. Nothing at all when the
   // log recorded no effort.
-  const effort = effortSummary(view.messages);
+  const effort = effortSummary(view.messages, { levels: view.effortLevels, before: view.effortBefore });
   const effortLabel = effort.mixed ? "mixed" : effort.uniform;
+  // The deep-link target to scroll to: the `?msg=` message first, else the `?call=` call.
+  const anchorId =
+    anchoredMessage !== undefined
+      ? messageAnchorId(anchoredMessage)
+      : anchoredCall !== undefined
+        ? callAnchorId(anchoredCall)
+        : undefined;
 
   return (
-    <main id="main" tabIndex={-1} className="pane">
+    <>
       <h1 className="sr-only">{view.title ?? "Untitled conversation"}</h1>
       <div className="pane-header">
         <div className="pane-header-inner">
@@ -79,12 +90,12 @@ export function TranscriptPane({
                     </span>
                   ) : (
                     <>
-                      <Link
+                      <PendingLink
                         href={withListReturn(agentHref(view.sessionId, i === 0 ? undefined : node.id), listReturn)}
                         title={agentLabelText(label)}
                       >
                         <AgentName label={label} />
-                      </Link>
+                      </PendingLink>
                       <span className="sep" aria-hidden>
                         /
                       </span>
@@ -132,13 +143,15 @@ export function TranscriptPane({
             listReturn={listReturn}
           />
         ))}
-        {view.metaHiddenCount > 0 && (
+        {view.metaHiddenCount > 0 && view.page === view.pageCount && (
           <div className="meta-hidden">
             {view.metaHiddenCount} meta record
             {view.metaHiddenCount === 1 ? "" : "s"} hidden
           </div>
         )}
+        <TranscriptPager view={view} listReturn={listReturn} className="justify-center" />
       </div>
-    </main>
+      {anchorId !== undefined && <ScrollToAnchor id={anchorId} />}
+    </>
   );
 }

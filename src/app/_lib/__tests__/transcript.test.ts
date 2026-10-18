@@ -19,10 +19,10 @@ import {
 /** Build a minimal tool call; only `name`/`inputJson` matter for most helpers. */
 function call(partial: Partial<TranscriptToolCall> = {}): TranscriptToolCall {
   return {
+    id: 1,
     toolUseId: "tu_1",
     name: "Bash",
     inputJson: "{}",
-    resultText: null,
     resultTruncated: false,
     resultCharSize: null,
     isError: false,
@@ -272,14 +272,39 @@ describe("findSpawnedNode", () => {
  * pane: the uniform level (or `mixed`) for the header stat, plus the turns that
  * changed effort, which are the only ones badged. Turns carrying NO effort —
  * user prompts, and assistant turns from logs predating the field — are ignored
- * entirely: they neither make a transcript `mixed` nor mark a change.
+ * entirely: they neither make a transcript `mixed` nor mark a change. The header
+ * reads the WHOLE agent's levels; the badges compare within the Transcript page,
+ * starting from the effort carried before it.
  */
 describe("effortSummary", () => {
   /** A transcript row reduced to what the classifier reads. */
   const turns = (...efforts: (string | null)[]) => efforts.map((effort, i) => ({ id: i + 1, effort }));
+  /** A one-page transcript: the page is the whole agent, and nothing comes before it. */
+  const whole = (...efforts: (string | null)[]) =>
+    effortSummary(turns(...efforts), {
+      levels: [...new Set(efforts.filter((effort) => effort !== null))].sort(),
+      before: null,
+    });
+
+  it("reads mixed from the whole agent even when this page agrees on one level", () => {
+    const summary = effortSummary(turns("high", "high"), { levels: ["high", "xhigh"], before: null });
+    expect(summary.mixed).toBe(true);
+    expect(summary.uniform).toBeNull();
+    expect(summary.changedIds.size).toBe(0);
+  });
+
+  it("marks the page's first turn when it differs from the effort before the page", () => {
+    const summary = effortSummary(turns(null, "xhigh", "xhigh"), { levels: ["high", "xhigh"], before: "high" });
+    expect([...summary.changedIds]).toEqual([2]);
+  });
+
+  it("leaves the page's first turn unmarked when it matches the effort before the page", () => {
+    const summary = effortSummary(turns("high", "xhigh"), { levels: ["high", "xhigh"], before: "high" });
+    expect([...summary.changedIds]).toEqual([2]);
+  });
 
   it("reports the single level when every effort-carrying turn agrees", () => {
-    const summary = effortSummary(turns("high", "high", "high"));
+    const summary = whole("high", "high", "high");
     expect(summary.uniform).toBe("high");
     expect(summary.mixed).toBe(false);
   });
@@ -287,26 +312,26 @@ describe("effortSummary", () => {
   it("still reports that level when other turns carry no effort", () => {
     // Roughly half of real assistant lines have no effort; they must not make
     // an otherwise-uniform transcript look mixed.
-    const summary = effortSummary(turns(null, "high", null, "high", null));
+    const summary = whole(null, "high", null, "high", null);
     expect(summary.uniform).toBe("high");
     expect(summary.mixed).toBe(false);
   });
 
   it("reports mixed once two distinct levels appear", () => {
-    const summary = effortSummary(turns("high", "high", "xhigh"));
+    const summary = whole("high", "high", "xhigh");
     expect(summary.mixed).toBe(true);
     expect(summary.uniform).toBeNull();
   });
 
   it("reports no level at all when nothing carries effort", () => {
-    const summary = effortSummary(turns(null, null, null));
+    const summary = whole(null, null, null);
     expect(summary.uniform).toBeNull();
     expect(summary.mixed).toBe(false);
     expect(summary.changedIds.size).toBe(0);
   });
 
   it("reports no level for an empty transcript", () => {
-    const summary = effortSummary([]);
+    const summary = whole();
     expect(summary.uniform).toBeNull();
     expect(summary.mixed).toBe(false);
   });
@@ -314,31 +339,31 @@ describe("effortSummary", () => {
   it("passes an unknown future level through unchanged", () => {
     // The whole point of storing the raw string: a level this code has never
     // heard of must reach the UI verbatim, with no enum to reject it.
-    expect(effortSummary(turns("max", "max")).uniform).toBe("max");
-    const flipped = effortSummary(turns("low", "ludicrous"));
+    expect(whole("max", "max").uniform).toBe("max");
+    const flipped = whole("low", "ludicrous");
     expect(flipped.mixed).toBe(true);
     expect([...flipped.changedIds]).toEqual([2]);
   });
 
   it("marks only the turn that differs from the previous effort-carrying turn", () => {
-    const summary = effortSummary(turns("high", "high", "xhigh", "xhigh"));
+    const summary = whole("high", "high", "xhigh", "xhigh");
     expect([...summary.changedIds]).toEqual([3]);
   });
 
   it("never marks the first effort-carrying turn — the header is the baseline", () => {
-    const summary = effortSummary(turns(null, "high", "high"));
+    const summary = whole(null, "high", "high");
     expect(summary.changedIds.size).toBe(0);
   });
 
   it("ignores effort-free turns when comparing against the previous level", () => {
     // The null between two `high` turns must not read as a change.
-    expect(effortSummary(turns("high", null, "high")).changedIds.size).toBe(0);
+    expect(whole("high", null, "high").changedIds.size).toBe(0);
     // …nor mask a real one.
-    expect([...effortSummary(turns("high", null, "xhigh")).changedIds]).toEqual([3]);
+    expect([...whole("high", null, "xhigh").changedIds]).toEqual([3]);
   });
 
   it("marks every flip when the effort changes repeatedly", () => {
-    const summary = effortSummary(turns("high", "xhigh", "high"));
+    const summary = whole("high", "xhigh", "high");
     expect([...summary.changedIds]).toEqual([2, 3]);
     expect(summary.mixed).toBe(true);
   });

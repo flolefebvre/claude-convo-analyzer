@@ -23,7 +23,8 @@ import type { Tokens } from "@/core/cost";
 import type { ConversationSummary } from "@/core/read";
 
 import { deriveFolders, type FolderEntry } from "@/app/_lib/folders";
-import { FIRST_PAGE, sortConversations, type SortState } from "@/app/_lib/sort";
+import { FIRST_PAGE } from "@/app/_lib/search-params";
+import { sortConversations, type SortState } from "@/app/_lib/sort";
 import type { Overview } from "@/app/_lib/overview";
 
 /** Already-resolved scope + sort intent (parsed from the URL at the page edge). */
@@ -122,15 +123,16 @@ export function clampPage(requested: number, pageCount: number): number {
 }
 
 /**
- * The 1-based positions of the first and last row a (clamped) page shows within
- * the whole scoped set, for the pager's "51–60 of 60"; both 0 for an empty set.
+ * The 1-based positions of the first and last row a (clamped) page of
+ * `pageSize` rows shows within the whole set, for a pager's "51–60 of 60";
+ * both 0 for an empty set.
  *
- * @example pageRange(2, 60) // { first: 51, last: 60 }
+ * @example pageRange(2, 60, PAGE_SIZE) // { first: 51, last: 60 }
  */
-export function pageRange(page: number, rowCount: number): { first: number; last: number } {
+export function pageRange(page: number, rowCount: number, pageSize: number): { first: number; last: number } {
   if (rowCount === 0) return { first: 0, last: 0 };
-  const first = (page - 1) * PAGE_SIZE + 1;
-  return { first, last: Math.min(rowCount, first + PAGE_SIZE - 1) };
+  const first = (page - 1) * pageSize + 1;
+  return { first, last: Math.min(rowCount, first + pageSize - 1) };
 }
 
 /**

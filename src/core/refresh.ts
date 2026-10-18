@@ -93,8 +93,11 @@ type RefreshOptions = { logsRoot?: string; dbPath?: string };
  *     sub-agent was flattened onto the main thread).
  * 2 — assistant turns carry their reasoning `effort` (previously ignored), so
  *     already-ingested conversations must re-parse to fill the new column.
+ * 3 — user Messages are classified by `origin.kind` (Inter-agent messages and
+ *     Task notifications, with their `origin` extras) and `queued_command`
+ *     attachments become mid-turn Messages.
  */
-const PARSER_VERSION = 2;
+const PARSER_VERSION = 3;
 
 /**
  * The version a conversation carries while it is written but NOT YET COMPLETE:
@@ -392,6 +395,7 @@ function messageData(m: ParsedSession["messages"][number], conversationId: numbe
     role: m.role,
     kind: m.kind,
     text: m.text,
+    origin: m.origin === null ? null : JSON.stringify(m.origin),
     inputTokens: m.inputTokens,
     outputTokens: m.outputTokens,
     cacheCreation5mTokens: m.cacheCreation5mTokens,
