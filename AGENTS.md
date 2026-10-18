@@ -79,6 +79,10 @@ The `check` and `gate` lines in package.json are the sequences: `,` separates st
 
 This project uses TDD. Build features test-first (red → green → refactor, one vertical slice at a time), exercising public interfaces — `src/core`'s exported functions against small sanitized JSONL fixtures — never internals. See `docs/codebase/testing.md` before writing tests. Each route also gets a Playwright `instant()` spec in `e2e/`, covering what its static shell shows (same file, "End-to-end").
 
+## Naming
+
+Every name passes the test in `docs/codebase/naming.md`; read it before naming or renaming anything.
+
 ## Documentation
 
 Always reach for documentation rather than working from memory. Prioritize the files below first, and then ctx7. Repo conventions live in `docs/codebase/`, linked from the section they govern; the sources below are external reference.
