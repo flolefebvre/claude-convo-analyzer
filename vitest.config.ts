@@ -31,6 +31,9 @@ export default defineConfig({
         // imports, which the module graph cannot see.
         "src/core/refresh.ts",
         "src/core/refresh.worker.ts",
+        // scripts/recorder.test.ts runs these in a child process.
+        "scripts/recorder.ts",
+        "src/core/recorder.ts",
       ].map((relativePath) => path.resolve(import.meta.dirname, relativePath)),
     ],
   },
