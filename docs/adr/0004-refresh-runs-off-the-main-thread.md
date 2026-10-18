@@ -47,10 +47,16 @@ process-wide instance lives in a `globalThis[Symbol.for(…)]` slot, created on
 first use, so a dev re-evaluation joins the running Refresh instead of starting
 a second one.
 
-The Refresh server action awaits the shared run and returns its summary.
+The Refresh server action starts or joins the shared run and returns at once,
+with `started` or `already running`.
 
-**Progress will stream** to every open page over next-sse's in-memory transport,
-fed from the runner's state (#112). One server process serves this local app, so
+**Progress streams** to every open page over next-sse's in-memory transport
+(#112). The runner tells subscribers each state it moves to, and an app-side
+bridge publishes them on the `refresh` Channel: a `progress { done, total }` per
+committed batch, then one `finished { summary }` or `failed { message }`. Core
+stays framework-free, and the worker never publishes. A page opened mid-run
+starts from a Snapshot of the runner's state, taken with the Channel position
+just before, so it misses no event. One server process serves this local app, so
 an in-memory transport is enough.
 
 ## Alternatives considered
@@ -72,9 +78,9 @@ an in-memory transport is enough.
 
 - A Refresh no longer blocks rendering: pages read and navigate during a run and
   show whatever is already committed.
-- The run outlives its request, so the action may return to one caller while
-  others still wait on the same promise; their summaries are identical.
-- An out-of-memory Refresh kills only its worker. The waiting callers get the
+- The run outlives its request: every open page, whichever started it, gets the
+  same progress and the same summary.
+- An out-of-memory Refresh kills only its worker. Every open page gets the
   error, and the server stays up.
 - The worker's `.ts` graph only loads through a bundler or a TypeScript loader.
   Tests spawn it with `--import tsx`.
