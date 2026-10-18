@@ -163,6 +163,18 @@ describe("buildListView — table slice (with sort)", () => {
     expect(view.scoped).toBe(true);
   });
 
+  it("scopes to the Folder's whole subtree, or to this folder only", () => {
+    const rows = [
+      summary({ id: "own", path: "/p/repo", costUsd: 1 }),
+      summary({ id: "below", path: "/p/repo/.claude/worktrees/wt", costUsd: 2 }),
+      summary({ id: "sibling", path: "/p/repository", costUsd: 3 }),
+    ];
+    const subtree = buildListView(rows, { folder: "/p/repo", sort: ASC_COST });
+    expect(subtree.rows.map((r) => r.id)).toEqual(["own", "below"]);
+    const own = buildListView(rows, { folder: "/p/repo", thisFolderOnly: true, sort: ASC_COST });
+    expect(own.rows.map((r) => r.id)).toEqual(["own"]);
+  });
+
   it("grandTotal reflects the SCOPED rows only, not all rows", () => {
     const rows = [
       summary({ id: "a", path: "/p/fA", costUsd: 9, tokens: { total: 90 } }),

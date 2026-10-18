@@ -1,0 +1,3 @@
+{"type": "ai-title", "aiTitle": "Scope case-only sibling"}
+{"type": "user", "uuid": "sc-u1", "timestamp": "2026-06-01T12:00:00.000Z", "cwd": "/Users/me/dev/Scope/child", "version": "2.1.180", "message": {"role": "user", "content": "hello"}}
+{"type": "assistant", "uuid": "sc-a1", "requestId": "sc-req-1", "timestamp": "2026-06-01T12:00:05.000Z", "cwd": "/Users/me/dev/Scope/child", "version": "2.1.180", "message": {"id": "sc-msg-1", "role": "assistant", "model": "claude-opus-4-8", "content": [{"type": "tool_use", "id": "sc-t1", "name": "Glob", "input": {"pattern": "*.ts"}}], "usage": {"input_tokens": 1000, "output_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0, "cache_creation": {"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 0}}}}

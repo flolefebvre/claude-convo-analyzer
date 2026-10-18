@@ -192,27 +192,27 @@ describe("range preservation across list links", () => {
 
 describe("folderHref", () => {
   it("sets the folder param while preserving the active sort", () => {
-    expect(folderHref("/Users/me/dev/demo", { sort: { sortBy: "cost", dir: "desc" } })).toBe(
+    expect(folderHref({ folder: "/Users/me/dev/demo" }, { sort: { sortBy: "cost", dir: "desc" } })).toBe(
       "?sortBy=cost&dir=desc&folder=%2FUsers%2Fme%2Fdev%2Fdemo",
     );
   });
 
   it("clears the folder param (All folders) but keeps the sort", () => {
-    expect(folderHref(undefined, { sort: { sortBy: "title", dir: "asc" } })).toBe("?sortBy=title&dir=asc");
+    expect(folderHref({}, { sort: { sortBy: "title", dir: "asc" } })).toBe("?sortBy=title&dir=asc");
   });
 
   it("preserves an active trends range so folder and range compose", () => {
-    expect(folderHref("/Users/me/dev/demo", { sort: DEFAULT_SORT, range: "90" })).toBe(
+    expect(folderHref({ folder: "/Users/me/dev/demo" }, { sort: DEFAULT_SORT, range: "90" })).toBe(
       "?sortBy=date&dir=desc&folder=%2FUsers%2Fme%2Fdev%2Fdemo&range=90",
     );
     // No range in the URL (the conversation list) -> no range param.
-    expect(folderHref("/Users/me/dev/demo", { sort: DEFAULT_SORT })).toBe(
+    expect(folderHref({ folder: "/Users/me/dev/demo" }, { sort: DEFAULT_SORT })).toBe(
       "?sortBy=date&dir=desc&folder=%2FUsers%2Fme%2Fdev%2Fdemo",
     );
   });
 
   it("url-encodes a folder value with special characters", () => {
-    expect(folderHref("a b&c", { sort: DEFAULT_SORT })).toBe("?sortBy=date&dir=desc&folder=a+b%26c");
+    expect(folderHref({ folder: "a b&c" }, { sort: DEFAULT_SORT })).toBe("?sortBy=date&dir=desc&folder=a+b%26c");
   });
 });
 
@@ -479,7 +479,7 @@ describe("the errors filter travels with every other list link", () => {
   });
 
   it("survives a folder change and a row expand", () => {
-    expect(folderHref("/Users/me/dev/demo", { sort: DEFAULT_SORT, errorsOnly: true })).toBe(
+    expect(folderHref({ folder: "/Users/me/dev/demo" }, { sort: DEFAULT_SORT, errorsOnly: true })).toBe(
       "?sortBy=date&dir=desc&folder=%2FUsers%2Fme%2Fdev%2Fdemo&errors=1",
     );
     expect(expandHref("s1", undefined, { sort: DEFAULT_SORT, errorsOnly: true })).toBe(
@@ -517,7 +517,9 @@ describe("the page axis resets on a filter change and travels with the rest", ()
   });
 
   it("folderHref drops the page: a new scope starts at page 1", () => {
-    expect(folderHref("/Users/me/dev/demo", ON_PAGE_4)).toBe("?sortBy=date&dir=desc&folder=%2FUsers%2Fme%2Fdev%2Fdemo");
+    expect(folderHref({ folder: "/Users/me/dev/demo" }, ON_PAGE_4)).toBe(
+      "?sortBy=date&dir=desc&folder=%2FUsers%2Fme%2Fdev%2Fdemo",
+    );
   });
 
   it("errorsHref drops the page: a re-filtered list starts at page 1", () => {
@@ -538,5 +540,27 @@ describe("listReturnQuery", () => {
         "sess-a",
       ),
     ).toBe("sortBy=cost&dir=asc&folder=%2Fhome%2Fdev%2Fapi&expanded=sess-a&range=7&errors=1&page=2");
+  });
+});
+
+describe("the this-folder narrowing", () => {
+  /** A list view narrowed to this folder, on page 2. */
+  const NARROWED: ListLinkContext = { sort: DEFAULT_SORT, folder: "/home/dev/api", thisFolderOnly: true, page: 2 };
+  const SCOPE = "folder=%2Fhome%2Fdev%2Fapi&thisFolder=1";
+
+  it("survives every list link: sort, expand, page, errors and the transcript's way back", () => {
+    expect(sortHref("title", NARROWED)).toBe(`?sortBy=title&dir=asc&${SCOPE}`);
+    expect(expandHref("sess-a", undefined, NARROWED)).toBe(`?sortBy=date&dir=desc&${SCOPE}&expanded=sess-a&page=2`);
+    expect(pageHref(3, NARROWED)).toBe(`?sortBy=date&dir=desc&${SCOPE}&page=3`);
+    expect(errorsHref(NARROWED)).toBe(`?sortBy=date&dir=desc&${SCOPE}&errors=1`);
+    expect(listReturnQuery(NARROWED)).toBe(`sortBy=date&dir=desc&${SCOPE}&page=2`);
+  });
+
+  it("is set or dropped by a folder link, never inherited from the current scope", () => {
+    expect(folderHref({ folder: "/home/dev/web" }, NARROWED)).toBe("?sortBy=date&dir=desc&folder=%2Fhome%2Fdev%2Fweb");
+    expect(folderHref({ folder: "/home/dev/web", thisFolderOnly: true }, { sort: DEFAULT_SORT })).toBe(
+      "?sortBy=date&dir=desc&folder=%2Fhome%2Fdev%2Fweb&thisFolder=1",
+    );
+    expect(folderHref({}, NARROWED)).toBe("?sortBy=date&dir=desc");
   });
 });

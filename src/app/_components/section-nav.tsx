@@ -15,6 +15,7 @@
 import { usePathname, useSearchParams } from "next/navigation";
 
 import { PendingLink } from "@/app/_components/pending-link";
+import { sectionSwitchQuery } from "@/app/_lib/search-params";
 import { cn } from "@/lib/utils-cn";
 
 /** The shell's surfaces, in tab order. */
@@ -24,9 +25,6 @@ const SECTIONS = [
   { href: "/tools", label: "Tools" },
 ] as const;
 
-/** The view params worth carrying across a surface switch. */
-const CARRIED_PARAMS = ["folder", "range"] as const;
-
 /**
  * The section tabs, active and scope-carrying from the live URL. Reads the URL,
  * so it renders inside a `<Suspense>` whose fallback is {@link SectionTabs}.
@@ -35,15 +33,7 @@ export function SectionNav({ className }: { className?: string }) {
   const pathname = usePathname();
   const params = useSearchParams();
 
-  // Rebuild the query from the carried params only: `?sortBy=`/`?expanded=` are
-  // per-surface table state and mean nothing on the next surface.
-  const carried = new URLSearchParams();
-  for (const key of CARRIED_PARAMS) {
-    const value = params.get(key);
-    if (value) carried.set(key, value);
-  }
-
-  return <SectionTabs active={pathname} query={carried.toString()} className={className} />;
+  return <SectionTabs active={pathname} query={sectionSwitchQuery(params.toString())} className={className} />;
 }
 
 /**

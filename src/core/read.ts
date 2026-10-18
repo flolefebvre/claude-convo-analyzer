@@ -9,6 +9,7 @@
 
 import { type CostByType, priceSplitByType, resolveModel, type TokenSplit, type Tokens } from "@/core/cost";
 import { readClient } from "@/core/db";
+import { conversationInFolderScope, type FolderScopeOptions } from "@/core/folder-scope";
 import { addLocalDays, localDayKey, startOfLocalDay } from "@/core/local-day";
 import { type MessageOrigin, messageOriginSchema } from "@/core/parse";
 import type { Prisma, PrismaClient } from "@/core/prisma/generated/client";
@@ -677,9 +678,7 @@ export type DailySpend = {
   hasApproximate: boolean;
 };
 
-type DailySpendOptions = {
-  /** Scope to one Project by its path (the `?folder=` value); all Projects when omitted. */
-  folder?: string;
+type DailySpendOptions = FolderScopeOptions & {
   /** Range length in days, ending today (inclusive). All time when omitted. */
   days?: number;
   /** Clock injection point — the instant "today" is derived from. Defaults to now. */
@@ -724,7 +723,7 @@ export async function getDailySpend(opts: DailySpendOptions = {}): Promise<Daily
           lt: BigInt(addLocalDays(today, 1).getTime()),
           ...(from === null ? {} : { gte: BigInt(from.getTime()) }),
         },
-        ...(opts.folder === undefined ? {} : { conversation: { project: { path: opts.folder } } }),
+        ...(await conversationInFolderScope(prisma, opts)),
       },
       select: {
         timestamp: true,

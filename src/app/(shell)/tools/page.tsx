@@ -29,9 +29,10 @@ import { SortableHead } from "@/app/_components/sortable-head";
 import { Stat, StatSkeleton, StatStrip } from "@/app/_components/stat-strip";
 import { TOOL_COLUMNS, ToolRow } from "@/app/_components/tool-row";
 import { loadToolCallSamples, loadToolStats } from "@/app/_lib/conversations";
+import { resolveFolderScope } from "@/app/_lib/folder-scope";
 import { formatChars, formatCount, formatRate } from "@/app/_lib/format";
 import { rangeDays, rangePhrase, resolveRange } from "@/app/_lib/range";
-import { type ViewSearchParams, firstParam } from "@/app/_lib/search-params";
+import { type ViewSearchParams } from "@/app/_lib/search-params";
 import { resolveExpanded } from "@/app/_lib/sort";
 import {
   type ToolSortField,
@@ -74,7 +75,7 @@ async function resolveToolsState(searchParams: Promise<ViewSearchParams>): Promi
   const params = await searchParams;
   return {
     sort: resolveToolSort(params.sortBy, params.dir),
-    folder: firstParam(params.folder) || undefined,
+    ...resolveFolderScope(params),
     range: resolveRange(params.range),
     expanded: resolveExpanded(params.expanded),
   };
@@ -141,13 +142,15 @@ async function ToolsSurface({ searchParams }: { searchParams: Promise<ViewSearch
   const state = await resolveToolsState(searchParams);
 
   const days = rangeDays(state.range);
-  const stats = await loadToolStats(state.folder, days);
+  const stats = await loadToolStats(state.folder, state.thisFolderOnly, days);
   const rows = sortTools(stats.tools, state.sort);
 
   // Fetch the expanded tool's drill-down server-side — only when that row is
   // actually visible in the current view (a stale `?expanded=` is ignored).
   const expandedRow = state.expanded ? rows.find((row) => row.name === state.expanded) : undefined;
-  const expandedSamples = expandedRow ? await loadToolCallSamples(expandedRow.name, state.folder, days) : null;
+  const expandedSamples = expandedRow
+    ? await loadToolCallSamples(expandedRow.name, state.folder, state.thisFolderOnly, days)
+    : null;
 
   return (
     <div className="flex flex-col gap-5">
@@ -335,7 +338,10 @@ function EmptyTools({ state }: { state: ToolsViewState }) {
       : state.folder
         ? [
             "No tool calls were recorded in this folder.",
-            <EmptyStateLink key="folders" href={toolRangeHref("all", { ...state, folder: undefined })}>
+            <EmptyStateLink
+              key="folders"
+              href={toolRangeHref("all", { ...state, folder: undefined, thisFolderOnly: false })}
+            >
               Show all folders
             </EmptyStateLink>,
           ]

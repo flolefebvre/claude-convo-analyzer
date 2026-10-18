@@ -22,15 +22,14 @@
 import type { Tokens } from "@/core/cost";
 import type { ConversationSummary } from "@/core/read";
 
+import { type FolderScope, isProjectInFolderScope } from "@/app/_lib/folder-scope";
 import { deriveFolders, type FolderEntry } from "@/app/_lib/folders";
 import { FIRST_PAGE } from "@/app/_lib/search-params";
 import { sortConversations, type SortState } from "@/app/_lib/sort";
 import type { Overview } from "@/app/_lib/overview";
 
 /** Already-resolved scope + sort intent (parsed from the URL at the page edge). */
-export type ListViewIntent = {
-  /** The active `?folder=` scope, or `undefined`/empty for "All folders". */
-  folder?: string;
+export type ListViewIntent = FolderScope & {
   /** The resolved sort state. Its PRESENCE switches on the table slice. */
   sort: SortState;
   /**
@@ -176,9 +175,10 @@ export function buildListView(
   if (!intent) return base;
 
   const activeFolder = intent.folder ? intent.folder : undefined;
-  // Both filters run BEFORE the sort and compose: folder scope narrows to one
-  // Project, the errors filter to the conversations that actually failed.
-  const scopedRows = filterByErrors(filterByFolder(rows, activeFolder), intent.errorsOnly);
+  // Both filters run BEFORE the sort and compose: the Folder scope narrows to
+  // the Projects at or below it, the errors filter to the conversations that
+  // actually failed.
+  const scopedRows = filterByErrors(filterByFolderScope(rows, intent), intent.errorsOnly);
   const sortedRows = sortConversations(scopedRows, intent.sort);
   // Paginate LAST: the footer's `rowCount` + `grandTotal` cover the whole
   // scoped set, only the rendered slice is bounded.
@@ -200,19 +200,19 @@ export function buildListView(
 // ── module-private pipeline helpers (folded in from folders/format/overview) ──
 
 /**
- * Scope conversations to a single Project by its path (`?folder=`), WITHOUT sorting
+ * Scope conversations to a Folder (`?folder=`, `?thisFolder=`), WITHOUT sorting
  * — input order is preserved so the caller sorts afterward (scope composes with
- * sort). All rows when `folder` is `undefined`/empty (no scope); the matching
- * rows for a known key; an empty array for a non-empty but unknown/stale key.
+ * sort). All rows when the scope names no Folder; the rows of the Projects in
+ * scope otherwise — none for an unknown/stale path.
  */
-function filterByFolder(summaries: ConversationSummary[], folder: string | undefined): ConversationSummary[] {
-  if (!folder) return summaries;
-  return summaries.filter((s) => s.project.path === folder);
+function filterByFolderScope(summaries: ConversationSummary[], scope: FolderScope): ConversationSummary[] {
+  if (!scope.folder) return summaries;
+  return summaries.filter((s) => isProjectInFolderScope(s.project.path, scope));
 }
 
 /**
  * Keep only conversations with at least one API-error turn, WITHOUT sorting
- * (input order preserved, like {@link filterByFolder}). All rows when the filter
+ * (input order preserved, like {@link filterByFolderScope}). All rows when the filter
  * is off. The `errorCount` is the core's whole-conversation rollup, so a row
  * whose only failure happened inside a sub-agent survives the filter.
  */

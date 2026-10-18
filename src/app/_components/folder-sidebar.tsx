@@ -48,11 +48,11 @@ export function FolderSidebar({
   // deliberately gets no bar — it is the sum (100%), not a peer to rank against.
   return (
     <nav aria-label="Folders" className="flex flex-col gap-1">
-      <SidebarLink folder={null}>
+      <SidebarLink scope={{}}>
         <AllFoldersRow count={totalCount} cost={totalCost} unpriced={totalUnpriced} />
       </SidebarLink>
       {folders.map((entry) => (
-        <SidebarLink key={entry.path} folder={entry.path} title={entry.path}>
+        <SidebarLink key={entry.path} scope={{ folder: entry.path }} title={entry.path}>
           <FolderRow entry={entry} total={totalCost} />
         </SidebarLink>
       ))}

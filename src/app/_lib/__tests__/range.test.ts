@@ -30,12 +30,18 @@ describe("rangeDays", () => {
 
 describe("rangeHref", () => {
   it("keeps the active folder scope so both axes compose", () => {
-    expect(rangeHref("7", "/Users/me/dev/app")).toBe("?range=7&folder=%2FUsers%2Fme%2Fdev%2Fapp");
+    expect(rangeHref("7", { folder: "/Users/me/dev/app" })).toBe("?range=7&folder=%2FUsers%2Fme%2Fdev%2Fapp");
+  });
+
+  it("keeps a this-folder narrowing", () => {
+    expect(rangeHref("7", { folder: "/Users/me/dev/app", thisFolderOnly: true })).toBe(
+      "?range=7&folder=%2FUsers%2Fme%2Fdev%2Fapp&thisFolder=1",
+    );
   });
 
   it("omits an absent or empty folder scope", () => {
     expect(rangeHref("all")).toBe("?range=all");
-    expect(rangeHref("90", "")).toBe("?range=90");
+    expect(rangeHref("90", { folder: "" })).toBe("?range=90");
   });
 });
 

@@ -16,6 +16,7 @@ import type { ToolStat } from "@/core/tool-stats";
 import type { RangeKey } from "@/app/_lib/range";
 import type { SortDir } from "@/app/_lib/sort";
 
+import { type FolderScope, writeFolderScope } from "@/app/_lib/folder-scope";
 import { firstParam } from "@/app/_lib/search-params";
 
 /** Per-column spec: the comparable value and the direction a fresh click starts at. */
@@ -46,10 +47,8 @@ export type ToolSortState = {
 export const DEFAULT_TOOL_SORT: ToolSortState = { sortBy: "calls", dir: "desc" };
 
 /** The whole Tools URL view state — every link is built from one of these. */
-export type ToolsViewState = {
+export type ToolsViewState = FolderScope & {
   sort: ToolSortState;
-  /** The active `?folder=` scope; absent/empty means all Projects. */
-  folder?: string;
   /** The active `?range=` preset. */
   range: RangeKey;
   /** The expanded row's tool name (`?expanded=`), when a row is open. */
@@ -118,7 +117,7 @@ function toolsHref(state: ToolsViewState): string {
     sortBy: state.sort.sortBy,
     dir: state.sort.dir,
   });
-  if (state.folder) params.set("folder", state.folder);
+  writeFolderScope(params, state);
   params.set("range", state.range);
   if (state.expanded) params.set("expanded", state.expanded);
   return `?${params.toString()}`;

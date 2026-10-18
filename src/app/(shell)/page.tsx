@@ -39,6 +39,7 @@ import {
 import { footerLabelColSpan } from "@/app/_lib/columns";
 import { errorsView } from "@/app/_lib/errors-view";
 import { familyView } from "@/app/_lib/family-view";
+import { resolveFolderScope } from "@/app/_lib/folder-scope";
 import { type FolderEntry } from "@/app/_lib/folders";
 import { formatCount, formatDate, formatGrandTotalCost, formatTokens } from "@/app/_lib/format";
 import { buildListView } from "@/app/_lib/list-view";
@@ -168,9 +169,9 @@ async function ConversationTable({ searchParams }: { searchParams: Promise<ViewS
   // URL → resolved intent at the page edge; the seam takes intent, never raw
   // searchParams.
   const sort = resolveSort(params.sortBy, params.dir);
-  // The active scope, normalized: a non-empty key, or `undefined`/empty for
-  // "All folders". Threaded onto the header links so re-sorting keeps the scope.
-  const activeFolder = firstParam(params.folder) || undefined;
+  // The active Folder scope (`?folder=`, `?thisFolder=`), or none for "All
+  // folders". Threaded onto every link so re-sorting keeps the scope.
+  const scope = resolveFolderScope(params);
   // The expanded row's id, if any (`?expanded=<id>`). Row expansion is URL view
   // state like sort/folder, so expanded panels are shareable and survive reload.
   const expandedId = resolveExpanded(params.expanded);
@@ -197,7 +198,7 @@ async function ConversationTable({ searchParams }: { searchParams: Promise<ViewS
     selectedFolder,
     grandTotal: total,
   } = buildListView(allRows, {
-    folder: activeFolder,
+    ...scope,
     sort,
     errorsOnly,
     page: requestedPage,
@@ -207,7 +208,7 @@ async function ConversationTable({ searchParams }: { searchParams: Promise<ViewS
   // axes compose instead of clobbering each other (see `ListLinkContext`). It
   // carries the CLAMPED page, so a link never propagates a page that does not
   // exist.
-  const links: ListLinkContext = { sort, folder: activeFolder, range, errorsOnly, page };
+  const links: ListLinkContext = { sort, ...scope, range, errorsOnly, page };
 
   // Continuation-family size per conversation, walked ONCE over the same rows
   // (issue #46). Sizes come from the UNSCOPED set on purpose: a family spanning
@@ -456,7 +457,7 @@ function EmptyList({
       <EmptyState
         icon={FolderOpen}
         title="No conversations in this folder"
-        action={<EmptyStateLink href={folderHref(undefined, links)}>Show all folders</EmptyStateLink>}
+        action={<EmptyStateLink href={folderHref({}, links)}>Show all folders</EmptyStateLink>}
       >
         The folder may have been removed since the last scan.
       </EmptyState>
@@ -484,7 +485,7 @@ function FolderBreadcrumb({
 }) {
   return (
     <nav aria-label="Folder scope" className="flex flex-wrap items-center gap-2 text-sm">
-      <PendingLink href={folderHref(undefined, links)} scroll={false} className="text-muted-foreground hover:underline">
+      <PendingLink href={folderHref({}, links)} scroll={false} className="text-muted-foreground hover:underline">
         All folders
       </PendingLink>
       <span aria-hidden className="text-muted-foreground">

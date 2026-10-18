@@ -8,6 +8,7 @@
 //
 // React-free + I/O-free so it unit-tests in the node vitest environment.
 
+import { type FolderScope, writeFolderScope } from "@/app/_lib/folder-scope";
 import { firstParam } from "@/app/_lib/search-params";
 
 /** The selectable ranges — preset buttons only, no free date inputs. */
@@ -43,13 +44,15 @@ export function rangeDays(range: RangeKey): number | undefined {
 /**
  * Query-string href for a range preset button, PRESERVING the active folder
  * scope so the two axes compose (the mirror of `folderHref`, which preserves
- * the range coming the other way). A missing/empty folder means "all Projects".
- * Surfaces with more URL state than range+folder (the Tools table's sort and
- * expanded row) build their own href and hand it to the picker instead.
+ * the range coming the other way). A scope naming no Folder means "all
+ * Projects". Surfaces with more URL state than range+folder (the Tools table's
+ * sort and expanded row) build their own href and hand it to the picker instead.
+ *
+ * @example rangeHref("7", scope) // "?range=7&folder=%2Fhome%2Fme%2Fdev"
  */
-export function rangeHref(range: RangeKey, folder?: string): string {
+export function rangeHref(range: RangeKey, scope: FolderScope = {}): string {
   const params = new URLSearchParams({ range });
-  if (folder) params.set("folder", folder);
+  writeFolderScope(params, scope);
   return `?${params.toString()}`;
 }
 
