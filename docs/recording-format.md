@@ -21,7 +21,9 @@ agree on, so a Recording can be read without that module.
   `x-claude-code-session-id` header, else the session id in `metadata.user_id`
   (§4), else the only active session if exactly one is (one that sent an API
   request in the last 15 minutes), else none.
-- Files are **append-only**. Nothing is ever rewritten or deleted.
+- Files are **append-only**, and never deleted. The one exception is the
+  repair in §2: a file whose last member was cut short is rewritten, keeping
+  every line up to its last complete API request.
 
 ## 2. Gzip members
 
@@ -111,10 +113,13 @@ the same piece. A message that differs in any byte — e.g. a moved
 - `timings`: `arrivedAt` when the request reached the Recorder, `firstByteAt`
   when the first byte of the upstream response came back (null if none did),
   `endedAt` when the response ended or failed.
-- `proxyError` (present only then): the upstream could not be reached; the
-  Recorder answered `502` with
-  `{"type":"error","error":{"type":"proxy_error","message":"…"}}`, which is
-  `response.body`.
+- `proxyError` (present only then): the upstream failed, in one of two ways:
+  - it could not be reached: the Recorder answered `502` with
+    `{"type":"error","error":{"type":"proxy_error","message":"…"}}`, which is
+    `response.body`;
+  - its connection broke mid-response: the Recorder cut Claude Code's response
+    short too, and `response` keeps the upstream's status and headers, with
+    `body` holding what was reassembled so far — not a whole response.
 - `isClientAborted` (present only then): Claude Code disconnected before the
   response ended; the upstream request was aborted and `response.body` holds
   what was reassembled so far.

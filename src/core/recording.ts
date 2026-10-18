@@ -73,7 +73,7 @@ export type RecordedApiRequest = {
   body: unknown;
   response: RecordedResponse;
   timings: ApiRequestTimings;
-  /** Why the Recorder answered for an upstream it could not reach. */
+  /** Why the upstream failed: it could not be reached (the Recorder answered 502), or its connection broke mid-response. */
   proxyError?: string;
   /** True when the client disconnected before the response ended. */
   isClientAborted?: boolean;

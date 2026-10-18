@@ -212,6 +212,24 @@ describe("a failing upstream or disk", () => {
     expect(harness.loggedMessages.some((message) => message.includes("could not record"))).toBe(true);
   });
 
+  it("cuts the client's stream short when the upstream connection breaks mid-response, and records it flagged", async () => {
+    const upstream = await harness.startUpstream((_request, response) => {
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.write(MESSAGES_RESPONSE_EVENTS[0], () => setTimeout(() => response.socket?.destroy(), 20));
+    });
+    const recorder = await harness.startRecorder(upstream.url);
+
+    const reader = (await postMessages(recorder, { headers: SESSION_HEADERS })).body!.getReader();
+    expect(new TextDecoder().decode((await reader.read()).value)).toBe(MESSAGES_RESPONSE_EVENTS[0]);
+    await expect(textUntilEnd(reader)).rejects.toThrow();
+    await recorder.stop();
+
+    const [recorded] = readRecordings(harness.recordingsRoot);
+    expect(recorded.proxyError).toEqual(expect.any(String));
+    expect(recorded.response).toMatchObject({ status: 200, isStreamed: true });
+    expect(recorded.response.body).toMatchObject({ id: "msg_fixture01", model: "claude-opus-4-8", content: [] });
+  });
+
   it("aborts the upstream request when the client disconnects, and records what came back", async () => {
     const upstreamRequestClosed = deferred();
     const upstream = await harness.startUpstream((_request, response) => {

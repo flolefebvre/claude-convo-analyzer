@@ -214,17 +214,23 @@ export async function startRecorder(options: RecorderOptions): Promise<RunningRe
           response.end();
           settle();
         });
-        incoming.on("error", () => {
-          response.destroy();
-          settle();
+        incoming.on("error", (error) => breakMidResponse(error.message));
+        incoming.on("close", () => {
+          if (!incoming.complete) breakMidResponse("the upstream connection closed mid-response");
         });
       });
+
+      /** Cut the client's response short, and record it flagged as broken. */
+      const breakMidResponse = (message: string) => {
+        if (isSettled) return;
+        response.destroy();
+        settle({ proxyError: message });
+      };
 
       upstreamRequest.on("error", (error) => {
         if (isSettled) return;
         if (upstreamResponse || response.headersSent) {
-          response.destroy();
-          settle();
+          breakMidResponse(error.message);
           return;
         }
         const proxyErrorBody = {
