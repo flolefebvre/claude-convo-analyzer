@@ -133,12 +133,19 @@ Turn). Optionally carries the message `text`.
 
 A user Message is one of five **kinds**, all sharing `role = user` in the log:
 
-- **Prompt** — text the human speaks to the Agent: typed, or inserted on their
-  behalf by a plugin. The only kind that represents the user speaking.
+- **Prompt** — text that sets the Agent to work, with an **author**: the human
+  (typed, or inserted on their behalf by a plugin), or the Agent that spawned
+  this one. A Prompt the human authored is the only kind that represents the
+  user speaking. A **Task prompt** is the one a spawner writes to hand work to
+  a Sub-agent: its Agent call's `prompt` input, and the first Message of the
+  Sub-agent's Transcript.
+  _Avoid_: brief, delegation message, spawn prompt (for a Task prompt).
 - **Inter-agent message** — text another Agent addressed to this one: a
   Sub-agent reporting to its spawner, the spawner steering a running Sub-agent,
   or another Conversation's agent reaching this one. Always has a **sender**.
-  A **hand-back** is the one carrying a Sub-agent's final report.
+  A Sub-agent's final report is its **hand-back**: a background Sub-agent's
+  arrives as an Inter-agent message, a foreground one's as its Agent call's
+  result.
   _Avoid_: agent message (also reads as the Agent's reply to the user), peer
   message.
 - **Task notification** — an event announcing that a background task or

@@ -77,9 +77,13 @@ Token accounting rules:
 - The schema is a reusable raw substrate, not a pre-baked report: new analyses
   are new queries, not new parsers.
 - `tool_call` stores `input_json` in full (small; powers skill/CLI detection),
-  the result **truncated to ~10k chars** plus `result_char_size` (full length,
-  used as a token-cost proxy) and `is_error`. The DB stays bounded; the rare
-  full blob can be re-read from disk.
+  the result plus `result_char_size` (full length, used as a token-cost proxy)
+  and `is_error`. Whether a result is stored whole or **truncated to ~10k
+  chars** is a per-tool rule. Most results are file contents and command output
+  the logs already hold, together over a gigabyte, so they are truncated and
+  the DB stays bounded; the rare full blob can be re-read from disk. An `Agent`
+  call's result carries the Sub-agent's hand-back, which is read in full in the
+  Transcript, and all of them together weigh megabytes, so it is stored whole.
 - **Per-tool-call token cost is only exact for `Agent` calls** (the sub-agent's
   own usage). All other tools have no recorded per-call token cost — only their
   Turn's usage — so their cost is attributed at Turn grain or approximated by
