@@ -52,10 +52,11 @@ an in-memory transport is enough.
 ## Alternatives considered
 
 - **Chunked yielding on the main thread**: parse and write in slices, with a
-  `setImmediate` between them. It only slices the freeze. Each Prisma call
-  still resolves as a microtask over synchronous SQLite, so yielding needs
-  explicit macrotask breaks everywhere, and every slice still blocks every
-  request for its whole length. The parse of one large Conversation is itself
+  `setImmediate` between them. It only slices the freeze. Awaiting Prisma
+  calls is no yield at all: across the 268 s cold run, a 10 ms timer probe
+  never fired, because each Prisma call resolves as a microtask over
+  synchronous SQLite. So yielding needs explicit macrotask breaks everywhere,
+  and every slice still blocks every request for its whole length. The parse of one large Conversation is itself
   a long synchronous task.
 - **A forked child process running the Refresh through tsx.** Real isolation,
   but it ships a dev dependency (tsx) as a runtime requirement, needs its own
