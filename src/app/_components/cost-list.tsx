@@ -1,6 +1,6 @@
 // Shared presentational pieces of the detail panel's ranked cost lists: each
-// row pairs a share-of-total bar with its label and cost, mirroring the
-// overview band's "top projects by cost" language. No "use client" directive —
+// row pairs a share-of-total bar with its label and cost, the sidebar's
+// Folder-row language. No "use client" directive —
 // the server-rendered Model/Skill sections and the client sub-agent breakdown
 // both import from here, and it renders in whichever zone imports it.
 

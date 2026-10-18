@@ -1,6 +1,6 @@
 // The app's signature element: a thin clay bar that visualizes a cost relative
-// to a maximum. Repeated in the overview band (top Projects) and the sidebar so
-// the same visual language — "cost is a clay bar" — ties the app together.
+// to a maximum. Repeated across the sidebar, the cost lists and Trends so the
+// same visual language — "cost is a clay bar" — ties the app together.
 //
 // A SERVER component (no interactivity): it receives plain numbers and renders
 // a track + proportional fill. Purely decorative, so it is hidden from the
