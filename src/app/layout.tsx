@@ -1,3 +1,4 @@
+import { SSEProvider } from "@flefebvre/next-sse/server";
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Suspense } from "react";
@@ -6,6 +7,7 @@ import "./globals.css";
 import { AppBar } from "@/app/_components/app-bar";
 import { ParserUpdateBanner } from "@/app/_components/parser-update-banner";
 import { ThemeProvider } from "@/app/_components/theme-provider";
+import { sse } from "@/app/_lib/sse";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 const geistSans = Geist({
@@ -76,13 +78,17 @@ export default function RootLayout({
             the open delay. */}
         <ThemeProvider>
           <TooltipProvider delayDuration={200}>
-            <AppBar />
-            {/* Absent in the normal state, so no skeleton: one would flash a
-                phantom banner on every load (docs/codebase/app-router.md). */}
-            <Suspense fallback={null}>
-              <ParserUpdateBanner />
-            </Suspense>
-            {children}
+            {/* The page's one Server-Sent Events connection (`/api/sse`),
+                shared by every subscribing component under it. */}
+            <SSEProvider sse={sse}>
+              <AppBar />
+              {/* Absent in the normal state, so no skeleton: one would flash a
+                  phantom banner on every load (docs/codebase/app-router.md). */}
+              <Suspense fallback={null}>
+                <ParserUpdateBanner />
+              </Suspense>
+              {children}
+            </SSEProvider>
           </TooltipProvider>
         </ThemeProvider>
       </body>

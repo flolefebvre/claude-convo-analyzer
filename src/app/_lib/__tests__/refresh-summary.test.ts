@@ -5,6 +5,7 @@ import type { RefreshSummary } from "@/core/refresh";
 import {
   formatDuplicateSessionDetail,
   formatOutdatedParserNotice,
+  formatRefreshProgress,
   formatRefreshSummary,
 } from "@/app/_lib/refresh-summary";
 
@@ -43,6 +44,14 @@ describe("formatRefreshSummary", () => {
     );
     expect(formatRefreshSummary(summary({ conversationsParsed: 1 }))).toBe("1 conversation updated");
     expect(formatRefreshSummary(summary({ conversationsDeleted: 1 }))).toBe("1 conversation removed");
+  });
+
+  it("writes every count with thousands separators", () => {
+    expect(
+      formatRefreshSummary(
+        summary({ conversationsParsed: 2481, conversationsDeleted: 1200, malformedLinesSkipped: 1500 }),
+      ),
+    ).toBe("2,481 conversations updated, 1,200 removed, 1,500 log lines could not be read");
   });
 
   it("adds the log lines it could not read, singular at one", () => {
@@ -100,5 +109,11 @@ describe("formatOutdatedParserNotice", () => {
     expect(formatOutdatedParserNotice(1)).toBe(
       "The parser was updated — 1 conversation needs a Refresh to show the latest data.",
     );
+  });
+});
+
+describe("formatRefreshProgress", () => {
+  it("shows the committed count out of the total, with thousands separators", () => {
+    expect(formatRefreshProgress({ done: 1200, total: 2450 })).toBe("1,200 / 2,450 conversations");
   });
 });

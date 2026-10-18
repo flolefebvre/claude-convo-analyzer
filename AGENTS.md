@@ -8,6 +8,7 @@
 - TypeScript 5, `strict`
 - Tailwind CSS v4, shadcn/ui (Radix + lucide)
 - Next-pipe (`@flefebvre/next-pipe`) for server entry points, zod 4 for validation
+- next-sse (`@flefebvre/next-sse`, in-memory transport) for the live Refresh progress on every page
 - Prisma 7 on SQLite, through the `@prisma/adapter-better-sqlite3` driver adapter, for the schema, migrations and reads; the Refresh writes through bare better-sqlite3 (ADR-0005)
 - Vitest 4, ESLint 10, Prettier 3 (sorts Tailwind classes)
 - Playwright (`@playwright/test` + `@next/playwright`), for the e2e specs
@@ -90,6 +91,7 @@ Always reach for documentation rather than working from memory. Prioritize the f
 
 - `node_modules/next/dist/docs/01-app/` — when writing anything under `src/app/`. This Next.js has breaking changes your training data predates — read the relevant page first rather than recalling an older API. `03-api-reference/` is the per-feature reference.
 - `node_modules/@flefebvre/next-pipe/docs/for-agents.md` — when writing a server action, route handler, or piped page. It matches the installed next-pipe and links the per-pipe pages.
+- `node_modules/@flefebvre/next-sse/docs/index.md` — when touching a Channel, a publish, the SSE route, or a component that subscribes. It is the manual for the installed next-sse.
 
 ## Comments and docs
 

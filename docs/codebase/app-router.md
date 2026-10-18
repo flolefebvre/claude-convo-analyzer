@@ -7,13 +7,19 @@ In order of preference — reach for the next one only when the previous doesn't
 1. **Server components** for display. Pages and layouts fetch their own data during render (through the
    `_lib` seams over `src/core`); never add an API route just to feed a page its own initial data.
 2. **Server actions** for the page's main action — the mutation the user is there to perform (here, the
-   Refresh scan). Actions are queued one at a time per client, which is fine for the main action and wrong
-   for anything else.
+   Refresh scan). Actions are queued one at a time per client, so an action must return at once rather than
+   wait for long work: `refreshConversations` starts or joins the Refresh and answers `started` or
+   `already running`, and the run's progress and outcome reach every open page over SSE (below).
 3. **API routes** (route handlers) for what runs alongside the main flow — typeahead, polling, client-side
    reads after the initial render. Add one only for a read no server component can do: one the reader asks
-   for after the page has rendered. The one route, `GET /api/tool-call/[id]`, serves a Tool call's body
+   for after the page has rendered. The one such route, `GET /api/tool-call/[id]`, serves a Tool call's body
    the first time the reader opens it: the page ships only the summary, because a server component
    cannot render a body nobody has opened yet.
+4. **Server-Sent Events** for what the server pushes to every open page while it happens — the Refresh's
+   progress and outcome on the `refresh` Channel. Channels and their event schemas live in the next-sse
+   Registry, `src/app/_lib/sse.ts`; server code publishes through its Handles, and a component subscribes
+   through `src/app/_lib/sse.client.ts`, starting from a Snapshot its server part minted with
+   `sse.snapshot(read)` behind `connection()`, in its own `<Suspense>`.
 
 ## Structure
 
@@ -23,7 +29,8 @@ In order of preference — reach for the next one only when the previous doesn't
   in a subfolder when a view has several (e.g. `_components/transcript/`). `src/components/ui/` is
   shadcn-vendored only.
 - Server actions and route handlers are written with next-pipe (`actionPipe` / `routePipe`); reach for `pagePipe` when a page needs middlewares (gates, validated search
-  params), not before.
+  params), not before. The one exception is the SSE route, `src/app/api/sse/route.ts`, which re-exports
+  next-sse's bare handler (`sse.handlers`): a route pipe always answers JSON and cannot stream.
 - Components are server components by default; add `"use client"` only at the leaves that need
   interactivity, not on whole pages.
 - Client components never import `src/core` (ADR-0002). They receive data from server components, call a

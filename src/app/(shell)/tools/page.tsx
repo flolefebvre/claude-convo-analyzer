@@ -24,7 +24,7 @@ import { EmptyState, EmptyStateLink } from "@/app/_components/empty-state";
 import { LoadingRegion } from "@/app/_components/loading-region";
 import { PageHeader } from "@/app/_components/page-header";
 import { RangePicker, RangePickerFallback } from "@/app/_components/range-picker";
-import { RefreshButton } from "@/app/_components/refresh-button";
+import { LiveRefreshButton } from "@/app/_components/live-refresh-button";
 import { SortableHead } from "@/app/_components/sortable-head";
 import { Stat, StatSkeleton, StatStrip } from "@/app/_components/stat-strip";
 import { TOOL_COLUMNS, ToolRow } from "@/app/_components/tool-row";
@@ -339,7 +339,7 @@ function EmptyTools({ state }: { state: ToolsViewState }) {
               Show all folders
             </EmptyStateLink>,
           ]
-        : ["Scan your Claude Code logs to see the tools Claude used.", <RefreshButton key="refresh" />];
+        : ["Scan your Claude Code logs to see the tools Claude used.", <LiveRefreshButton key="refresh" />];
   return (
     <EmptyState icon={Wrench} title={`No tool calls ${rangePhrase(state.range)}`} action={action}>
       {description}
