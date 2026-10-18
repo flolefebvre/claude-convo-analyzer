@@ -20,7 +20,8 @@ This repo is **single-context**: one `GLOSSARY.md` + `docs/adr/` at the repo roo
 │   ├── 0001-token-accounting-and-data-model.md
 │   ├── 0002-local-architecture-and-persistence.md
 │   ├── 0003-cost-model-and-pricing-policy.md
-│   └── 0004-refresh-runs-off-the-main-thread.md
+│   ├── 0004-refresh-runs-off-the-main-thread.md
+│   └── 0005-recordings-are-a-second-source.md
 └── src/
 ```
 
