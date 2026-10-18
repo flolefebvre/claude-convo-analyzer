@@ -1,5 +1,6 @@
 // Refresh progress: `{ done, total }`, where `total` is the number of
-// Conversations this run re-parses and `done` counts the ones already written.
+// Conversations this run re-parses and `done` counts the ones already
+// committed. Writes commit in batches, and each commit is reported once.
 
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -34,7 +35,7 @@ describe("refresh progress", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("reports the total first, then one step per written conversation, on a cold run", async () => {
+  it("reports the total first, then a rising committed count that ends at the total, on a cold run", async () => {
     const progressReports: RefreshProgress[] = [];
     const summary = await refresh({
       logsRoot: FIXTURES_ROOT,
@@ -44,10 +45,15 @@ describe("refresh progress", () => {
 
     const total = summary.conversationsParsed;
     expect(total).toBeGreaterThanOrEqual(2);
-    expect(progressReports).toEqual(Array.from({ length: total + 1 }, (_, done) => ({ done, total })));
+    expect(progressReports[0]).toEqual({ done: 0, total });
+    expect(progressReports.at(-1)).toEqual({ done: total, total });
+    for (const [index, progress] of progressReports.entries()) {
+      expect(progress.total).toBe(total);
+      if (index > 0) expect(progress.done).toBeGreaterThan(progressReports[index - 1]?.done ?? Infinity);
+    }
   });
 
-  it("has written conversation k, readable elsewhere, by the time it reports k done", async () => {
+  it("has committed exactly `done` conversations, readable elsewhere, at every report", async () => {
     const conversationCountByDone = new Map<number, number>();
     const summary = await refresh({
       logsRoot: FIXTURES_ROOT,
@@ -56,8 +62,8 @@ describe("refresh progress", () => {
     });
 
     // Cold run: exactly `done` conversations are stored at each report — not
-    // fewer (written before the report), not more (written as parsed, not batched).
-    expect(conversationCountByDone.size).toBe(summary.conversationsParsed + 1);
+    // fewer (reported before its commit), not more (committed but not reported).
+    expect(conversationCountByDone.get(summary.conversationsParsed)).toBe(summary.conversationsParsed);
     for (const [done, conversationCount] of conversationCountByDone) {
       expect(conversationCount).toBe(done);
     }

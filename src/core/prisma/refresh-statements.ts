@@ -146,7 +146,6 @@ export type RefreshStatements = ReturnType<typeof prepareRefreshStatements>;
 export function prepareRefreshStatements(db: Database.Database) {
   const begin = db.prepare("BEGIN IMMEDIATE");
   const commit = db.prepare("COMMIT");
-  const rollback = db.prepare("ROLLBACK");
   const selectStoredConversations = db.prepare(
     `SELECT "id", "session_id" AS "sessionId", "source_path" AS "sourcePath", "source_mtime" AS "sourceMtime",
             "source_size" AS "sourceSize", "parser_version" AS "parserVersion"
@@ -164,7 +163,7 @@ export function prepareRefreshStatements(db: Database.Database) {
     `UPDATE "conversation" SET "parser_version" = ? WHERE "id" IN (SELECT "value" FROM json_each(?))`,
   );
   const selectProjectId = db.prepare(`SELECT "id" FROM "project" WHERE "path" = ?`).pluck();
-  // The first message stored with this uuid decides, as Prisma's `findFirst` did.
+  // `uuid` is not unique: the first message stored with it decides.
   const selectMessageOwner = db.prepare(
     `SELECT "id", "session_id" AS "sessionId" FROM "conversation"
       WHERE "id" = (SELECT "conversation_id" FROM "message" WHERE "uuid" = ? LIMIT 1)`,
@@ -175,10 +174,6 @@ export function prepareRefreshStatements(db: Database.Database) {
     beginTransaction: () => void begin.run(),
     /** Commit the open transaction. */
     commitTransaction: () => void commit.run(),
-    /** Roll back the open transaction, if there is one. */
-    rollbackOpenTransaction: () => {
-      if (db.inTransaction) rollback.run();
-    },
     /** Every stored Conversation, as the skip decision needs it. */
     selectStoredConversations: () => selectStoredConversations.all() as StoredConversation[],
     /** Delete a Conversation; its child rows go with it by cascade. */

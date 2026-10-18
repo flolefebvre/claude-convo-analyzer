@@ -74,8 +74,12 @@ describe("refresh in a worker", () => {
 
       const summary = await refreshInWorker((progress) => progressReports.push(progress));
 
+      // The total first, then one report per committed batch, rising to the total.
       const total = summary.conversationsParsed;
-      expect(progressReports).toEqual(Array.from({ length: total + 1 }, (_, done) => ({ done, total })));
+      expect(progressReports[0]).toEqual({ done: 0, total });
+      expect(progressReports.at(-1)).toEqual({ done: total, total });
+      const doneCounts = progressReports.map((progress) => progress.done);
+      expect(doneCounts).toEqual([...new Set(doneCounts)].sort((a, b) => a - b));
     },
     WORKER_TIMEOUT_MS,
   );

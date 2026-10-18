@@ -4,11 +4,12 @@
 // It writes through a bare better-sqlite3 connection, not Prisma (ADR-0005);
 // every statement it runs lives in `prisma/refresh-statements.ts`.
 //
-// ONE CONVERSATION AT A TIME: a conversation is parsed, written in a single
-// transaction (delete of its prior row + every insert), reported through
-// `onProgress`, then dropped — no run holds more than one parsed conversation,
-// and readers on other connections (WAL, see `db.ts`) never find a re-parsed
-// conversation missing.
+// ONE CONVERSATION AT A TIME, COMMITTED IN BATCHES: a conversation is parsed,
+// written (delete of its prior row + every insert), then dropped — no run holds
+// more than one parsed conversation. Writes share a transaction until a batch
+// is full (`MAX_CONVERSATIONS_PER_BATCH`, `MAX_BATCH_DURATION_MS`); each commit
+// is reported through `onProgress`. Readers on other connections (WAL, see
+// `db.ts`) never find a re-parsed conversation missing.
 //
 // INCREMENTAL REFRESH (Slice 5): `refresh()` skips conversations whose source
 // has not changed, re-parses changed/new ones, and drops conversations whose
@@ -85,7 +86,7 @@ type RefreshOptions = {
   dbPath?: string;
   /**
    * Called with `{ done: 0, total }` once the run knows what to re-parse, then
-   * after each conversation's write has committed. A throw aborts the run.
+   * after each batch of conversation writes has committed. A throw aborts the run.
    */
   onProgress?: (progress: RefreshProgress) => void;
 };
@@ -128,6 +129,17 @@ const PARSER_VERSION = 3;
  */
 const UNSTAMPED_PARSER_VERSION = 0;
 
+/**
+ * A write batch commits once it holds this many conversations, or once
+ * {@link MAX_BATCH_DURATION_MS} has passed since it opened, whichever is first.
+ * Each commit costs a WAL frame flush; batching amortizes it (sized with
+ * `pnpm bench:refresh`, see ADR-0005).
+ */
+const MAX_CONVERSATIONS_PER_BATCH = 50;
+
+/** A write batch commits once this long has passed since it opened (see above). */
+const MAX_BATCH_DURATION_MS = 1000;
+
 /** A discovered session whose stored conversation is missing or stale. */
 type SessionToReparse = {
   /** The session, its `sourceMtime`/`sourceSize` set to the COMPOSITE change key. */
@@ -155,7 +167,7 @@ type WrittenConversation = {
   firstMessageParentUuid: string | null;
 };
 
-/** How far a Refresh has got: conversations written out of those it re-parses. */
+/** How far a Refresh has got: conversations committed out of those it re-parses. */
 export type RefreshProgress = { done: number; total: number };
 
 /** A discovered session paired with its computed composite change key. */
@@ -181,16 +193,18 @@ type DiscoveredWithKey = {
  * through `onProgress` as `{ done: 0, total }`.
  *
  * Then three passes over that set only: (1) parse each conversation and write it
- * with its agents/messages/tool_calls/pr_links/turn_durations in ONE transaction
- * that also deletes its prior row (cascading), so a reader on another connection
- * sees the old version or the new one, never neither; report `{ done, total }`
- * once it has committed, and drop the parsed content — memory stays flat however
- * large the logs grow; (2) resolve `continued_from` by looking up each child's
- * first-message `parentUuid` against the persisted `message` rows of ALL
+ * with its agents/messages/tool_calls/pr_links/turn_durations, deleting its prior
+ * row (cascading) in the SAME transaction, so a reader on another connection
+ * sees the old version or the new one, never neither; drop the parsed content —
+ * memory stays flat however large the logs grow. A transaction holds a batch of
+ * conversations; once it commits, report `{ done, total }`, `done` counting the
+ * conversations committed so far; (2) resolve `continued_from` by looking up each
+ * child's first-message `parentUuid` against the persisted `message` rows of ALL
  * conversations — so a skipped (unchanged) parent still resolves; (3) stamp the
  * current `parserVersion` on that set — the commit mark that lets a later run
- * skip them. The sub-agent transcript is the single source of truth for its
- * tokens (GOTCHA 3) — the parent aggregate is a cross-check only.
+ * skip them. Passes 2 and 3 share one final transaction. The sub-agent
+ * transcript is the single source of truth for its tokens (GOTCHA 3) — the
+ * parent aggregate is a cross-check only.
  *
  * @example
  * const summary = await refresh({ onProgress: ({ done, total }) => console.log(`${done}/${total}`) });
@@ -222,8 +236,9 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     phaseStart = now;
   };
 
-  const statements = prepareRefreshStatements(db);
   try {
+    const statements = prepareRefreshStatements(db);
+
     // Two files may carry the same session id (a copied transcript). Resolve
     // that HERE, before the incremental compare, so every pass below sees one
     // file per session id (see `dedupeBySessionId`).
@@ -285,10 +300,19 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     endPhase("discovery");
     opts.onProgress?.({ done: 0, total });
 
-    // Pass 1 — parse, write, report, one conversation at a time: its parsed
-    // content is dropped once written, so memory stays flat however large the
-    // logs grow. Each write replaces any prior row atomically.
+    // Pass 1 — parse and write one conversation at a time, its parsed content
+    // dropped once written, so memory stays flat however large the logs grow.
+    // Writes go in batches: one transaction holds several conversations, each
+    // replacing its prior row, and every commit is reported.
     const writtenConversations: WrittenConversation[] = [];
+    let batchOpenedAt: number | null = null;
+    const commitBatch = () => {
+      statements.commitTransaction();
+      batchOpenedAt = null;
+      conversationsParsed = writtenConversations.length;
+      endPhase("write");
+      opts.onProgress?.({ done: conversationsParsed, total });
+    };
     for (const sessionToReparse of sessionsToReparse) {
       phaseStart = performance.now();
       const parsedConversation = parseConversation(sessionToReparse);
@@ -296,18 +320,23 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
       for (const sub of parsedConversation.subAgents) malformedLinesSkipped += sub.parsed.malformedLines;
       endPhase("parse");
 
-      statements.beginTransaction();
-      const conversationId = writeConversation(statements, parsedConversation);
-      statements.commitTransaction();
-      endPhase("write");
+      if (batchOpenedAt === null) {
+        statements.beginTransaction();
+        batchOpenedAt = performance.now();
+      }
       writtenConversations.push({
-        conversationId,
+        conversationId: writeConversation(statements, parsedConversation),
         sessionId: parsedConversation.session.sessionId,
         firstMessageParentUuid: parsedConversation.parsed.messages[0]?.parentUuid ?? null,
       });
-      conversationsParsed += 1;
-      opts.onProgress?.({ done: conversationsParsed, total });
+      const conversationsInBatch = writtenConversations.length - conversationsParsed;
+      const isBatchFull =
+        conversationsInBatch >= MAX_CONVERSATIONS_PER_BATCH ||
+        performance.now() - batchOpenedAt >= MAX_BATCH_DURATION_MS;
+      if (isBatchFull) commitBatch();
+      else endPhase("write");
     }
+    if (batchOpenedAt !== null) commitBatch();
 
     // Passes 2 and 3 share one transaction.
     phaseStart = performance.now();
@@ -324,9 +353,8 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     statements.commitTransaction();
     endPhase("stamp");
   } finally {
-    // A throw mid-transaction rolls back only that transaction: what earlier
-    // ones committed stays, unstamped, for the next run to complete.
-    statements.rollbackOpenTransaction();
+    // Closing rolls back a transaction left open by a throw — that batch only:
+    // what earlier batches committed stays, unstamped, for the next run.
     db.close();
   }
 
