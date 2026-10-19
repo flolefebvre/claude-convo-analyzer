@@ -10,7 +10,7 @@
 // the panel is `SubAgentBreakdown` (ephemeral per-group open/closed state),
 // which receives plain serializable props.
 
-import { AlertTriangle, GitBranch } from "lucide-react";
+import { AlertTriangle, CircleDot, GitBranch } from "lucide-react";
 import Link from "next/link";
 
 import { CostList, CostRow } from "@/app/_components/cost-list";
@@ -26,7 +26,7 @@ import { modelLabel } from "@/app/_lib/sort";
 import { agentHref, withListReturn } from "@/app/_lib/transcript-url";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import type { ConversationDetail, ConversationSummary } from "@/core/read";
+import type { ConversationDetail, ConversationSummary, RecordedState } from "@/core/read";
 
 /**
  * Width and visibility of each conversation-table column, shared by the page's
@@ -168,6 +168,9 @@ export function ConversationRow({
                 <span className="sr-only"> conversations in this continuation family</span>
               </span>
             )}
+            {/* Recorded: its Turns have their API requests in a Recording. An
+                unrecorded Conversation shows nothing, exactly as before. */}
+            {row.recordedState !== "unrecorded" && <RecordedMarker recordedState={row.recordedState} />}
           </div>
           {/* What the hidden columns would say, under the title: the date below
               `@xl`, the folder until its own column appears at `@4xl`. */}
@@ -221,6 +224,27 @@ export function ConversationRow({
         </TableRow>
       )}
     </>
+  );
+}
+
+/**
+ * The small "Recorded" badge beside a title, in the glossary's words, its
+ * tooltip saying whether every Turn or only some have their API request.
+ */
+function RecordedMarker({ recordedState }: { recordedState: Exclude<RecordedState, "unrecorded"> }) {
+  const isPartial = recordedState === "partially-recorded";
+  return (
+    <span
+      className="inline-flex shrink-0 items-center rounded bg-muted px-1 py-0.5 text-muted-foreground"
+      title={
+        isPartial
+          ? "Partially recorded — only some Turns have their API request in a Recording."
+          : "Recorded — every Turn has its API request in a Recording."
+      }
+    >
+      <CircleDot className={`size-3 ${isPartial ? "opacity-60" : ""}`} aria-hidden />
+      <span className="sr-only">{isPartial ? "Partially recorded" : "Recorded"}</span>
+    </span>
   );
 }
 
