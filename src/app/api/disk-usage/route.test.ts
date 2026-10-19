@@ -2,7 +2,7 @@
 // the database and Recordings root of `refreshedDefaultDatabase`, and a logs
 // root stubbed at a temp tree of known size.
 
-import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -41,7 +41,20 @@ describe("GET /api/disk-usage", () => {
       database: { path: dbPath, bytes: expect.any(Number) },
       logs: { path: logsRoot, bytes: 300 },
     });
-    expect(body.database.bytes).toBeGreaterThanOrEqual(statSync(dbPath).size);
+  });
+
+  it("counts the database's WAL sidecars in its size", async () => {
+    const dbPath = process.env.CCA_DB_PATH ?? "";
+    // The Refresh closed the database and checkpointed its WAL away; stand in for an open one's sidecars.
+    expect(existsSync(`${dbPath}-wal`) || existsSync(`${dbPath}-shm`)).toBe(false);
+    writeFileSync(`${dbPath}-wal`, Buffer.alloc(500));
+    writeFileSync(`${dbPath}-shm`, Buffer.alloc(70));
+
+    const res = await GET(new Request("http://localhost/api/disk-usage"), { params: Promise.resolve({}) });
+
+    expect((await res.json()).database.bytes).toBe(statSync(dbPath).size + 570);
+    rmSync(`${dbPath}-wal`);
+    rmSync(`${dbPath}-shm`);
   });
 
   it("gives concurrent callers the one measurement in flight", async () => {
