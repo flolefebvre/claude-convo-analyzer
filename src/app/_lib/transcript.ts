@@ -73,7 +73,8 @@ function oneLine(text: string): string {
 /**
  * A short, single-line summary of a tool call's input for the collapsed call
  * row. The key field depends on the kind: Bash → `command`, Skill → `skill`
- * (+ `args`), Agent → `subagent_type: prompt`; anything else falls back to the
+ * (+ `args`), Agent → `description`, else the start of its Task prompt (the
+ * row already names the agent); anything else falls back to the
  * first string field. NEVER throws on malformed/empty JSON — returns "".
  */
 export function toolCallSnippet(call: { name: string; inputJson: string }): string {
@@ -83,12 +84,7 @@ export function toolCallSnippet(call: { name: string; inputJson: string }): stri
   const str = (key: string): string => (typeof input[key] === "string" ? (input[key] as string) : "");
 
   const kind = classifyToolCall(call);
-  if (kind === "agent") {
-    const type = str("subagent_type");
-    const prompt = str("prompt") || str("description");
-    const combined = type && prompt ? `${type}: ${prompt}` : type || prompt;
-    return oneLine(combined);
-  }
+  if (kind === "agent") return oneLine(str("description") || str("prompt"));
   if (kind === "skill") {
     const skill = str("skill");
     const args = str("args");

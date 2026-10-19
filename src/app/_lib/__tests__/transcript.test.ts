@@ -85,15 +85,27 @@ describe("toolCallSnippet", () => {
     ).toBe("tdd getTranscript reader");
   });
 
-  it("combines subagent type and prompt for an Agent call", () => {
+  it("shows an Agent call's description", () => {
     expect(
       toolCallSnippet(
         call({
           name: "Agent",
-          inputJson: '{"subagent_type":"Explore","prompt":"scan the core readers"}',
+          inputJson:
+            '{"subagent_type":"Explore","description":"scan readers","prompt":"## Task\\nscan the core readers"}',
         }),
       ),
-    ).toBe("Explore: scan the core readers");
+    ).toBe("scan readers");
+  });
+
+  it("falls back to the start of the Task prompt for an Agent call with no description", () => {
+    expect(
+      toolCallSnippet(
+        call({
+          name: "Agent",
+          inputJson: '{"subagent_type":"Explore","prompt":"## Task\\nscan the core readers"}',
+        }),
+      ),
+    ).toBe("## Task scan the core readers");
   });
 
   it("falls back to the first string field for a generic tool (Read)", () => {
