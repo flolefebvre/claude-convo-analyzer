@@ -272,6 +272,17 @@ as sent, the response, its token usage and its timings. Most API requests are a
 Turn of some Agent; the rest are Side requests.
 _Avoid_: exchange, call (clashes with Tool call).
 
+### What was sent
+
+What a recorded Turn's API request actually gave the model, shown on that
+Turn: the messages new since the previous API request of the same Agent (the
+system-reminders and other injected context the logs omit included), how the
+system prompt and the tool definitions changed since it, the request
+parameters and timings, and the whole system prompt and tool definitions. A
+system-prompt change is **volatile** when only lines that move on their own
+changed — the date, the git status, the working directory — and **real**
+otherwise.
+
 ### Side request
 
 An API request that is not a Turn of any Agent: Claude Code's own background

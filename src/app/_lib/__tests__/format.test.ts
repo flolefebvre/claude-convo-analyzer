@@ -11,6 +11,7 @@ import {
   formatDayKey,
   formatDuration,
   formatGrandTotalCost,
+  formatLatency,
   formatModelName,
   formatRate,
   formatTokens,
@@ -76,6 +77,17 @@ describe("formatDateRange", () => {
 
   it("shows both years when the range spans a year boundary", () => {
     expect(formatDateRange("2025-12-30T00:00:00.000Z", "2026-06-22T00:00:00.000Z")).toBe("Dec 30 2025 – Jun 22 2026");
+  });
+});
+
+describe("formatLatency", () => {
+  it("renders under a second in milliseconds, under a minute in tenths of a second", () => {
+    expect(formatLatency(850)).toBe("850ms");
+    expect(formatLatency(4_420)).toBe("4.4s");
+  });
+
+  it("renders a minute or more as minutes and seconds", () => {
+    expect(formatLatency(65_400)).toBe("1m 05s");
   });
 });
 
