@@ -18,6 +18,12 @@ const eslintConfig = defineConfig([
     ".agents/skills/**",
   ]),
   {
+    rules: {
+      // A rest-destructure may name a key only to drop it (`const { body, ...rest } = x`), the idiomatic omit.
+      "@typescript-eslint/no-unused-vars": ["warn", { ignoreRestSiblings: true }],
+    },
+  },
+  {
     // src/core is framework-free (ADR-0002): server-side domain logic only.
     files: ["src/core/**"],
     rules: {
