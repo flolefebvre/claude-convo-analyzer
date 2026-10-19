@@ -195,6 +195,11 @@ store auth headers. Unlike the database they can't be rebuilt from anything
 else, so they live outside the repo. Their format is documented in
 [`docs/recording-format.md`](docs/recording-format.md).
 
+They grow as long as the Recorder runs, so the popover's **Disk usage** section
+shows, each time it opens, how much space the Recordings, the database and the
+Claude Code logs take, each with its path to copy. The app never deletes the
+Claude Code logs.
+
 ## How it works
 
 The app discovers each **project** (a directory where you ran Claude Code) under
