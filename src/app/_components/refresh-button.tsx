@@ -20,7 +20,8 @@
 // a small bubble under the button that fades after a few seconds or can be
 // dismissed; a failure stays until dismissed. A persistent, visually hidden live
 // region announces both. A Refresh Live began gets no success bubble, only its
-// re-render; its failure shows like any other. The parser-update banner's control only follows the
+// re-render, unless this control's click joined it; its failure shows like any
+// other. The parser-update banner's control only follows the
 // count, so the page gets one bubble and one re-render schedule.
 
 import type { Snapshot } from "@flefebvre/next-sse/client";
@@ -85,6 +86,9 @@ export function RefreshButton({ snapshot, reportsOutcome = false, ...look }: Ref
   const [isClickPending, setIsClickPending] = useState(false);
   // From the click until the Channel's first word on the run it started or joined.
   const [isAwaitingRun, setIsAwaitingRun] = useState(false);
+  // From the click until the outcome of the run it started or joined: that
+  // outcome is reported even when Live began the run.
+  const isClickOutcomeOwed = useRef(false);
   const [message, setMessage] = useState<Message | null>(null);
 
   const [isRerenderPending, startRerender] = useTransition();
@@ -127,11 +131,13 @@ export function RefreshButton({ snapshot, reportsOutcome = false, ...look }: Ref
       finished: ({ runId, origin, summary }) => {
         setActivity({ isRunning: false });
         setIsAwaitingRun(false);
+        const isOwedToClick = isClickOutcomeOwed.current;
+        isClickOutcomeOwed.current = false;
         if (!reportsOutcome || !claimOutcome(runId)) return;
         rerenderPage();
         // Live lands a Refresh every few seconds while it follows a session:
-        // a bubble for each would be noise.
-        if (origin === "live") return;
+        // a bubble for each would be noise, unless this control's click joined it.
+        if (origin === "live" && !isOwedToClick) return;
         setMessage({
           text: formatRefreshSummary(summary),
           detail: formatDuplicateSessionDetail(summary),
@@ -142,6 +148,7 @@ export function RefreshButton({ snapshot, reportsOutcome = false, ...look }: Ref
       failed: ({ runId, message: failure }) => {
         setActivity({ isRunning: false });
         setIsAwaitingRun(false);
+        isClickOutcomeOwed.current = false;
         if (!reportsOutcome || !claimOutcome(runId)) return;
         setMessage({ text: FAILURE_TEXT, detail: failure, tone: "error", id: Date.now() });
         // The batches committed before the failure are stored.
@@ -162,10 +169,12 @@ export function RefreshButton({ snapshot, reportsOutcome = false, ...look }: Ref
     setMessage(null);
     setIsClickPending(true);
     setIsAwaitingRun(true);
+    isClickOutcomeOwed.current = true;
     try {
       await refreshConversations();
     } catch {
       setIsAwaitingRun(false);
+      isClickOutcomeOwed.current = false;
       setMessage({ text: FAILURE_TEXT, detail: null, tone: "error", id: Date.now() });
     } finally {
       setIsClickPending(false);
