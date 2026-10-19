@@ -365,6 +365,96 @@ describe("what was sent for a Turn", () => {
   });
 });
 
+/**
+ * A failed attempt of `retry`, arriving `secondsBefore` seconds before it and
+ * failing `lostMs` after its arrival: the same request, answered `status`
+ * with `responseBody`, under a `request-id` no log has.
+ */
+function failedAttemptOf(
+  retry: RecordedApiRequest,
+  opts: { requestId: string; secondsBefore: number; lostMs: number; status: number; responseBody: unknown },
+): RecordedApiRequest {
+  const arrivedMs = Date.parse(retry.timings.arrivedAt) - opts.secondsBefore * 1000;
+  return {
+    ...retry,
+    response: {
+      status: opts.status,
+      requestId: opts.requestId,
+      headers: {},
+      body: opts.responseBody,
+      isStreamed: false,
+    },
+    timings: {
+      arrivedAt: new Date(arrivedMs).toISOString(),
+      firstByteAt: new Date(arrivedMs + opts.lostMs).toISOString(),
+      endedAt: new Date(arrivedMs + opts.lostMs).toISOString(),
+    },
+  };
+}
+
+/** The response body of an overloaded API, as the API sends it. */
+const OVERLOADED_BODY = { type: "error", error: { type: "overloaded_error", message: "Overloaded" } };
+
+describe("the failed attempts of a Turn", () => {
+  it("are listed oldest first, each with its status, error message and the time it lost", async () => {
+    const [first, second, third] = mainTurns();
+    const overloaded = failedAttemptOf(third, {
+      requestId: "sreq-overloaded",
+      secondsBefore: 9,
+      lostMs: 2400,
+      status: 529,
+      responseBody: OVERLOADED_BODY,
+    });
+    const unreachable: RecordedApiRequest = {
+      ...failedAttemptOf(third, {
+        requestId: "sreq-unreachable",
+        secondsBefore: 4,
+        lostMs: 150,
+        status: 502,
+        responseBody: { type: "error", error: { type: "proxy_error", message: "connect ECONNREFUSED" } },
+      }),
+      proxyError: "connect ECONNREFUSED",
+    };
+    await recordAndRefresh([first, second, overloaded, unreachable, third]);
+
+    const sent = await whatWasSentForTurn(3);
+
+    expect((await turnsOf()).map((turn) => turn.failedAttemptCount)).toEqual([0, 0, 2]);
+    expect(sent?.failedAttempts).toEqual([
+      { status: 529, errorMessage: "Overloaded", lostMs: 2400, arrivedAt: overloaded.timings.arrivedAt },
+      { status: 502, errorMessage: "connect ECONNREFUSED", lostMs: 150, arrivedAt: unreachable.timings.arrivedAt },
+    ]);
+  });
+
+  it("are none on a Turn sent at the first try", async () => {
+    await recordAndRefresh(mainTurns());
+
+    expect((await whatWasSentForTurn(2))?.failedAttempts).toEqual([]);
+  });
+
+  it("are never the previous API request: that is the previous Turn's", async () => {
+    const [first, second, third] = mainTurns();
+    const attemptOf = (retry: RecordedApiRequest, requestId: string) =>
+      failedAttemptOf(retry, { requestId, secondsBefore: 2, lostMs: 500, status: 529, responseBody: OVERLOADED_BODY });
+    await recordAndRefresh([
+      first,
+      attemptOf(second, "sreq-2-overloaded"),
+      second,
+      attemptOf(third, "sreq-3-overloaded"),
+      third,
+    ]);
+
+    const sent = await whatWasSentForTurn(3);
+    const secondTurn = (await turnsOf())[1];
+
+    expect(sent?.previousApiRequestId).toBe(secondTurn?.apiRequestId);
+    expect(summarized(sent?.newMessages)).toEqual([
+      ["assistant", "The exports live in billing/export.ts."],
+      ["user", "now add a test"],
+    ]);
+  });
+});
+
 /** The three Main-thread Turns, the third sending `change` instead of what the first two send. */
 function mainTurnsWithThirdChanged(change: { system?: unknown; tools?: unknown[] }): RecordedApiRequest[] {
   const turns = mainTurns();

@@ -97,10 +97,24 @@ export type SentTimings = {
   durationMs: number;
 };
 
+/** One failed attempt of the Turn (GLOSSARY.md, Failed attempt): how the API answered it, and the time it lost. */
+export type FailedAttempt = {
+  /** The response's HTTP status. */
+  status: number;
+  /** The response body's `error.message`, else the proxy error; null when neither said why. */
+  errorMessage: string | null;
+  /** From its arrival at the Recorder to its failure. */
+  lostMs: number;
+  /** When it reached the Recorder (ISO 8601). */
+  arrivedAt: string;
+};
+
 /** Everything the "What was sent" panel of one Turn shows. Plain and serializable. */
 export type WhatWasSent = {
   parameters: SentParameters;
   timings: SentTimings;
+  /** The failed attempts that preceded this API request, oldest first; empty when it succeeded at the first try. */
+  failedAttempts: FailedAttempt[];
   /**
    * Row id of the previous API request of the same Agent; null when none was
    * recorded (the Agent's first Turn, or the first recorded one), and then
@@ -146,9 +160,10 @@ type RequestBody = Record<string, unknown>;
 /**
  * What the API request of `api_request` row `apiRequestId` sent, against the
  * previous API request of the same Agent: the latest of its Conversation and
- * Agent to arrive earlier that is a Turn other than this one (so Side requests
- * and failed attempts of the same Turn are skipped). Null for an unknown row,
- * or when the Recording no longer holds the API request.
+ * Agent to arrive earlier that is a Turn's request other than this one (so
+ * Side requests and failed attempts are skipped), with the failed attempts
+ * that preceded it. Null for an unknown row, or when the Recording no longer
+ * holds the API request.
  *
  * @example
  * const whatWasSent = await getWhatWasSent(message.apiRequestId);
@@ -169,9 +184,18 @@ export async function getWhatWasSent(apiRequestId: number, opts: WhatWasSentOpti
               conversationId: row.conversationId,
               agentId: row.agentId,
               arrivedAt: { lt: row.arrivedAt },
+              isFailedAttempt: false,
               AND: [{ messageId: { not: null } }, { messageId: { not: row.messageId } }],
             },
             orderBy: [{ arrivedAt: "desc" }, { id: "desc" }],
+          });
+    const failedAttemptRows =
+      row.messageId === null || row.isFailedAttempt
+        ? []
+        : await prisma.apiRequest.findMany({
+            where: { messageId: row.messageId, isFailedAttempt: true },
+            orderBy: [{ arrivedAt: "asc" }, { id: "asc" }],
+            select: { status: true, errorMessage: true, arrivedAt: true, endedAt: true },
           });
 
     const filePath = recordingFilePath(opts.recordingsRoot ?? defaultRecordingsRoot(), row.conversation.sessionId);
@@ -192,6 +216,12 @@ export async function getWhatWasSent(apiRequestId: number, opts: WhatWasSentOpti
         timeToFirstByteMs: row.firstByteAt === null ? null : Number(row.firstByteAt - row.arrivedAt),
         durationMs: Number(row.endedAt - row.arrivedAt),
       },
+      failedAttempts: failedAttemptRows.map((attempt) => ({
+        status: attempt.status,
+        errorMessage: attempt.errorMessage,
+        lostMs: Number(attempt.endedAt - attempt.arrivedAt),
+        arrivedAt: new Date(Number(attempt.arrivedAt)).toISOString(),
+      })),
       previousApiRequestId: previousBody === null ? null : previousRow!.id,
       newMessages: messagesNewSince(messagesOf(body), previousBody === null ? [] : messagesOf(previousBody)),
       systemPromptDiff: previousBody === null ? null : systemPromptDiff(previousBody, body),
