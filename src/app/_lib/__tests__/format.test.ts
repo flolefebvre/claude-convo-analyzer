@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  formatBytes,
   formatChars,
   formatClock,
   formatCompactTokens,
@@ -240,5 +241,24 @@ describe("formatRate", () => {
     expect(formatRate(0.35)).toBe("35.0%");
     expect(formatRate(1 / 30)).toBe("3.3%");
     expect(formatRate(0)).toBe("0.0%");
+  });
+});
+
+describe("formatBytes", () => {
+  it("renders whole bytes below 1 KB", () => {
+    expect(formatBytes(0)).toBe("0 B");
+    expect(formatBytes(1023)).toBe("1023 B");
+  });
+
+  it("steps by 1024, at one decimal, dropping a trailing '.0'", () => {
+    expect(formatBytes(1024)).toBe("1 KB");
+    expect(formatBytes(1536)).toBe("1.5 KB");
+    expect(formatBytes(5 * 1024 ** 2 + 300 * 1024)).toBe("5.3 MB");
+    expect(formatBytes(3 * 1024 ** 3)).toBe("3 GB");
+    expect(formatBytes(2.25 * 1024 ** 4)).toBe("2.3 TB");
+  });
+
+  it("moves to the next unit when the decimal rounds up to 1024", () => {
+    expect(formatBytes(1024 ** 2 - 1)).toBe("1 MB");
   });
 });

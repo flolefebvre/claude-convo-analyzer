@@ -300,3 +300,23 @@ export function formatChars(n: number | null, { fixed = false }: { fixed?: boole
   if (n === null) return "—";
   return compact(n, fixed);
 }
+
+/**
+ * A size on disk in base-1024 units (1 KB = 1024 B): whole bytes below 1 KB,
+ * else one decimal in the largest unit that keeps the figure under 1024, with a
+ * trailing ".0" dropped.
+ * @example formatBytes(1536) // "1.5 KB"
+ */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${Math.round(bytes)} B`;
+  let scaled = bytes / 1024;
+  let unitIndex = 0;
+  // Compared after rounding, so 1023.95 KB reads "1 MB", not "1024 KB".
+  while (unitIndex < BYTE_UNITS.length - 1 && Number(scaled.toFixed(1)) >= 1024) {
+    scaled /= 1024;
+    unitIndex += 1;
+  }
+  return `${scaled.toFixed(1).replace(/\.0$/, "")} ${BYTE_UNITS[unitIndex]}`;
+}
+
+const BYTE_UNITS = ["KB", "MB", "GB", "TB"] as const;
