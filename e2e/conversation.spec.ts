@@ -122,7 +122,8 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
   }) => {
     await openConversation(page, AGENT_MESSAGES_TITLE);
 
-    // The seeded Plan spawn: collapsed, its summary shows its description.
+    // The seeded Plan spawn (its type pinned in `agentMessagesConversation`):
+    // collapsed, its summary shows its description.
     const call = page.getByRole("main").getByRole("group").filter({ hasText: "plan the change" }).first();
     await call.getByText("plan the change").click();
 
