@@ -303,8 +303,21 @@ describe("reading a Recording one session at a time", () => {
     const [inFull] = readRecording(filePath);
     const expected: Partial<RecordedApiRequest> = { ...inFull };
     delete expected.body;
-    expect(withoutBody).toEqual(expected);
+    expect(withoutBody).toEqual({ ...expected, storedBodyHash: expect.any(String) });
     expect(withoutBody).not.toHaveProperty("body");
+  });
+
+  it("tells, without restoring them, which API requests of one file sent the same body", async () => {
+    const writer = openRecordingWriter(recordingsRoot);
+    await writer.append(apiRequest());
+    await writer.append(apiRequest({ body: nextTurnBody() }));
+    await writer.append(apiRequest({ body: { ...REQUEST_BODY } }));
+    const filePath = path.join(recordingsRoot, "sess-recorded.jsonl.gz");
+
+    const [first, next, repeated] = readRecordingWithoutBodies(filePath).map((recorded) => recorded.storedBodyHash);
+
+    expect(repeated).toBe(first);
+    expect(next).not.toBe(first);
   });
 
   it("reads API requests without their bodies even when a piece they reference is missing", async () => {

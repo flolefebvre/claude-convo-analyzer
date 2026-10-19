@@ -114,6 +114,7 @@ const API_REQUEST_COLUMN_BY_FIELD = {
   conversationId: "conversation_id",
   messageId: "message_id",
   agentId: "agent_id",
+  isFailedAttempt: "is_failed_attempt",
   requestId: "request_id",
   responseMessageId: "response_message_id",
   externalAgentId: "external_agent_id",
@@ -125,6 +126,7 @@ const API_REQUEST_COLUMN_BY_FIELD = {
   endedAt: "ended_at",
   proxyError: "proxy_error",
   isClientAborted: "is_client_aborted",
+  errorMessage: "error_message",
 } as const;
 
 /** A `project` row to insert. */

@@ -166,11 +166,13 @@ export type TranscriptMessage = {
   toolCalls: TranscriptToolCall[];
   /**
    * Row id of this recorded Turn's API request — the key `getWhatWasSent`
-   * reads what was sent by. Of two matching the Turn (a failed attempt and its
-   * retry), the 2xx one, else the latest. Null on an unrecorded Turn and on
+   * reads what was sent by. Of two joining the Turn by its ids, the 2xx one,
+   * else the latest; never a failed attempt. Null on an unrecorded Turn and on
    * user Messages.
    */
   apiRequestId: number | null;
+  /** How many failed attempts preceded this Turn's API request; 0 on an unrecorded Turn and on user Messages. */
+  failedAttemptCount: number;
 };
 
 /** One node of the agent tree — an agent plus its own-transcript cost and lineage. */
@@ -296,7 +298,7 @@ export async function listConversations(opts: ListOptions = {}): Promise<Convers
     });
     const matchedTurns = await prisma.apiRequest.groupBy({
       by: ["conversationId", "messageId"],
-      where: { messageId: { not: null } },
+      where: { messageId: { not: null }, isFailedAttempt: false },
     });
 
     // Bucket the batched rows by conversationId.
@@ -1300,7 +1302,7 @@ async function readAgentTranscript(
     prisma,
     rows.map((r) => r.id),
   );
-  const apiRequestIdByMessageId = await apiRequestIdsByMessage(
+  const { apiRequestIdByMessageId, failedAttemptCountByMessageId } = await turnApiRequestsByMessage(
     prisma,
     rows.filter((r) => r.role === "assistant").map((r) => r.id),
   );
@@ -1340,32 +1342,42 @@ async function readAgentTranscript(
       timestamp: r.timestamp === null ? null : new Date(Number(r.timestamp)).toISOString(),
       toolCalls: toolCallsByMsg.get(r.id) ?? [],
       apiRequestId: apiRequestIdByMessageId.get(r.id) ?? null,
+      failedAttemptCount: failedAttemptCountByMessageId.get(r.id) ?? 0,
     };
   });
 }
 
 /**
- * The `api_request` row id of each recorded Turn among `messageIds`, batched:
- * of several matching one Turn, the 2xx one, else the latest to arrive.
+ * Of each recorded Turn among `messageIds`, batched: the `api_request` row id
+ * of its API request — of several joining it by its ids, the 2xx one, else the
+ * latest to arrive — and how many failed attempts preceded it.
  */
-async function apiRequestIdsByMessage(prisma: PrismaClient, messageIds: number[]): Promise<Map<number, number>> {
+async function turnApiRequestsByMessage(
+  prisma: PrismaClient,
+  messageIds: number[],
+): Promise<{ apiRequestIdByMessageId: Map<number, number>; failedAttemptCountByMessageId: Map<number, number> }> {
   const apiRequestIdByMessageId = new Map<number, number>();
-  if (messageIds.length === 0) return apiRequestIdByMessageId;
+  const failedAttemptCountByMessageId = new Map<number, number>();
+  if (messageIds.length === 0) return { apiRequestIdByMessageId, failedAttemptCountByMessageId };
   const rows = await prisma.apiRequest.findMany({
     where: { messageId: { in: messageIds } },
     orderBy: [{ arrivedAt: "asc" }, { id: "asc" }],
-    select: { id: true, messageId: true, status: true },
+    select: { id: true, messageId: true, status: true, isFailedAttempt: true },
   });
   const isSuccessfulByMessageId = new Map<number, boolean>();
   for (const row of rows) {
     const messageId = row.messageId!;
+    if (row.isFailedAttempt) {
+      failedAttemptCountByMessageId.set(messageId, (failedAttemptCountByMessageId.get(messageId) ?? 0) + 1);
+      continue;
+    }
     const isSuccessful = row.status >= 200 && row.status < 300;
     // Later rows replace earlier ones, except that a 2xx row is never replaced by a failed one.
     if (isSuccessfulByMessageId.get(messageId) && !isSuccessful) continue;
     apiRequestIdByMessageId.set(messageId, row.id);
     isSuccessfulByMessageId.set(messageId, isSuccessful);
   }
-  return apiRequestIdByMessageId;
+  return { apiRequestIdByMessageId, failedAttemptCountByMessageId };
 }
 
 /**
@@ -1723,7 +1735,7 @@ async function summarizeConversation(
   const answeredTurnCount = await prisma.message.count({ where: { conversationId: convo.id, ...ANSWERED_TURN_WHERE } });
   const matchedTurns = await prisma.apiRequest.groupBy({
     by: ["messageId"],
-    where: { conversationId: convo.id, messageId: { not: null } },
+    where: { conversationId: convo.id, messageId: { not: null }, isFailedAttempt: false },
   });
 
   let continuedFromId: string | null = null;

@@ -275,8 +275,9 @@ _Avoid_: capture, trace.
 
 One request Claude Code sent to the Anthropic API, and its response, as the
 Recorder saw it: the system prompt, the tool definitions, every message exactly
-as sent, the response, its token usage and its timings. Most API requests are a
-Turn of some Agent; the rest are Side requests.
+as sent, the response, its token usage and its timings. An API request is of
+one of three kinds: a Turn's request, which some Agent's Turn came from; a
+Failed attempt of a Turn; or a Side request.
 _Avoid_: exchange, call (clashes with Tool call).
 
 ### What was sent
@@ -290,9 +291,21 @@ system-prompt change is **volatile** when only lines that move on their own
 changed — the date, the git status, the working directory — and **real**
 otherwise.
 
+### Failed attempt
+
+An API request the API refused or dropped (overloaded, rate-limited, a server
+error, a broken connection) and that Claude Code then retried: the same request
+of the same Agent, sent again later. It belongs to the Turn whose API request
+was the retry that succeeded, which shows how many failed attempts preceded it
+and, for each, its status, its error message and the time it lost, from its
+arrival to its failure. A failed attempt counts toward Cost only if the API
+reported usage for it, which normally it does not.
+_Avoid_: retry (that is the request after it), failed request.
+
 ### Side request
 
-An API request that is not a Turn of any Agent: Claude Code's own background
+An API request that is neither a Turn of any Agent nor a Failed attempt of one:
+Claude Code's own background
 requests, such as naming the session, probing the quota, the safety monitor or
 suggestions. Side requests never appear in the conversation logs, so their usage
 is only known for Recorded Conversations.
