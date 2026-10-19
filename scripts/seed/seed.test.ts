@@ -7,6 +7,7 @@ import { PAGE_SIZE } from "@/app/_lib/list-view";
 import { SIDE_REQUEST_KINDS } from "@/core/api-request-kind";
 import { getConversation, getTranscript, listConversations } from "@/core/read";
 import { readRecordings, type RecordedApiRequest } from "@/core/recording";
+import { readSettings, writeSettings } from "@/core/settings";
 
 import { seedEnvironment } from "./environment";
 import {
@@ -62,6 +63,17 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
       (c) => c.continuedFromId === null && continued.some((d) => d.continuedFromId === c.id),
     );
     expect(familyRoots).toHaveLength(2);
+  });
+
+  it("keeps its own settings file inside the seed, read as Live off again after each re-seed", async () => {
+    const seedDir = path.join(tmpDir, "seed");
+    const firstSeed = await seedEnvironment({ dir: seedDir, now: NOW });
+    expect(path.dirname(firstSeed.settingsPath)).toBe(seedDir);
+    await writeSettings({ live: true }, firstSeed.settingsPath);
+
+    const reseed = await seedEnvironment({ dir: seedDir, now: NOW });
+
+    await expect(readSettings(reseed.settingsPath)).resolves.toEqual({ live: false });
   });
 
   it("ingests its Recordings: one Conversation recorded, one partially recorded, every other unrecorded", async () => {

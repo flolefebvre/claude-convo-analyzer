@@ -8,6 +8,7 @@ import { listConversations } from "@/core/read";
 import { defaultRecorderPort, defaultRecorderUpstream } from "@/core/recorder";
 import { defaultRecordingsRoot } from "@/core/recording";
 import { refresh } from "@/core/refresh";
+import { defaultSettingsPath } from "@/core/settings";
 
 const FIXTURES_ROOT = path.join(import.meta.dirname, "fixtures", "logs");
 
@@ -91,6 +92,27 @@ describe("default Recordings root", () => {
   it("resolves a relative CCA_RECORDINGS_ROOT against the cwd", () => {
     vi.stubEnv("CCA_RECORDINGS_ROOT", "data/recordings");
     expect(defaultRecordingsRoot()).toBe(path.join(process.cwd(), "data", "recordings"));
+  });
+});
+
+describe("default settings path", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("is ~/.claude-convo-analyzer/settings.json when CCA_SETTINGS_PATH is unset", () => {
+    vi.stubEnv("CCA_SETTINGS_PATH", undefined);
+    expect(defaultSettingsPath()).toBe(path.join(os.homedir(), ".claude-convo-analyzer", "settings.json"));
+  });
+
+  it("treats an empty CCA_SETTINGS_PATH as unset", () => {
+    vi.stubEnv("CCA_SETTINGS_PATH", "");
+    expect(defaultSettingsPath()).toBe(path.join(os.homedir(), ".claude-convo-analyzer", "settings.json"));
+  });
+
+  it("resolves a relative CCA_SETTINGS_PATH against the cwd", () => {
+    vi.stubEnv("CCA_SETTINGS_PATH", "data/seed/settings.json");
+    expect(defaultSettingsPath()).toBe(path.join(process.cwd(), "data", "seed", "settings.json"));
   });
 });
 
