@@ -236,6 +236,34 @@ describe("what was sent for a Turn", () => {
     ]);
   });
 
+  it("is the whole context on the first recorded Turn of a partially recorded Agent", async () => {
+    await recordAndRefresh(mainTurns().slice(1));
+
+    const sent = await whatWasSentForTurn(2);
+
+    expect(sent?.previousApiRequestId).toBeNull();
+    expect(sent?.newMessages.map((message) => message.role)).toEqual(["user", "assistant", "user"]);
+    expect(sent?.systemPromptDiff).toBeNull();
+    expect(sent?.toolsDiff).toBeNull();
+  });
+
+  it("counts a prompt as new even when an earlier one read the same", async () => {
+    const turns = mainTurns();
+    const repeatedPrompt: ApiMessage = { role: "user", content: "audit the exports" };
+    turns[2] = apiRequest({
+      ...requestFields(turns[2]),
+      messages: [PROMPT_1, REPLY_1, RESULT_1, REPLY_2, repeatedPrompt],
+    });
+    await recordAndRefresh(turns);
+
+    const sent = await whatWasSentForTurn(3);
+
+    expect(summarized(sent?.newMessages)).toEqual([
+      ["assistant", "The exports live in billing/export.ts."],
+      ["user", "audit the exports"],
+    ]);
+  });
+
   it("does not count a message as new because its cache breakpoint moved", async () => {
     const turns = mainTurns();
     const withBreakpoint: ApiMessage = {
@@ -378,6 +406,22 @@ describe("the system-prompt diff of a Turn", () => {
     ]);
   });
 
+  it("is volatile-only when a clean tree gained a modified file", async () => {
+    const gitStatus = (status: string) => ({ type: "text", text: `gitStatus: at the start\nStatus:\n${status}` });
+    const turns = mainTurns().map((turn, index) =>
+      apiRequest({ ...requestFields(turn), system: [gitStatus(index === 2 ? " M src/core/read.ts" : "(clean)")] }),
+    );
+    await recordAndRefresh(turns);
+
+    const diff = (await whatWasSentForTurn(3))?.systemPromptDiff;
+
+    expect(diff?.isVolatileOnly).toBe(true);
+    expect(diffText(diff?.hunks).filter((line) => !line.startsWith(" "))).toEqual([
+      "-(clean) ~",
+      "+ M src/core/read.ts ~",
+    ]);
+  });
+
   it("is a real change when an instruction changed, its volatile lines still marked", async () => {
     const system = [
       { type: "text", text: "You are Claude Code. Never push without being asked." },
@@ -419,6 +463,7 @@ describe("a volatile system-prompt line", () => {
     "Current branch: main",
     "Status:",
     "Recent commits:",
+    "(clean)",
     "M src/core/read.ts",
     " M src/core/read.ts",
     "?? docs/notes.md",

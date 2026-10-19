@@ -81,6 +81,8 @@ export const VOLATILE_SYSTEM_LINE_PATTERNS: readonly RegExp[] = [
   /^\s*Current branch:/i,
   /^\s*Status:/i,
   /^\s*Recent commits:/i,
+  // The git status of a clean tree, alone under `Status:`.
+  /^\s*\(clean\)\s*$/,
   // A git status entry: its status code, then one path-like token and nothing after it.
   /^\s*[MADRCU?!]{1,2}\s+\S*[/.]\S*$/,
   // A recent commit: its abbreviated hash, then its subject.
@@ -105,7 +107,7 @@ export type WhatWasSent = {
    * every message is new.
    */
   previousApiRequestId: number | null;
-  /** The messages the previous API request did not send, in order (cache breakpoints ignored). */
+  /** The messages after those this request shares, in order, with the previous one (cache breakpoints ignored). */
   newMessages: SentMessage[];
   /** How the system prompt changed since the previous API request; null when it did not, or without one. */
   systemPromptDiff: SystemPromptDiff | null;
@@ -268,12 +270,21 @@ function thinkingText(thinking: unknown): string {
   ].join(" · ");
 }
 
-/** The messages of `messages` that `previousMessages` did not hold, compared without their cache breakpoints. */
+/**
+ * The messages of `messages` after the longest prefix it shares with
+ * `previousMessages`, compared position by position without their cache
+ * breakpoints — so a new prompt that repeats an earlier one is still new.
+ */
 function messagesNewSince(messages: unknown[], previousMessages: unknown[]): SentMessage[] {
-  const previousMessageJsons = new Set(previousMessages.map((message) => canonicalJson(withoutCacheControl(message))));
-  return messages
-    .filter((message) => !previousMessageJsons.has(canonicalJson(withoutCacheControl(message))))
-    .map(sentMessage);
+  const comparableJson = (message: unknown) => canonicalJson(withoutCacheControl(message));
+  let sharedPrefixLength = 0;
+  while (
+    sharedPrefixLength < Math.min(messages.length, previousMessages.length) &&
+    comparableJson(messages[sharedPrefixLength]) === comparableJson(previousMessages[sharedPrefixLength])
+  ) {
+    sharedPrefixLength += 1;
+  }
+  return messages.slice(sharedPrefixLength).map(sentMessage);
 }
 
 /** The system-prompt diff from `previousBody` to `body`; null when the system text is the same. */

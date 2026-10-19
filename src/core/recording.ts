@@ -281,9 +281,10 @@ export function readRecordingWithoutBodies(filePath: string): ApiRequestWithoutB
 
 /**
  * The API requests of the Recording file at `filePath` that `isSelected`
- * picks, in full, in append order: the file is read once, and only the picked
- * bodies are restored from their pieces, so memory stays the size of the file
- * plus those bodies. Reads a last member cut short like {@link readRecording}.
+ * picks, in full, in append order: the file is decoded whole, once, and only
+ * the picked bodies are restored from its pieces, so memory is the decoded
+ * file plus those bodies — never every body. Reads a last member cut short
+ * like {@link readRecording}.
  *
  * @example
  * const [apiRequest] = readSelectedApiRequests(recording.sourcePath, (r) => r.response.requestId === "req_1");
