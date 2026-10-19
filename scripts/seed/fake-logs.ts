@@ -182,6 +182,25 @@ const SUBAGENT_PROMPTS: Record<(typeof SUBAGENT_TYPES)[number], string> = {
   "general-purpose": "Investigate this and report back with what you find.",
 };
 
+/**
+ * The hand-back a foreground sub-agent returns, one per agent type — its spawn
+ * ledger's `content` text. Keyed like {@link SUBAGENT_PROMPTS}, so no PRNG draw.
+ * Plan's is a markdown report, as agents write them.
+ */
+const SUBAGENT_REPORTS: Record<(typeof SUBAGENT_TYPES)[number], string> = {
+  Explore: "The behaviour lives in `src/server.ts`, in `handler`.",
+  Plan: [
+    "## Plan",
+    "",
+    "Three slices, each its own commit:",
+    "",
+    "- extract the ranking into `rank.ts`",
+    "- add the new scorer behind a flag",
+    "- switch the flag on and delete the old path",
+  ].join("\n"),
+  "general-purpose": "Found it: the cache key ignores the locale.",
+};
+
 /** The `description` an Agent call carries, one per agent type — keyed like {@link SUBAGENT_PROMPTS}, so no PRNG draw. */
 const SUBAGENT_DESCRIPTIONS: Record<(typeof SUBAGENT_TYPES)[number], string> = {
   Explore: "locate the behaviour",
@@ -579,6 +598,8 @@ function spawnSubAgent(
   const ledgerResult = {
     agentId,
     agentType,
+    status: "completed",
+    content: [{ type: "text", text: SUBAGENT_REPORTS[agentType] }],
     resolvedModel: subModel,
     totalTokens: subTotal,
     totalToolUseCount: g.int(2, 8),

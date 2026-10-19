@@ -12,7 +12,7 @@
 
 import { callRoute } from "@flefebvre/next-pipe/client";
 import { Scissors } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import {
   prettyToolText,
@@ -148,22 +148,27 @@ function IoBlock({
   children?: React.ReactNode;
 }) {
   const [isRawShown, setIsRawShown] = useState(false);
+  const labelId = useId();
   const isRawOnly = parts.every((part) => part.kind === "raw");
   const rawText = <pre className={isError ? "err" : undefined}>{prettyToolText(text)}</pre>;
 
   if (isRawOnly) {
     return (
-      <div className="io-block">
-        <span className="io-label">{label}</span>
+      <div role="group" aria-labelledby={labelId} className="io-block">
+        <span id={labelId} className="io-label">
+          {label}
+        </span>
         {rawText}
         {children}
       </div>
     );
   }
   return (
-    <div className="io-block">
+    <div role="group" aria-labelledby={labelId} className="io-block">
       <div className="io-head">
-        <span className="io-label">{label}</span>
+        <span id={labelId} className="io-label">
+          {label}
+        </span>
         <button
           type="button"
           className="io-raw-toggle"

@@ -121,6 +121,18 @@ contains an **aggregated ledger** for the spawned sub-agent:
 `totalDurationMs`, `usage` (full split), `toolStats`
 (`readCount`/`bashCount`/`editFileCount`/...).
 
+Its `status` is one of two values:
+
+- `completed` — a foreground sub-agent that has finished. The ledger above,
+  plus its **hand-back** in `content`: an array of `{ type: "text", text }`
+  blocks. When the hand-back was sent as a message (`handback: "send"`), the
+  report is in `handbackReport.text` and `content` holds only a pointer note
+  saying the report was delivered as a message.
+- `async_launched` — a background launch: `agentId`, `description`, `prompt`,
+  `resolvedModel`, `isAsync`, `outputFile`, `canReadOutputFile`, and no
+  `agentType`, totals or hand-back. The hand-back arrives later as an
+  Inter-agent message.
+
 ### GOTCHA 3 — sub-agent tokens are recorded twice; count them once
 
 The sub-agent's aggregated `usage` in the parent's `toolUseResult` is the **same
