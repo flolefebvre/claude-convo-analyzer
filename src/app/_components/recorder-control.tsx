@@ -149,8 +149,8 @@ export function RecorderControl({ recorderStatus: statusAsRendered }: { recorder
               </Button>
             ))}
         </div>
-        {recorderStatus.status === "portTaken" && (
-          <p className="text-destructive-foreground">Port {recorderStatus.port} is taken by another program.</p>
+        {recorderStatus.status === "portTaken" && actionReport === null && (
+          <p className="text-destructive">Port {recorderStatus.port} is taken by another program.</p>
         )}
         {unconfirmedSessionCount !== null && (
           <div role="alert" className="flex flex-col gap-2 rounded-md border border-destructive/40 p-2">
