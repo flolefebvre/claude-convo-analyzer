@@ -10,7 +10,8 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { buildFamily } from "@/core/family";
-import { getConversation, getTranscript, listConversations } from "@/core/read";
+import { localDayKey, startOfLocalDay } from "@/core/local-day";
+import { type DailySpend, getConversation, getDailySpend, getTranscript, listConversations } from "@/core/read";
 import { openRecordingWriter, type RecordedApiRequest } from "@/core/recording";
 import { refresh } from "@/core/refresh";
 
@@ -411,6 +412,34 @@ describe("Unlogged usage in a Conversation's Cost", () => {
       baseCostUsd + 3,
       9,
     );
+  });
+});
+
+describe("Unlogged usage in Trends", () => {
+  it("lands on the local day its API request arrived, priced per Resolved model", async () => {
+    const now = Date.parse("2026-10-20T12:00:00.000Z");
+    await refreshFixtures();
+    const unrecorded = await getDailySpend({ dbPath, now });
+    rmSync(dbPath);
+
+    const naming = sessionNaming();
+    await record([naming, tokenCount()]);
+    await refreshFixtures();
+    const recorded = await getDailySpend({ dbPath, now });
+
+    const arrivalDay = localDayKey(startOfLocalDay(Date.parse(naming.timings.arrivedAt)));
+    const costOn = (spend: DailySpend) => spend.days.find((day) => day.date === arrivalDay)?.costUsd ?? 0;
+    expect(costOn(recorded)).toBeCloseTo(costOn(unrecorded) + 3, 9);
+    expect(recorded.totalCostUsd).toBeCloseTo(unrecorded.totalCostUsd + 3, 9);
+    expect(recorded.totalTokens.input).toBe(unrecorded.totalTokens.input + 2_000_000);
+  });
+
+  it("is left out of a Folder scope that excludes its Conversation", async () => {
+    const now = Date.parse("2026-10-20T12:00:00.000Z");
+    await record([sessionNaming()]);
+    await refreshFixtures();
+
+    expect((await getDailySpend({ dbPath, now, folder: "/Users/me/elsewhere" })).totalCostUsd).toBe(0);
   });
 });
 

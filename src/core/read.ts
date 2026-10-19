@@ -17,9 +17,11 @@ import type { Prisma, PrismaClient } from "@/core/prisma/generated/client";
 import { PARSER_VERSION } from "@/core/refresh";
 import { toolCallBodyParts, type ToolCallBodyParts } from "@/core/tool-call-views";
 import {
+  type DailyUsageRow,
   type ModelSumRow,
   REPORTED_USAGE_WHERE,
   TOKEN_SUM,
+  unloggedUsageByArrival,
   unloggedUsageByConversationAndModel,
 } from "@/core/unlogged-usage";
 
@@ -874,8 +876,10 @@ type DailySpendOptions = FolderScopeOptions & {
  * Trends view. Messages are bucketed by the LOCAL calendar day of their own
  * timestamp, so an assistant Turn's cost lands on the day it ran; sub-agent
  * messages are ordinary Messages and are therefore included (no join needed —
- * `conversationId` is denormalized onto every row). Every day of the range is
- * emitted, zero-filled where nothing ran, so the axis is continuous.
+ * `conversationId` is denormalized onto every row). Unlogged usage lands on
+ * the local day its API request arrived (`unloggedUsageByArrival`). Every day
+ * of the range is emitted, zero-filled where nothing ran, so the axis is
+ * continuous.
  *
  * The range always ENDS on today's local day: `days` counts back from today
  * (inclusive), and omitting it spans from the earliest in-scope message day.
@@ -896,29 +900,24 @@ export async function getDailySpend(opts: DailySpendOptions = {}): Promise<Daily
     // `days` counts back from today inclusive: 7 days = today and the 6 before.
     const from = opts.days === undefined ? null : addLocalDays(today, 1 - opts.days);
 
-    const rows = await prisma.message.findMany({
+    const to = addLocalDays(today, 1);
+    const messageRows = await prisma.message.findMany({
       where: {
         model: { not: null },
         // A NULL timestamp never satisfies a comparison, so this filter also
         // enforces the "no timestamp → excluded" policy.
         timestamp: {
-          lt: BigInt(addLocalDays(today, 1).getTime()),
+          lt: BigInt(to.getTime()),
           ...(from === null ? {} : { gte: BigInt(from.getTime()) }),
         },
         ...(await conversationInFolderScope(prisma, opts)),
       },
-      select: {
-        timestamp: true,
-        model: true,
-        inputTokens: true,
-        outputTokens: true,
-        cacheCreation5mTokens: true,
-        cacheCreation1hTokens: true,
-        cacheReadTokens: true,
-      },
+      select: { timestamp: true, model: true, ...TOKEN_SUM },
     });
+    // What a Recording adds to Cost, on the local day each API request arrived.
+    const unloggedUsageRows = await unloggedUsageByArrival(prisma, { from, to }, opts);
 
-    const byDay = foldByLocalDay(rows);
+    const byDay = foldByLocalDay([...messageRows, ...unloggedUsageRows]);
     return assembleDailySpend(byDay, {
       from: from ?? earliestDay(byDay, today),
       to: today,
@@ -931,24 +930,13 @@ export async function getDailySpend(opts: DailySpendOptions = {}): Promise<Daily
   }
 }
 
-/** One message row as read for the daily fold (already filtered to a real model). */
-type DailyMessageRow = {
-  timestamp: bigint | number | null;
-  model: string | null;
-  inputTokens: number | null;
-  outputTokens: number | null;
-  cacheCreation5mTokens: number | null;
-  cacheCreation1hTokens: number | null;
-  cacheReadTokens: number | null;
-};
-
 /** A zeroed per-tier accumulator (cache-write tiers kept separate for pricing). */
 function emptySplit(): TokenSplit {
   return { input: 0, output: 0, cacheWrite5m: 0, cacheWrite1h: 0, cacheRead: 0 };
 }
 
-/** Accumulate message rows into per-local-day, per-model per-tier token splits. */
-function foldByLocalDay(rows: DailyMessageRow[]): Map<string, Map<string, TokenSplit>> {
+/** Accumulate usage rows into per-local-day, per-model per-tier token splits. */
+function foldByLocalDay(rows: DailyUsageRow[]): Map<string, Map<string, TokenSplit>> {
   const byDay = new Map<string, Map<string, TokenSplit>>();
   for (const r of rows) {
     if (r.timestamp === null || r.model === null) continue;
