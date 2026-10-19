@@ -26,7 +26,7 @@ import { LoadingRegion } from "@/app/_components/loading-region";
 import { OverviewBand } from "@/app/_components/overview-band";
 import { PageHeader } from "@/app/_components/page-header";
 import { PendingLink } from "@/app/_components/pending-link";
-import { LiveRefreshButton } from "@/app/_components/live-refresh-button";
+import { CurrentRefreshButton } from "@/app/_components/current-refresh-button";
 import { SortableHead } from "@/app/_components/sortable-head";
 import { StatSkeleton } from "@/app/_components/stat-strip";
 import {
@@ -474,7 +474,7 @@ function EmptyList({
     );
   }
   return (
-    <EmptyState icon={Inbox} title="No conversations yet" action={<LiveRefreshButton />}>
+    <EmptyState icon={Inbox} title="No conversations yet" action={<CurrentRefreshButton />}>
       Scan your Claude Code logs to see your conversations here.
     </EmptyState>
   );

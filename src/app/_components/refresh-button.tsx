@@ -7,7 +7,7 @@
 // run, with `n / m conversations` as its label while it runs.
 //
 // It starts from a Snapshot of the run taken by its server part
-// (`live-refresh-button.tsx`), so a page opened mid-run shows the count at once,
+// (`current-refresh-button.tsx`), so a page opened mid-run shows the count at once,
 // and resumes the Channel from that Snapshot's position, so no event is missed.
 //
 // The spinner is driven by OWN flags, NOT by `useTransition`: a transition's
@@ -67,7 +67,7 @@ export type RefreshButtonProps = RefreshButtonLook & {
 };
 
 /**
- * The Refresh button: starts or joins the Refresh and follows it live.
+ * The Refresh button: starts or joins the Refresh and follows it as it runs.
  *
  * @example <RefreshButton variant="outline" collapsible snapshot={snapshot} reportsOutcome />
  */
@@ -218,7 +218,7 @@ export function RefreshButton({ snapshot, reportsOutcome = false, ...look }: Ref
 }
 
 /**
- * The Refresh button as the static shell draws it, until its live part streams
+ * The Refresh button as the static shell draws it, until its per-request part streams
  * in: idle, and inert for that moment.
  *
  * @example <Suspense fallback={<IdleRefreshButton variant="outline" collapsible />}>…</Suspense>

@@ -11,9 +11,9 @@ import { snapshotRefreshActivity } from "@/app/_lib/refresh-events";
 /**
  * The Refresh button, following the Refresh from where it stands now.
  *
- * @example <Suspense fallback={<IdleRefreshButton />}><LiveRefreshButton reportsOutcome /></Suspense>
+ * @example <Suspense fallback={<IdleRefreshButton />}><CurrentRefreshButton reportsOutcome /></Suspense>
  */
-export async function LiveRefreshButton(props: Omit<RefreshButtonProps, "snapshot">) {
+export async function CurrentRefreshButton(props: Omit<RefreshButtonProps, "snapshot">) {
   // A Snapshot baked into the prerender would resume from a stale position.
   await connection();
   return <RefreshButton {...props} snapshot={await snapshotRefreshActivity()} />;
