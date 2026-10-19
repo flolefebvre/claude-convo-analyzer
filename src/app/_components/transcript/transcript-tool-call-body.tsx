@@ -14,7 +14,13 @@ import { callRoute } from "@flefebvre/next-pipe/client";
 import { Scissors } from "lucide-react";
 import { useState } from "react";
 
-import { prettyToolText, type ToolCallBody, type ToolCallPart, truncationNote } from "@/app/_lib/transcript";
+import {
+  prettyToolText,
+  type ToolCallBody,
+  toolCallFactText,
+  type ToolCallPart,
+  truncationNote,
+} from "@/app/_lib/transcript";
 import { Skeleton } from "@/components/ui/skeleton";
 import { routes } from "@/generated/routes";
 
@@ -190,7 +196,7 @@ function BodyPart({ part, text }: { part: ToolCallPart; text: string }) {
           {part.facts.map((fact) => (
             <div key={fact.key}>
               <dt>{fact.key}</dt>
-              <dd>{fact.value}</dd>
+              <dd>{toolCallFactText(fact)}</dd>
             </div>
           ))}
         </dl>

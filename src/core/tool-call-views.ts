@@ -4,8 +4,12 @@
 // keyed by tool name; a tool without one, or a text its entry can't read, shows
 // the single raw part. Framework-free (ADR-0002).
 
-/** One key/value line of a facts part: a scalar input field, as text. */
-export type ToolCallFact = { key: string; value: string };
+/**
+ * One key/value line of a facts part, its value typed by what it is: text, a
+ * duration, or a count. Numbers stay numbers; the app formats them.
+ */
+export type ToolCallFact =
+  { key: string; value: string } | { key: string; durationMs: number } | { key: string; count: number };
 
 /**
  * One display part of a Tool call's body block: key/value facts, one
@@ -38,14 +42,52 @@ function scalarFacts(input: Record<string, unknown>, excludedKeys: readonly stri
   return facts;
 }
 
+/**
+ * A Sub-agent's hand-back in its spawn ledger: the report it sent as a message
+ * when there is one (`content` then only points at it), else `content`'s text
+ * blocks; `""` when it wrote none.
+ */
+function handBackText(ledger: Record<string, unknown>): string {
+  const report = ledger.handbackReport as { text?: unknown } | null | undefined;
+  if (typeof report?.text === "string" && report.text !== "") return report.text;
+  if (!Array.isArray(ledger.content)) return "";
+  return (ledger.content as unknown[])
+    .flatMap((block) => {
+      const b = block as { type?: unknown; text?: unknown } | null;
+      return b?.type === "text" && typeof b.text === "string" && b.text !== "" ? [b.text] : [];
+    })
+    .join("\n\n");
+}
+
+/** A completed Sub-agent's facts — its status, then the ledger's totals that are numbers. */
+function completedFacts(ledger: Record<string, unknown>): ToolCallFact[] {
+  const facts: ToolCallFact[] = [{ key: "status", value: "completed" }];
+  if (typeof ledger.totalDurationMs === "number") facts.push({ key: "duration", durationMs: ledger.totalDurationMs });
+  if (typeof ledger.totalTokens === "number") facts.push({ key: "tokens", count: ledger.totalTokens });
+  if (typeof ledger.totalToolUseCount === "number") facts.push({ key: "tool uses", count: ledger.totalToolUseCount });
+  return facts;
+}
+
 /** The view of every tool that has one, keyed by tool name. */
 const TOOL_CALL_VIEW_BY_TOOL_NAME: Record<string, ToolCallView> = {
-  // The Task prompt is agent-written prose; the result (the hand-back) stays raw.
+  // The Task prompt and the hand-back are agent-written prose; the rest of the
+  // spawn ledger (usage, toolStats, the echoed prompt) is left to Raw.
   Agent: {
     input: (input) => {
       const facts = scalarFacts(input, ["prompt"]);
       const parts: ToolCallPart[] = facts.length > 0 ? [{ kind: "facts", facts }] : [];
       if (typeof input.prompt === "string" && input.prompt !== "") parts.push({ kind: "markdown", text: input.prompt });
+      return parts;
+    },
+    result: (resultText) => {
+      const ledger = parseJsonObject(resultText);
+      if (ledger?.status === "async_launched") {
+        return [{ kind: "facts", facts: [{ key: "status", value: "launched in the background" }] }];
+      }
+      if (ledger?.status !== "completed") return [];
+      const parts: ToolCallPart[] = [{ kind: "facts", facts: completedFacts(ledger) }];
+      const text = handBackText(ledger);
+      if (text !== "") parts.push({ kind: "markdown", text });
       return parts;
     },
   },
