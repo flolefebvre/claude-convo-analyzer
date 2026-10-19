@@ -12,8 +12,12 @@ import { RECORDER_HEALTH_PATH, RECORDER_STOP_PATH, type RecorderHealth } from "@
 
 /** How long a status read waits for the port to answer. */
 const STATUS_READ_TIMEOUT_MS = 1000;
-/** How long a start waits for the new Recorder to answer its health endpoint. */
-const START_TIMEOUT_MS = 5000;
+/**
+ * How long a start waits for the new Recorder to answer its health endpoint:
+ * room for a tsx cold start on a loaded machine. A Recorder that dies is
+ * noticed at once by its exit, so only one that never answers waits this long.
+ */
+const START_TIMEOUT_MS = 10_000;
 /** How often a start polls the health endpoint meanwhile. */
 const START_POLL_INTERVAL_MS = 100;
 /** How many of the log's last lines a failed start reports. */
@@ -158,7 +162,7 @@ export type RecorderLaunchOutcome =
  * The `--detach` launcher's work: start the Recorder script in its own
  * session, its output appended to `recorder.log` beside the Recordings root,
  * and resolve once its health answers on the port — or with what it logged,
- * when it exits first or does not answer within 5 s (then it is stopped). The
+ * when it exits first or does not answer within 10 s (then it is stopped). The
  * caller exits right after, leaving the Recorder an orphan. Unref'd once it
  * answers, so it never holds the caller's event loop.
  *
