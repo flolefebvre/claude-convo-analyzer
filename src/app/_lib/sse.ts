@@ -8,6 +8,7 @@ import { createMemoryTransport } from "@flefebvre/next-sse/transport/memory";
 import { z } from "zod";
 
 import type { RefreshSummary } from "@/core/refresh";
+import type { RefreshOrigin } from "@/core/refresh-runner";
 
 /** Which Refresh an event belongs to (the runner's `RefreshRunId`). */
 const refreshRunIdSchema = z.string();
@@ -17,6 +18,9 @@ const refreshProgressSchema = z.object({
   done: z.number().int().nonnegative(),
   total: z.number().int().nonnegative(),
 });
+
+/** Who began the Refresh (the runner's `RefreshOrigin`); `satisfies` fails typecheck when core grows one. */
+const refreshOriginSchema = z.enum(["user", "live"]) satisfies z.ZodType<RefreshOrigin>;
 
 const durationMsSchema = z.number().nonnegative();
 
@@ -48,7 +52,7 @@ const { channel, createSSE } = initSSE({ transport: createMemoryTransport() });
  * The Registry: `sse.refresh()` is the Handle publishing the Refresh's
  * `progress` (absolute `{ done, total }`, once per committed batch), then its
  * `finished { summary }` or `failed { message }`, each with the `runId` of its
- * Refresh.
+ * Refresh; the outcome also carries its `origin`, the user or Live.
  *
  * @example await sse.refresh().progress({ runId, done: 50, total: 2450 });
  */
@@ -57,8 +61,8 @@ export const sse = createSSE({
     pattern: "refresh",
     events: {
       progress: refreshProgressSchema,
-      finished: z.object({ runId: refreshRunIdSchema, summary: refreshSummarySchema }),
-      failed: z.object({ runId: refreshRunIdSchema, message: z.string() }),
+      finished: z.object({ runId: refreshRunIdSchema, origin: refreshOriginSchema, summary: refreshSummarySchema }),
+      failed: z.object({ runId: refreshRunIdSchema, origin: refreshOriginSchema, message: z.string() }),
     },
     // Local-only app: every page may follow the Refresh.
     authorize: () => true,

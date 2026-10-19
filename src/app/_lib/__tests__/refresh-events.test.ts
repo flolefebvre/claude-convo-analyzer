@@ -57,7 +57,7 @@ describe("refresh events", () => {
           event: "progress",
           payload: { runId: expect.any(String), ...progress },
         })),
-        { channel: "refresh", event: "finished", payload: { runId: expect.any(String), summary } },
+        { channel: "refresh", event: "finished", payload: { runId: expect.any(String), origin: "user", summary } },
       ]),
     );
   });
@@ -78,7 +78,7 @@ describe("refresh events", () => {
         {
           channel: "refresh",
           event: "failed",
-          payload: { runId: expect.any(String), message: "Refresh failed in its worker: disk gone" },
+          payload: { runId: expect.any(String), origin: "user", message: "Refresh failed in its worker: disk gone" },
         },
       ]),
     );
@@ -101,7 +101,11 @@ describe("refresh events", () => {
 
     expect(runCount).toBe(1);
     expect(await published()).toEqual([
-      { channel: "refresh", event: "finished", payload: { runId: expect.any(String), summary: SUMMARY } },
+      {
+        channel: "refresh",
+        event: "finished",
+        payload: { runId: expect.any(String), origin: "user", summary: SUMMARY },
+      },
     ]);
   });
 
@@ -124,10 +128,28 @@ describe("refresh events", () => {
     expect(secondRunId).not.toBe(firstRunId);
     expect(messages).toEqual([
       { channel: "refresh", event: "progress", payload: { runId: firstRunId, done: 1, total: 1 } },
-      { channel: "refresh", event: "finished", payload: { runId: firstRunId, summary: SUMMARY } },
+      { channel: "refresh", event: "finished", payload: { runId: firstRunId, origin: "user", summary: SUMMARY } },
       { channel: "refresh", event: "progress", payload: { runId: secondRunId, done: 1, total: 1 } },
-      { channel: "refresh", event: "finished", payload: { runId: secondRunId, summary: SUMMARY } },
+      { channel: "refresh", event: "finished", payload: { runId: secondRunId, origin: "user", summary: SUMMARY } },
     ]);
+  });
+
+  it("publishes the origin of a Refresh Live began on its outcome", async () => {
+    const runner = createRefreshRunner(async () => SUMMARY);
+    publishRefreshEvents(runner);
+    const published = await recordPublishes();
+
+    await runner.start({ origin: "live" });
+
+    await vi.waitFor(async () =>
+      expect(await published()).toEqual([
+        {
+          channel: "refresh",
+          event: "finished",
+          payload: { runId: expect.any(String), origin: "live", summary: SUMMARY },
+        },
+      ]),
+    );
   });
 
   it("stops publishing once unsubscribed", async () => {

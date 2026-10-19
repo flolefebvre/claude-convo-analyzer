@@ -19,7 +19,8 @@
 // during the run (`isRerenderDue`) and once at its end, and shows the summary in
 // a small bubble under the button that fades after a few seconds or can be
 // dismissed; a failure stays until dismissed. A persistent, visually hidden live
-// region announces both. The parser-update banner's control only follows the
+// region announces both. A Refresh Live began gets no success bubble, only its
+// re-render; its failure shows like any other. The parser-update banner's control only follows the
 // count, so the page gets one bubble and one re-render schedule.
 
 import type { Snapshot } from "@flefebvre/next-sse/client";
@@ -122,17 +123,20 @@ export function RefreshButton({ snapshot, reportsOutcome = false, ...look }: Ref
         });
         if (reportsOutcome && isDue) rerenderPage();
       },
-      finished: ({ runId, summary }) => {
+      finished: ({ runId, origin, summary }) => {
         setActivity({ isRunning: false });
         setIsAwaitingRun(false);
         if (!reportsOutcome || !claimOutcome(runId)) return;
+        rerenderPage();
+        // Live lands a Refresh every few seconds while it follows a session:
+        // a bubble for each would be noise.
+        if (origin === "live") return;
         setMessage({
           text: formatRefreshSummary(summary),
           detail: formatDuplicateSessionDetail(summary),
           tone: "status",
           id: Date.now(),
         });
-        rerenderPage();
       },
       failed: ({ runId, message: failure }) => {
         setActivity({ isRunning: false });
