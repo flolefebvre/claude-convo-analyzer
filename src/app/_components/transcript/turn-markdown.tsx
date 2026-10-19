@@ -2,15 +2,17 @@ import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 // Renders agent-written text as GitHub-flavoured markdown: assistant turns,
-// Inter-agent message bodies and Task notification results. Humans don't write
-// reliable markdown, so prompts never go through this — they render plain (see
-// `TranscriptMessage`).
+// Inter-agent message bodies, Task notification results and an opened Tool
+// call's markdown parts (the Agent call's Task prompt). Humans don't write
+// reliable markdown, so user prompts never go through this — they render plain
+// (see `TranscriptMessage`).
 //
 // Security: react-markdown escapes raw HTML by default and we deliberately do
 // NOT add `rehype-raw` (or any dangerous-HTML plugin), so a turn containing
 // `<script>`/`<img onerror>` is rendered as inert text, not live markup. The
 // GFM plugin only adds tables/strikethrough/tasklists/autolinks — no HTML pass-
-// through. This is a pure component and works inside the server component tree.
+// through. This is a pure component: it renders in the server component tree,
+// and in the client bundle under the tool-call disclosure.
 
 /** A wide table scrolls sideways inside its own box instead of the column. */
 const COMPONENTS: Components = {

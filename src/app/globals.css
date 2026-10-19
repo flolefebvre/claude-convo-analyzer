@@ -1092,15 +1092,21 @@ html:has(.tview) {
   color: var(--muted-foreground);
 }
 /* Inputs and results wrap (no sideways scrolling) and stop at a fixed height,
-   scrolling inside themselves, so one open call never buries the transcript. */
-.tview .io-block pre {
+   scrolling inside themselves, so one open call never buries the transcript.
+   A block's stored text is its direct `pre`; a rendered block's `io-view`
+   takes the same cap. */
+.tview .io-block > pre,
+.tview .io-view {
   margin: 0;
   max-height: 22rem;
   overflow: auto;
   overscroll-behavior: contain;
-  background: var(--muted);
   border-radius: 6px;
   padding: 8px 10px;
+}
+.tview .io-block > pre,
+.tview .io-view > .io-raw-part {
+  background: var(--muted);
   font-size: var(--text-xs);
   line-height: 1.5;
   white-space: pre-wrap;
@@ -1109,18 +1115,81 @@ html:has(.tview) {
 }
 /* Scroll shadows: a soft edge appears at the top or bottom only while there is
    more to scroll that way (the `local` covers slide away with the content). */
-.tview .io-block pre:not(.err) {
+.tview .io-block > pre:not(.err),
+.tview .io-view {
   --io-shadow: color-mix(in oklch, var(--foreground) 16%, transparent);
+  --io-surface: var(--muted);
   background:
-    linear-gradient(var(--muted) 40%, transparent) center top / 100% 24px no-repeat local,
-    linear-gradient(transparent, var(--muted) 60%) center bottom / 100% 24px no-repeat local,
+    linear-gradient(var(--io-surface) 40%, transparent) center top / 100% 24px no-repeat local,
+    linear-gradient(transparent, var(--io-surface) 60%) center bottom / 100% 24px no-repeat local,
     radial-gradient(farthest-side at 50% 0, var(--io-shadow), transparent) center top / 100% 10px no-repeat,
     radial-gradient(farthest-side at 50% 100%, var(--io-shadow), transparent) center bottom / 100% 10px no-repeat,
-    var(--muted);
+    var(--io-surface);
 }
-.tview .io-block pre.err {
+.tview .io-block > pre.err {
   background: var(--destructive-muted);
   color: var(--destructive-foreground);
+}
+/* A rendered block reads as prose on the card, its parts stacked. */
+.tview .io-view {
+  --io-surface: var(--card);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: var(--text-ui);
+}
+.tview .io-view > .io-raw-part {
+  margin: 0;
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+.tview .io-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.tview .io-head .io-label {
+  margin-bottom: 0;
+}
+.tview .io-raw-toggle {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--muted-foreground);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 6px;
+  cursor: pointer;
+}
+.tview .io-raw-toggle:hover {
+  color: var(--foreground);
+}
+.tview .io-raw-toggle[aria-pressed="true"] {
+  background: var(--muted);
+  color: var(--foreground);
+}
+/* The facts line: `key value` pairs, wrapping as one line of chips. */
+.tview .io-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0;
+  font-size: var(--text-xs);
+}
+.tview .io-facts > div {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+.tview .io-facts dt {
+  color: var(--muted-foreground);
+}
+.tview .io-facts dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
 }
 .tview .trunc {
   display: flex;

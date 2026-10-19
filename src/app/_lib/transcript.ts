@@ -10,6 +10,9 @@ import type { TranscriptAgentNode } from "@/core/read";
 /** A Tool call's body, as core reads it — re-exported so a client leaf can name it without touching core. */
 export type { ToolCallBody } from "@/core/read";
 
+/** One display part of a Tool call's body block, as core shapes it — re-exported for the client leaf, like {@link ToolCallBody}. */
+export type { ToolCallFact, ToolCallPart } from "@/core/tool-call-views";
+
 /** What a recorded Turn sent, as core reads it — re-exported for the client leaf, like {@link ToolCallBody}. */
 export type { DiffLine, SentBlock, SentMessage, SentTool, WhatWasSent } from "@/core/what-was-sent";
 
@@ -70,7 +73,8 @@ function oneLine(text: string): string {
 /**
  * A short, single-line summary of a tool call's input for the collapsed call
  * row. The key field depends on the kind: Bash → `command`, Skill → `skill`
- * (+ `args`), Agent → `subagent_type: prompt`; anything else falls back to the
+ * (+ `args`), Agent → `description`, else the start of its Task prompt (the
+ * row already names the agent); anything else falls back to the
  * first string field. NEVER throws on malformed/empty JSON — returns "".
  */
 export function toolCallSnippet(call: { name: string; inputJson: string }): string {
@@ -80,12 +84,7 @@ export function toolCallSnippet(call: { name: string; inputJson: string }): stri
   const str = (key: string): string => (typeof input[key] === "string" ? (input[key] as string) : "");
 
   const kind = classifyToolCall(call);
-  if (kind === "agent") {
-    const type = str("subagent_type");
-    const prompt = str("prompt") || str("description");
-    const combined = type && prompt ? `${type}: ${prompt}` : type || prompt;
-    return oneLine(combined);
-  }
+  if (kind === "agent") return oneLine(str("description") || str("prompt"));
   if (kind === "skill") {
     const skill = str("skill");
     const args = str("args");

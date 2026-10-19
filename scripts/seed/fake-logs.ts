@@ -159,11 +159,34 @@ const SUBAGENT_TYPES = ["Explore", "Plan", "general-purpose"] as const;
  * sub-agent's own transcript — that is how a real log reads. Keyed by the
  * already-picked agent type rather than picked at random, so adding it costs no
  * draw from the PRNG and the rest of the seeded corpus stays byte-identical.
+ * Plan's is a multi-paragraph markdown Task prompt, as agents write them.
  */
 const SUBAGENT_PROMPTS: Record<(typeof SUBAGENT_TYPES)[number], string> = {
   Explore: "Sweep the repo and report where this behaviour is implemented.",
-  Plan: "Draft the implementation plan for this change, smallest slices first.",
+  Plan: [
+    "## Task",
+    "",
+    "Draft the implementation plan for this change, smallest slices first.",
+    "",
+    "## Constraints",
+    "",
+    "- keep the public API unchanged",
+    "- one commit per slice",
+    "",
+    "Start from the entry point:",
+    "",
+    "```ts",
+    'export { handler } from "./server";',
+    "```",
+  ].join("\n"),
   "general-purpose": "Investigate this and report back with what you find.",
+};
+
+/** The `description` an Agent call carries, one per agent type — keyed like {@link SUBAGENT_PROMPTS}, so no PRNG draw. */
+const SUBAGENT_DESCRIPTIONS: Record<(typeof SUBAGENT_TYPES)[number], string> = {
+  Explore: "locate the behaviour",
+  Plan: "plan the change",
+  "general-purpose": "investigate",
 };
 const BASH_CMDS = ["pnpm test", "pnpm lint", "git status", "pnpm build", "npm run typecheck"] as const;
 const READ_FILES = ["src/index.ts", "src/server.ts", "README.md", "src/db.ts", "package.json"] as const;
@@ -470,16 +493,26 @@ function toolResultText(g: Gen, kind: (typeof TOOL_KINDS)[number], isError: bool
  * `stopsOnlyAtItsLastTurn: true` makes every earlier Turn call a tool and the
  * last one only reply, so each later Turn answers a tool result and the
  * sub-agent ends on its reply, as in a real sub-agent's transcript.
+ * `agentType` pins its type; the type is still drawn, so the stream stays the same.
  */
 function spawnSubAgent(
   g: Gen,
   ms: number,
   cwd: string,
-  { canFail = true, stopsOnlyAtItsLastTurn = false }: { canFail?: boolean; stopsOnlyAtItsLastTurn?: boolean } = {},
+  {
+    canFail = true,
+    stopsOnlyAtItsLastTurn = false,
+    agentType: pinnedAgentType,
+  }: {
+    canFail?: boolean;
+    stopsOnlyAtItsLastTurn?: boolean;
+    agentType?: (typeof SUBAGENT_TYPES)[number];
+  } = {},
 ): { toolUse: object; ledgerResult: object; sub: SubAgent } {
   const agentId = g.uid("agent").replace("agent-", "");
   const toolUseId = g.uid("tu");
-  const agentType = g.pick(SUBAGENT_TYPES);
+  const drawnAgentType = g.pick(SUBAGENT_TYPES);
+  const agentType = pinnedAgentType ?? drawnAgentType;
   const subModel = g.pick(MODELS);
 
   // The sub-agent's own transcript — the source of truth for its tokens. Every
@@ -541,7 +574,7 @@ function spawnSubAgent(
     type: "tool_use",
     id: toolUseId,
     name: "Agent",
-    input: { subagent_type: agentType, description: "investigate", prompt },
+    input: { subagent_type: agentType, description: SUBAGENT_DESCRIPTIONS[agentType], prompt },
   };
   const ledgerResult = {
     agentId,
@@ -851,14 +884,15 @@ function agentMessagesConversation(g: Gen, index: number): Conversation {
     ),
   );
 
-  const spawn = (): { sub: SubAgent; agentType: string } => {
-    const { toolUse, ledgerResult, sub } = spawnSubAgent(g, at(60), cwd, { canFail: false });
+  const spawn = (agentType?: (typeof SUBAGENT_TYPES)[number]): { sub: SubAgent; agentType: string } => {
+    const { toolUse, ledgerResult, sub } = spawnSubAgent(g, at(60), cwd, { canFail: false, agentType });
     lines.push(assistantTurn(g, t, cwd, model, { toolUses: [toolUse] }));
     lines.push(toolResult(g, at(5), cwd, (toolUse as { id: string }).id, ledgerResult));
     return { sub, agentType: (ledgerResult as { agentType: string }).agentType };
   };
   const { sub: worker, agentType: workerType } = spawn();
-  const { sub: stopped } = spawn();
+  // Plan, for its markdown Task prompt: the e2e opened-Agent-call test relies on it.
+  const { sub: stopped } = spawn("Plan");
 
   // The worker reports in, then hands back; meanwhile the person and another
   // session speak while the main agent is busy.

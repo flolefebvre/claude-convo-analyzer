@@ -4,18 +4,21 @@
 // (input and result text) is fetched from `GET /api/tool-call/<id>` the first
 // time the reader opens it, and kept for every later open. The `?call=`
 // anchored call arrives with its body already read server-side, so it lands
-// open and never fetches. Native `<details>` stays the disclosure.
+// open and never fetches. Native `<details>` stays the disclosure. Each block
+// renders the parts the server shaped it into; no tool is special-cased here.
 //
 // ADR-0002: no core import — the body comes over the route, the helpers from
 // the core-free `_lib/transcript`.
 
 import { callRoute } from "@flefebvre/next-pipe/client";
 import { Scissors } from "lucide-react";
+import { useState } from "react";
 
-import { prettyToolText, type ToolCallBody, truncationNote } from "@/app/_lib/transcript";
+import { prettyToolText, type ToolCallBody, type ToolCallPart, truncationNote } from "@/app/_lib/transcript";
 import { Skeleton } from "@/components/ui/skeleton";
 import { routes } from "@/generated/routes";
 
+import { TurnMarkdown } from "./turn-markdown";
 import { type ReadOnFirstOpenState, useReadOnFirstOpen } from "./use-read-on-first-open";
 
 /**
@@ -102,9 +105,9 @@ function Body({
       const note = showTruncation ? truncationNote(body) : null;
       return (
         <>
-          <IoBlock label={labels.input} text={body.inputJson} />
+          <IoBlock label={labels.input} text={body.inputJson} parts={body.inputParts} />
           {body.resultText !== null && (
-            <IoBlock label={labels.result} text={body.resultText} isError={body.isError}>
+            <IoBlock label={labels.result} text={body.resultText} parts={body.resultParts ?? []} isError={body.isError}>
               {note && (
                 <div className="trunc">
                   <Scissors aria-hidden className="size-3" />
@@ -119,23 +122,86 @@ function Body({
   }
 }
 
-/** One labelled input/result block: wrapped, height-capped, JSON pretty-printed. */
+/**
+ * One labelled input/result block, height-capped: its stored `text` (JSON
+ * pretty-printed) when its only part is raw, else its rendered `parts` with a
+ * "Raw" toggle back to that text.
+ */
 function IoBlock({
   label,
   text,
+  parts,
   isError = false,
   children,
 }: {
   label: string;
+  /** The block's stored text — what a raw part, and the "Raw" toggle, show. */
   text: string;
+  parts: ToolCallPart[];
   isError?: boolean;
   children?: React.ReactNode;
 }) {
+  const [isRawShown, setIsRawShown] = useState(false);
+  const isRawOnly = parts.every((part) => part.kind === "raw");
+  const rawText = <pre className={isError ? "err" : undefined}>{prettyToolText(text)}</pre>;
+
+  if (isRawOnly) {
+    return (
+      <div className="io-block">
+        <span className="io-label">{label}</span>
+        {rawText}
+        {children}
+      </div>
+    );
+  }
   return (
     <div className="io-block">
-      <span className="io-label">{label}</span>
-      <pre className={isError ? "err" : undefined}>{prettyToolText(text)}</pre>
+      <div className="io-head">
+        <span className="io-label">{label}</span>
+        <button
+          type="button"
+          className="io-raw-toggle"
+          aria-pressed={isRawShown}
+          onClick={() => setIsRawShown((shown) => !shown)}
+        >
+          Raw
+        </button>
+      </div>
+      {isRawShown ? (
+        rawText
+      ) : (
+        <div className="io-view">
+          {parts.map((part, index) => (
+            <BodyPart key={index} part={part} text={text} />
+          ))}
+        </div>
+      )}
       {children}
     </div>
   );
+}
+
+/** One rendered part of a block; a raw part shows the block's stored `text`. */
+function BodyPart({ part, text }: { part: ToolCallPart; text: string }) {
+  switch (part.kind) {
+    case "facts":
+      return (
+        <dl className="io-facts">
+          {part.facts.map((fact) => (
+            <div key={fact.key}>
+              <dt>{fact.key}</dt>
+              <dd>{fact.value}</dd>
+            </div>
+          ))}
+        </dl>
+      );
+    case "markdown":
+      return (
+        <div className="turn-body">
+          <TurnMarkdown text={part.text} />
+        </div>
+      );
+    case "raw":
+      return <pre className="io-raw-part">{prettyToolText(text)}</pre>;
+  }
 }
