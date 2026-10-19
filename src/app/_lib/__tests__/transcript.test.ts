@@ -12,6 +12,7 @@ import {
   effortSummary,
   findSpawnedNode,
   parseSlashCommand,
+  toolCallFactText,
   toolCallSnippet,
   truncationNote,
 } from "@/app/_lib/transcript";
@@ -160,6 +161,20 @@ describe("truncationNote", () => {
 
   it("exposes the app-side stored-limit constant", () => {
     expect(RESULT_TRUNCATE_CHARS).toBe(10_000);
+  });
+});
+
+describe("toolCallFactText", () => {
+  it("shows a text fact as it is", () => {
+    expect(toolCallFactText({ key: "status", value: "completed" })).toBe("completed");
+  });
+
+  it("formats a duration fact as a latency", () => {
+    expect(toolCallFactText({ key: "duration", durationMs: 65_400 })).toBe("1m 05s");
+  });
+
+  it("formats a count fact with thousands separators", () => {
+    expect(toolCallFactText({ key: "tokens", count: 12_345 })).toBe("12,345");
   });
 });
 

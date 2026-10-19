@@ -6,6 +6,7 @@
 // environment; the route/components are thin renderers over these.
 
 import type { TranscriptAgentNode } from "@/core/read";
+import type { ToolCallFact } from "@/core/tool-call-views";
 
 /** A Tool call's body, as core reads it — re-exported so a client leaf can name it without touching core. */
 export type { ToolCallBody } from "@/core/read";
@@ -17,7 +18,7 @@ export type { ToolCallFact, ToolCallPart } from "@/core/tool-call-views";
 export type { DiffLine, SentBlock, SentMessage, SentTool, WhatWasSent } from "@/core/what-was-sent";
 
 import { subAgentLabel } from "@/app/_lib/detail";
-import { formatTokens } from "@/app/_lib/format";
+import { formatCount, formatLatency, formatTokens } from "@/app/_lib/format";
 
 /**
  * App-side mirror of core's `RESULT_TRUNCATE_CHARS` (`src/core/refresh.ts`): the
@@ -107,6 +108,18 @@ export function truncationNote(call: { resultTruncated: boolean; resultCharSize:
   if (!call.resultTruncated) return null;
   const stored = `stored first ${formatTokens(RESULT_TRUNCATE_CHARS)}`;
   return call.resultCharSize === null ? stored : `${formatTokens(call.resultCharSize)} chars total — ${stored}`;
+}
+
+/**
+ * A Tool call fact's value as it reads: text as is, a duration as a latency, a
+ * count with thousands separators.
+ *
+ * @example toolCallFactText({ key: "duration", durationMs: 4_420 }) // "4.4s"
+ */
+export function toolCallFactText(fact: ToolCallFact): string {
+  if ("value" in fact) return fact.value;
+  if ("durationMs" in fact) return formatLatency(fact.durationMs);
+  return formatCount(fact.count);
 }
 
 /** A user prompt split into its optional slash-command parts, if any. */

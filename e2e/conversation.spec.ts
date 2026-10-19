@@ -117,7 +117,7 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     await expect(call.getByText("Input", { exact: true })).toBeVisible();
   });
 
-  test("an opened Agent call shows its facts and its Task prompt as markdown, and Raw shows the stored JSON", async ({
+  test("an opened Agent call shows its Task prompt and its hand-back as markdown, and Raw shows the stored JSON", async ({
     page,
   }) => {
     await openConversation(page, AGENT_MESSAGES_TITLE);
@@ -126,14 +126,24 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     // collapsed, its summary shows its description.
     const call = page.getByRole("main").getByRole("group").filter({ hasText: "plan the change" }).first();
     await call.getByText("plan the change").click();
+    const prompt = call.getByRole("group", { name: "Prompt" });
+    const returned = call.getByRole("group", { name: "Returned" });
 
-    await expect(call.getByRole("term").filter({ hasText: "subagent_type" })).toBeVisible();
-    await expect(call.getByRole("heading", { level: 2, name: "Constraints" })).toBeVisible();
-    await expect(call.getByRole("listitem").filter({ hasText: "one commit per slice" })).toBeVisible();
+    await expect(prompt.getByRole("term").filter({ hasText: "subagent_type" })).toBeVisible();
+    await expect(prompt.getByRole("heading", { level: 2, name: "Constraints" })).toBeVisible();
+    await expect(prompt.getByRole("listitem").filter({ hasText: "one commit per slice" })).toBeVisible();
 
-    await call.getByRole("button", { name: "Raw" }).click();
-    await expect(call.getByText(/"prompt": "## Task\\n\\nDraft/)).toBeVisible();
-    await expect(call.getByRole("heading", { name: "Constraints" })).toHaveCount(0);
+    await expect(returned.getByRole("term").filter({ hasText: "tool uses" })).toBeVisible();
+    await expect(returned.getByRole("heading", { level: 2, name: "Plan" })).toBeVisible();
+    await expect(returned.getByRole("listitem").filter({ hasText: "add the new scorer behind a flag" })).toBeVisible();
+
+    await prompt.getByRole("button", { name: "Raw" }).click();
+    await expect(prompt.getByText(/"prompt": "## Task\\n\\nDraft/)).toBeVisible();
+    await expect(prompt.getByRole("heading", { name: "Constraints" })).toHaveCount(0);
+
+    await returned.getByRole("button", { name: "Raw" }).click();
+    await expect(returned.getByText(/"status": "completed"/)).toBeVisible();
+    await expect(returned.getByRole("heading", { name: "Plan" })).toHaveCount(0);
   });
 
   test("a Tools-page link lands on its call open, with the body already there", async ({ page }) => {

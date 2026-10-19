@@ -66,7 +66,6 @@ export function TranscriptToolCallRow({
       <Disclosure
         {...disclosure}
         labels={{ input: "Prompt", result: "Returned" }}
-        showTruncation={false}
         summary={
           <summary>
             <ChevronRight aria-hidden className="chev" />
