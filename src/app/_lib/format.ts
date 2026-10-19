@@ -185,6 +185,19 @@ export function formatDateRange(earliest: string, latest: string): string {
 }
 
 /**
+ * A short span in milliseconds, as an API request's timings read: "850ms",
+ * "4.4s", or "1m 05s" from a minute on.
+ *
+ * @example formatLatency(whatWasSent.timings.durationMs) // "4.4s"
+ */
+export function formatLatency(ms: number): string {
+  if (ms < 1_000) return `${Math.round(ms)}ms`;
+  if (ms < 60_000) return `${(ms / 1_000).toFixed(1)}s`;
+  const seconds = Math.floor(ms / 1_000);
+  return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s`;
+}
+
+/**
  * Elapsed wall-clock span between two ISO timestamps, for the detail panel's
  * summary line. Returns "" if either endpoint is missing/unparseable; otherwise
  * the coarsest readable form, clamping a negative span to zero:

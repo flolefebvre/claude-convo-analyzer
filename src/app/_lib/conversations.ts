@@ -25,6 +25,7 @@ import {
 } from "@/core/read";
 import { searchConversations } from "@/core/search";
 import { getToolCallSamples, getToolStats } from "@/core/tool-stats";
+import { getWhatWasSent } from "@/core/what-was-sent";
 
 /**
  * The home directory of the user running the app — the folder tree's `~` root.
@@ -140,6 +141,19 @@ export const loadTranscript = cache(
 export const loadToolCallBody = cache(async (id: number) => {
   await connection();
   return getToolCallBody(id);
+});
+
+/**
+ * Read what the API request of `api_request` row `apiRequestId` sent, from
+ * the default database and Recordings root. Same request-time gating as
+ * {@link loadConversations}; `null` for an unknown row or one its Recording no
+ * longer holds (the Conversation was re-parsed since the page rendered).
+ *
+ * @example const whatWasSent = await loadWhatWasSent(message.apiRequestId);
+ */
+export const loadWhatWasSent = cache(async (apiRequestId: number) => {
+  await connection();
+  return getWhatWasSent(apiRequestId);
 });
 
 /**

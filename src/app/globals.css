@@ -1130,6 +1130,99 @@ html:has(.tview) {
   font-size: var(--text-xs);
   color: var(--muted-foreground);
 }
+/* "What was sent" on a recorded Turn: a `details.call` whose body stops at a
+   fixed height and scrolls inside itself, like an io-block, so one open panel
+   never buries the transcript. Its blocks are plain text, never markdown. */
+.tview .sent-body {
+  max-height: 36rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.tview .sent-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tview .sent-line,
+.tview .sent-breakpoint {
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
+}
+.tview .sent-line code {
+  font-family: var(--font-mono);
+  color: var(--foreground);
+}
+.tview .sent-breakpoint {
+  margin-top: 2px;
+  font-style: italic;
+}
+.tview .sent-message {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.tview .sent-role {
+  @apply micro-label;
+  color: var(--muted-foreground);
+}
+.tview .sent-pre {
+  margin: 0;
+  background: var(--muted);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+}
+.tview .sent-diff {
+  padding: 4px 0;
+}
+.tview .diff-hunk + .diff-hunk {
+  display: block;
+  border-top: 1px dashed var(--border);
+}
+.tview .diff-line {
+  display: block;
+  padding: 0 10px;
+}
+.tview .diff-line.is-added {
+  background: var(--agent-muted);
+  color: var(--agent-foreground);
+}
+.tview .diff-line.is-removed {
+  background: var(--destructive-muted);
+  color: var(--destructive-foreground);
+}
+.tview .diff-line.is-unchanged,
+.tview .diff-line.is-volatile {
+  color: var(--muted-foreground);
+}
+.tview .diff-line.is-volatile {
+  background: none;
+}
+.tview details.sent-full > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+.tview details.sent-full > summary::-webkit-details-marker {
+  display: none;
+}
+.tview details.sent-full > summary:hover {
+  color: var(--foreground);
+}
+.tview details.sent-full[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
 /* The one line a body shows when it could not be loaded. */
 .tview .call-body-note {
   font-size: var(--text-xs);

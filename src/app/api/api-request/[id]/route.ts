@@ -1,0 +1,32 @@
+// `GET /api/api-request/<id>` — what a recorded Turn's API request sent, fetched
+// by the transcript's "What was sent" leaf the first time the reader opens it.
+// The page ships only the `api_request` row id; this is the read no server
+// component can do, because the reader has not asked for it yet
+// (`docs/codebase/app-router.md`). The row id is stable until the next re-parse
+// of that Conversation — after one, or once the Recording no longer holds the
+// API request, a stale page's open gets a 404.
+
+import { routePipe } from "@flefebvre/next-pipe/pipes";
+import { json } from "@flefebvre/next-pipe/server";
+import z from "zod";
+
+import { loadWhatWasSent } from "@/app/_lib/conversations";
+
+/** An `api_request` row id, as the `[id]` segment spells it. */
+const idSchema = z.coerce.number().int().positive().max(2_147_483_647); // Prisma reads an `Int` id as 32-bit
+
+/**
+ * What the API request with row id `[id]` sent (parameters, timings, new
+ * messages, the system-prompt and tools diffs, the full request): 400 for a
+ * malformed id, 404 for an unknown one or one its Recording no longer holds.
+ *
+ * @example const res = await callRoute(routes.api["api-request"](String(message.apiRequestId)).GET());
+ */
+export const GET = routePipe<RouteContext<"/api/api-request/[id]">>().handle(async ({ ctx }) => {
+  const id = idSchema.safeParse((await ctx.params).id);
+  if (!id.success) return json(400, { error: "invalid api-request id" });
+
+  const whatWasSent = await loadWhatWasSent(id.data);
+  if (whatWasSent === null) return json(404, { error: "unknown api request" });
+  return json(200, whatWasSent);
+});

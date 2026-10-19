@@ -11,21 +11,12 @@
 
 import { callRoute } from "@flefebvre/next-pipe/client";
 import { Scissors } from "lucide-react";
-import { useState } from "react";
 
 import { prettyToolText, type ToolCallBody, truncationNote } from "@/app/_lib/transcript";
 import { Skeleton } from "@/components/ui/skeleton";
 import { routes } from "@/generated/routes";
 
-/** Where a call's body stands: not asked for, on its way, shown, or not loadable. */
-type BodyState =
-  | { status: "idle" }
-  | { status: "loading" }
-  | { status: "loaded"; body: ToolCallBody }
-  /** The row is gone: the transcript was re-parsed since the page rendered. */
-  | { status: "stale" }
-  /** Any other failure; the next open tries again. */
-  | { status: "failed" };
+import { type ReadOnFirstOpenState, useReadOnFirstOpen } from "./use-read-on-first-open";
 
 /**
  * A tool call's `<details>`: the server-rendered `summary`, then the body,
@@ -59,28 +50,11 @@ export function ToolCallDisclosure({
   /** Whether a truncated result says so under its block. */
   showTruncation?: boolean;
 }) {
-  const [state, setState] = useState<BodyState>(body ? { status: "loaded", body } : { status: "idle" });
-
-  async function load() {
-    setState({ status: "loading" });
-    try {
-      const res = await callRoute(routes.api["tool-call"](String(id)).GET());
-      if (res.status === 200) setState({ status: "loaded", body: res.json });
-      else setState({ status: res.status === 404 ? "stale" : "failed" });
-    } catch {
-      setState({ status: "failed" });
-    }
-  }
-
-  function onToggle(event: React.ToggleEvent<HTMLDetailsElement>) {
-    if (event.currentTarget.open && (state.status === "idle" || state.status === "failed")) void load();
-  }
-
-  // A call opened before hydration fired its one `toggle` with no listener
-  // attached: load it now. The anchored call starts `loaded` and never does.
-  function detailsRef(details: HTMLDetailsElement | null) {
-    if (details?.open && state.status === "idle") void load();
-  }
+  // The anchored call starts `loaded` and never fetches.
+  const { state, onToggle, detailsRef } = useReadOnFirstOpen<ToolCallBody>(
+    () => callRoute(routes.api["tool-call"](String(id)).GET()),
+    body,
+  );
 
   return (
     <details
@@ -105,7 +79,7 @@ function Body({
   labels,
   showTruncation,
 }: {
-  state: BodyState;
+  state: ReadOnFirstOpenState<ToolCallBody>;
   labels: { input: string; result: string };
   showTruncation: boolean;
 }) {
@@ -124,7 +98,7 @@ function Body({
     case "failed":
       return <p className="call-body-note">Couldn&rsquo;t load this call — try again.</p>;
     case "loaded": {
-      const { body } = state;
+      const body = state.value;
       const note = showTruncation ? truncationNote(body) : null;
       return (
         <>

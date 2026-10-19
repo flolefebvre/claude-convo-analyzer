@@ -7,6 +7,7 @@ import { InterAgentMessageRow } from "./transcript-inter-agent-message";
 import { CostFigure, ErrorBadge, type MessageAnchor, MidTurnBadge, RowHead, labelledBy } from "./transcript-parts";
 import { TaskNotificationRow } from "./transcript-task-notification";
 import { TranscriptToolCallRow } from "./transcript-tool-call";
+import { WhatWasSentDisclosure } from "./transcript-what-was-sent";
 import { TurnMarkdown } from "./turn-markdown";
 
 /**
@@ -159,7 +160,8 @@ function PromptRow({
 
 /** An assistant turn: markdown body (or the API error when the turn failed),
  *  a quiet header (model only when it differs from the agent's, effort only on
- *  a change, the cost as plain figures), and its nested tool calls. */
+ *  a change, the cost as plain figures), its nested tool calls, and, when it
+ *  was recorded, what its API request sent. */
 function AssistantTurn({
   message,
   time,
@@ -230,6 +232,12 @@ function AssistantTurn({
               listReturn={listReturn}
             />
           ))}
+        </div>
+      )}
+
+      {message.apiRequestId !== null && (
+        <div className="calls">
+          <WhatWasSentDisclosure apiRequestId={message.apiRequestId} />
         </div>
       )}
     </article>

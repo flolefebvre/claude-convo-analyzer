@@ -280,6 +280,46 @@ export function readRecordingWithoutBodies(filePath: string): ApiRequestWithoutB
 }
 
 /**
+ * The API requests of the Recording file at `filePath` that `isSelected`
+ * picks, in full, in append order: the file is decoded whole, once, and only
+ * the picked bodies are restored from its pieces, so memory is the decoded
+ * file plus those bodies — never every body. Reads a last member cut short
+ * like {@link readRecording}.
+ *
+ * @example
+ * const [apiRequest] = readSelectedApiRequests(recording.sourcePath, (r) => r.response.requestId === "req_1");
+ */
+export function readSelectedApiRequests(
+  filePath: string,
+  isSelected: (apiRequest: ApiRequestWithoutBody) => boolean,
+): RecordedApiRequest[] {
+  const contentByHash = new Map<string, unknown>();
+  const apiRequests: RecordedApiRequest[] = [];
+  for (const line of linesOfRecordingFile(filePath)) {
+    if (line.type === "piece") {
+      contentByHash.set(line.hash, line.content);
+      continue;
+    }
+    const { body, ...apiRequestWithoutBody } = withoutType(line);
+    if (isSelected(apiRequestWithoutBody)) {
+      apiRequests.push({ ...apiRequestWithoutBody, body: restoredBody(body, contentByHash) });
+    }
+  }
+  return apiRequests;
+}
+
+/**
+ * The path of the Recording file the API requests of `sessionId` are appended
+ * to under `recordingsRoot`; null for a session id no file can be named after.
+ *
+ * @example
+ * const filePath = recordingFilePath(defaultRecordingsRoot(), conversation.sessionId);
+ */
+export function recordingFilePath(recordingsRoot: string, sessionId: string): string | null {
+  return SAFE_SESSION_ID.test(sessionId) ? path.join(recordingsRoot, recordingFileName(sessionId)) : null;
+}
+
+/**
  * Every API request in the Recordings under `recordingsRoot`, in full, file by
  * file (sorted by name) and in append order within a file. Holds every body of
  * every file at once: for tests and scripts, never for ingestion.
@@ -376,8 +416,14 @@ function hashOf(content: unknown): string {
   return createHash("sha256").update(canonicalJson(content)).digest("hex");
 }
 
-/** JSON with every object's keys sorted, so equal values serialize alike. */
-function canonicalJson(value: unknown): string {
+/**
+ * JSON with every object's keys sorted, so equal values serialize alike: the
+ * form a piece is hashed in (docs/recording-format.md, "Hashing rule").
+ *
+ * @example
+ * canonicalJson({ b: 1, a: [2] }); // '{"a":[2],"b":1}'
+ */
+export function canonicalJson(value: unknown): string {
   return JSON.stringify(value, (_key, nested: unknown) =>
     isPlainObject(nested)
       ? Object.fromEntries(

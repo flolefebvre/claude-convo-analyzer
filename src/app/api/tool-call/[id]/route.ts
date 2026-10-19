@@ -12,7 +12,7 @@ import z from "zod";
 import { loadToolCallBody } from "@/app/_lib/conversations";
 
 /** A `tool_call` row id, as the `[id]` segment spells it. */
-const idSchema = z.coerce.number().int().positive();
+const idSchema = z.coerce.number().int().positive().max(2_147_483_647); // Prisma reads an `Int` id as 32-bit
 
 /**
  * The body (input, stored result, truncation and error flags) of the Tool call
