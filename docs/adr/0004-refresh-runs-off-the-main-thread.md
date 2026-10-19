@@ -40,7 +40,14 @@ out-of-memory crash lands), is such a failure. There is no cancel and no start
 at boot, except when Live was left on: it then starts watching and runs a
 catch-up Refresh. A change Live sees while a Refresh runs does not join it, since
 that run may already have read the file; it queues exactly one more Refresh
-after it. The runner keeps the current
+after it. Live's rules live in `src/core/live.ts`, over the runner. The user's
+choice lives in a settings file next to the Recordings
+(`~/.claude-convo-analyzer/settings.json`, `src/core/settings.ts`), not in the
+database, and only the user's switch writes it. The boot start is
+`register()` in `src/instrumentation.ts`, which Next runs once per server and
+never during `next build`; it goes through the published runner, so its runs
+reach every page. Each start tells the runner its origin, the user or Live, and
+the page shows no success bubble for Live's. The runner keeps the current
 state: idle, running with the latest `{ done, total }`, or the last summary or
 error. It takes the job as a dependency, so its logic is tested in-process. The
 process-wide instance lives in a `globalThis[Symbol.for(…)]` slot, created on

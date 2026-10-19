@@ -39,13 +39,13 @@ import { ThemeToggle } from "@/app/_components/theme-toggle";
 export function AppBar() {
   return (
     <header className="border-b bg-background">
-      <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-x-4 gap-y-2 px-4 pt-2 sm:px-6 lg:flex-nowrap lg:gap-x-6 lg:pt-0">
+      <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-x-2 gap-y-2 px-4 pt-2 sm:gap-x-4 sm:px-6 lg:flex-nowrap lg:gap-x-6 lg:pt-0">
         <Brand className="order-1 mr-auto lg:mr-0" />
         <Suspense fallback={<SectionTabs className={TABS_CLASS} />}>
           <SectionNav className={TABS_CLASS} />
         </Suspense>
         <SearchBox className="order-4 w-full md:order-2 md:w-60 lg:order-3 lg:ml-auto" />
-        <div className="order-2 flex items-center gap-2 md:order-3 lg:order-4">
+        <div className="order-2 flex items-center gap-1.5 sm:gap-2 md:order-3 lg:order-4">
           <ThemeToggle />
           <Suspense fallback={<InertLiveToggle />}>
             <CurrentLiveToggle />

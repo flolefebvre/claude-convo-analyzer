@@ -112,13 +112,20 @@ A Refresh runs in the background and every open page shows its progress, so you
 can keep browsing while it runs. When an update changes how logs are parsed,
 the app says so and asks for a Refresh.
 
+To skip the clicking, switch on **Live**, the toggle next to Refresh (off by
+default). While it is on, the app watches your logs and Recordings and refreshes
+a couple of seconds after they change, so open pages follow your conversations
+as they happen. A pulsing dot shows while it is on. The choice is saved in
+`~/.claude-convo-analyzer/settings.json`, so a server restarted with Live on
+starts watching again and catches up on what it missed.
+
 For live development instead of a production build:
 
 ```bash
 pnpm dev
 ```
 
-Three environment variables move what the app reads and writes; a relative
+Four environment variables move what the app reads and writes; a relative
 value resolves against the process working directory (the repo root under
 `pnpm`):
 
@@ -128,6 +135,8 @@ value resolves against the process working directory (the repo root under
   `~/.claude/projects`).
 - `CCA_RECORDINGS_ROOT` — the Recordings that **Refresh** also reads and the
   Recorder writes (default `~/.claude-convo-analyzer/recordings`).
+- `CCA_SETTINGS_PATH` — the settings file that keeps whether **Live** is on
+  (default `~/.claude-convo-analyzer/settings.json`).
 
 ```bash
 CCA_DB_PATH=data/demo.db CCA_LOGS_ROOT=/tmp/demo-logs pnpm dev
@@ -243,8 +252,9 @@ pnpm dev:seed
 
 It prints `Seeded app: http://localhost:<port>` — the first free port from
 3001, or `PORT` when set — so several checkouts can each run their own. Refresh
-in that app re-reads only the seeded logs, and `CCA_RECORDINGS_ROOT` points at
-the seeded Recordings.
+in that app re-reads only the seeded logs, `CCA_RECORDINGS_ROOT` points at
+the seeded Recordings, and `CCA_SETTINGS_PATH` at `data/seed/settings.json`, so
+Live starts off and your own settings are never touched.
 
 The seeded activity ends now. `pnpm seed` also takes `--now=<ISO>`, and the same
 `--now` always yields the same data, which is what screenshots want; point the
