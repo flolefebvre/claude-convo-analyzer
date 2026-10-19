@@ -12,9 +12,10 @@ In order of preference — reach for the next one only when the previous doesn't
    `already running`, and the run's progress and outcome reach every open page over SSE (below).
 3. **API routes** (route handlers) for what runs alongside the main flow — typeahead, polling, client-side
    reads after the initial render. Add one only for a read no server component can do: one the reader asks
-   for after the page has rendered. The one such route, `GET /api/tool-call/[id]`, serves a Tool call's body
-   the first time the reader opens it: the page ships only the summary, because a server component
-   cannot render a body nobody has opened yet.
+   for after the page has rendered. There are two such routes, both read the first time the reader opens a
+   disclosure: `GET /api/tool-call/[id]` serves a Tool call's body, and `GET /api/api-request/[id]` what a
+   recorded Turn's API request sent. The page ships only the summary and the row id, because a server
+   component cannot render what nobody has opened yet.
 4. **Server-Sent Events** for what the server pushes to every open page while it happens — the Refresh's
    progress and outcome on the `refresh` Channel. Channels and their event schemas live in the next-sse
    Registry, `src/app/_lib/sse.ts`; server code publishes through its Handles, and a component subscribes

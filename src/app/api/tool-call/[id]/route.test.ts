@@ -1,27 +1,13 @@
 // The tool-call body route, driven through its pipe: the exported `GET` is
-// called as Next calls it, against the default database — stubbed ONCE for the
-// file to a temp copy of the fixture, since the process-wide client binds to
-// `CCA_DB_PATH` on first use (see `default-db-singleton.test.ts`).
+// called as Next calls it, against the default database
+// (`refreshedDefaultDatabase`).
 
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { getPrismaClient } from "@/core/db";
 import { getTranscript } from "@/core/read";
-import { refresh } from "@/core/refresh";
 
+import { coreFixtureLogsRoot, refreshedDefaultDatabase } from "../../__tests__/helpers/default-database";
 import { GET } from "./route";
-
-// Outside Next there is no request scope for `connection()` to find: stand in
-// for the one Next opens around every route handler call.
-vi.mock("next/server", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("next/server")>()),
-  connection: async () => {},
-}));
-
-const FIXTURES_ROOT = path.join(process.cwd(), "src", "core", "__tests__", "fixtures", "tool-body-logs");
 
 /** Call the route for the raw `[id]` segment `id`. */
 async function getBody(id: string): Promise<{ status: number; json: unknown }> {
@@ -30,19 +16,7 @@ async function getBody(id: string): Promise<{ status: number; json: unknown }> {
 }
 
 describe("GET /api/tool-call/[id]", () => {
-  let tmpDir: string;
-
-  beforeAll(async () => {
-    tmpDir = mkdtempSync(path.join(tmpdir(), "cca-tool-call-route-"));
-    vi.stubEnv("CCA_DB_PATH", path.join(tmpDir, "analyzer.db"));
-    await refresh({ logsRoot: FIXTURES_ROOT });
-  });
-
-  afterAll(async () => {
-    await getPrismaClient().$disconnect();
-    vi.unstubAllEnvs();
-    rmSync(tmpDir, { recursive: true, force: true });
-  });
+  refreshedDefaultDatabase({ prefix: "cca-tool-call-route-", logsRoot: coreFixtureLogsRoot("tool-body-logs") });
 
   it("answers a known id with the Tool call's body", async () => {
     const view = await getTranscript("sess-toolbody");
