@@ -4,6 +4,9 @@
 import net, { type AddressInfo } from "node:net";
 import { readRecorderStatus, requestRecorderStop, type RecorderStatus } from "@/core/recorder-control";
 
+/** How long a wait on a port's status lasts before giving up. */
+const STATUS_WAIT_TIMEOUT_MS = 4000;
+
 /** A port on 127.0.0.1 nothing listens on right now. */
 export async function freePort(): Promise<number> {
   const server = net.createServer();
@@ -13,16 +16,22 @@ export async function freePort(): Promise<number> {
   return port;
 }
 
-/** Resolve once the status on `port` is `status`, polling every 50 ms. */
-export async function waitForRecorderStatus(port: number, status: RecorderStatus["status"]): Promise<void> {
-  while ((await readRecorderStatus(port)).status !== status) {
+/** Whether the status on `port` became `status` within 4 s, polling every 50 ms. */
+export async function waitForRecorderStatus(port: number, status: RecorderStatus["status"]): Promise<boolean> {
+  const deadline = Date.now() + STATUS_WAIT_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    if ((await readRecorderStatus(port)).status === status) return true;
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
+  return false;
 }
 
-/** Stop the Recorder a test started on `port` in its own process, and wait until the port is free. */
+/**
+ * Stop the Recorder a test started on `port` in its own process, if it came
+ * up, and wait until the port is free.
+ */
 export async function stopDetachedRecorder(port: number): Promise<void> {
-  await waitForRecorderStatus(port, "running");
+  if (!(await waitForRecorderStatus(port, "running"))) return;
   await requestRecorderStop(port);
   await waitForRecorderStatus(port, "off");
 }

@@ -107,6 +107,7 @@ describe("starting a Recorder detached", () => {
 
     const outcome = await startRecorderDetached({ port, recordingsRoot: harness.recordingsRoot, repoRoot: REPO_ROOT });
 
+    expect(outcome.outcome === "failed" ? outcome.message : outcome.outcome).toBe("started");
     expect(outcome).toMatchObject({ outcome: "started", health: { port, recordingsRoot: harness.recordingsRoot } });
     expect(await readRecorderStatus(port)).toMatchObject({ status: "running", port });
     expect(readFileSync(path.join(harness.tmpDir, "recorder.log"), "utf8")).toContain(`Recorder on 127.0.0.1:${port}`);

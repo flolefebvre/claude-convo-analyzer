@@ -4,7 +4,7 @@
 // surfaces never rearranges the chrome. Rendered once, by the root layout.
 //
 // Responsive by reordering one flex row rather than rendering twice:
-//   phone    brand ···· theme recorder live refresh   (the last three shrink to their icons)
+//   phone    mark ···· theme recorder live refresh   (the brand and the last three shrink to their icons)
 //            search ─────────────────────────
 //            tabs
 //   tablet   brand ···· search theme recorder live refresh
@@ -73,9 +73,7 @@ function Brand({ className }: { className?: string }) {
   return (
     <Link href="/" className={`flex h-8 shrink-0 items-center gap-2 rounded-md ${className ?? ""}`}>
       <BrandMark />
-      <span className="text-sm font-semibold tracking-tight">
-        <span className="max-sm:hidden">Claude </span>Conversation Analyzer
-      </span>
+      <span className="text-sm font-semibold tracking-tight max-sm:sr-only">Claude Conversation Analyzer</span>
     </Link>
   );
 }

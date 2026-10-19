@@ -167,7 +167,7 @@ describe("pnpm recorder", () => {
     expect(exitCode).toBe(0);
     expect(stdout).toMatch(/^Recorder detached as pid \d+, logging to .*recorder\.log$/m);
     expect(stdout).toContain(`ANTHROPIC_BASE_URL=http://127.0.0.1:${port}\n`);
-    await waitForRecorderStatus(port, "running");
+    expect(await waitForRecorderStatus(port, "running")).toBe(true);
     expect(await readRecorderStatus(port)).toMatchObject({ status: "running", recordingsRoot: detachedRecordingsRoot });
     expect(readFileSync(recorderLogPath(detachedRecordingsRoot), "utf8")).toContain(`Recorder on 127.0.0.1:${port}`);
   });
