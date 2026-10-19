@@ -348,7 +348,8 @@ type ContentBlock =
   | { type: "tool_result"; tool_use_id?: string; is_error?: boolean; content?: unknown }
   | { type: string; [k: string]: unknown };
 
-type RawUsage = {
+/** A `usage` object as the API reports it, every bucket optional. */
+export type RawUsage = {
   input_tokens?: number;
   output_tokens?: number;
   cache_creation_input_tokens?: number;
@@ -457,8 +458,14 @@ function sumUsageTokens(usage: RawUsage): number {
   return s.inputTokens + s.outputTokens + s.cacheCreation5mTokens + s.cacheCreation1hTokens + s.cacheReadTokens;
 }
 
-/** Parse a `usage` object into the per-tier split (finding #3 cache math). */
-function parseUsage(usage: RawUsage | undefined): {
+/**
+ * Parse a `usage` object — a log Turn's, or an API response's — into the
+ * per-tier split the `message` and `api_request` columns store (finding #3
+ * cache math); every absent bucket is 0.
+ *
+ * @example const { inputTokens, cacheCreation1hTokens } = parseUsage(responseBody.usage);
+ */
+export function parseUsage(usage: RawUsage | undefined): {
   inputTokens: number;
   outputTokens: number;
   cacheCreation5mTokens: number;

@@ -5,25 +5,27 @@
 // makes (`requestId`, then `message.id`) holds by construction. Nothing reads
 // the clock or draws at random: the same Conversations write the same bytes.
 //
-// What tells each API request apart, by its request alone (path, `max_tokens`,
-// the system prompt's opening line, the model):
+// What tells each API request apart, by the signals `classifyApiRequest`
+// (src/core/api-request-kind.ts) reads — the real openings Claude Code sends:
 //
 //   Turn             POST /v1/messages, `max_tokens: 32000`, three system
 //                    blocks opening "You are Claude Code, Anthropic's official
 //                    CLI for Claude.", the Agent's own model, the tool
 //                    definitions, and the history as `messages`
-//   session naming   POST /v1/messages, one system block opening "Name this
-//                    coding session", a small model (Haiku), `max_tokens: 512`
+//   session naming   POST /v1/messages, one system block opening "You are
+//                    naming a coding session", a small model (Haiku)
 //   quota probe      POST /v1/messages, `max_tokens: 1`, no system prompt, one
-//                    tiny user message ("quota"), a small model
-//   safety monitor   POST /v1/messages, one system block opening "Decide
-//                    whether the shell command below is safe", a small model,
-//                    `max_tokens: 256`
-//   suggestion       POST /v1/messages, one system block opening "Suggest the
-//                    prompt the user is most likely to send next", a small
-//                    model, `max_tokens: 128`
+//                    user message ("quota"), a small model, answered 429
+//   safety monitor   POST /v1/messages, one system block opening "You are a
+//                    security monitor for autonomous AI coding agents.", a
+//                    small model
+//   suggestion       POST /v1/messages, the Main thread's own Turn request,
+//                    its history ending on a user text opening
+//                    "[SUGGESTION MODE: …]"
 //   token count      POST /v1/messages/count_tokens: no `max_tokens`, no
 //                    response message, only `{ input_tokens }`
+//   other            POST /v1/messages, one system block of its own, labelled
+//                    by its first line ({@link OTHER_SIDE_REQUEST_LABEL})
 //
 // Side requests carry no `x-claude-code-agent-id`, and a `request-id` and
 // `message.id` no log record has. Streaming is NOT a distinguishing feature:
@@ -85,11 +87,20 @@ const SIDE_REQUEST_MODEL = "claude-haiku-4-5-20251001";
 
 /** Each Side request's one system block, its opening line telling the kind apart. */
 const SESSION_NAMING_SYSTEM =
-  "Name this coding session.\nReply with a JSON object holding a short, sentence-case title.";
+  "You are naming a coding session so the user can pick it out of a long list of sessions.\n" +
+  'Return JSON with a single "title" field.';
 const SAFETY_MONITOR_SYSTEM =
-  "Decide whether the shell command below is safe to run without asking the user.\nReply with safe or unsafe.";
-const SUGGESTION_SYSTEM =
-  "Suggest the prompt the user is most likely to send next.\nReply with the prompt alone, in a few words.";
+  "You are a security monitor for autonomous AI coding agents.\n\n" +
+  "Decide whether the shell command below is safe to run without asking the user. Reply with safe or unsafe.";
+
+/** The first line of the `other` Side request's system prompt: its label. */
+export const OTHER_SIDE_REQUEST_LABEL = "Write a short label for the tool calls below.";
+const OTHER_SIDE_REQUEST_SYSTEM = `${OTHER_SIDE_REQUEST_LABEL}\nA few words, no punctuation.`;
+
+/** The user text a suggestion appends to the Main thread's own request. */
+const SUGGESTION_MODE_TEXT =
+  "[SUGGESTION MODE: Suggest what the user might naturally type next into Claude Code.]\n\n" +
+  "Reply with the prompt alone, in a few words.";
 
 /** What the suggestion Side request answers. */
 const SUGGESTED_PROMPT = "Open a pull request for the audit trail.";
@@ -117,6 +128,7 @@ export const SIDE_REQUEST_IDS = {
   safetyMonitor: "req-side-safety-monitor",
   suggestion: "req-side-suggestion",
   tokenCount: "req-side-token-count",
+  other: "req-side-other",
 } as const;
 
 /** The `request-id` of the overloaded (529) attempt Claude Code retried before one of the recorded Conversation's Turns. */
@@ -332,7 +344,7 @@ function conversationApiRequests(conversation: Conversation): RecordedApiRequest
 /** A Side request of the main agent, answered with plain JSON, arriving at `arrivedMs`. */
 function sideApiRequest(
   agent: RecordedAgent,
-  opts: { path: string; body: object; requestId: string; responseBody: object; arrivedMs: number },
+  opts: { path: string; body: object; requestId: string; responseBody: object; arrivedMs: number; status?: number },
 ): RecordedApiRequest {
   const timings = {
     arrivedAt: new Date(opts.arrivedMs).toISOString(),
@@ -348,7 +360,7 @@ function sideApiRequest(
     headers: requestHeaders(agent),
     body: opts.body,
     response: {
-      status: 200,
+      status: opts.status ?? 200,
       requestId: opts.requestId,
       headers: {
         "content-type": "application/json",
@@ -380,8 +392,8 @@ function sideRequestMessage(
   };
 }
 
+/** The quota probe, answered 429 as it usually is: no usage, so no cost. */
 function quotaProbeApiRequest(agent: RecordedAgent, arrivedMs: number): RecordedApiRequest {
-  const requestId = SIDE_REQUEST_IDS.quotaProbe;
   return sideApiRequest(agent, {
     path: "/v1/messages",
     body: {
@@ -390,8 +402,9 @@ function quotaProbeApiRequest(agent: RecordedAgent, arrivedMs: number): Recorded
       metadata: metadataOf(agent),
       messages: [{ role: "user", content: "quota" }],
     },
-    requestId,
-    responseBody: sideRequestMessage(requestId, "#", { input_tokens: 8, output_tokens: 1 }),
+    requestId: SIDE_REQUEST_IDS.quotaProbe,
+    status: 429,
+    responseBody: { type: "error", error: { type: "rate_limit_error", message: "Rate limited" } },
     arrivedMs,
   });
 }
@@ -433,19 +446,46 @@ function safetyMonitorApiRequest(agent: RecordedAgent, command: string, arrivedM
   });
 }
 
-function suggestionApiRequest(agent: RecordedAgent, lastReply: unknown, arrivedMs: number): RecordedApiRequest {
+/** The suggestion after `turn`: the Main thread's own request, its history ending on the suggestion-mode text. */
+function suggestionApiRequest(agent: RecordedAgent, turn: AgentTurn, arrivedMs: number): RecordedApiRequest {
   const requestId = SIDE_REQUEST_IDS.suggestion;
   return sideApiRequest(agent, {
     path: "/v1/messages",
     body: {
-      model: SIDE_REQUEST_MODEL,
-      max_tokens: 128,
+      model: turn.record.message.model,
+      max_tokens: 32_000,
       metadata: metadataOf(agent),
-      system: [{ type: "text", text: SUGGESTION_SYSTEM }],
-      messages: [{ role: "user", content: lastReply }],
+      system: systemBlocks(agent, turn),
+      tools: toolDefinitions(agent, turn),
+      messages: [
+        ...turn.history,
+        { role: "assistant", content: turn.record.message.content },
+        { role: "user", content: [{ type: "text", text: SUGGESTION_MODE_TEXT }] },
+      ],
     },
     requestId,
-    responseBody: sideRequestMessage(requestId, SUGGESTED_PROMPT, { input_tokens: 311, output_tokens: 9 }),
+    responseBody: {
+      ...sideRequestMessage(requestId, SUGGESTED_PROMPT, { input_tokens: 311, output_tokens: 9 }),
+      model: turn.record.message.model,
+    },
+    arrivedMs,
+  });
+}
+
+/** A Side request no other kind matches, labelled by its system prompt's first line. */
+function otherSideApiRequest(agent: RecordedAgent, toolNames: string[], arrivedMs: number): RecordedApiRequest {
+  const requestId = SIDE_REQUEST_IDS.other;
+  return sideApiRequest(agent, {
+    path: "/v1/messages",
+    body: {
+      model: SIDE_REQUEST_MODEL,
+      max_tokens: 64,
+      metadata: metadataOf(agent),
+      system: [{ type: "text", text: OTHER_SIDE_REQUEST_SYSTEM }],
+      messages: [{ role: "user", content: `Tools completed: ${toolNames.join(", ")}` }],
+    },
+    requestId,
+    responseBody: sideRequestMessage(requestId, "Audited the exports", { input_tokens: 140, output_tokens: 6 }),
     arrivedMs,
   });
 }
@@ -469,8 +509,8 @@ function tokenCountApiRequest(agent: RecordedAgent, turn: AgentTurn, arrivedMs: 
 /**
  * One Side request of each kind, on `conversation`'s session: the quota probe
  * and the session naming right after its first prompt, a token count after
- * its third Turn, the safety monitor before its `Bash` call runs, and a
- * suggestion after its last Turn.
+ * its third Turn, the safety monitor before its `Bash` call runs, the other
+ * one labelling that call's Turn, and a suggestion after its last Turn.
  */
 function sideApiRequests(conversation: Conversation): RecordedApiRequest[] {
   const agent = mainAgentOf(conversation);
@@ -489,7 +529,12 @@ function sideApiRequests(conversation: Conversation): RecordedApiRequest[] {
     sessionNamingApiRequest(agent, firstPrompt.message.content, firstPromptMs + 1 * SECOND),
     tokenCountApiRequest(agent, turns[2], timestampMs(turns[2]) + 1 * SECOND),
     safetyMonitorApiRequest(agent, String(bashCall.block.input?.command), timestampMs(bashCall.turn) + 0.6 * SECOND),
-    suggestionApiRequest(agent, lastTurn.record.message.content, timestampMs(lastTurn) + 1 * SECOND),
+    otherSideApiRequest(
+      agent,
+      bashCall.turn.record.message.content.flatMap((block) => (block.name === undefined ? [] : [block.name])),
+      timestampMs(bashCall.turn) + 0.8 * SECOND,
+    ),
+    suggestionApiRequest(agent, lastTurn, timestampMs(lastTurn) + 1 * SECOND),
   ];
 }
 

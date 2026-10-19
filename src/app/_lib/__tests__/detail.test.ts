@@ -40,6 +40,7 @@ function detail(partial: Partial<ConversationDetail> = {}): ConversationDetail {
     perModel: [],
     subAgents: [],
     perSkill: [],
+    sideRequests: { count: 0, costUsd: 0, unpriced: false, byKind: [] },
     ...partial,
   };
 }
@@ -110,6 +111,28 @@ describe("detailSections", () => {
     );
     expect(sections.perSkill.rows.map((r) => r.skill)).toEqual(["orchestrate", "commit"]);
     expect(sections.perSkill.totalCost).toBeCloseTo(8);
+  });
+
+  it("labels the Side requests by kind, ranked by cost, and totals them", () => {
+    const sections = detailSections(
+      detail({
+        sideRequests: {
+          count: 3,
+          costUsd: 0.5,
+          unpriced: false,
+          byKind: [
+            { kind: "session-naming", count: 1, costUsd: 0.1, unpriced: false },
+            { kind: "suggestion", count: 2, costUsd: 0.4, unpriced: false },
+          ],
+        },
+      }),
+    );
+    expect(sections.sideRequests.rows.map((r) => [r.label, r.count])).toEqual([
+      ["Suggestion", 2],
+      ["Session naming", 1],
+    ]);
+    expect(sections.sideRequests.totalCost).toBeCloseTo(0.5);
+    expect(detailSections(detail()).sideRequests.isEmpty).toBe(true);
   });
 
   it("groups sub-agents by label, summing tokens/cost and counting members", () => {

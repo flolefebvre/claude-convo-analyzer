@@ -82,6 +82,23 @@ test.describe("Recorded marker", () => {
     await expect(row(page, TITLE)).toBeVisible();
     await expect(row(page, TITLE).getByTitle(/recorded/i)).toHaveCount(0);
   });
+
+  test("breaks the recorded Conversation's Side requests down by kind in its detail panel", async ({ page }) => {
+    await page.goto("/");
+    await row(page, RECORDED_TITLE)
+      .getByRole("link", { name: /^Expand conversation details/ })
+      .click();
+    await page.waitForURL((url) => url.searchParams.has("expanded"));
+
+    const heading = page.getByRole("heading", { level: 3, name: "Side requests" });
+    await expect(heading.getByTitle(/^Requests Claude Code makes on its own/)).toBeVisible();
+    // The section: the heading's own wrapper.
+    const section = heading.locator("xpath=..");
+    await expect(section.getByText(/^6 Side requests · /)).toBeVisible();
+    for (const kind of ["Session naming", "Quota probe", "Safety monitor", "Suggestion", "Token count", "Other"]) {
+      await expect(section.getByText(kind, { exact: true })).toBeVisible();
+    }
+  });
 });
 
 test.describe("Folder tree", () => {

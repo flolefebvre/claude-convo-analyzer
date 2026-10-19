@@ -114,7 +114,8 @@ const API_REQUEST_COLUMN_BY_FIELD = {
   conversationId: "conversation_id",
   messageId: "message_id",
   agentId: "agent_id",
-  isFailedAttempt: "is_failed_attempt",
+  kind: "kind",
+  otherKindLabel: "other_kind_label",
   requestId: "request_id",
   responseMessageId: "response_message_id",
   externalAgentId: "external_agent_id",
@@ -127,6 +128,12 @@ const API_REQUEST_COLUMN_BY_FIELD = {
   proxyError: "proxy_error",
   isClientAborted: "is_client_aborted",
   errorMessage: "error_message",
+  inputTokens: "input_tokens",
+  outputTokens: "output_tokens",
+  cacheCreation5mTokens: "cache_creation_5m_tokens",
+  cacheCreation1hTokens: "cache_creation_1h_tokens",
+  cacheReadTokens: "cache_read_tokens",
+  model: "model",
 } as const;
 
 /** A `project` row to insert. */

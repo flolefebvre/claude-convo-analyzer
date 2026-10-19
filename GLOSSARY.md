@@ -225,8 +225,8 @@ individual Tool call**. Therefore:
 The hypothetical price of a Conversation had it run on the Claude API, computed
 from its token usage and a per-model, per-token-type price list. Costs are
 attributed per Resolved model, so Main-thread and sub-agent costs can differ
-within one Conversation. A Recorded Conversation's Cost also includes its Side
-requests, which the conversation logs never show.
+within one Conversation. A Recorded Conversation's Cost also includes its
+Unlogged usage, which the conversation logs never show.
 
 ### Refresh
 
@@ -309,6 +309,18 @@ Claude Code's own background
 requests, such as naming the session, probing the quota, the safety monitor or
 suggestions. Side requests never appear in the conversation logs, so their usage
 is only known for Recorded Conversations.
+
+A Side request is of one **kind**, told from what it sent: session naming, quota
+probe, safety monitor, suggestion, token count, or other (labelled by the first
+line of its system prompt).
+
+### Unlogged usage
+
+The token usage a Recording adds to a Conversation's Cost: its Side requests'
+usage, and that of the Failed attempts the API reported usage for. The
+conversation logs never show it, so an unrecorded Conversation has none. A
+Turn's own usage always comes from the logs, never from its API request.
+_Avoid_: add-on cost, side cost.
 
 ### Recorded
 

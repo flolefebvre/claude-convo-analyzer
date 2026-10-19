@@ -4,7 +4,8 @@ What the Recorder writes to disk, and what ingestion reads back (ADR-0006). The
 writer and the reader are one module, `src/core/recording.ts`
 (`openRecordingWriter`; `discoverRecordings`, then per file `readRecording`, or
 `readRecordingWithoutBodies`, which never restores a body from its pieces, for
-ingestion); this page describes the bytes they agree on, so a Recording can be
+ingestion, reading only the first lines of the few pieces its outline of what
+was sent names); this page describes the bytes they agree on, so a Recording can be
 read without that module.
 
 ## 1. Files

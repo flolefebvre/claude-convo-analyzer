@@ -7,6 +7,7 @@
 // messages of ALL agents in the conversation — so sub-agent tokens roll up
 // automatically, counted ONCE (the parent Agent aggregate is never summed in).
 
+import { type ApiRequestKind, SIDE_REQUEST_KINDS, type SideRequestKind } from "@/core/api-request-kind";
 import { type CostByType, priceSplitByType, resolveModel, type TokenSplit, type Tokens } from "@/core/cost";
 import { readClient } from "@/core/db";
 import { conversationInFolderScope, type FolderScopeOptions } from "@/core/folder-scope";
@@ -15,6 +16,19 @@ import { type MessageOrigin, messageOriginSchema } from "@/core/parse";
 import type { Prisma, PrismaClient } from "@/core/prisma/generated/client";
 import { PARSER_VERSION } from "@/core/refresh";
 import { toolCallBodyParts, type ToolCallBodyParts } from "@/core/tool-call-views";
+import {
+  type DailyUsageRow,
+  type ModelSumRow,
+  REPORTED_USAGE_WHERE,
+  TOKEN_SUM,
+  unloggedUsageByArrival,
+  unloggedUsageByConversationAndModel,
+} from "@/core/unlogged-usage";
+
+/** The kind of a Turn's own API request, whose usage the logs already hold. */
+const TURN_KIND: ApiRequestKind = "turn";
+/** The kind of a failed attempt of a Turn. */
+const FAILED_ATTEMPT_KIND: ApiRequestKind = "failed-attempt";
 
 export type ConversationSummary = {
   id: string;
@@ -91,6 +105,33 @@ export type ConversationDetail = ConversationSummary & {
     costUsd: number;
   }[];
   perSkill: { skill: string; tokens: Tokens; costUsd: number }[];
+  /** Its Side requests (GLOSSARY.md); none for an unrecorded Conversation. */
+  sideRequests: SideRequestBreakdown;
+};
+
+/** A Conversation's Side requests: how many, what they cost, by kind. Their cost is in the Conversation's. */
+export type SideRequestBreakdown = {
+  count: number;
+  /** A lower bound when {@link unpriced} is true. */
+  costUsd: number;
+  /** True when one of them reported usage on a model without a known price. */
+  unpriced: boolean;
+  /** One entry per kind that occurred, cost descending, then by kind. */
+  byKind: { kind: SideRequestKind; count: number; costUsd: number; unpriced: boolean }[];
+};
+
+/** One Side request of a Conversation, as the Transcript lists it. */
+export type TranscriptSideRequest = {
+  /** Its `api_request` row id: what its "What was sent" is read by. */
+  apiRequestId: number;
+  kind: SideRequestKind;
+  /** For `other`, the first line of its system prompt; null otherwise. */
+  otherKindLabel: string | null;
+  /** When it reached the Recorder (ISO 8601). */
+  arrivedAt: string;
+  /** $0 for one without usage (a token count, a refused request). */
+  costUsd: number;
+  unpriced: boolean;
 };
 
 /**
@@ -210,9 +251,13 @@ export type TranscriptView = {
   title: string | null;
   /** The root/main agent, with sub-agents nested under it by lineage. */
   tree: TranscriptAgentNode;
-  /** Conversation grand total — sum of every agent's own cost (counted once). */
+  /** Conversation grand total — every agent's own cost (counted once), plus the unlogged usage's. */
   totalCostUsd: number;
   totalTokens: Tokens;
+  /** True when some usage of the grand total is on a model without a known price. */
+  hasUnpriced: boolean;
+  /** Its Side requests, in arrival order; empty for an unrecorded Conversation. */
+  sideRequests: TranscriptSideRequest[];
   /** The resolved selected-agent key actually rendered in `messages`. */
   selectedAgentId: string;
   /** One Transcript page of the selected agent's transcript, in timestamp/id order. */
@@ -271,6 +316,8 @@ export async function listConversations(opts: ListOptions = {}): Promise<Convers
       by: ["conversationId", "model"],
       _sum: TOKEN_SUM,
     });
+    // What a Recording adds to Cost, in the same per-(conversation, model) rows.
+    const unloggedUsageRows = await unloggedUsageByConversationAndModel(prisma);
     const timeSpans = await prisma.message.groupBy({
       by: ["conversationId"],
       _min: { timestamp: true },
@@ -298,18 +345,22 @@ export async function listConversations(opts: ListOptions = {}): Promise<Convers
     });
     const matchedTurns = await prisma.apiRequest.groupBy({
       by: ["conversationId", "messageId"],
-      where: { messageId: { not: null }, isFailedAttempt: false },
+      where: { kind: TURN_KIND },
     });
 
     // Bucket the batched rows by conversationId.
     const modelRowsById = new Map<number, ModelSumRow[]>();
-    for (const g of modelSums) {
-      let rows = modelRowsById.get(g.conversationId);
+    const conversationModelRows = [
+      ...modelSums.map((g) => ({ conversationId: g.conversationId, ...toModelSumRow(g) })),
+      ...unloggedUsageRows,
+    ];
+    for (const { conversationId, ...row } of conversationModelRows) {
+      let rows = modelRowsById.get(conversationId);
       if (rows === undefined) {
         rows = [];
-        modelRowsById.set(g.conversationId, rows);
+        modelRowsById.set(conversationId, rows);
       }
-      rows.push(toModelSumRow(g));
+      rows.push(row);
     }
     const boundsById = new Map<number, { startedAt: string; endedAt: string }>();
     for (const t of timeSpans) {
@@ -410,13 +461,61 @@ export async function getConversation(id: string, opts: DetailOptions = {}): Pro
     }));
     const perSkill = await pricedGroupsBySkill(prisma, convo.id);
     const subAgents = await subAgentBreakdown(prisma, convo.id);
+    const sideRequests = await sideRequestBreakdown(prisma, convo.id);
 
-    return { ...summary, perModel, subAgents, perSkill };
+    return { ...summary, perModel, subAgents, perSkill, sideRequests };
   } finally {
     // Only a caller-owned (non-default) client is disconnected; the shared
     // default singleton stays open for the next request.
     if (owned) await prisma.$disconnect();
   }
+}
+
+/** The Side requests of a Conversation, counted and priced per kind (one row per kind and model, through `pricedRollup`). */
+async function sideRequestBreakdown(prisma: PrismaClient, conversationId: number): Promise<SideRequestBreakdown> {
+  const where = { conversationId, kind: { in: [...SIDE_REQUEST_KINDS] } } satisfies Prisma.ApiRequestWhereInput;
+  const counts = await prisma.apiRequest.groupBy({ by: ["kind"], where, _count: { _all: true } });
+  const usageSums = await prisma.apiRequest.groupBy({
+    by: ["kind", "model"],
+    where: { ...where, ...REPORTED_USAGE_WHERE },
+    _sum: TOKEN_SUM,
+  });
+  const byKind = counts.map(({ kind, _count }) => {
+    const groups = pricedRollup(usageSums.filter((sum) => sum.kind === kind).map(toModelSumRow));
+    return {
+      kind: kind as SideRequestKind,
+      count: _count._all,
+      costUsd: groups.reduce((total, group) => total + group.costUsd, 0),
+      unpriced: groups.some((group) => group.unpriced),
+    };
+  });
+  byKind.sort((a, b) => b.costUsd - a.costUsd || a.kind.localeCompare(b.kind));
+  return {
+    count: byKind.reduce((total, group) => total + group.count, 0),
+    costUsd: byKind.reduce((total, group) => total + group.costUsd, 0),
+    unpriced: byKind.some((group) => group.unpriced),
+    byKind,
+  };
+}
+
+/** The Side requests of a Conversation, in arrival order, each priced on its own. */
+async function transcriptSideRequests(prisma: PrismaClient, conversationId: number): Promise<TranscriptSideRequest[]> {
+  const rows = await prisma.apiRequest.findMany({
+    where: { conversationId, kind: { in: [...SIDE_REQUEST_KINDS] } },
+    orderBy: [{ arrivedAt: "asc" }, { id: "asc" }],
+    select: { id: true, kind: true, otherKindLabel: true, arrivedAt: true, ...TOKEN_SUM, model: true },
+  });
+  return rows.map((row) => {
+    const [priced] = row.inputTokens === null ? [] : pricedRollup([row]);
+    return {
+      apiRequestId: row.id,
+      kind: row.kind as SideRequestKind,
+      otherKindLabel: row.otherKindLabel,
+      arrivedAt: new Date(Number(row.arrivedAt)).toISOString(),
+      costUsd: priced?.costUsd ?? 0,
+      unpriced: priced?.unpriced ?? false,
+    };
+  });
 }
 
 /** Per-skill rollup — exact cost via per-turn attribution (ADR-0001). */
@@ -619,15 +718,24 @@ export async function getTranscript(id: string, opts: TranscriptOptions = {}): P
       spawnToolUseByAgent,
     });
 
-    // Grand total = sum of every agent's OWN cost (each counted once).
+    // Grand total = sum of every agent's OWN cost (each counted once), plus
+    // the unlogged usage no agent's own cost holds.
     const totalTokens = emptyTokens();
     let totalCostUsd = 0;
+    let hasUnpriced = false;
     for (const a of agents) {
       const oc = ownCost.get(a.id);
       if (oc === undefined) continue;
       addTokens(totalTokens, oc.tokens);
       totalCostUsd += oc.costUsd;
+      if (oc.unpriced) hasUnpriced = true;
     }
+    for (const group of pricedRollup(await unloggedUsageByConversationAndModel(prisma, { conversationId: convo.id }))) {
+      addTokens(totalTokens, group.tokens);
+      totalCostUsd += group.costUsd;
+      if (group.unpriced) hasUnpriced = true;
+    }
+    const sideRequests = await transcriptSideRequests(prisma, convo.id);
 
     // Resolve the selected agent (the `?agent=` key), defaulting to main.
     const mainAgent = agents.find((a) => a.parentAgentId === null) ?? agents[0];
@@ -644,6 +752,8 @@ export async function getTranscript(id: string, opts: TranscriptOptions = {}): P
       tree,
       totalCostUsd,
       totalTokens,
+      hasUnpriced,
+      sideRequests,
       selectedAgentId: selected === undefined ? "" : agentKey(selected),
       ...transcriptPage,
       metaHiddenCount: selected === undefined ? 0 : (metaByAgent.get(selected.id) ?? 0),
@@ -766,8 +876,10 @@ type DailySpendOptions = FolderScopeOptions & {
  * Trends view. Messages are bucketed by the LOCAL calendar day of their own
  * timestamp, so an assistant Turn's cost lands on the day it ran; sub-agent
  * messages are ordinary Messages and are therefore included (no join needed —
- * `conversationId` is denormalized onto every row). Every day of the range is
- * emitted, zero-filled where nothing ran, so the axis is continuous.
+ * `conversationId` is denormalized onto every row). Unlogged usage lands on
+ * the local day its API request arrived (`unloggedUsageByArrival`). Every day
+ * of the range is emitted, zero-filled where nothing ran, so the axis is
+ * continuous.
  *
  * The range always ENDS on today's local day: `days` counts back from today
  * (inclusive), and omitting it spans from the earliest in-scope message day.
@@ -788,29 +900,24 @@ export async function getDailySpend(opts: DailySpendOptions = {}): Promise<Daily
     // `days` counts back from today inclusive: 7 days = today and the 6 before.
     const from = opts.days === undefined ? null : addLocalDays(today, 1 - opts.days);
 
-    const rows = await prisma.message.findMany({
+    const to = addLocalDays(today, 1);
+    const messageRows = await prisma.message.findMany({
       where: {
         model: { not: null },
         // A NULL timestamp never satisfies a comparison, so this filter also
         // enforces the "no timestamp → excluded" policy.
         timestamp: {
-          lt: BigInt(addLocalDays(today, 1).getTime()),
+          lt: BigInt(to.getTime()),
           ...(from === null ? {} : { gte: BigInt(from.getTime()) }),
         },
         ...(await conversationInFolderScope(prisma, opts)),
       },
-      select: {
-        timestamp: true,
-        model: true,
-        inputTokens: true,
-        outputTokens: true,
-        cacheCreation5mTokens: true,
-        cacheCreation1hTokens: true,
-        cacheReadTokens: true,
-      },
+      select: { timestamp: true, model: true, ...TOKEN_SUM },
     });
+    // What a Recording adds to Cost, on the local day each API request arrived.
+    const unloggedUsageRows = await unloggedUsageByArrival(prisma, { from, to }, opts);
 
-    const byDay = foldByLocalDay(rows);
+    const byDay = foldByLocalDay([...messageRows, ...unloggedUsageRows]);
     return assembleDailySpend(byDay, {
       from: from ?? earliestDay(byDay, today),
       to: today,
@@ -823,24 +930,13 @@ export async function getDailySpend(opts: DailySpendOptions = {}): Promise<Daily
   }
 }
 
-/** One message row as read for the daily fold (already filtered to a real model). */
-type DailyMessageRow = {
-  timestamp: bigint | number | null;
-  model: string | null;
-  inputTokens: number | null;
-  outputTokens: number | null;
-  cacheCreation5mTokens: number | null;
-  cacheCreation1hTokens: number | null;
-  cacheReadTokens: number | null;
-};
-
 /** A zeroed per-tier accumulator (cache-write tiers kept separate for pricing). */
 function emptySplit(): TokenSplit {
   return { input: 0, output: 0, cacheWrite5m: 0, cacheWrite1h: 0, cacheRead: 0 };
 }
 
-/** Accumulate message rows into per-local-day, per-model per-tier token splits. */
-function foldByLocalDay(rows: DailyMessageRow[]): Map<string, Map<string, TokenSplit>> {
+/** Accumulate usage rows into per-local-day, per-model per-tier token splits. */
+function foldByLocalDay(rows: DailyUsageRow[]): Map<string, Map<string, TokenSplit>> {
   const byDay = new Map<string, Map<string, TokenSplit>>();
   for (const r of rows) {
     if (r.timestamp === null || r.model === null) continue;
@@ -1362,12 +1458,12 @@ async function turnApiRequestsByMessage(
   const rows = await prisma.apiRequest.findMany({
     where: { messageId: { in: messageIds } },
     orderBy: [{ arrivedAt: "asc" }, { id: "asc" }],
-    select: { id: true, messageId: true, status: true, isFailedAttempt: true },
+    select: { id: true, messageId: true, status: true, kind: true },
   });
   const isSuccessfulByMessageId = new Map<number, boolean>();
   for (const row of rows) {
     const messageId = row.messageId!;
-    if (row.isFailedAttempt) {
+    if (row.kind === FAILED_ATTEMPT_KIND) {
       failedAttemptCountByMessageId.set(messageId, (failedAttemptCountByMessageId.get(messageId) ?? 0) + 1);
       continue;
     }
@@ -1489,22 +1585,6 @@ type ConversationRow = {
   project: { path: string };
 };
 
-/**
- * One per-(model) token-sum row, as returned by a Prisma `groupBy` over
- * `message`. `model` may be null (a turn with no resolved model); `pricedRollup`
- * skips those (matching the old `m.model IS NOT NULL` SQL filter). The token
- * fields mirror `message` columns; SQL `SUM` ignores nulls, so an absent tier
- * arrives as null and folds to 0 (the old `COALESCE(..,0)` is no longer needed).
- */
-type ModelSumRow = {
-  model: string | null;
-  inputTokens: number | null;
-  outputTokens: number | null;
-  cacheCreation5mTokens: number | null;
-  cacheCreation1hTokens: number | null;
-  cacheReadTokens: number | null;
-};
-
 /** One priced model group: merged Tokens + exact per-tier cost + unpriced flag. */
 type PricedGroup = {
   model: string;
@@ -1592,15 +1672,6 @@ function toModelSumRow(g: {
   };
 }
 
-/** The `_sum` selection shared by every per-model groupBy (the five token tiers). */
-const TOKEN_SUM = {
-  inputTokens: true,
-  outputTokens: true,
-  cacheCreation5mTokens: true,
-  cacheCreation1hTokens: true,
-  cacheReadTokens: true,
-} as const;
-
 /** Add `b` into `a` (mutates `a`) — per-bucket dollar accumulation. */
 function addCostByType(a: CostByType, b: CostByType): void {
   a.input += b.input;
@@ -1618,7 +1689,7 @@ function addTokens(a: Tokens, b: Tokens): void {
   a.total = a.input + a.output + a.cacheWrite + a.cacheRead;
 }
 
-/** Group ALL messages of ALL agents in a conversation by model, priced exactly. */
+/** Group ALL messages of ALL agents in a conversation by model, with its unlogged usage, priced exactly. */
 async function pricedGroupsByModel(prisma: PrismaClient, conversationId: number): Promise<PricedGroup[]> {
   // Per-model token sums via one typed `groupBy` (ADR-0001: SUM, never stored
   // aggregates). `message.conversationId` is denormalized onto every row —
@@ -1629,7 +1700,8 @@ async function pricedGroupsByModel(prisma: PrismaClient, conversationId: number)
     where: { conversationId },
     _sum: TOKEN_SUM,
   });
-  return pricedRollup(grouped.map(toModelSumRow));
+  const unloggedUsageRows = await unloggedUsageByConversationAndModel(prisma, { conversationId });
+  return pricedRollup([...grouped.map(toModelSumRow), ...unloggedUsageRows]);
 }
 
 /** Convert min/max timestamp epoch-ms bounds to startedAt/endedAt ISO strings. */
@@ -1735,7 +1807,7 @@ async function summarizeConversation(
   const answeredTurnCount = await prisma.message.count({ where: { conversationId: convo.id, ...ANSWERED_TURN_WHERE } });
   const matchedTurns = await prisma.apiRequest.groupBy({
     by: ["messageId"],
-    where: { conversationId: convo.id, messageId: { not: null }, isFailedAttempt: false },
+    where: { conversationId: convo.id, kind: TURN_KIND },
   });
 
   let continuedFromId: string | null = null;

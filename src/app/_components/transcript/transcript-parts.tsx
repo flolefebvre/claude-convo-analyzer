@@ -3,9 +3,42 @@
 // wherever they appear.
 
 import { AlertTriangle } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { formatCost } from "@/app/_lib/format";
 import type { AgentLabel } from "@/app/_lib/transcript";
+
+/**
+ * The pane's top: the page's (visually hidden) h1, the conversation title,
+ * then the sticky header strip — a breadcrumb named `crumbLabel`, and stats.
+ *
+ * @example <PaneHeader title={view.title} crumbLabel="Agent lineage" crumbs={…} stats={…} />
+ */
+export function PaneHeader({
+  title,
+  crumbLabel,
+  crumbs,
+  stats,
+}: {
+  title: string | null;
+  crumbLabel: string;
+  crumbs: ReactNode;
+  stats: ReactNode;
+}) {
+  return (
+    <>
+      <h1 className="sr-only">{title ?? "Untitled conversation"}</h1>
+      <div className="pane-header">
+        <div className="pane-header-inner">
+          <nav className="crumb" aria-label={crumbLabel}>
+            {crumbs}
+          </nav>
+          <div className="stats">{stats}</div>
+        </div>
+      </div>
+    </>
+  );
+}
 
 /**
  * An agent's name as plain text, ordinal included, for titles and labels.

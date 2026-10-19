@@ -184,16 +184,16 @@ export async function getWhatWasSent(apiRequestId: number, opts: WhatWasSentOpti
               conversationId: row.conversationId,
               agentId: row.agentId,
               arrivedAt: { lt: row.arrivedAt },
-              isFailedAttempt: false,
-              AND: [{ messageId: { not: null } }, { messageId: { not: row.messageId } }],
+              kind: "turn",
+              messageId: { not: row.messageId },
             },
             orderBy: [{ arrivedAt: "desc" }, { id: "desc" }],
           });
     const failedAttemptRows =
-      row.messageId === null || row.isFailedAttempt
+      row.kind !== "turn"
         ? []
         : await prisma.apiRequest.findMany({
-            where: { messageId: row.messageId, isFailedAttempt: true },
+            where: { messageId: row.messageId, kind: "failed-attempt" },
             orderBy: [{ arrivedAt: "asc" }, { id: "asc" }],
             select: { status: true, errorMessage: true, arrivedAt: true, endedAt: true },
           });

@@ -8,10 +8,24 @@ import {
   resolveCall,
   resolveListReturn,
   resolveMessage,
+  resolveSideRequest,
+  sideRequestHref,
   toolCallHref,
   transcriptPageHref,
   withListReturn,
 } from "@/app/_lib/transcript-url";
+
+describe("a Side request's link", () => {
+  it("names its api_request row id", () => {
+    expect(sideRequestHref("s1", 42)).toBe("/conversation/s1?sideRequest=42");
+  });
+
+  it("resolves back to that id, and to nothing for a value that is not one", () => {
+    expect(resolveSideRequest("42")).toBe(42);
+    expect(resolveSideRequest(["7", "8"])).toBe(7);
+    for (const raw of [undefined, "", "0", "-3", "4.5", "abc"]) expect(resolveSideRequest(raw)).toBeUndefined();
+  });
+});
 
 describe("transcriptPageHref", () => {
   it("sets the page on the agent's link", () => {
