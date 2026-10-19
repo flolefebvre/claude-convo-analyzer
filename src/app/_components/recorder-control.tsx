@@ -156,7 +156,10 @@ export function RecorderControl({ recorderStatus: statusAsRendered }: { recorder
           label={isRunning ? `Recorder: on :${recorderStatus.port}` : "Recorder: off · how to enable"}
         />
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[min(24rem,calc(100vw-2rem))] gap-3 p-3 text-xs">
+      <PopoverContent
+        align="end"
+        className="max-h-(--radix-popover-content-available-height) w-[min(24rem,calc(100vw-2rem))] gap-3 overflow-y-auto p-3 text-xs"
+      >
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm font-medium">
             {isRunning ? `The Recorder is on, at 127.0.0.1:${recorderStatus.port}` : "The Recorder is off"}
