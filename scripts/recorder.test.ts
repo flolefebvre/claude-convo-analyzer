@@ -1,11 +1,13 @@
 // `pnpm recorder` as a process: it prints the ANTHROPIC_BASE_URL line, and a
-// SIGTERM lets an in-flight streamed API request finish before it exits 0.
+// SIGTERM or a POST to its stop endpoint lets an in-flight streamed API request
+// finish before it exits 0.
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { RECORDER_STOP_PATH } from "@/core/recorder";
 import { readRecordings } from "@/core/recording";
 import {
   deferred,
@@ -81,24 +83,36 @@ async function startStreamedRequest(baseUrl: string): Promise<ReadableStreamDefa
   return reader;
 }
 
+/** The two ways to ask the running script to stop, given its base URL. */
+const askToStopBy: Record<string, (baseUrl: string) => Promise<void>> = {
+  SIGTERM: async () => void recorderProcess!.kill("SIGTERM"),
+  "a POST to the stop endpoint": async (baseUrl) => {
+    expect((await fetch(`${baseUrl}${RECORDER_STOP_PATH}`, { method: "POST" })).status).toBe(202);
+  },
+};
+
 describe("pnpm recorder", () => {
   it("prints the ANTHROPIC_BASE_URL to use, on 127.0.0.1", async () => {
     expect(await startRecorderProcess()).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
   });
 
-  it("lets an in-flight streamed API request finish on SIGTERM, records it, then exits 0", async () => {
-    const reader = await startStreamedRequest(await startRecorderProcess());
-    const exited = exitCodeOf(recorderProcess!);
+  it.each(Object.entries(askToStopBy))(
+    "lets an in-flight streamed API request finish on %s, records it, then exits 0",
+    async (_, askToStop) => {
+      const baseUrl = await startRecorderProcess();
+      const reader = await startStreamedRequest(baseUrl);
+      const exited = exitCodeOf(recorderProcess!);
 
-    recorderProcess!.kill("SIGTERM");
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    expect(recorderProcess!.exitCode).toBeNull();
-    releaseRest();
+      await askToStop(baseUrl);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(recorderProcess!.exitCode).toBeNull();
+      releaseRest();
 
-    expect(await textUntilEnd(reader)).toBe(MESSAGES_RESPONSE_EVENTS.slice(1).join(""));
-    expect(await exited).toBe(0);
-    expect(readRecordings(recordingsRoot).map((recorded) => recorded.sessionId)).toEqual(["sess-script"]);
-  });
+      expect(await textUntilEnd(reader)).toBe(MESSAGES_RESPONSE_EVENTS.slice(1).join(""));
+      expect(await exited).toBe(0);
+      expect(readRecordings(recordingsRoot).map((recorded) => recorded.sessionId)).toEqual(["sess-script"]);
+    },
+  );
 
   it("still drains when one Ctrl-C reaches it several times in a burst", async () => {
     const reader = await startStreamedRequest(await startRecorderProcess());

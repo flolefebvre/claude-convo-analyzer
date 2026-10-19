@@ -1,6 +1,7 @@
 // The Recorder (ADR-0006): a proxy on 127.0.0.1 between Claude Code and the
 // Anthropic API. It forwards every request unchanged, streams the response back
-// as it arrives, and appends each API request to a Recording. It never opens the
+// as it arrives, and appends each API request to a Recording. Under `/_recorder/`
+// it answers its own health and stop endpoints instead. It never opens the
 // database; `scripts/recorder.ts` runs it in its own process.
 
 import http from "node:http";
@@ -19,6 +20,10 @@ const DEFAULT_RECORDER_PORT = 4242;
 const DEFAULT_RECORDER_UPSTREAM = "https://api.anthropic.com";
 /** The Recorder's own health endpoint, outside every upstream path. */
 export const RECORDER_HEALTH_PATH = "/_recorder/health";
+/** The Recorder's stop endpoint: a POST stops it as `stop()` does. */
+export const RECORDER_STOP_PATH = "/_recorder/stop";
+/** The prefix of the Recorder's own endpoints; nothing under it is ever forwarded. */
+const RECORDER_OWN_PATH_PREFIX = "/_recorder/";
 /** How long a session counts as active after its last API request. */
 const ACTIVE_SESSION_WINDOW_MS = 15 * 60 * 1000;
 /** How long a stop waits for in-flight API requests before cutting them. */
@@ -60,6 +65,8 @@ export type RunningRecorder = {
    * drain timeout, then cut them), and flush every Recording append.
    */
   stop(): Promise<void>;
+  /** Settles once a stop — from `stop()` or the stop endpoint — has completed, as that stop did. */
+  stopped: Promise<void>;
 };
 
 /** A session that sent an API request recently, as the health endpoint reports it. */
@@ -259,16 +266,36 @@ export async function startRecorder(options: RecorderOptions): Promise<RunningRe
     });
   }
 
+  /** Answer a request to one of the Recorder's own endpoints. */
+  function answerOwnEndpoint(request: http.IncomingMessage, response: http.ServerResponse): void {
+    const pathname = new URL(request.url ?? "/", "http://recorder").pathname;
+    const method = pathname === RECORDER_HEALTH_PATH ? "GET" : pathname === RECORDER_STOP_PATH ? "POST" : null;
+    if (method === null) {
+      response.writeHead(404).end();
+      return;
+    }
+    if (request.method !== method) {
+      response.writeHead(405, { allow: method }).end();
+      return;
+    }
+    if (pathname === RECORDER_STOP_PATH) {
+      response.writeHead(202, { connection: "close" }).end();
+      void stop().catch(() => {}); // its outcome is `stopped`'s
+      return;
+    }
+    const health: RecorderHealth = {
+      status: "running",
+      port,
+      recordingsRoot: options.recordingsRoot,
+      recentSessions: recentSessions(),
+    };
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify(health));
+  }
+
   const server = http.createServer((request, response) => {
-    if (request.method === "GET" && request.url === RECORDER_HEALTH_PATH) {
-      const health: RecorderHealth = {
-        status: "running",
-        port,
-        recordingsRoot: options.recordingsRoot,
-        recentSessions: recentSessions(),
-      };
-      response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify(health));
+    if (request.url?.startsWith(RECORDER_OWN_PATH_PREFIX)) {
+      answerOwnEndpoint(request, response);
       return;
     }
     const inFlight = forwardAndRecord(request, response).catch((error: unknown) => {
@@ -290,10 +317,13 @@ export async function startRecorder(options: RecorderOptions): Promise<RunningRe
   port = (server.address() as AddressInfo).port;
 
   let stopping: Promise<void> | null = null;
-  return {
-    port,
-    stop() {
-      stopping ??= (async () => {
+  let settleStopped!: { resolve: () => void; reject: (error: unknown) => void };
+  const stopped = new Promise<void>((resolve, reject) => (settleStopped = { resolve, reject }));
+  stopped.catch(() => {}); // a caller that never awaits `stopped` still hears of a failure through `stop()`
+
+  function stop(): Promise<void> {
+    if (!stopping) {
+      stopping = (async () => {
         const closed = new Promise<void>((resolve) => server.close(() => resolve()));
         server.closeIdleConnections();
         let drainTimer: NodeJS.Timeout | undefined;
@@ -309,9 +339,12 @@ export async function startRecorder(options: RecorderOptions): Promise<RunningRe
         await Promise.all(inFlightApiRequests);
         await writer.flush();
       })();
-      return stopping;
-    },
-  };
+      stopping.then(settleStopped.resolve, settleStopped.reject);
+    }
+    return stopping;
+  }
+
+  return { port, stop, stopped };
 }
 
 /** What one forwarded request leaves to record. */
