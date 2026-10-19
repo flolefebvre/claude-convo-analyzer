@@ -1,6 +1,6 @@
 // The seed environment: one self-contained directory holding fake logs, fake
-// Recordings of some of their Conversations, and the database the genuine
-// `refresh()` builds from both. Rebuilding it is wiping
+// Recordings of some of their Conversations, the database the genuine
+// `refresh()` builds from both, and the seeded app's settings file. Rebuilding it is wiping
 // that one directory, so a seed never leaves anything behind — and never
 // touches the real database or the real logs.
 
@@ -20,6 +20,8 @@ export type SeedEnvironment = {
   logsRoot: string;
   /** The Recordings of some of those logs' Conversations, `<dir>/recordings`. */
   recordingsRoot: string;
+  /** The seeded app's settings file, `<dir>/settings.json`: not written, so Live starts off. */
+  settingsPath: string;
   /** What the generator wrote. */
   generated: FakeLogsCounts;
   /** The ingest's own report. */
@@ -44,5 +46,6 @@ export async function seedEnvironment(opts: { dir: string; now: Date }): Promise
   const { counts: generated, conversations } = generateFakeLogs({ logsRoot, now: opts.now });
   await writeFakeRecordings({ recordingsRoot, conversations });
   const summary = await refresh({ logsRoot, dbPath, recordingsRoot });
-  return { dbPath, logsRoot, recordingsRoot, generated, summary };
+  const settingsPath = path.join(dir, "settings.json");
+  return { dbPath, logsRoot, recordingsRoot, settingsPath, generated, summary };
 }

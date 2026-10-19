@@ -7,7 +7,7 @@
 // run, with `n / m conversations` as its label while it runs.
 //
 // It starts from a Snapshot of the run taken by its server part
-// (`live-refresh-button.tsx`), so a page opened mid-run shows the count at once,
+// (`current-refresh-button.tsx`), so a page opened mid-run shows the count at once,
 // and resumes the Channel from that Snapshot's position, so no event is missed.
 //
 // The spinner is driven by OWN flags, NOT by `useTransition`: a transition's
@@ -19,14 +19,17 @@
 // during the run (`isRerenderDue`) and once at its end, and shows the summary in
 // a small bubble under the button that fades after a few seconds or can be
 // dismissed; a failure stays until dismissed. A persistent, visually hidden live
-// region announces both. The parser-update banner's control only follows the
+// region announces both. A Refresh Live began gets no success bubble, only its
+// re-render, unless this control's click joined it; its failure shows like any
+// other. The parser-update banner's control only follows the
 // count, so the page gets one bubble and one re-render schedule.
 
 import type { Snapshot } from "@flefebvre/next-sse/client";
-import { RefreshCw, X } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 
+import { ControlBubble } from "@/app/_components/control-bubble";
 import { refreshConversations } from "@/app/actions";
 import { isRerenderDue, type RefreshActivity, type RefreshRunId } from "@/app/_lib/refresh-activity";
 import { formatDuplicateSessionDetail, formatRefreshProgress, formatRefreshSummary } from "@/app/_lib/refresh-summary";
@@ -66,7 +69,7 @@ export type RefreshButtonProps = RefreshButtonLook & {
 };
 
 /**
- * The Refresh button: starts or joins the Refresh and follows it live.
+ * The Refresh button: starts or joins the Refresh and follows it as it runs.
  *
  * @example <RefreshButton variant="outline" collapsible snapshot={snapshot} reportsOutcome />
  */
@@ -83,6 +86,9 @@ export function RefreshButton({ snapshot, reportsOutcome = false, ...look }: Ref
   const [isClickPending, setIsClickPending] = useState(false);
   // From the click until the Channel's first word on the run it started or joined.
   const [isAwaitingRun, setIsAwaitingRun] = useState(false);
+  // From the click until the outcome of the run it started or joined: that
+  // outcome is reported even when Live began the run.
+  const isClickOutcomeOwed = useRef(false);
   const [message, setMessage] = useState<Message | null>(null);
 
   const [isRerenderPending, startRerender] = useTransition();
@@ -122,21 +128,27 @@ export function RefreshButton({ snapshot, reportsOutcome = false, ...look }: Ref
         });
         if (reportsOutcome && isDue) rerenderPage();
       },
-      finished: ({ runId, summary }) => {
+      finished: ({ runId, origin, summary }) => {
         setActivity({ isRunning: false });
         setIsAwaitingRun(false);
+        const isOwedToClick = isClickOutcomeOwed.current;
+        isClickOutcomeOwed.current = false;
         if (!reportsOutcome || !claimOutcome(runId)) return;
+        rerenderPage();
+        // Live lands a Refresh every few seconds while it follows a session:
+        // a bubble for each would be noise, unless this control's click joined it.
+        if (origin === "live" && !isOwedToClick) return;
         setMessage({
           text: formatRefreshSummary(summary),
           detail: formatDuplicateSessionDetail(summary),
           tone: "status",
           id: Date.now(),
         });
-        rerenderPage();
       },
       failed: ({ runId, message: failure }) => {
         setActivity({ isRunning: false });
         setIsAwaitingRun(false);
+        isClickOutcomeOwed.current = false;
         if (!reportsOutcome || !claimOutcome(runId)) return;
         setMessage({ text: FAILURE_TEXT, detail: failure, tone: "error", id: Date.now() });
         // The batches committed before the failure are stored.
@@ -157,10 +169,12 @@ export function RefreshButton({ snapshot, reportsOutcome = false, ...look }: Ref
     setMessage(null);
     setIsClickPending(true);
     setIsAwaitingRun(true);
+    isClickOutcomeOwed.current = true;
     try {
       await refreshConversations();
     } catch {
       setIsAwaitingRun(false);
+      isClickOutcomeOwed.current = false;
       setMessage({ text: FAILURE_TEXT, detail: null, tone: "error", id: Date.now() });
     } finally {
       setIsClickPending(false);
@@ -190,31 +204,20 @@ export function RefreshButton({ snapshot, reportsOutcome = false, ...look }: Ref
       </p>
 
       {message !== null && (
-        <div
+        <ControlBubble
           key={message.id}
-          title={message.detail ?? undefined}
-          className={cn(
-            "absolute top-full right-0 z-50 mt-2 flex w-max max-w-[min(18rem,calc(100vw-2rem))] animate-in items-start gap-2 rounded-lg border bg-popover py-2 pr-1.5 pl-3 text-xs text-popover-foreground shadow-md fade-in-0 slide-in-from-top-1",
-            message.tone === "error" && "border-destructive/40 text-destructive-foreground",
-          )}
-        >
-          <span className="py-1">{message.text}</span>
-          <button
-            type="button"
-            onClick={() => setMessage(null)}
-            aria-label="Dismiss"
-            className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-          >
-            <X className="size-3.5" aria-hidden />
-          </button>
-        </div>
+          text={message.text}
+          detail={message.detail}
+          tone={message.tone}
+          onDismiss={() => setMessage(null)}
+        />
       )}
     </div>
   );
 }
 
 /**
- * The Refresh button as the static shell draws it, until its live part streams
+ * The Refresh button as the static shell draws it, until its per-request part streams
  * in: idle, and inert for that moment.
  *
  * @example <Suspense fallback={<IdleRefreshButton variant="outline" collapsible />}>…</Suspense>

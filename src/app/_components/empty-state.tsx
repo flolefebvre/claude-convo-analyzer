@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils-cn";
  * (not-found, error) passes `headingLevel={1}`.
  *
  * @example
- * <EmptyState icon={Inbox} title="No conversations yet" action={<LiveRefreshButton />}>
+ * <EmptyState icon={Inbox} title="No conversations yet" action={<CurrentRefreshButton />}>
  *   Scan your Claude Code logs to see your conversations here.
  * </EmptyState>
  */

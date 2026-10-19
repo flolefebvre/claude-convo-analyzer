@@ -27,9 +27,13 @@ function publishRefreshState(state: RefreshRunState): Promise<unknown> | null {
     case "running":
       return state.progress === null ? null : refreshChannel.progress({ runId: state.runId, ...state.progress });
     case "succeeded":
-      return refreshChannel.finished({ runId: state.runId, summary: state.summary });
+      return refreshChannel.finished({ runId: state.runId, origin: state.origin, summary: state.summary });
     case "failed":
-      return refreshChannel.failed({ runId: state.runId, message: describeRefreshFailure(state.error) });
+      return refreshChannel.failed({
+        runId: state.runId,
+        origin: state.origin,
+        message: describeRefreshFailure(state.error),
+      });
   }
 }
 

@@ -26,18 +26,25 @@ export type RefreshJob = (onProgress: (progress: RefreshProgress) => void) => Pr
 /** Which Refresh a state belongs to: opaque, and unique across server processes. */
 export type RefreshRunId = string;
 
+/** Who began a Refresh: the user (a click), or Live (a change it saw, or its catch-up). */
+export type RefreshOrigin = "user" | "live";
+
 /** Where the runner stands: no Refresh yet, one running, or the last one's outcome. */
 export type RefreshRunState =
   | { status: "idle" }
   /** `progress` is null until the Refresh knows its total. */
-  | { status: "running"; runId: RefreshRunId; progress: RefreshProgress | null }
-  | { status: "succeeded"; runId: RefreshRunId; summary: RefreshSummary }
-  | { status: "failed"; runId: RefreshRunId; error: Error };
+  | { status: "running"; runId: RefreshRunId; origin: RefreshOrigin; progress: RefreshProgress | null }
+  | { status: "succeeded"; runId: RefreshRunId; origin: RefreshOrigin; summary: RefreshSummary }
+  | { status: "failed"; runId: RefreshRunId; origin: RefreshOrigin; error: Error };
 
 /** The handle onto the shared Refresh. */
 export type RefreshRunner = {
-  /** Start a Refresh, or join the one running; resolves to its summary. */
-  start: () => Promise<RefreshSummary>;
+  /**
+   * Start a Refresh, or join the one running; resolves to its summary. `origin`
+   * (default `"user"`) is the Refresh's when this start begins it; a joining
+   * start keeps the running one's.
+   */
+  start: (options?: { origin?: RefreshOrigin }) => Promise<RefreshSummary>;
   /** The current state, as of this call. */
   state: () => RefreshRunState;
   /** Call `listener` with each state the runner moves to; returns the unsubscribe. */
@@ -63,30 +70,30 @@ export function createRefreshRunner(job: RefreshJob): RefreshRunner {
     for (const listener of listeners) listener(state);
   }
 
-  function runRefresh(): Promise<RefreshSummary> {
+  function runRefresh(origin: RefreshOrigin): Promise<RefreshSummary> {
     const runId: RefreshRunId = randomUUID();
-    moveTo({ status: "running", runId, progress: null });
+    moveTo({ status: "running", runId, origin, progress: null });
     // The executor turns a job that throws synchronously into a rejection too.
     const jobSummary = new Promise<RefreshSummary>((resolve) =>
-      resolve(job((progress) => moveTo({ status: "running", runId, progress }))),
+      resolve(job((progress) => moveTo({ status: "running", runId, origin, progress }))),
     );
     return jobSummary.then(
       (summary) => {
         runningRefresh = null;
-        moveTo({ status: "succeeded", runId, summary });
+        moveTo({ status: "succeeded", runId, origin, summary });
         return summary;
       },
       (cause: unknown) => {
         const error = cause instanceof Error ? cause : new Error(String(cause));
         runningRefresh = null;
-        moveTo({ status: "failed", runId, error });
+        moveTo({ status: "failed", runId, origin, error });
         throw error;
       },
     );
   }
 
   return {
-    start: () => (runningRefresh ??= runRefresh()),
+    start: ({ origin = "user" } = {}) => (runningRefresh ??= runRefresh(origin)),
     state: () => runState,
     subscribe: (listener) => {
       listeners.add(listener);

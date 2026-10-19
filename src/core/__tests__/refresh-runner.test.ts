@@ -2,23 +2,9 @@
 // that starts one while it runs. Driven here by a fake job, in-process.
 
 import { describe, expect, it } from "vitest";
-import type { RefreshProgress, RefreshSummary } from "@/core/refresh";
 import { createRefreshRunner, type RefreshRunState } from "@/core/refresh-runner";
+import { controlledJob } from "./helpers/controlled-job";
 import { refreshSummaryOfRun } from "./helpers/refresh-summary";
-
-/** A job the test settles by hand, recording each run it is asked for. */
-function controlledJob() {
-  const runs: {
-    reportProgress: (progress: RefreshProgress) => void;
-    succeed: (summary: RefreshSummary) => void;
-    fail: (error: Error) => void;
-  }[] = [];
-  const job = (onProgress: (progress: RefreshProgress) => void) =>
-    new Promise<RefreshSummary>((resolve, reject) => {
-      runs.push({ reportProgress: onProgress, succeed: resolve, fail: reject });
-    });
-  return { job, runs };
-}
 
 /** A runner over a {@link controlledJob}, with a subscriber recording every state it is told. */
 function observedRunner() {
@@ -83,11 +69,16 @@ describe("refresh runner", () => {
     expect(runner.state()).toEqual({ status: "idle" });
 
     void runner.start();
-    expect(runner.state()).toEqual({ status: "running", runId: expect.any(String), progress: null });
+    expect(runner.state()).toEqual({ status: "running", runId: expect.any(String), origin: "user", progress: null });
 
     runs[0]?.reportProgress({ done: 0, total: 3 });
     runs[0]?.reportProgress({ done: 1, total: 3 });
-    expect(runner.state()).toEqual({ status: "running", runId: expect.any(String), progress: { done: 1, total: 3 } });
+    expect(runner.state()).toEqual({
+      status: "running",
+      runId: expect.any(String),
+      origin: "user",
+      progress: { done: 1, total: 3 },
+    });
   });
 
   it("reads the summary once the Refresh succeeded", async () => {
@@ -98,7 +89,12 @@ describe("refresh runner", () => {
     runs[0]?.succeed(refreshSummaryOfRun(4));
     await start;
 
-    expect(runner.state()).toEqual({ status: "succeeded", runId: expect.any(String), summary: refreshSummaryOfRun(4) });
+    expect(runner.state()).toEqual({
+      status: "succeeded",
+      runId: expect.any(String),
+      origin: "user",
+      summary: refreshSummaryOfRun(4),
+    });
   });
 
   it("reads the error once the Refresh failed", async () => {
@@ -110,7 +106,7 @@ describe("refresh runner", () => {
     runs[0]?.fail(error);
     await expect(start).rejects.toThrow();
 
-    expect(runner.state()).toEqual({ status: "failed", runId: expect.any(String), error });
+    expect(runner.state()).toEqual({ status: "failed", runId: expect.any(String), origin: "user", error });
   });
 
   it("tells a subscriber each state it moves to: running, each progress, then the summary", async () => {
@@ -123,10 +119,10 @@ describe("refresh runner", () => {
     await start;
 
     expect(states).toEqual([
-      { status: "running", runId: expect.any(String), progress: null },
-      { status: "running", runId: expect.any(String), progress: { done: 0, total: 2 } },
-      { status: "running", runId: expect.any(String), progress: { done: 2, total: 2 } },
-      { status: "succeeded", runId: expect.any(String), summary: refreshSummaryOfRun(2) },
+      { status: "running", runId: expect.any(String), origin: "user", progress: null },
+      { status: "running", runId: expect.any(String), origin: "user", progress: { done: 0, total: 2 } },
+      { status: "running", runId: expect.any(String), origin: "user", progress: { done: 2, total: 2 } },
+      { status: "succeeded", runId: expect.any(String), origin: "user", summary: refreshSummaryOfRun(2) },
     ]);
   });
 
@@ -141,8 +137,8 @@ describe("refresh runner", () => {
     await expect(joined).rejects.toThrow();
 
     expect(states).toEqual([
-      { status: "running", runId: expect.any(String), progress: null },
-      { status: "failed", runId: expect.any(String), error },
+      { status: "running", runId: expect.any(String), origin: "user", progress: null },
+      { status: "failed", runId: expect.any(String), origin: "user", error },
     ]);
   });
 
@@ -154,7 +150,28 @@ describe("refresh runner", () => {
     runs[0]?.succeed(refreshSummaryOfRun(1));
     await start;
 
-    expect(states).toEqual([{ status: "running", runId: expect.any(String), progress: null }]);
+    expect(states).toEqual([{ status: "running", runId: expect.any(String), origin: "user", progress: null }]);
+  });
+
+  it("carries the origin of the start that began the Refresh, kept when a start of another origin joins it", async () => {
+    const { runner, runs, states } = observedRunner();
+
+    const liveStart = runner.start({ origin: "live" });
+    void runner.start({ origin: "user" });
+    runs[0]?.reportProgress({ done: 0, total: 1 });
+    runs[0]?.succeed(refreshSummaryOfRun(1));
+    await liveStart;
+    const userStart = runner.start();
+    runs[1]?.fail(new Error("disk gone"));
+    await expect(userStart).rejects.toThrow();
+
+    expect(states.map((state) => ("origin" in state ? state.origin : null))).toEqual([
+      "live",
+      "live",
+      "live",
+      "user",
+      "user",
+    ]);
   });
 
   it("gives each Refresh its own run id, the same across its states and shared by a joining start", async () => {

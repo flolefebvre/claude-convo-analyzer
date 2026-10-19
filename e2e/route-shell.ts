@@ -13,11 +13,12 @@ export type RouteShell = {
 
 /**
  * Asserts the shell and its fallbacks are visible and the streamed data is not; call inside `instant()`.
- * Every route's shell also has the app bar's Refresh control.
+ * Every route's shell also has the app bar's Live and Refresh controls.
  *
  * @example await expectShell(page, tools);
  */
 export async function expectShell(page: Page, route: RouteShell) {
+  await expect(page.getByRole("banner").getByRole("button", { name: "Live", pressed: false })).toBeVisible();
   await expect(page.getByRole("banner").getByRole("button", { name: "Refresh" })).toBeVisible();
   for (const content of route.shell(page)) await expect(content).toBeVisible();
   for (const fallback of route.fallbacks(page)) await expect(fallback).toBeVisible();

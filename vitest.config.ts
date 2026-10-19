@@ -14,7 +14,11 @@ export default defineConfig({
     // A Refresh that is given no `recordingsRoot` reads `defaultRecordingsRoot()`:
     // point it at a directory that never exists, so no test reads the machine's
     // real Recordings. A test that wants Recordings passes its own root.
-    env: { CCA_RECORDINGS_ROOT: path.join(os.tmpdir(), "cca-tests-have-no-recordings") },
+    // Likewise no test reads or writes the machine's real settings file.
+    env: {
+      CCA_RECORDINGS_ROOT: path.join(os.tmpdir(), "cca-tests-have-no-recordings"),
+      CCA_SETTINGS_PATH: path.join(os.tmpdir(), "cca-tests-settings", "settings.json"),
+    },
     include: ["src/**/*.{test,spec}.ts", "src/**/__tests__/**/*.ts", "scripts/**/*.test.ts"],
     // Shared setup modules under `__tests__/helpers/` declare no tests of their
     // own — they would fail the "no test suite found" check if collected.
