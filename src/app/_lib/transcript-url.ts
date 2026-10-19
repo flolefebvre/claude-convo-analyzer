@@ -31,6 +31,28 @@ export function agentHref(sessionId: string, agentId?: string): string {
 }
 
 /**
+ * Resolve the selected Side request from the raw `?sideRequest=` search param:
+ * its `api_request` row id, or `undefined` when absent or not a positive integer.
+ *
+ * @example resolveSideRequest("42") // 42
+ */
+export function resolveSideRequest(raw: string | string[] | undefined): number | undefined {
+  const value = firstParam(raw);
+  if (value === undefined || !/^[1-9]\d{0,9}$/.test(value)) return undefined;
+  return Number(value);
+}
+
+/**
+ * Link to one Side request of a Conversation: `/conversation/<sessionId>?sideRequest=<id>`,
+ * the pane then showing what it sent.
+ *
+ * @example sideRequestHref(view.sessionId, sideRequest.apiRequestId) // "/conversation/<id>?sideRequest=42"
+ */
+export function sideRequestHref(sessionId: string, apiRequestId: number): string {
+  return `${agentHref(sessionId)}?${new URLSearchParams({ sideRequest: String(apiRequestId) }).toString()}`;
+}
+
+/**
  * Link to one Transcript page of an agent: its {@link agentHref} with `?page=`
  * set — never for page 1, the bare link — and the `?from=` list view carried
  * on. It names no `?msg=`/`?call=` anchor: paging leaves the deep-link target.

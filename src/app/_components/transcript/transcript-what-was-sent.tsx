@@ -1,8 +1,8 @@
 "use client";
 
-// The "What was sent" disclosure of one recorded Turn. The page ships only the
-// Turn's `api_request` row id and its failed-attempt count; what its API
-// request sent, its failed attempts included, is fetched from
+// The "What was sent" disclosure of one recorded Turn, or of one Side request.
+// The page ships only the `api_request` row id and the Turn's failed-attempt
+// count; what the API request sent, its failed attempts included, is fetched from
 // `GET /api/api-request/<id>` the first time the reader opens it, and kept for
 // every later open. Native `<details>` stays the disclosure, as for tool calls.
 //
@@ -35,16 +35,19 @@ const MARKER_BY_CHANGE: Record<DiffLine["change"], string> = { added: "+", remov
 export function WhatWasSentDisclosure({
   apiRequestId,
   failedAttemptCount,
+  isOpenInitially = false,
 }: {
   apiRequestId: number;
   failedAttemptCount: number;
+  /** Rendered open, reading what was sent at once: a Side request's pane, which shows nothing else. */
+  isOpenInitially?: boolean;
 }) {
   const { state, onToggle, detailsRef } = useReadOnFirstOpen<WhatWasSent>(() =>
     callRoute(routes.api["api-request"](String(apiRequestId)).GET()),
   );
 
   return (
-    <details ref={detailsRef} className="call sent" onToggle={onToggle}>
+    <details ref={detailsRef} className="call sent" onToggle={onToggle} open={isOpenInitially || undefined}>
       <summary>
         <ChevronRight aria-hidden className="chev" />
         <span className="call-name">What was sent</span>

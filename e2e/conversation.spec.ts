@@ -10,6 +10,8 @@ const AGENT_MESSAGES_TITLE = "Coordinate the search rewrite across agents";
 // The seeded conversation spanning three Transcript pages, and a prompt on its second (issue #82).
 const LONG_TITLE = "Port every report to the new rendering engine";
 const PAGE_TWO_TEXT = "Now port the quarterly heatmap export the same way.";
+// The seeded Conversation every Turn of which is recorded, with one Side request of each kind.
+const RECORDED_TITLE = "Add an audit trail to the billing exports";
 
 const titleLink = (page: Page) => page.getByRole("link", { name: TITLE, exact: true });
 
@@ -54,6 +56,31 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
       await expectShell(page, conversation);
     });
     await expectData(page, conversation);
+  });
+
+  test("lists the recorded Conversation's Side requests beside its Agents, each opening what it sent", async ({
+    page,
+  }) => {
+    await openConversation(page, RECORDED_TITLE);
+
+    const sideRequests = page.getByRole("navigation", { name: "Side requests" });
+    await expect(page.getByTitle(/^Requests Claude Code makes on its own/).first()).toBeVisible();
+    await expect(sideRequests.getByRole("link")).toHaveCount(6);
+
+    await sideRequests.getByRole("link", { name: /^Session naming/ }).click();
+    await page.waitForURL((url) => url.searchParams.has("sideRequest"));
+    await expect(sideRequests.getByRole("link", { name: /^Session naming/ })).toHaveAttribute("aria-current", "page");
+    // The "What was sent" panel opens on its own and reads what the Side request sent.
+    const whatWasSent = page.getByRole("main").getByRole("group").filter({ hasText: "What was sent" });
+    await expect(whatWasSent).toHaveAttribute("open", "");
+    await expect(whatWasSent.getByText(/every message is new/)).toBeVisible();
+  });
+
+  test("shows no Side requests for an unrecorded Conversation", async ({ page }) => {
+    await openConversation(page, TITLE);
+
+    await expect(page.getByRole("navigation", { name: "Agents" })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Side requests" })).toHaveCount(0);
   });
 
   test("renders the messages agents send each other, and their task notifications", async ({ page }) => {

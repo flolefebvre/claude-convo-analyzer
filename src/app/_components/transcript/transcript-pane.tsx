@@ -11,7 +11,7 @@ import { FamilyBanner } from "./family-banner";
 import { ScrollToAnchor } from "./scroll-to-anchor";
 import { TranscriptMessageRow } from "./transcript-message";
 import { TranscriptPager } from "./transcript-pager";
-import { AgentName, CostFigure, agentLabelText } from "./transcript-parts";
+import { AgentName, CostFigure, PaneHeader, agentLabelText } from "./transcript-parts";
 
 /**
  * The right pane: the selected agent's transcript, topped by a sticky header
@@ -76,36 +76,35 @@ export function TranscriptPane({
 
   return (
     <>
-      <h1 className="sr-only">{view.title ?? "Untitled conversation"}</h1>
-      <div className="pane-header">
-        <div className="pane-header-inner">
-          <nav className="crumb" aria-label="Agent lineage">
-            {lineage.map((node, i) => {
-              const label = labelOf(node.id);
-              return (
-                <Fragment key={node.id}>
-                  {i === lineage.length - 1 ? (
-                    <span className="here" aria-current="page" title={agentLabelText(label)}>
-                      <AgentName label={label} />
-                    </span>
-                  ) : (
-                    <>
-                      <PendingLink
-                        href={withListReturn(agentHref(view.sessionId, i === 0 ? undefined : node.id), listReturn)}
-                        title={agentLabelText(label)}
-                      >
-                        <AgentName label={label} />
-                      </PendingLink>
-                      <span className="sep" aria-hidden>
-                        /
-                      </span>
-                    </>
-                  )}
-                </Fragment>
-              );
-            })}
-          </nav>
-          <div className="stats">
+      <PaneHeader
+        title={view.title}
+        crumbLabel="Agent lineage"
+        crumbs={lineage.map((node, i) => {
+          const label = labelOf(node.id);
+          return (
+            <Fragment key={node.id}>
+              {i === lineage.length - 1 ? (
+                <span className="here" aria-current="page" title={agentLabelText(label)}>
+                  <AgentName label={label} />
+                </span>
+              ) : (
+                <>
+                  <PendingLink
+                    href={withListReturn(agentHref(view.sessionId, i === 0 ? undefined : node.id), listReturn)}
+                    title={agentLabelText(label)}
+                  >
+                    <AgentName label={label} />
+                  </PendingLink>
+                  <span className="sep" aria-hidden>
+                    /
+                  </span>
+                </>
+              )}
+            </Fragment>
+          );
+        })}
+        stats={
+          <>
             <span>
               {formatCount(turnCount)} turn{turnCount === 1 ? "" : "s"}
             </span>
@@ -119,9 +118,9 @@ export function TranscriptPane({
             )}
             {effortLabel && <span>{effortLabel} effort</span>}
             <CostFigure usd={selected.costUsd} lowerBound={selected.unpriced} className="stat-cost" />
-          </div>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {family && parent === null && (
         <FamilyBanner parent={family.parent} continuations={family.children} listReturn={listReturn} />
