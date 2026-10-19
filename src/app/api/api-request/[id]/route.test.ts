@@ -72,7 +72,7 @@ describe("GET /api/api-request/[id]", () => {
     expect((await getWhatWasSentResponse(String(apiRequestId))).status).toBe(404);
   });
 
-  it.each(["abc", "0", "-3", "1.5"])("answers 400 for the malformed id %j", async (id) => {
+  it.each(["abc", "0", "-3", "1.5", "2147483648"])("answers 400 for the malformed id %j", async (id) => {
     expect((await getWhatWasSentResponse(id)).status).toBe(400);
   });
 });

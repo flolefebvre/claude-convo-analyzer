@@ -40,7 +40,7 @@ describe("GET /api/tool-call/[id]", () => {
     expect((await getBody("999999")).status).toBe(404);
   });
 
-  it.each(["abc", "0", "-3", "1.5"])("answers 400 for the malformed id %j", async (id) => {
+  it.each(["abc", "0", "-3", "1.5", "2147483648"])("answers 400 for the malformed id %j", async (id) => {
     expect((await getBody(id)).status).toBe(400);
   });
 });

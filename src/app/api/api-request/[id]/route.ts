@@ -13,7 +13,7 @@ import z from "zod";
 import { loadWhatWasSent } from "@/app/_lib/conversations";
 
 /** An `api_request` row id, as the `[id]` segment spells it. */
-const idSchema = z.coerce.number().int().positive();
+const idSchema = z.coerce.number().int().positive().max(2_147_483_647); // Prisma reads an `Int` id as 32-bit
 
 /**
  * What the API request with row id `[id]` sent (parameters, timings, new
