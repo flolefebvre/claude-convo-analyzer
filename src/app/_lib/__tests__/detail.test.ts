@@ -40,6 +40,7 @@ function detail(partial: Partial<ConversationDetail> = {}): ConversationDetail {
     perModel: [],
     subAgents: [],
     perSkill: [],
+    sideRequests: { count: 0, costUsd: 0, unpriced: false, byKind: [] },
     ...partial,
   };
 }

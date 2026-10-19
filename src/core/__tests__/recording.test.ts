@@ -303,8 +303,50 @@ describe("reading a Recording one session at a time", () => {
     const [inFull] = readRecording(filePath);
     const expected: Partial<RecordedApiRequest> = { ...inFull };
     delete expected.body;
-    expect(withoutBody).toEqual({ ...expected, storedBodyHash: expect.any(String) });
+    expect(withoutBody).toEqual({ ...expected, storedBodyHash: expect.any(String), sentOutline: expect.any(Object) });
     expect(withoutBody).not.toHaveProperty("body");
+  });
+
+  it("outlines what each API request sent by first lines, without restoring a body", async () => {
+    const writer = openRecordingWriter(recordingsRoot);
+    await writer.append(
+      apiRequest({
+        body: {
+          model: "claude-haiku-4-5-20251001",
+          system: [
+            { type: "text", text: "First block.\nIts second line." },
+            { type: "text", text: "Second block." },
+          ],
+          messages: [
+            { role: "assistant", content: [{ type: "text", text: "Earlier." }] },
+            {
+              role: "user",
+              content: [
+                { type: "tool_result", tool_use_id: "t1", content: "ignored" },
+                { type: "text", text: "Last text.\nMore." },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+    await writer.append(apiRequest({ body: { model: "m", system: "One string.\nTwo.", messages: [] } }));
+    await writer.append(apiRequest({ body: "not json" }));
+
+    const outlines = readRecordingWithoutBodies(path.join(recordingsRoot, "sess-recorded.jsonl.gz")).map(
+      (recorded) => recorded.sentOutline,
+    );
+
+    expect(outlines).toEqual([
+      {
+        requestedModel: "claude-haiku-4-5-20251001",
+        systemFirstLines: ["First block.", "Second block."],
+        messageCount: 2,
+        lastUserMessageFirstLines: ["Last text."],
+      },
+      { requestedModel: "m", systemFirstLines: ["One string."], messageCount: 0, lastUserMessageFirstLines: [] },
+      { requestedModel: null, systemFirstLines: [], messageCount: 0, lastUserMessageFirstLines: [] },
+    ]);
   });
 
   it("tells, without restoring them, which API requests of one file sent the same body", async () => {

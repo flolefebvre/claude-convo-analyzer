@@ -6,7 +6,6 @@ import {
   RESULT_TRUNCATE_CHARS,
   prettyToolText,
   agentLabels,
-  hasUnpricedAgent,
   agentLineage,
   classifyToolCall,
   effortSummary,
@@ -442,16 +441,5 @@ describe("agentLabels", () => {
     );
     expect(labels.get("x1")).toEqual({ name: "Explore", ordinal: null });
     expect(labels.get("x2")).toEqual({ name: "Explore", ordinal: null });
-  });
-});
-
-describe("hasUnpricedAgent", () => {
-  it("is false when every agent is priced", () => {
-    expect(hasUnpricedAgent(agentNode("1", "", [agentNode("a1", "Explore")]))).toBe(false);
-  });
-
-  it("is true when a nested sub-agent has unpriced usage", () => {
-    const tree = agentNode("1", "", [agentNode("a1", "Plan", [agentNode("a2", "Explore", [], { unpriced: true })])]);
-    expect(hasUnpricedAgent(tree)).toBe(true);
   });
 });

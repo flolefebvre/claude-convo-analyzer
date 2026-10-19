@@ -90,7 +90,27 @@ export type ApiRequestWithStoredBodyHash = ApiRequestWithoutBody & {
    * when theirs are equal. Like a piece hash, it means nothing across files.
    */
   storedBodyHash: string;
+  /** A few first lines of what it sent, read from its pieces without restoring its body. */
+  sentOutline: SentOutline;
 };
+
+/**
+ * The opening of what an API request sent, cut down to a few first lines: what
+ * telling one API request from another needs, never a whole body.
+ */
+export type SentOutline = {
+  /** The body's `model`; null when it sent none. */
+  requestedModel: string | null;
+  /** The first line of each of the system prompt's first {@link OUTLINED_SYSTEM_BLOCK_COUNT} text blocks (a string prompt is one). */
+  systemFirstLines: string[];
+  /** How many messages it sent. */
+  messageCount: number;
+  /** The first line of each text block of its last message, when that is a user message (a string content is one); else empty. */
+  lastUserMessageFirstLines: string[];
+};
+
+/** How many system blocks a {@link SentOutline} outlines. */
+const OUTLINED_SYSTEM_BLOCK_COUNT = 4;
 
 /** One Recording file, as discovery finds it. */
 export type DiscoveredRecording = {
@@ -273,20 +293,72 @@ export function readRecording(filePath: string): RecordedApiRequest[] {
 
 /**
  * Every API request in the Recording file at `filePath`, without its body but
- * with its `storedBodyHash`, in append order: pieces are skipped, never
- * restored, so memory stays the size of the file. Reads a last member cut short like {@link readRecording}.
+ * with its `storedBodyHash` and its {@link SentOutline}, in append order: no
+ * body is restored — an outline reads only the few pieces it names, and keeps
+ * their first lines — so memory stays the size of the file. Reads a last
+ * member cut short like {@link readRecording}.
  *
  * @example
  * const requestIds = readRecordingWithoutBodies(recording.sourcePath).map((r) => r.response.requestId);
  */
 export function readRecordingWithoutBodies(filePath: string): ApiRequestWithStoredBodyHash[] {
+  const contentByHash = new Map<string, unknown>();
   return linesOfRecordingFile(filePath).flatMap((line) => {
-    if (line.type === "piece") return [];
+    if (line.type === "piece") {
+      contentByHash.set(line.hash, line.content);
+      return [];
+    }
     const apiRequest: Partial<ApiRequestLine> = { ...line };
     delete apiRequest.type;
     delete apiRequest.body;
-    return [{ ...(apiRequest as ApiRequestWithoutBody), storedBodyHash: hashOf(line.body) }];
+    return [
+      {
+        ...(apiRequest as ApiRequestWithoutBody),
+        storedBodyHash: hashOf(line.body),
+        sentOutline: sentOutlineOf(line.body, contentByHash),
+      },
+    ];
   });
+}
+
+/** The {@link SentOutline} of a stored body, its pieces looked up in `contentByHash`. */
+function sentOutlineOf(stored: StoredBody, contentByHash: Map<string, unknown>): SentOutline {
+  const outline: SentOutline = {
+    requestedModel: null,
+    systemFirstLines: [],
+    messageCount: 0,
+    lastUserMessageFirstLines: [],
+  };
+  if (stored === null || "text" in stored || "json" in stored) return outline;
+  const model = stored.parameters.model;
+  outline.requestedModel = typeof model === "string" ? model : null;
+  const systemHashes = typeof stored.system === "string" ? [stored.system] : (stored.system ?? []);
+  outline.systemFirstLines = systemHashes
+    .slice(0, OUTLINED_SYSTEM_BLOCK_COUNT)
+    .flatMap((hash) => textsOf(contentByHash.get(hash)))
+    .map(firstLineOf);
+  const messageHashes = stored.messages ?? [];
+  outline.messageCount = messageHashes.length;
+  const lastMessage = messageHashes.length === 0 ? undefined : contentByHash.get(messageHashes.at(-1)!);
+  if (isPlainObject(lastMessage) && lastMessage.role === "user") {
+    outline.lastUserMessageFirstLines = textsOf(lastMessage.content).map(firstLineOf);
+  }
+  return outline;
+}
+
+/** The texts of a content: itself when a string; each `text` block's, or the block itself when a string, for an array; a lone `text` block's. */
+function textsOf(content: unknown): string[] {
+  if (typeof content === "string") return [content];
+  const blocks = Array.isArray(content) ? content : [content];
+  return blocks.flatMap((block) => {
+    if (typeof block === "string") return [block];
+    return isPlainObject(block) && block.type === "text" && typeof block.text === "string" ? [block.text] : [];
+  });
+}
+
+function firstLineOf(text: string): string {
+  const newlineIndex = text.indexOf("\n");
+  return newlineIndex === -1 ? text : text.slice(0, newlineIndex);
 }
 
 /**

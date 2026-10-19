@@ -327,13 +327,3 @@ export function agentLabels(tree: TranscriptAgentNode): Map<string, AgentLabel> 
   walkChildren(tree);
   return labels;
 }
-
-/**
- * True when any agent in the tree ran on a model without a known price — the
- * conversation total is then a lower bound.
- *
- * @example hasUnpricedAgent(view.tree) ? `~${formatCost(view.totalCostUsd)}` : formatCost(view.totalCostUsd)
- */
-export function hasUnpricedAgent(tree: TranscriptAgentNode): boolean {
-  return tree.unpriced || tree.children.some(hasUnpricedAgent);
-}

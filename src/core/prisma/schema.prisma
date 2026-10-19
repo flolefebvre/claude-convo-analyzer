@@ -234,20 +234,26 @@ model TurnDuration {
 }
 
 /// One per API request a Recording holds for the Conversation's session
-/// (ADR-0006), joined to its Turn when one matches. Nothing of what was sent.
+/// (ADR-0006), joined to its Turn when one matches, with its kind and its
+/// response's usage. Nothing of what was sent.
 model ApiRequest {
   id             Int  @id @default(autoincrement())
   conversationId Int  @map("conversation_id")
   /// The assistant Message of the Turn this API request belongs to: the one
   /// with the same `requestId`, else the same `message.id`; for a failed
-  /// attempt (`isFailedAttempt`), the Turn whose API request retried it. NULL
-  /// for a Side request, and for an attempt no retry of which joined a Turn.
+  /// attempt, the Turn whose API request retried it. NULL for a Side request,
+  /// and for a failed attempt no retry of which joined a Turn.
   messageId      Int? @map("message_id")
   /// The Agent of that Turn; NULL when `messageId` is.
   agentId        Int? @map("agent_id")
-  /// True for a failed attempt of the Turn `messageId` names: a request that
-  /// did not succeed, retried by that Turn's API request.
-  isFailedAttempt Boolean @default(false) @map("is_failed_attempt")
+  /// What the API request is (GLOSSARY.md, API request), as the Refresh
+  /// classified it (`classifyApiRequest`, `api-request-kind.ts`): `turn` |
+  /// `failed-attempt` | a Side request's kind — `session-naming` |
+  /// `quota-probe` | `safety-monitor` | `suggestion` | `token-count` | `other`.
+  kind           String
+  /// For `kind = other`, the first line of its system prompt; NULL otherwise,
+  /// and for one without a system prompt.
+  otherKindLabel String? @map("other_kind_label")
 
   /// The `request-id` response header.
   requestId         String? @map("request_id")
@@ -273,6 +279,17 @@ model ApiRequest {
   /// (an error response, or a stream an `error` event cut short), else
   /// `proxyError`; NULL otherwise. Set on any API request, not only attempts.
   errorMessage      String? @map("error_message")
+
+  /// The response's token split, as `message` stores a Turn's; all NULL when
+  /// the response carries no `usage` (an error, a token count). Only an API
+  /// request that is not a Turn's adds it to Cost (GLOSSARY.md, Unlogged usage).
+  inputTokens           Int? @map("input_tokens")
+  outputTokens          Int? @map("output_tokens")
+  cacheCreation5mTokens Int? @map("cache_creation_5m_tokens")
+  cacheCreation1hTokens Int? @map("cache_creation_1h_tokens")
+  cacheReadTokens       Int? @map("cache_read_tokens")
+  /// The response body's `model`, else the requested one; NULL with neither.
+  model                 String?
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   message      Message?     @relation(fields: [messageId], references: [id], onDelete: SetNull)

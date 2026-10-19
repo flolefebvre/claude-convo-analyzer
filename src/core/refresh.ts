@@ -53,7 +53,8 @@ import {
   discoverSessions,
   discoverSubAgents,
 } from "@/core/discovery";
-import { type ParsedAgentSpawn, parseSessionLines, type ParsedSession } from "@/core/parse";
+import { classifyApiRequest } from "@/core/api-request-kind";
+import { type ParsedAgentSpawn, parseSessionLines, type ParsedSession, parseUsage, type RawUsage } from "@/core/parse";
 import { type MessageRow, prepareRefreshStatements, type RefreshStatements } from "@/core/prisma/refresh-statements";
 import {
   type ApiRequestWithStoredBodyHash,
@@ -61,6 +62,7 @@ import {
   discoverRecordings,
   type DiscoveredRecording,
   readRecordingWithoutBodies,
+  type SentOutline,
 } from "@/core/recording";
 import { readFileUnlessVanished, statUnlessVanished } from "@/core/vanished-file";
 
@@ -136,8 +138,10 @@ type RefreshOptions = {
  *     chars like every other tool's, cutting off long hand-backs).
  * 6 — a failed attempt of a Turn joins that Turn (`api_request.is_failed_attempt`),
  *     and every API request keeps its response's error message.
+ * 7 — every API request is classified by kind (`api_request.kind`, Side
+ *     requests told apart), and keeps its response's usage and model.
  */
-export const PARSER_VERSION = 6;
+export const PARSER_VERSION = 7;
 
 /**
  * The version a conversation carries while it is written but NOT YET COMPLETE:
@@ -191,13 +195,14 @@ type ParsedConversation = {
   priorConversationId: number | null;
 };
 
-/** An API request as the Refresh reads it: its `api_request` columns, and what tells which others sent the same body. */
+/** An API request as the Refresh reads it: its `api_request` columns, what tells which others sent the same body, and what tells its kind. */
 type ReadApiRequest = RecordedApiRequestFields & {
   /** Equal for two API requests of the Recording that sent the same body. */
   storedBodyHash: string;
+  sentOutline: SentOutline;
 };
 
-/** What an `api_request` row keeps of an API request: everything but the Turn it joins. */
+/** What an `api_request` row keeps of an API request: everything but the Turn it joins and its kind. */
 type RecordedApiRequestFields = {
   requestId: string | null;
   responseMessageId: string | null;
@@ -211,6 +216,14 @@ type RecordedApiRequestFields = {
   proxyError: string | null;
   isClientAborted: boolean;
   errorMessage: string | null;
+  /** The response's token split; all null when it carries no `usage`. */
+  inputTokens: number | null;
+  outputTokens: number | null;
+  cacheCreation5mTokens: number | null;
+  cacheCreation1hTokens: number | null;
+  cacheReadTokens: number | null;
+  /** The response's `model`, else the requested one. */
+  model: string | null;
 };
 
 /** What linking and stamping need of a conversation this run has written. */
@@ -613,18 +626,22 @@ function readApiRequests(recordingPath: string | null): {
   }
 }
 
-/** The `api_request` columns of one API request, its response body reduced to its `message.id` and its error message. */
+/** The `api_request` columns of one API request, its response body reduced to its `message.id`, error message, usage and model. */
 function apiRequestFields(apiRequest: ApiRequestWithStoredBodyHash): ReadApiRequest {
   const responseBody = apiRequest.response.body;
-  const responseMessageId =
-    typeof responseBody === "object" &&
-    responseBody !== null &&
-    "id" in responseBody &&
-    typeof responseBody.id === "string"
-      ? responseBody.id
-      : null;
+  const responseFields = isPlainObject(responseBody) ? responseBody : {};
+  const responseMessageId = typeof responseFields.id === "string" ? responseFields.id : null;
+  const usage = isPlainObject(responseFields.usage) ? parseUsage(responseFields.usage as RawUsage) : null;
   return {
     storedBodyHash: apiRequest.storedBodyHash,
+    sentOutline: apiRequest.sentOutline,
+    inputTokens: usage?.inputTokens ?? null,
+    outputTokens: usage?.outputTokens ?? null,
+    cacheCreation5mTokens: usage?.cacheCreation5mTokens ?? null,
+    cacheCreation1hTokens: usage?.cacheCreation1hTokens ?? null,
+    cacheReadTokens: usage?.cacheReadTokens ?? null,
+    model:
+      (typeof responseFields.model === "string" ? responseFields.model : null) ?? apiRequest.sentOutline.requestedModel,
     requestId: apiRequest.response.requestId,
     responseMessageId,
     externalAgentId: apiRequest.agentId,
@@ -647,6 +664,10 @@ function responseErrorMessageOf(responseBody: unknown): string | null {
   return typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
     ? error.message
     : null;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /** An ISO 8601 timing of a Recording as epoch ms; throws on one that is not a date. */
@@ -798,8 +819,9 @@ type TurnRows = { byRequestId: Map<string, TurnRow>; byMessageId: Map<string, Tu
  * Write one `api_request` row per API request of the Conversation's
  * Recording, in append order, each joined to the Turn with its `requestId`,
  * else its `message.id`, else — when it is a failed attempt of one (see
- * `failedAttemptTurnRows`) — to that Turn, else to none. Two API requests may
- * join one Turn: both rows are kept.
+ * `failedAttemptTurnRows`) — to that Turn, else to none, and classified by
+ * kind (`classifyApiRequest`). Two API requests may join one Turn: both rows
+ * are kept.
  */
 function writeApiRequests(
   statements: RefreshStatements,
@@ -814,14 +836,22 @@ function writeApiRequests(
       null,
   );
   const attemptTurnRows = failedAttemptTurnRows(apiRequests, joinedTurnRows);
-  apiRequests.forEach(({ storedBodyHash: _storedBodyHash, ...apiRequest }, index) => {
+  apiRequests.forEach(({ storedBodyHash: _storedBodyHash, sentOutline, ...apiRequest }, index) => {
     const turnRow = joinedTurnRows[index] ?? attemptTurnRows[index];
+    const { kind, otherKindLabel } = classifyApiRequest({
+      isJoinedToTurn: joinedTurnRows[index] !== null,
+      isRetriedByTurn: attemptTurnRows[index] !== null,
+      isFailed: isFailedApiRequest(apiRequest),
+      path: apiRequest.path,
+      sentOutline,
+    });
     statements.insertApiRequest({
       ...apiRequest,
       conversationId,
       messageId: turnRow?.messageRowId ?? null,
       agentId: turnRow?.agentRowId ?? null,
-      isFailedAttempt: attemptTurnRows[index] !== null,
+      kind,
+      otherKindLabel,
     });
   });
 }
@@ -840,8 +870,8 @@ function writeApiRequests(
  *
  * An attempt no retry of which joined a Turn — Claude Code gave up, and the
  * logs show an API-error Turn, or nothing — is left alone: it stays a row with
- * `messageId` NULL, like a Side request. Telling the two apart needs the Side
- * request classifier (#131).
+ * `messageId` NULL, like a Side request, and `classifyApiRequest` tells the
+ * two apart.
  */
 function failedAttemptTurnRows(apiRequests: ReadApiRequest[], joinedTurnRows: (TurnRow | null)[]): (TurnRow | null)[] {
   const attemptTurnRows: (TurnRow | null)[] = apiRequests.map(() => null);

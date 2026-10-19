@@ -37,7 +37,7 @@ import { TranscriptPane } from "@/app/_components/transcript/transcript-pane";
 import { BackLink, TranscriptTree } from "@/app/_components/transcript/transcript-tree";
 import { loadConversations, loadFamily, loadTranscript } from "@/app/_lib/conversations";
 import { resolvePage } from "@/app/_lib/search-params";
-import { agentLabels, hasUnpricedAgent } from "@/app/_lib/transcript";
+import { agentLabels } from "@/app/_lib/transcript";
 import { resolveAgent, resolveCall, resolveListReturn, resolveMessage } from "@/app/_lib/transcript-url";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -115,9 +115,7 @@ async function TranscriptBackLink({ searchParams }: Pick<RouteProps, "searchPara
 
 async function TreeRegion(props: RouteProps) {
   const { view, labels, listReturn } = await readRoute(props);
-  return (
-    <TranscriptTree view={view} labels={labels} lowerBound={hasUnpricedAgent(view.tree)} listReturn={listReturn} />
-  );
+  return <TranscriptTree view={view} labels={labels} lowerBound={view.hasUnpriced} listReturn={listReturn} />;
 }
 
 async function PaneRegion(props: RouteProps) {
