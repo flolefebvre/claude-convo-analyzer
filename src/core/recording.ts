@@ -281,10 +281,11 @@ export function readRecordingWithoutBodies(filePath: string): ApiRequestWithoutB
 
 /**
  * The API requests of the Recording file at `filePath` that `isSelected`
- * picks, in full, in append order: the file is decoded whole, once, and only
- * the picked bodies are restored from its pieces, so memory is the decoded
- * file plus those bodies — never every body. Reads a last member cut short
- * like {@link readRecording}.
+ * picks, in full, in append order; only the picked bodies are restored from
+ * its pieces, never every body. The last file read stays decoded in this
+ * process until its size or mtime changes, so reading it again is a lookup;
+ * memory is that decoded file plus the picked bodies. Reads a last member cut
+ * short like {@link readRecording}.
  *
  * @example
  * const [apiRequest] = readSelectedApiRequests(recording.sourcePath, (r) => r.response.requestId === "req_1");
@@ -293,19 +294,44 @@ export function readSelectedApiRequests(
   filePath: string,
   isSelected: (apiRequest: ApiRequestWithoutBody) => boolean,
 ): RecordedApiRequest[] {
-  const contentByHash = new Map<string, unknown>();
-  const apiRequests: RecordedApiRequest[] = [];
-  for (const line of linesOfRecordingFile(filePath)) {
-    if (line.type === "piece") {
-      contentByHash.set(line.hash, line.content);
-      continue;
-    }
-    const { body, ...apiRequestWithoutBody } = withoutType(line);
-    if (isSelected(apiRequestWithoutBody)) {
-      apiRequests.push({ ...apiRequestWithoutBody, body: restoredBody(body, contentByHash) });
-    }
+  const { contentByHash, apiRequests } = decodedRecording(filePath);
+  return apiRequests.flatMap(({ body, ...apiRequestWithoutBody }) =>
+    isSelected(apiRequestWithoutBody) ? [{ ...apiRequestWithoutBody, body: restoredBody(body, contentByHash) }] : [],
+  );
+}
+
+/** A Recording file decoded into its pieces and its API requests, bodies left as stored, as of its change key. */
+type DecodedRecording = {
+  filePath: string;
+  /** The file's size and mtime when it was read: a write or a repair changes them. */
+  changeKey: string;
+  contentByHash: Map<string, unknown>;
+  apiRequests: Omit<ApiRequestLine, "type">[];
+};
+
+/** The last Recording file {@link readSelectedApiRequests} decoded: one entry, the largest file it holds bounding its memory. */
+let lastDecodedRecording: DecodedRecording | null = null;
+
+/** The file at `filePath` decoded: the last one, while its change key holds, else decoded now and kept as the last. */
+function decodedRecording(filePath: string): DecodedRecording {
+  let changeKey: string;
+  try {
+    const stat = statSync(filePath);
+    changeKey = `${stat.size}:${stat.mtimeMs}`;
+  } catch (error) {
+    throw new Error(`Recording ${path.basename(filePath)} is unreadable`, { cause: error });
   }
-  return apiRequests;
+  if (lastDecodedRecording?.filePath === filePath && lastDecodedRecording.changeKey === changeKey) {
+    return lastDecodedRecording;
+  }
+  // Stat before reading: a write landing in between leaves the key older than the bytes, so the next read decodes again.
+  const decoded: DecodedRecording = { filePath, changeKey, contentByHash: new Map(), apiRequests: [] };
+  for (const line of linesOfRecordingFile(filePath)) {
+    if (line.type === "piece") decoded.contentByHash.set(line.hash, line.content);
+    else decoded.apiRequests.push(withoutType(line));
+  }
+  lastDecodedRecording = decoded;
+  return decoded;
 }
 
 /**

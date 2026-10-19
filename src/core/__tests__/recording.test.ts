@@ -3,7 +3,16 @@
 // on disk — the deduplication and the redaction are promises about the bytes.
 
 import { createHash } from "node:crypto";
-import { mkdtempSync, readdirSync, readFileSync, rmSync, truncateSync, statSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  truncateSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
@@ -15,6 +24,7 @@ import {
   readRecording,
   readRecordings,
   readRecordingWithoutBodies,
+  readSelectedApiRequests,
   sessionIdInUserId,
   type RecordedApiRequest,
 } from "@/core/recording";
@@ -364,6 +374,96 @@ describe("redaction in a Recording", () => {
     );
 
     expect(readRecordings(recordingsRoot)[0].body).toMatchObject({ metadata: { user_id: "<redacted>" } });
+  });
+});
+
+describe("the selected API requests of a Recording", () => {
+  /** A fixed mtime, set after each write, so a test controls the file's change key. */
+  const MTIME = new Date("2026-10-18T12:00:00Z");
+
+  /** The file of three API requests, each sending one Message more than the last, so pieces span three members. */
+  async function threeTurnRecording(): Promise<string> {
+    const writer = openRecordingWriter(recordingsRoot);
+    for (const turn of [1, 2, 3]) {
+      await writer.append(
+        apiRequest({ body: turnBody(turn), response: { ...apiRequest().response, requestId: `req_${turn}` } }),
+      );
+    }
+    const filePath = path.join(recordingsRoot, "sess-recorded.jsonl.gz");
+    utimesSync(filePath, MTIME, MTIME);
+    return filePath;
+  }
+
+  /** The body of Turn `turn`: one user Message per Turn so far. */
+  function turnBody(turn: number): object {
+    return {
+      model: "claude-opus-4-5",
+      system: [{ type: "text", text: "Be brief." }],
+      messages: Array.from({ length: turn }, (_, index) => ({ role: "user", content: `prompt ${index + 1}` })),
+    };
+  }
+
+  const isRequest = (requestId: string) => (recorded: { response: { requestId: string | null } }) =>
+    recorded.response.requestId === requestId;
+
+  it("restores a request whose pieces span several members", async () => {
+    const filePath = await threeTurnRecording();
+
+    const [third] = readSelectedApiRequests(filePath, isRequest("req_3"));
+
+    expect(third.body).toEqual(turnBody(3));
+  });
+
+  it("returns the same API requests when the file is read again unchanged, without decoding it again", async () => {
+    const filePath = await threeTurnRecording();
+    const first = readSelectedApiRequests(filePath, isRequest("req_3"));
+    // Same size and mtime, bytes no longer a Recording: only a decode would notice.
+    writeFileSync(filePath, Buffer.alloc(statSync(filePath).size));
+    utimesSync(filePath, MTIME, MTIME);
+
+    expect(readSelectedApiRequests(filePath, isRequest("req_3"))).toEqual(first);
+    expect(readSelectedApiRequests(filePath, isRequest("req_2"))[0].body).toEqual(turnBody(2));
+  });
+
+  it("reads an API request appended since the last read", async () => {
+    const filePath = await threeTurnRecording();
+    readSelectedApiRequests(filePath, isRequest("req_3"));
+
+    await openRecordingWriter(recordingsRoot).append(
+      apiRequest({ body: turnBody(4), response: { ...apiRequest().response, requestId: "req_4" } }),
+    );
+
+    expect(readSelectedApiRequests(filePath, isRequest("req_4"))[0].body).toEqual(turnBody(4));
+  });
+
+  it("reads a file repaired after a member cut short since the last read", async () => {
+    const filePath = await threeTurnRecording();
+    const sizeAfterThree = statSync(filePath).size;
+    await openRecordingWriter(recordingsRoot).append(
+      apiRequest({ body: turnBody(4), response: { ...apiRequest().response, requestId: "req_4" } }),
+    );
+    truncateSync(filePath, sizeAfterThree + Math.floor((statSync(filePath).size - sizeAfterThree) / 2));
+    expect(readSelectedApiRequests(filePath, isRequest("req_4"))).toEqual([]);
+
+    await openRecordingWriter(recordingsRoot).append(
+      apiRequest({ body: turnBody(5), response: { ...apiRequest().response, requestId: "req_5" } }),
+    );
+
+    expect(readSelectedApiRequests(filePath, isRequest("req_4"))).toEqual([]);
+    expect(readSelectedApiRequests(filePath, isRequest("req_5"))[0].body).toEqual(turnBody(5));
+  });
+
+  it("reads each of two files as its own", async () => {
+    const filePath = await threeTurnRecording();
+    await openRecordingWriter(recordingsRoot).append(
+      apiRequest({ sessionId: "sess-other", response: { ...apiRequest().response, requestId: "req_other" } }),
+    );
+    const otherPath = path.join(recordingsRoot, "sess-other.jsonl.gz");
+
+    expect(readSelectedApiRequests(filePath, isRequest("req_1"))).toHaveLength(1);
+    expect(readSelectedApiRequests(otherPath, isRequest("req_1"))).toEqual([]);
+    expect(readSelectedApiRequests(otherPath, isRequest("req_other"))).toHaveLength(1);
+    expect(readSelectedApiRequests(filePath, isRequest("req_other"))).toEqual([]);
   });
 });
 
