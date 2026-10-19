@@ -10,6 +10,9 @@ import type { TranscriptAgentNode } from "@/core/read";
 /** A Tool call's body, as core reads it — re-exported so a client leaf can name it without touching core. */
 export type { ToolCallBody } from "@/core/read";
 
+/** One display part of a Tool call's body block, as core shapes it — re-exported for the client leaf, like {@link ToolCallBody}. */
+export type { ToolCallFact, ToolCallPart } from "@/core/tool-call-views";
+
 /** What a recorded Turn sent, as core reads it — re-exported for the client leaf, like {@link ToolCallBody}. */
 export type { DiffLine, SentBlock, SentMessage, SentTool, WhatWasSent } from "@/core/what-was-sent";
 
