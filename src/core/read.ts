@@ -163,6 +163,13 @@ export type TranscriptMessage = {
   timestamp: string | null;
   /** `tool_use` blocks on this (assistant) turn, in stored order. */
   toolCalls: TranscriptToolCall[];
+  /**
+   * Row id of this recorded Turn's API request — the key `getWhatWasSent`
+   * reads what was sent by. Of two matching the Turn (a failed attempt and its
+   * retry), the 2xx one, else the latest. Null on an unrecorded Turn and on
+   * user Messages.
+   */
+  apiRequestId: number | null;
 };
 
 /** One node of the agent tree — an agent plus its own-transcript cost and lineage. */
@@ -1281,6 +1288,10 @@ async function readAgentTranscript(
     prisma,
     rows.map((r) => r.id),
   );
+  const apiRequestIdByMessageId = await apiRequestIdsByMessage(
+    prisma,
+    rows.filter((r) => r.role === "assistant").map((r) => r.id),
+  );
 
   // A Sub-agent's agent id is its external id, so `senderTaskId`/`taskId`
   // resolve against it; a coordinator is the agent that spawned this one.
@@ -1316,8 +1327,33 @@ async function readAgentTranscript(
       apiErrorMessage: r.apiErrorMessage,
       timestamp: r.timestamp === null ? null : new Date(Number(r.timestamp)).toISOString(),
       toolCalls: toolCallsByMsg.get(r.id) ?? [],
+      apiRequestId: apiRequestIdByMessageId.get(r.id) ?? null,
     };
   });
+}
+
+/**
+ * The `api_request` row id of each recorded Turn among `messageIds`, batched:
+ * of several matching one Turn, the 2xx one, else the latest to arrive.
+ */
+async function apiRequestIdsByMessage(prisma: PrismaClient, messageIds: number[]): Promise<Map<number, number>> {
+  const apiRequestIdByMessageId = new Map<number, number>();
+  if (messageIds.length === 0) return apiRequestIdByMessageId;
+  const rows = await prisma.apiRequest.findMany({
+    where: { messageId: { in: messageIds } },
+    orderBy: [{ arrivedAt: "asc" }, { id: "asc" }],
+    select: { id: true, messageId: true, status: true },
+  });
+  const isSuccessfulByMessageId = new Map<number, boolean>();
+  for (const row of rows) {
+    const messageId = row.messageId!;
+    const isSuccessful = row.status >= 200 && row.status < 300;
+    // Later rows replace earlier ones, except that a 2xx row is never replaced by a failed one.
+    if (isSuccessfulByMessageId.get(messageId) && !isSuccessful) continue;
+    apiRequestIdByMessageId.set(messageId, row.id);
+    isSuccessfulByMessageId.set(messageId, isSuccessful);
+  }
+  return apiRequestIdByMessageId;
 }
 
 /**
