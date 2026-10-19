@@ -32,6 +32,8 @@ describe("GET /api/tool-call/[id]", () => {
         resultTruncated: false,
         resultCharSize: 42,
         isError: true,
+        inputParts: [{ kind: "raw" }],
+        resultParts: [{ kind: "raw" }],
       },
     });
   });

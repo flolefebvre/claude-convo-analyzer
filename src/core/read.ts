@@ -14,6 +14,7 @@ import { addLocalDays, localDayKey, startOfLocalDay } from "@/core/local-day";
 import { type MessageOrigin, messageOriginSchema } from "@/core/parse";
 import type { Prisma, PrismaClient } from "@/core/prisma/generated/client";
 import { PARSER_VERSION } from "@/core/refresh";
+import { toolCallBodyParts, type ToolCallBodyParts } from "@/core/tool-call-views";
 
 export type ConversationSummary = {
   id: string;
@@ -662,22 +663,33 @@ export type ToolCallBody = {
   /** Full (untruncated) result length; NULL until paired. */
   resultCharSize: number | null;
   isError: boolean;
-};
+} & ToolCallBodyParts;
 
 /**
  * Tool-call body read API: the input and stored result of the `tool_call` row
- * `id` (a {@link TranscriptToolCall}'s `id`), or `null` for an unknown id — a
- * row id lives only until the next re-parse of its Conversation.
+ * `id` (a {@link TranscriptToolCall}'s `id`), each with its display parts from
+ * the tool's view, or `null` for an unknown id — a row id lives only until the
+ * next re-parse of its Conversation.
  *
  * @example const body = await getToolCallBody(call.id);
  */
 export async function getToolCallBody(id: number, opts: DetailOptions = {}): Promise<ToolCallBody | null> {
   const { prisma, owned } = readClient(opts.dbPath);
   try {
-    return await prisma.toolCall.findUnique({
+    const row = await prisma.toolCall.findUnique({
       where: { id },
-      select: { inputJson: true, resultText: true, resultTruncated: true, resultCharSize: true, isError: true },
+      select: {
+        name: true,
+        inputJson: true,
+        resultText: true,
+        resultTruncated: true,
+        resultCharSize: true,
+        isError: true,
+      },
     });
+    if (row === null) return null;
+    const { name, ...stored } = row;
+    return { ...stored, ...toolCallBodyParts({ name, ...stored }) };
   } finally {
     // Only a caller-owned (non-default) client is disconnected; the shared
     // default singleton stays open for the next request.

@@ -27,7 +27,30 @@ describe("getToolCallBody", () => {
       resultTruncated: false,
       resultCharSize: 6,
       isError: false,
+      inputParts: [{ kind: "raw" }],
+      resultParts: [{ kind: "raw" }],
     });
+  });
+
+  it("shapes an Agent call's input into its facts and its Task prompt", async () => {
+    const body = await getToolCallBody(await callId("toolu-b-agent"), { dbPath: db.dbPath });
+
+    expect(body?.inputParts).toEqual([
+      {
+        kind: "facts",
+        facts: [
+          { key: "subagent_type", value: "Plan" },
+          { key: "description", value: "plan the log rotation" },
+          { key: "model", value: "sonnet" },
+          { key: "run_in_background", value: "false" },
+        ],
+      },
+      {
+        kind: "markdown",
+        text: "## Task\n\nPlan how `big.log` gets rotated.\n\n- keep the last 7 days\n- compress older files\n\n```sh\nls -la /Users/me/dev/toolbody\n```",
+      },
+    ]);
+    expect(body?.resultParts).toEqual([{ kind: "raw" }]);
   });
 
   it("returns null for an unknown id", async () => {
