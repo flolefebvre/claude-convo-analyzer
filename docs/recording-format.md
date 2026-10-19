@@ -49,18 +49,20 @@ Every line has a `type`.
 ### `piece`
 
 ```json
-{ "type": "piece", "hash": "<sha256 hex>", "content": <any JSON> }
+{ "type": "piece", "hash": "<16 hex>", "content": <any JSON> }
 ```
 
 One system block, tool definition or message, stored once per file.
 `content` is the value exactly as sent. A system prompt sent as one string is a
 piece whose `content` is that string.
 
-**Hashing rule**: `hash` is the lowercase hex sha256 of the content's
-**canonical JSON**: `JSON.stringify` with every object's keys sorted (arrays
-keep their order, no whitespace). Two values that differ only in key order are
-the same piece. A message that differs in any byte — e.g. a moved
-`cache_control` marker — is a new piece.
+**Hashing rule**: `hash` is the first 16 lowercase hex characters (64 bits)
+of the sha256 of the content's **canonical JSON**: `JSON.stringify` with every
+object's keys sorted (arrays keep their order, no whitespace). Two values that
+differ only in key order are the same piece. A message that differs in any
+byte — e.g. a moved `cache_control` marker — is a new piece. Hashes are only
+compared within one file, so 64 bits leave a collision among its ten thousand
+pieces at odds of about 10⁻¹²; a reader treats a hash as an opaque string.
 
 ### `api_request`
 
