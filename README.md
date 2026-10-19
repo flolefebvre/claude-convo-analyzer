@@ -162,7 +162,8 @@ start it in its own terminal and leave it running:
 pnpm recorder
 ```
 
-Either way, start Claude Code through it, with the line the item's popover
+(`pnpm recorder --detach` starts it in the background instead, as **Start**
+does.) Either way, start Claude Code through it, with the line the item's popover
 copies for you (along with a shell alias) and `pnpm recorder` prints:
 
 ```bash

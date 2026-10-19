@@ -1,10 +1,11 @@
 // The app's hold on a Recorder (ADR-0006), from outside its process: read its
 // status on a port, start one detached so it outlives the app, and ask it to
-// stop through its stop endpoint. Every answer comes from the port, never from a
-// PID: the Recorder may have been started from a terminal or by an earlier app.
+// stop through its stop endpoint. Every answer comes from the port, since the
+// Recorder may have been started from a terminal or by an earlier app; a start
+// uses its new Recorder's pid only to notice it exiting before it answers.
 
 import { spawn } from "node:child_process";
-import { closeSync, mkdirSync, openSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { RECORDER_HEALTH_PATH, RECORDER_STOP_PATH, type RecorderHealth } from "@/core/recorder";
@@ -96,10 +97,11 @@ export function requestRecorderStop(port: number): Promise<void> {
 }
 
 /**
- * Start `scripts/recorder.ts` through tsx, detached so it outlives this
- * process, its output appended to `recorder.log` beside the Recordings root.
- * Resolves once the health endpoint answers on the port; a Recorder already
- * there is left alone, and a port held by another program fails at once.
+ * Start the Recorder through `scripts/recorder.ts --detach`, so it outlives
+ * this process and its process tree, its output appended to `recorder.log`
+ * beside the Recordings root. Resolves once the health endpoint answers on the
+ * port; a Recorder already there is left alone, and a port held by another
+ * program fails at once.
  *
  * @example
  * const outcome = await startRecorderDetached({ port: 4242, recordingsRoot: defaultRecordingsRoot(), repoRoot: process.cwd() });
@@ -112,43 +114,72 @@ export async function startRecorderDetached(options: DetachedRecorderOptions): P
   if (statusBefore.status === "portTaken") return portTakenOutcome(port);
 
   const logPath = recorderLogPath(recordingsRoot);
-  mkdirSync(path.dirname(logPath), { recursive: true });
-  const logFd = openSync(logPath, "a");
-  const logOffset = statSync(logPath).size;
-  let exitedEarly = false;
-  try {
-    const child = spawn(process.execPath, ["--import", "tsx", path.join("scripts", "recorder.ts")], {
-      cwd: repoRoot,
-      // The inherited `CCA_*` variables (the upstream, above all) reach the Recorder; these two are this start's.
-      env: { ...process.env, CCA_RECORDER_PORT: String(port), CCA_RECORDINGS_ROOT: recordingsRoot },
-      detached: true,
-      stdio: ["ignore", logFd, logFd],
-    });
-    child.once("exit", () => (exitedEarly = true));
-    child.once("error", () => (exitedEarly = true));
-    child.unref();
-
-    const deadline = Date.now() + START_TIMEOUT_MS;
-    while (!exitedEarly && Date.now() < deadline) {
-      const status = await readRecorderStatus(port);
-      if (status.status === "running") return { outcome: "started", health: status };
-      if (status.status === "portTaken") return portTakenOutcome(port);
-      await new Promise((resolve) => setTimeout(resolve, START_POLL_INTERVAL_MS));
-    }
-    if (!exitedEarly) child.kill("SIGTERM");
-  } finally {
-    closeSync(logFd);
+  const logOffset = existsSync(logPath) ? statSync(logPath).size : 0;
+  const launch = await launchedRecorder(port, recordingsRoot, repoRoot);
+  if (launch.pid === null) {
+    const launcherLines = lastLines(launch.output);
+    const failure = `The Recorder on port ${port} could not be launched`;
+    return { outcome: "failed", message: launcherLines ? `${failure}:\n${launcherLines}` : `${failure}.` };
   }
-  const logLines = lastLogLines(logPath, logOffset);
-  const failure = exitedEarly
-    ? `The Recorder on port ${port} exited before it started`
-    : `The Recorder on port ${port} did not answer within ${START_TIMEOUT_MS / 1000} s`;
+
+  const deadline = Date.now() + START_TIMEOUT_MS;
+  let isRecorderAlive = isProcessAlive(launch.pid);
+  while (isRecorderAlive && Date.now() < deadline) {
+    const status = await readRecorderStatus(port);
+    if (status.status === "running") return { outcome: "started", health: status };
+    if (status.status === "portTaken") return portTakenOutcome(port);
+    await new Promise((resolve) => setTimeout(resolve, START_POLL_INTERVAL_MS));
+    isRecorderAlive = isProcessAlive(launch.pid);
+  }
+  if (isRecorderAlive) process.kill(launch.pid, "SIGTERM");
+  const logLines = existsSync(logPath) ? lastLines(readFileSync(logPath).subarray(logOffset).toString("utf8")) : "";
+  const failure = isRecorderAlive
+    ? `The Recorder on port ${port} did not answer within ${START_TIMEOUT_MS / 1000} s`
+    : `The Recorder on port ${port} exited before it started`;
   return { outcome: "failed", message: logLines ? `${failure}:\n${logLines}` : `${failure}.` };
 }
 
 /**
- * The Recorder's log when the app starts it: `recorder.log` beside the
- * Recordings root.
+ * Run `scripts/recorder.ts --detach`, which leaves the Recorder running as an
+ * orphan and exits at once; resolves with the pid it printed (null when it
+ * printed none) and everything it printed. The pipes close with the launcher.
+ */
+function launchedRecorder(
+  port: number,
+  recordingsRoot: string,
+  repoRoot: string,
+): Promise<{ pid: number | null; output: string }> {
+  return new Promise((resolve) => {
+    const launcher = spawn(process.execPath, ["--import", "tsx", path.join("scripts", "recorder.ts"), "--detach"], {
+      cwd: repoRoot,
+      // The inherited `CCA_*` variables (the upstream, above all) reach the Recorder; these two are this start's.
+      env: { ...process.env, CCA_RECORDER_PORT: String(port), CCA_RECORDINGS_ROOT: recordingsRoot },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let output = "";
+    launcher.stdout.on("data", (chunk: Buffer) => (output += chunk.toString("utf8")));
+    launcher.stderr.on("data", (chunk: Buffer) => (output += chunk.toString("utf8")));
+    launcher.once("error", (error) => resolve({ pid: null, output: error.message }));
+    launcher.once("close", (exitCode) => {
+      const printedPid = /^Recorder detached as pid (\d+)/m.exec(output)?.[1];
+      resolve({ pid: exitCode === 0 && printedPid ? Number(printedPid) : null, output });
+    });
+  });
+}
+
+/** Whether a process with this pid exists (the Recorder, orphaned, is reaped by init when it exits). */
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The Recorder's log when it runs detached (`pnpm recorder --detach`, the
+ * app's Start): `recorder.log` beside the Recordings root.
  *
  * @example recorderLogPath("/home/me/.claude-convo-analyzer/recordings"); // "/home/me/.claude-convo-analyzer/recorder.log"
  */
@@ -160,11 +191,9 @@ function portTakenOutcome(port: number): RecorderStartOutcome {
   return { outcome: "failed", message: `Port ${port} is taken by another program.` };
 }
 
-/** The last lines the log gained from `offset` on, or "" when it gained none. */
-function lastLogLines(logPath: string, offset: number): string {
-  return readFileSync(logPath)
-    .subarray(offset)
-    .toString("utf8")
+/** The last non-blank lines of `text`, or "" when it has none. */
+function lastLines(text: string): string {
+  return text
     .split("\n")
     .filter((line) => line.trim() !== "")
     .slice(-FAILURE_LOG_LINE_COUNT)

@@ -1,13 +1,15 @@
 // `pnpm recorder` as a process: it prints the ANTHROPIC_BASE_URL line, and a
 // SIGTERM or a POST to its stop endpoint lets an in-flight streamed API request
-// finish before it exits 0.
+// finish before it exits 0. With `--detach` it leaves a Recorder running on its
+// own and exits at once.
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { RECORDER_STOP_PATH } from "@/core/recorder";
+import { readRecorderStatus, recorderLogPath } from "@/core/recorder-control";
 import { readRecordings } from "@/core/recording";
 import {
   deferred,
@@ -17,6 +19,7 @@ import {
   textUntilEnd,
   type FakeUpstream,
 } from "@/core/__tests__/helpers/fake-upstream";
+import { freePort, stopDetachedRecorder, waitForRecorderStatus } from "@/core/__tests__/helpers/recorder-port";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 
@@ -24,6 +27,8 @@ let recordingsRoot: string;
 let upstream: FakeUpstream;
 let releaseRest: () => void;
 let recorderProcess: ChildProcess | undefined;
+/** Ports a `--detach` run left a Recorder on, stopped after the test. */
+let detachedRecorderPorts: number[] = [];
 
 beforeEach(async () => {
   recordingsRoot = mkdtempSync(path.join(tmpdir(), "cca-recorder-script-"));
@@ -35,6 +40,8 @@ beforeEach(async () => {
 afterEach(async () => {
   recorderProcess?.kill("SIGKILL");
   recorderProcess = undefined;
+  for (const port of detachedRecorderPorts) await stopDetachedRecorder(port);
+  detachedRecorderPorts = [];
   releaseRest();
   await upstream.close();
   rmSync(recordingsRoot, { recursive: true, force: true });
@@ -65,6 +72,23 @@ function startRecorderProcess(): Promise<string> {
       reject(new Error(`recorder exited with ${code} before listening: ${stderr}`)),
     );
   });
+}
+
+/** Run the script with `args` and `env` added, to its exit. */
+function runToExit(
+  args: string[],
+  env: Record<string, string>,
+): Promise<{ exitCode: number | null; stdout: string; stderr: string }> {
+  const child = spawn(process.execPath, ["--import", "tsx", "scripts/recorder.ts", ...args], {
+    cwd: REPO_ROOT,
+    env: { ...process.env, CCA_RECORDER_UPSTREAM: upstream.url, ...env },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let stdout = "";
+  let stderr = "";
+  child.stdout.on("data", (chunk: Buffer) => (stdout += chunk.toString("utf8")));
+  child.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString("utf8")));
+  return new Promise((resolve) => child.once("close", (exitCode) => resolve({ exitCode, stdout, stderr })));
 }
 
 function exitCodeOf(child: ChildProcess): Promise<number | null> {
@@ -128,6 +152,34 @@ describe("pnpm recorder", () => {
 
     await textUntilEnd(reader);
     expect(await exited).toBe(0);
+  });
+
+  it("with --detach, leaves a Recorder answering health on the port, prints its pid, and exits 0", async () => {
+    const port = await freePort();
+    detachedRecorderPorts.push(port);
+    const detachedRecordingsRoot = path.join(recordingsRoot, "recordings");
+
+    const { exitCode, stdout } = await runToExit(["--detach"], {
+      CCA_RECORDER_PORT: String(port),
+      CCA_RECORDINGS_ROOT: detachedRecordingsRoot,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/^Recorder detached as pid \d+, logging to .*recorder\.log$/m);
+    expect(stdout).toContain(`ANTHROPIC_BASE_URL=http://127.0.0.1:${port}\n`);
+    await waitForRecorderStatus(port, "running");
+    expect(await readRecorderStatus(port)).toMatchObject({ status: "running", recordingsRoot: detachedRecordingsRoot });
+    expect(readFileSync(recorderLogPath(detachedRecordingsRoot), "utf8")).toContain(`Recorder on 127.0.0.1:${port}`);
+  });
+
+  it("refuses --detach on port 0, which only the Recorder would know", async () => {
+    const { exitCode, stderr } = await runToExit(["--detach"], {
+      CCA_RECORDER_PORT: "0",
+      CCA_RECORDINGS_ROOT: path.join(recordingsRoot, "recordings"),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/--detach needs a fixed port/);
   });
 
   it("exits 1 at once on a second signal, a second or more after the first", async () => {

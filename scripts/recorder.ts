@@ -2,12 +2,17 @@
 // SIGINT/SIGTERM or a POST to its stop endpoint (the app's Stop): the first
 // signal or stop request stops it cleanly (in-flight API requests finish, up to
 // 10 s, then the Recordings are flushed) and exits 0; a signal a second or more
-// after the first exits 1 at once. The app starts this same script, detached.
+// after the first exits 1 at once. `--detach` leaves it running in the
+// background instead; that is how the app's Start runs it.
 
+import { spawn } from "node:child_process";
+import { closeSync, mkdirSync, openSync } from "node:fs";
+import path from "node:path";
 import { defaultRecorderPort, defaultRecorderUpstream, startRecorder } from "@/core/recorder";
+import { recorderLogPath } from "@/core/recorder-control";
 import { defaultRecordingsRoot } from "@/core/recording";
 
-const USAGE = `Usage: pnpm recorder
+const USAGE = `Usage: pnpm recorder [--detach]
 
 Run the Recorder on 127.0.0.1, forwarding to the Anthropic API and recording
 every API request. Point Claude Code at it with the ANTHROPIC_BASE_URL line it
@@ -17,7 +22,10 @@ prints. Stop it with Ctrl-C (twice to force), or with Stop in the app bar.
   CCA_RECORDER_UPSTREAM  API to forward to (default https://api.anthropic.com).
   CCA_RECORDINGS_ROOT    Where Recordings go (default ~/.claude-convo-analyzer/recordings).
 
-  --help  Show this message.`;
+  --detach  Leave the Recorder running in the background and return at once;
+            its output goes to recorder.log beside the Recordings root. Needs
+            a fixed port. Stop it with Stop in the app bar.
+  --help    Show this message.`;
 
 /** How long after the first signal a repeat counts as the same Ctrl-C, not a second one forcing the exit. */
 const REPEATED_SIGNAL_WINDOW_MS = 1000;
@@ -55,10 +63,36 @@ async function runRecorderUntilSignal(): Promise<void> {
   );
 }
 
+/**
+ * Re-run this script without `--detach`, in its own session with its output
+ * appended to the log, print its pid and the base URL, and exit: the Recorder
+ * is then an orphan, outside the process tree of whatever launched it, so
+ * stopping that tree (an IDE's stop button, a process manager) leaves it running.
+ */
+async function launchDetachedRecorder(): Promise<void> {
+  const port = defaultRecorderPort();
+  if (port === 0) {
+    throw new Error(
+      "--detach needs a fixed port: with CCA_RECORDER_PORT=0 only the Recorder would know the port it picked.",
+    );
+  }
+  const logPath = recorderLogPath(defaultRecordingsRoot());
+  mkdirSync(path.dirname(logPath), { recursive: true });
+  const logFd = openSync(logPath, "a");
+  const recorderProcess = spawn(process.execPath, ["--import", "tsx", process.argv[1]], {
+    detached: true,
+    stdio: ["ignore", logFd, logFd],
+  });
+  closeSync(logFd);
+  recorderProcess.unref();
+  console.log(`Recorder detached as pid ${recorderProcess.pid}, logging to ${logPath}`);
+  console.log(`ANTHROPIC_BASE_URL=http://127.0.0.1:${port}`);
+}
+
 if (process.argv.includes("--help")) {
   console.log(USAGE);
 } else {
-  runRecorderUntilSignal().catch((err: unknown) => {
+  (process.argv.includes("--detach") ? launchDetachedRecorder() : runRecorderUntilSignal()).catch((err: unknown) => {
     console.error(err instanceof Error ? err.message : err);
     process.exit(1);
   });

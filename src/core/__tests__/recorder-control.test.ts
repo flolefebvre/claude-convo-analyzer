@@ -5,11 +5,12 @@ import { readFileSync } from "node:fs";
 import http from "node:http";
 import net, { type AddressInfo } from "node:net";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { readRecorderStatus, requestRecorderStop, startRecorderDetached } from "@/core/recorder-control";
 import { readRecordings } from "@/core/recording";
 import { MESSAGES_RESPONSE_EVENTS, textUntilEnd } from "./helpers/fake-upstream";
 import { setUpRecorderHarness } from "./helpers/recorder-harness";
+import { freePort, stopDetachedRecorder } from "./helpers/recorder-port";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..");
 
@@ -21,7 +22,8 @@ let portHolders: { server: net.Server; sockets: Set<net.Socket> }[] = [];
 let detachedRecorderPorts: number[] = [];
 
 afterEach(async () => {
-  for (const port of detachedRecorderPorts) await stopAndWaitUntilOff(port);
+  vi.unstubAllEnvs();
+  for (const port of detachedRecorderPorts) await stopDetachedRecorder(port);
   detachedRecorderPorts = [];
   await Promise.all(
     portHolders.map(({ server, sockets }) => {
@@ -32,15 +34,6 @@ afterEach(async () => {
   );
   portHolders = [];
 });
-
-/** A port nothing listens on right now. */
-async function freePort(): Promise<number> {
-  const server = net.createServer();
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address() as AddressInfo;
-  await new Promise((resolve) => server.close(resolve));
-  return port;
-}
 
 /** Hold a free port with `server`, as another program would; resolves with the port. */
 async function holdPort(server: net.Server): Promise<number> {
@@ -54,11 +47,6 @@ async function holdPort(server: net.Server): Promise<number> {
 /** A plain web server that is not a Recorder. */
 function holdPortWithWebServer(): Promise<number> {
   return holdPort(http.createServer((_request, response) => response.end("hello")));
-}
-
-async function stopAndWaitUntilOff(port: number): Promise<void> {
-  await requestRecorderStop(port).catch(() => {});
-  while ((await readRecorderStatus(port)).status !== "off") await new Promise((resolve) => setTimeout(resolve, 50));
 }
 
 describe("the Recorder's status", () => {
@@ -146,6 +134,18 @@ describe("starting a Recorder detached", () => {
 
   it("fails with the log's last lines, naming the port, when the Recorder exits before answering", async () => {
     const port = await freePort();
+    vi.stubEnv("CCA_RECORDER_UPSTREAM", "not a url"); // inherited by the Recorder, which cannot start on it
+
+    const outcome = await startRecorderDetached({ port, recordingsRoot: harness.recordingsRoot, repoRoot: REPO_ROOT });
+
+    expect(outcome.outcome).toBe("failed");
+    expect(outcome.outcome === "failed" && outcome.message).toMatch(
+      new RegExp(`^The Recorder on port ${port} exited before it started:\\n.*Invalid URL`, "s"),
+    );
+  });
+
+  it("fails with what the launcher printed, naming the port, when it cannot launch the Recorder", async () => {
+    const port = await freePort();
 
     const outcome = await startRecorderDetached({
       port,
@@ -155,7 +155,7 @@ describe("starting a Recorder detached", () => {
 
     expect(outcome.outcome).toBe("failed");
     expect(outcome.outcome === "failed" && outcome.message).toMatch(
-      new RegExp(`^The Recorder on port ${port} exited before it started:\\n.*\\S`, "s"),
+      new RegExp(`^The Recorder on port ${port} could not be launched:\\n.*\\S`, "s"),
     );
   });
 });
