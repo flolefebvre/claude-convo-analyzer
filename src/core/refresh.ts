@@ -15,9 +15,10 @@
 // INCREMENTAL REFRESH (Slice 5): `refresh()` skips conversations whose source
 // has not changed, re-parses changed/new ones, and drops conversations whose
 // source file disappeared. The change key is a COMPOSITE of the main session
-// file PLUS its sub-agent transcripts (max mtime, summed size) — a sub-agent
-// file changing alone (the main file untouched) still triggers a re-parse,
-// because sub-agents have no independent conversation/mtime row of their own.
+// file PLUS its sub-agent transcripts and its Recording (max mtime, summed
+// size) — a sub-agent file or a Recording changing alone (the main file
+// untouched) still triggers a re-parse, because neither has an independent
+// conversation/mtime row of its own.
 // The stored `parserVersion` is part of that decision too: rows produced by an
 // older parser are re-parsed once even when their source files are untouched
 // (see `PARSER_VERSION`). It doubles as the COMMIT MARK of a refresh: a
@@ -499,9 +500,11 @@ function dedupeBySessionId(discovered: DiscoveredWithKey[]): {
 }
 
 /**
- * Discover every session and fold its sub-agent transcripts into a composite
- * change key. A sub-agent file changing without the main file changing still
- * shifts the composite (max mtime / summed size), so the parent re-parses.
+ * Discover every session and fold its sub-agent transcripts and its Recording
+ * into a composite change key. A sub-agent file or a Recording changing without
+ * the main file changing still shifts the composite (max mtime / summed size),
+ * so the Conversation re-parses. A session without a Recording keeps the key it
+ * had before Recordings were read, so it is skipped as ever.
  */
 function discoverWithKeys(logsRoot: string, recordingsRoot: string): DiscoveredWithKey[] {
   const recordingBySessionId = new Map<string, DiscoveredRecording>();
@@ -525,6 +528,10 @@ function discoverWithKeys(logsRoot: string, recordingsRoot: string): DiscoveredW
     }
 
     const recording = recordingBySessionId.get(session.sessionId);
+    if (recording !== undefined) {
+      compositeMtime = Math.max(compositeMtime, recording.sourceMtime);
+      compositeSize += recording.sourceSize;
+    }
     out.push({ session, subAgentPaths, recordingPath: recording?.sourcePath ?? null, compositeMtime, compositeSize });
   }
   return out;

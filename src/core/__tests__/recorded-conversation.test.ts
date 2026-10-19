@@ -212,3 +212,22 @@ describe("an undecodable Recording", () => {
     expect(summaries.get(OTHER_SESSION_ID)?.recordedState).toBe("recorded");
   });
 });
+
+describe("a Recording change", () => {
+  it("re-parses only its Conversation, once", async () => {
+    await refresh({ logsRoot: LOGS_ROOT, dbPath, recordingsRoot });
+
+    await record(MAIN_THREAD_TURNS.map((turn) => turnApiRequest({ sessionId: MAIN_SESSION_ID, ...turn })));
+    const afterFirstRecording = await refresh({ logsRoot: LOGS_ROOT, dbPath, recordingsRoot });
+    expect(afterFirstRecording).toMatchObject({ conversationsParsed: 1, conversationsSkipped: 1 });
+
+    await record([turnApiRequest({ sessionId: MAIN_SESSION_ID, ...SUB_AGENT_TURN })]);
+    const afterAppend = await refresh({ logsRoot: LOGS_ROOT, dbPath, recordingsRoot });
+    expect(afterAppend).toMatchObject({ conversationsParsed: 1, conversationsSkipped: 1 });
+    const summaries = new Map((await listConversations({ dbPath })).map((s) => [s.id, s]));
+    expect(summaries.get(MAIN_SESSION_ID)?.recordedState).toBe("recorded");
+
+    const unchanged = await refresh({ logsRoot: LOGS_ROOT, dbPath, recordingsRoot });
+    expect(unchanged).toMatchObject({ conversationsParsed: 0, conversationsSkipped: 2 });
+  });
+});
