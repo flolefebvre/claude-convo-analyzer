@@ -112,7 +112,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 15, sha256: "d79302a905b975c08cfd6c217e6ae3eaa17e44ca45bb318cdfeefa1ae7b0e329" },
-      conversation: { rowCount: 21, sha256: "cdb5ad71ef261b69af3ada5411a39f26e03ae45b25e87a65b88351911ba313a8" },
+      conversation: { rowCount: 21, sha256: "ef3c36ee04d75782bb9793cc67ae623cd914af7e2ed3e33f6c201ef1e3312cce" },
       agent: { rowCount: 35, sha256: "bcf922290517994e489068e748364ff9de40929e4a8ddfbcb68c6f6014836468" },
       message: { rowCount: 125, sha256: "efde03aefa67065d8cc0e7f5c061c6d75b5d6a3211263c175dee68f0862b48c5" },
       tool_call: { rowCount: 34, sha256: "58586fdaa0ea9e906fd5037c8a3c7809fd2fd1d4602ec6280e34db111716b5f4" },
@@ -128,7 +128,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "5d55ed2d1c37a5a354777b7e27dfce7bb9f299e0e7237d17a32956fee0357675" },
-      conversation: { rowCount: 1, sha256: "41353d29f0d171ffd3fb5fd4d04c802f7e312574a7943e2043cc4e723aa35a82" },
+      conversation: { rowCount: 1, sha256: "0a5e8027df45058d3d88d91f11dbf6f26409bfd0dc975b64ac80def92a43efb0" },
       agent: { rowCount: 2, sha256: "9cddce4d56d246718241b05d406551e917f8d9c1d9a116799eb257bc48089a61" },
       message: { rowCount: 28, sha256: "cfdb0c9218cd0184517845f99b348d217ec655bd135e7c723999498fba0260dd" },
       tool_call: { rowCount: 1, sha256: "a7fdb225fda2bff0ca75f88a22789a86cd79a97f5ea4e2f952e1d4559aa8efd9" },
@@ -144,7 +144,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 9, sha256: "e740c951fb2b58e8b13902eea830681396ac5eea03a445a31d6fb998c250a3e1" },
-      conversation: { rowCount: 13, sha256: "24c6c1f45bb4d1c4ff3b7fec3adaef8b09385001943802545c581ee62023d2a5" },
+      conversation: { rowCount: 13, sha256: "0ad3b95dbe8903fd44d5b059f4b63460c93a032643a07c9ee37e2d52854e559e" },
       agent: { rowCount: 13, sha256: "47aa156cd547f0ad4f24ca8d2f27122dfa765f0de80b37a46a3507b22ade253f" },
       message: { rowCount: 22, sha256: "c939415a25c68bca466283e335cd5a19447d35732c36f53ab3b32e8376a93c77" },
       tool_call: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
@@ -160,7 +160,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "c39a0134a2be51dcdd6348bf0657691be4b1d4092d6e1616117c4d0f4f58a771" },
-      conversation: { rowCount: 4, sha256: "a4fe47165ce47718b8458ffa7b6e34f74c7cce6ab77ffc1e3e40e623401c786c" },
+      conversation: { rowCount: 4, sha256: "125f387fa2ac1ad6a2d317fd824dd95e0b9129c0d72d711cd9ecdc0a186e28c7" },
       agent: { rowCount: 5, sha256: "c0938e2f66085f42e8e7e5ee608867bb0974528d74f6dd4ead50afad13e0e8a1" },
       message: { rowCount: 17, sha256: "897eb312a4eb322388b382eeb8fefdf153a78cd7ef9b579df7438c4b530d01d1" },
       tool_call: { rowCount: 1, sha256: "e331ea30643c19a0602a2759f557187aacaf1729c796a955560799b9c4dbd73f" },
@@ -170,10 +170,22 @@ describe("stored data equivalence", () => {
     });
   });
 
-  it("stores the pinned rows for the recorded logs and their Recording (Turns matched, one API request unmatched)", async () => {
+  it("stores the pinned rows for the recorded logs and their Recording (Turns matched, one failed attempt, one API request unmatched)", async () => {
     copyWithPinnedMtimes(path.join(FIXTURES_DIR, "recorded-logs"), logsRoot);
     const recordingsRoot = path.join(tmpDir, "recordings");
     const writer = openRecordingWriter(recordingsRoot);
+    // A failed attempt of the first Turn, which its API request retried.
+    const firstTurn = recordedApiRequest({ requestId: "rreq-1", messageId: "rmsg-1", agentId: null });
+    await writer.append({
+      ...firstTurn,
+      response: {
+        status: 529,
+        requestId: "req-overloaded",
+        headers: {},
+        body: { type: "error", error: { type: "overloaded_error", message: "Overloaded" } },
+        isStreamed: false,
+      },
+    });
     for (const [requestId, messageId, agentId] of [
       ["rreq-1", "rmsg-1", null],
       ["rreq-3", "rmsg-3", "rsub1"],
@@ -195,7 +207,7 @@ describe("stored data equivalence", () => {
       tool_call: { rowCount: 1, sha256: "d3b0ea811a8bceeb37e913ba469534319cacbbcea904a4342deb1fd5cb2cfe73" },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
-      api_request: { rowCount: 4, sha256: "db778f01fc936c08b933df3bcc887d9f9d746df3747266c5bdea8d10dec566c3" },
+      api_request: { rowCount: 5, sha256: "a2b21bbb148a56c6a0b50b2f14024495122d82af400cd57a4ed7831720e2f95b" },
     });
   });
 });

@@ -82,6 +82,16 @@ export type RecordedApiRequest = {
 /** An API request read without its body: what joining it to a Turn needs, nothing of what it sent. */
 export type ApiRequestWithoutBody = Omit<RecordedApiRequest, "body">;
 
+/** An API request read without its body, with what tells it sent the same body as another of its file. */
+export type ApiRequestWithStoredBodyHash = ApiRequestWithoutBody & {
+  /**
+   * The hash of its body as stored (pieces as their hashes), by the hashing
+   * rule of pieces: two API requests of ONE file sent the same body exactly
+   * when theirs are equal. Like a piece hash, it means nothing across files.
+   */
+  storedBodyHash: string;
+};
+
 /** One Recording file, as discovery finds it. */
 export type DiscoveredRecording = {
   /** The session the file is named after; null for `unattributed.jsonl.gz`. */
@@ -262,20 +272,20 @@ export function readRecording(filePath: string): RecordedApiRequest[] {
 }
 
 /**
- * Every API request in the Recording file at `filePath`, without its body, in
- * append order: pieces are skipped, never restored, so memory stays the size
- * of the file. Reads a last member cut short like {@link readRecording}.
+ * Every API request in the Recording file at `filePath`, without its body but
+ * with its `storedBodyHash`, in append order: pieces are skipped, never
+ * restored, so memory stays the size of the file. Reads a last member cut short like {@link readRecording}.
  *
  * @example
  * const requestIds = readRecordingWithoutBodies(recording.sourcePath).map((r) => r.response.requestId);
  */
-export function readRecordingWithoutBodies(filePath: string): ApiRequestWithoutBody[] {
+export function readRecordingWithoutBodies(filePath: string): ApiRequestWithStoredBodyHash[] {
   return linesOfRecordingFile(filePath).flatMap((line) => {
     if (line.type === "piece") return [];
     const apiRequest: Partial<ApiRequestLine> = { ...line };
     delete apiRequest.type;
     delete apiRequest.body;
-    return [apiRequest as ApiRequestWithoutBody];
+    return [{ ...(apiRequest as ApiRequestWithoutBody), storedBodyHash: hashOf(line.body) }];
   });
 }
 

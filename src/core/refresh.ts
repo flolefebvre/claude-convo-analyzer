@@ -56,7 +56,7 @@ import {
 import { type ParsedAgentSpawn, parseSessionLines, type ParsedSession } from "@/core/parse";
 import { type MessageRow, prepareRefreshStatements, type RefreshStatements } from "@/core/prisma/refresh-statements";
 import {
-  type ApiRequestWithoutBody,
+  type ApiRequestWithStoredBodyHash,
   defaultRecordingsRoot,
   discoverRecordings,
   type DiscoveredRecording,
@@ -134,8 +134,10 @@ type RefreshOptions = {
  *     Project of a sibling in its log folder.
  * 5 — an Agent call's result is stored whole (before, it was truncated to ~10k
  *     chars like every other tool's, cutting off long hand-backs).
+ * 6 — a failed attempt of a Turn joins that Turn (`api_request.is_failed_attempt`),
+ *     and every API request keeps its response's error message.
  */
-export const PARSER_VERSION = 5;
+export const PARSER_VERSION = 6;
 
 /**
  * The version a conversation carries while it is written but NOT YET COMPLETE:
@@ -184,9 +186,15 @@ type ParsedConversation = {
   parsed: ParsedSession;
   subAgents: { agentId: string; parsed: ParsedSession }[];
   /** The API requests of the session's Recording, in append order; empty without one. */
-  apiRequests: RecordedApiRequestFields[];
+  apiRequests: ReadApiRequest[];
   /** Row id of the stored conversation the write replaces (null = new). */
   priorConversationId: number | null;
+};
+
+/** An API request as the Refresh reads it: its `api_request` columns, and what tells which others sent the same body. */
+type ReadApiRequest = RecordedApiRequestFields & {
+  /** Equal for two API requests of the Recording that sent the same body. */
+  storedBodyHash: string;
 };
 
 /** What an `api_request` row keeps of an API request: everything but the Turn it joins. */
@@ -202,6 +210,7 @@ type RecordedApiRequestFields = {
   endedAt: number;
   proxyError: string | null;
   isClientAborted: boolean;
+  errorMessage: string | null;
 };
 
 /** What linking and stamping need of a conversation this run has written. */
@@ -589,7 +598,7 @@ function parseConversation({ session, subAgentPaths, recordingPath, priorConvers
  * does not heal on its own.
  */
 function readApiRequests(recordingPath: string | null): {
-  apiRequests: RecordedApiRequestFields[];
+  apiRequests: ReadApiRequest[];
   isRecordingUndecodable: boolean;
 } {
   if (recordingPath === null) return { apiRequests: [], isRecordingUndecodable: false };
@@ -604,8 +613,8 @@ function readApiRequests(recordingPath: string | null): {
   }
 }
 
-/** The `api_request` columns of one API request, its response body reduced to its `message.id`. */
-function apiRequestFields(apiRequest: ApiRequestWithoutBody): RecordedApiRequestFields {
+/** The `api_request` columns of one API request, its response body reduced to its `message.id` and its error message. */
+function apiRequestFields(apiRequest: ApiRequestWithStoredBodyHash): ReadApiRequest {
   const responseBody = apiRequest.response.body;
   const responseMessageId =
     typeof responseBody === "object" &&
@@ -615,6 +624,7 @@ function apiRequestFields(apiRequest: ApiRequestWithoutBody): RecordedApiRequest
       ? responseBody.id
       : null;
   return {
+    storedBodyHash: apiRequest.storedBodyHash,
     requestId: apiRequest.response.requestId,
     responseMessageId,
     externalAgentId: apiRequest.agentId,
@@ -626,7 +636,17 @@ function apiRequestFields(apiRequest: ApiRequestWithoutBody): RecordedApiRequest
     endedAt: epochMsOf(apiRequest.timings.endedAt),
     proxyError: apiRequest.proxyError ?? null,
     isClientAborted: apiRequest.isClientAborted ?? false,
+    errorMessage: responseErrorMessageOf(responseBody) ?? apiRequest.proxyError ?? null,
   };
+}
+
+/** The `error.message` a response body carries as a string — an error response's, or a stream's cut short by an `error` event; null otherwise. */
+function responseErrorMessageOf(responseBody: unknown): string | null {
+  if (typeof responseBody !== "object" || responseBody === null || !("error" in responseBody)) return null;
+  const error = responseBody.error;
+  return typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
+    ? error.message
+    : null;
 }
 
 /** An ISO 8601 timing of a Recording as epoch ms; throws on one that is not a date. */
@@ -777,26 +797,80 @@ type TurnRows = { byRequestId: Map<string, TurnRow>; byMessageId: Map<string, Tu
 /**
  * Write one `api_request` row per API request of the Conversation's
  * Recording, in append order, each joined to the Turn with its `requestId`,
- * else its `message.id`, else to none. Two API requests may join one Turn:
- * both rows are kept.
+ * else its `message.id`, else — when it is a failed attempt of one (see
+ * `failedAttemptTurnRows`) — to that Turn, else to none. Two API requests may
+ * join one Turn: both rows are kept.
  */
 function writeApiRequests(
   statements: RefreshStatements,
-  apiRequests: RecordedApiRequestFields[],
+  apiRequests: ReadApiRequest[],
   conversationId: number,
   turnRows: TurnRows,
 ): void {
-  for (const apiRequest of apiRequests) {
-    const turnRow =
+  const joinedTurnRows = apiRequests.map(
+    (apiRequest) =>
       (apiRequest.requestId === null ? undefined : turnRows.byRequestId.get(apiRequest.requestId)) ??
-      (apiRequest.responseMessageId === null ? undefined : turnRows.byMessageId.get(apiRequest.responseMessageId));
+      (apiRequest.responseMessageId === null ? undefined : turnRows.byMessageId.get(apiRequest.responseMessageId)) ??
+      null,
+  );
+  const attemptTurnRows = failedAttemptTurnRows(apiRequests, joinedTurnRows);
+  apiRequests.forEach(({ storedBodyHash: _storedBodyHash, ...apiRequest }, index) => {
+    const turnRow = joinedTurnRows[index] ?? attemptTurnRows[index];
     statements.insertApiRequest({
       ...apiRequest,
       conversationId,
       messageId: turnRow?.messageRowId ?? null,
       agentId: turnRow?.agentRowId ?? null,
+      isFailedAttempt: attemptTurnRows[index] !== null,
     });
+  });
+}
+
+/**
+ * For each of `apiRequests` (in append order) that is a failed attempt, the
+ * Turn it is an attempt of; null for every other. A failed attempt is an API
+ * request that joined no Turn itself and did not succeed (a status outside
+ * 2xx, an error in the response body — an error response, or a stream an
+ * `error` event cut short —, a proxy error, or Claude Code disconnecting),
+ * retried by a LATER API
+ * request of the same Recording — same `x-claude-code-agent-id`, same stored
+ * body — that joined a Turn (`joinedTurnRows`). The nearest such retry wins,
+ * so every attempt of a chain (attempt, attempt, success) belongs to the one
+ * success.
+ *
+ * An attempt no retry of which joined a Turn — Claude Code gave up, and the
+ * logs show an API-error Turn, or nothing — is left alone: it stays a row with
+ * `messageId` NULL, like a Side request. Telling the two apart needs the Side
+ * request classifier (#131).
+ */
+function failedAttemptTurnRows(apiRequests: ReadApiRequest[], joinedTurnRows: (TurnRow | null)[]): (TurnRow | null)[] {
+  const attemptTurnRows: (TurnRow | null)[] = apiRequests.map(() => null);
+  const nearestRetryTurnRowByRequestKey = new Map<string, TurnRow>();
+  for (let index = apiRequests.length - 1; index >= 0; index -= 1) {
+    const apiRequest = apiRequests[index];
+    const requestKey = JSON.stringify([apiRequest.externalAgentId, apiRequest.storedBodyHash]);
+    const joinedTurnRow = joinedTurnRows[index];
+    if (joinedTurnRow !== null) nearestRetryTurnRowByRequestKey.set(requestKey, joinedTurnRow);
+    else if (isFailedApiRequest(apiRequest)) {
+      attemptTurnRows[index] = nearestRetryTurnRowByRequestKey.get(requestKey) ?? null;
+    }
   }
+  return attemptTurnRows;
+}
+
+/**
+ * True when the API request did not succeed: a status outside 2xx, an error in
+ * the response body — an error response, or a stream an `error` event cut
+ * short —, a proxy error, or Claude Code disconnecting.
+ */
+function isFailedApiRequest(apiRequest: RecordedApiRequestFields): boolean {
+  return (
+    apiRequest.status < 200 ||
+    apiRequest.status >= 300 ||
+    apiRequest.errorMessage !== null ||
+    apiRequest.proxyError !== null ||
+    apiRequest.isClientAborted
+  );
 }
 
 /**

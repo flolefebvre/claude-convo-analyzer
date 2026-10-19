@@ -238,11 +238,16 @@ model TurnDuration {
 model ApiRequest {
   id             Int  @id @default(autoincrement())
   conversationId Int  @map("conversation_id")
-  /// The Turn's assistant Message: the one with the same `requestId`, else
-  /// the same `message.id`. NULL when no Turn matches.
+  /// The assistant Message of the Turn this API request belongs to: the one
+  /// with the same `requestId`, else the same `message.id`; for a failed
+  /// attempt (`isFailedAttempt`), the Turn whose API request retried it. NULL
+  /// for a Side request, and for an attempt no retry of which joined a Turn.
   messageId      Int? @map("message_id")
-  /// The Agent of that Turn; NULL when no Turn matches.
+  /// The Agent of that Turn; NULL when `messageId` is.
   agentId        Int? @map("agent_id")
+  /// True for a failed attempt of the Turn `messageId` names: a request that
+  /// did not succeed, retried by that Turn's API request.
+  isFailedAttempt Boolean @default(false) @map("is_failed_attempt")
 
   /// The `request-id` response header.
   requestId         String? @map("request_id")
@@ -264,6 +269,10 @@ model ApiRequest {
   proxyError        String? @map("proxy_error")
   /// True when Claude Code disconnected before the response ended.
   isClientAborted   Boolean @default(false) @map("is_client_aborted")
+  /// The response body's `error.message` whenever it carries one as a string
+  /// (an error response, or a stream an `error` event cut short), else
+  /// `proxyError`; NULL otherwise. Set on any API request, not only attempts.
+  errorMessage      String? @map("error_message")
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   message      Message?     @relation(fields: [messageId], references: [id], onDelete: SetNull)
