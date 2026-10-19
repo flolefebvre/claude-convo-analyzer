@@ -4,7 +4,8 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { PAGE_SIZE } from "@/app/_lib/list-view";
-import { getTranscript, listConversations } from "@/core/read";
+import { SIDE_REQUEST_KINDS } from "@/core/api-request-kind";
+import { getConversation, getTranscript, listConversations } from "@/core/read";
 import { readRecordings, type RecordedApiRequest } from "@/core/recording";
 
 import { seedEnvironment } from "./environment";
@@ -22,6 +23,7 @@ import {
 } from "./fake-logs";
 import {
   FAILED_ATTEMPT_REQUEST_ID,
+  OTHER_SIDE_REQUEST_LABEL,
   PARTIALLY_RECORDED_FROM_TURN,
   SIDE_REQUEST_IDS,
   SYSTEM_PROMPT_CHANGE_TURN,
@@ -225,6 +227,17 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     expect(fingerprints.size).toBe(sideRequests.length + 1);
   });
 
+  it("classifies every kind of Side request on the recorded Conversation, one of each", async () => {
+    const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
+
+    const detail = await getConversation(RECORDED_SESSION_ID, { dbPath: seed.dbPath });
+    expect(detail?.sideRequests.byKind.map((group) => [group.kind, group.count]).sort()).toEqual(
+      [...SIDE_REQUEST_KINDS].sort().map((kind) => [kind, 1]),
+    );
+    const view = await getTranscript(RECORDED_SESSION_ID, { dbPath: seed.dbPath });
+    expect(view?.sideRequests.find((s) => s.kind === "other")?.otherKindLabel).toBe(OTHER_SIDE_REQUEST_LABEL);
+  });
+
   it("records a failed attempt before a Turn, then the retry that succeeds as the Turn", async () => {
     const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
 
@@ -317,11 +330,15 @@ function readTree(root: string, encoding: BufferEncoding = "utf8"): Record<strin
   );
 }
 
-/** What tells API requests apart by their request alone: path, model, `max_tokens`, system prompt's opening line. */
+/** What tells API requests apart by their request alone: path, model, `max_tokens`, the opening lines of the system prompt and of the last message. */
 function requestFingerprint(apiRequest: RecordedApiRequest | undefined): string {
-  const body = apiRequest?.body as { model?: string; max_tokens?: number; system?: { text: string }[] } | undefined;
+  const body = apiRequest?.body as
+    { model?: string; max_tokens?: number; system?: { text: string }[]; messages?: { content: unknown }[] } | undefined;
   const systemOpening = body?.system?.[0]?.text.split("\n")[0] ?? null;
-  return JSON.stringify([apiRequest?.path, body?.model, body?.max_tokens ?? null, systemOpening]);
+  const lastContent = body?.messages?.at(-1)?.content;
+  const lastText = Array.isArray(lastContent) ? (lastContent as { text?: string }[]).at(-1)?.text : lastContent;
+  const lastOpening = typeof lastText === "string" ? lastText.split("\n")[0] : null;
+  return JSON.stringify([apiRequest?.path, body?.model, body?.max_tokens ?? null, systemOpening, lastOpening]);
 }
 
 /** The parts of a Turn's request body that the Recording stores as pieces. */
