@@ -284,8 +284,11 @@ export function readRecordingWithoutBodies(filePath: string): ApiRequestWithoutB
  * picks, in full, in append order; only the picked bodies are restored from
  * its pieces, never every body. The last file read stays decoded in this
  * process until its size or mtime changes, so reading it again is a lookup;
- * memory is that decoded file plus the picked bodies. Reads a last member cut
- * short like {@link readRecording}.
+ * memory is that decoded file plus the picked bodies. The returned API
+ * requests share their headers, response, timings and piece contents with
+ * that decoded file: treat them as read-only, or a later read of the same file
+ * returns the mutation. Reads a last member cut short like
+ * {@link readRecording}.
  *
  * @example
  * const [apiRequest] = readSelectedApiRequests(recording.sourcePath, (r) => r.response.requestId === "req_1");
