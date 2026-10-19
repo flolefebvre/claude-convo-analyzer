@@ -226,8 +226,9 @@ export function discoverRecordings(recordingsRoot: string): DiscoveredRecording[
     let stat: Stats;
     try {
       stat = statSync(sourcePath);
-    } catch {
-      return [];
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw error;
     }
     const fileStem = fileName.slice(0, -RECORDING_FILE_SUFFIX.length);
     return [

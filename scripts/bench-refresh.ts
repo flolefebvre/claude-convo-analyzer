@@ -1,6 +1,8 @@
 // `pnpm bench:refresh` — time a COLD Refresh of the logs root (`CCA_LOGS_ROOT`,
-// else `~/.claude/projects`) into a scratch database created under the OS temp
-// directory and removed afterwards; the app's databases are never touched.
+// else `~/.claude/projects`) and the Recordings root (`CCA_RECORDINGS_ROOT`,
+// else `~/.claude-convo-analyzer/recordings`) into a scratch database created
+// under the OS temp directory and removed afterwards; the app's databases are
+// never touched.
 //
 // It calls `refresh()` in-process, on this thread, so the longest stall it
 // reports is the parse/write pipeline's own: the run is one synchronous task,
@@ -15,11 +17,13 @@ import { performance } from "node:perf_hooks";
 import { parseArgs } from "node:util";
 
 import { defaultLogsRoot } from "@/core/discovery";
+import { defaultRecordingsRoot } from "@/core/recording";
 import { refresh, type RefreshPhase } from "@/core/refresh";
 
 const USAGE = `Usage: pnpm bench:refresh
 
-Run a cold Refresh of CCA_LOGS_ROOT (default ~/.claude/projects) into a scratch
+Run a cold Refresh of CCA_LOGS_ROOT (default ~/.claude/projects) and
+CCA_RECORDINGS_ROOT (default ~/.claude-convo-analyzer/recordings) into a scratch
 database under the OS temp directory, then print the phase split, the peak heap
 and the longest main-thread stall. The scratch database is deleted afterwards.
 
@@ -72,10 +76,12 @@ async function main(): Promise<void> {
   }
 
   const logsRoot = defaultLogsRoot();
+  const recordingsRoot = defaultRecordingsRoot();
   const scratchDir = mkdtempSync(path.join(tmpdir(), "cca-bench-refresh-"));
   const dbPath = path.join(scratchDir, "bench.db");
-  console.log(`Logs root:  ${logsRoot}`);
-  console.log(`Scratch DB: ${dbPath}`);
+  console.log(`Logs root:       ${logsRoot}`);
+  console.log(`Recordings root: ${recordingsRoot}`);
+  console.log(`Scratch DB:      ${dbPath}`);
 
   const peakMemory: PeakMemory = { heapUsedBytes: 0, rssBytes: 0 };
   let progressReportCount = 0;
@@ -84,6 +90,7 @@ async function main(): Promise<void> {
     const stopWatchingStalls = watchLongestStall();
     const summary = await refresh({
       logsRoot,
+      recordingsRoot,
       dbPath,
       onProgress: () => {
         progressReportCount += 1;

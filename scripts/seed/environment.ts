@@ -1,6 +1,6 @@
 // The seed environment: one self-contained directory holding fake logs, fake
 // Recordings of some of their Conversations, and the database the genuine
-// `refresh()` builds from the logs. Rebuilding it is wiping
+// `refresh()` builds from both. Rebuilding it is wiping
 // that one directory, so a seed never leaves anything behind — and never
 // touches the real database or the real logs.
 
@@ -29,7 +29,7 @@ export type SeedEnvironment = {
 /**
  * Wipe `dir`, write the fake logs (timeline ending at `now`) into
  * `<dir>/projects` and their Recordings into `<dir>/recordings`, and ingest
- * the logs into `<dir>/seed.db` with the real `refresh()`.
+ * both into `<dir>/seed.db` with the real `refresh()`.
  *
  * @example
  * const { dbPath, logsRoot } = await seedEnvironment({ dir: "data/seed", now: new Date() });
@@ -43,6 +43,6 @@ export async function seedEnvironment(opts: { dir: string; now: Date }): Promise
   const recordingsRoot = path.join(dir, "recordings");
   const { counts: generated, conversations } = generateFakeLogs({ logsRoot, now: opts.now });
   await writeFakeRecordings({ recordingsRoot, conversations });
-  const summary = await refresh({ logsRoot, dbPath });
+  const summary = await refresh({ logsRoot, dbPath, recordingsRoot });
   return { dbPath, logsRoot, recordingsRoot, generated, summary };
 }

@@ -62,6 +62,16 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     expect(familyRoots).toHaveLength(2);
   });
 
+  it("ingests its Recordings: one Conversation recorded, one partially recorded, every other unrecorded", async () => {
+    const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
+
+    const conversations = await listConversations({ dbPath: seed.dbPath });
+    const recordedStateBySessionId = new Map(conversations.map((c) => [c.id, c.recordedState]));
+    expect(recordedStateBySessionId.get(RECORDED_SESSION_ID)).toBe("recorded");
+    expect(recordedStateBySessionId.get(PARTIALLY_RECORDED_SESSION_ID)).toBe("partially-recorded");
+    expect(conversations.filter((c) => c.recordedState === "unrecorded")).toHaveLength(conversations.length - 2);
+  });
+
   it("seeds a Conversation that enters a worktree and a cwd-less one, each in the Project it belongs to", async () => {
     const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
 
