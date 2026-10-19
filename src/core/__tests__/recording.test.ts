@@ -2,12 +2,20 @@
 // and what the reader gives back. Files are decoded here only to check what is
 // on disk — the deduplication and the redaction are promises about the bytes.
 
-import { mkdtempSync, readdirSync, readFileSync, rmSync, truncateSync, statSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, truncateSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { gunzipSync } from "node:zlib";
+import { gunzipSync, gzipSync } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { openRecordingWriter, readRecordings, sessionIdInUserId, type RecordedApiRequest } from "@/core/recording";
+import {
+  discoverRecordings,
+  openRecordingWriter,
+  readRecording,
+  readRecordings,
+  readRecordingWithoutBodies,
+  sessionIdInUserId,
+  type RecordedApiRequest,
+} from "@/core/recording";
 
 const REQUEST_BODY = JSON.parse(
   readFileSync(path.join(import.meta.dirname, "fixtures", "recording", "messages-request.json"), "utf8"),
@@ -200,6 +208,72 @@ describe("a Recording", () => {
   it("reads an empty or missing root as no API requests", () => {
     expect(readRecordings(recordingsRoot)).toEqual([]);
     expect(readRecordings(path.join(recordingsRoot, "missing"))).toEqual([]);
+  });
+});
+
+describe("reading a Recording one session at a time", () => {
+  it("discovers each Recording file with its session id, size and mtime, the unattributed one under no session", async () => {
+    const writer = openRecordingWriter(recordingsRoot);
+    await writer.append(apiRequest({ sessionId: "sess-other" }));
+    await writer.append(apiRequest());
+    await writer.append(apiRequest({ sessionId: null }));
+
+    const recordings = discoverRecordings(recordingsRoot);
+
+    expect(recordings.map((recording) => recording.sessionId)).toEqual(["sess-other", "sess-recorded", null]);
+    const [, recorded] = recordings;
+    const stat = statSync(path.join(recordingsRoot, "sess-recorded.jsonl.gz"));
+    expect(recorded).toEqual({
+      sessionId: "sess-recorded",
+      sourcePath: path.join(recordingsRoot, "sess-recorded.jsonl.gz"),
+      sourceMtime: Math.floor(stat.mtimeMs),
+      sourceSize: stat.size,
+    });
+  });
+
+  it("discovers no Recording in an empty or missing root", () => {
+    expect(discoverRecordings(recordingsRoot)).toEqual([]);
+    expect(discoverRecordings(path.join(recordingsRoot, "missing"))).toEqual([]);
+  });
+
+  it("reads one session's API requests in full, in append order", async () => {
+    const writer = openRecordingWriter(recordingsRoot);
+    await writer.append(apiRequest());
+    await writer.append(apiRequest({ sessionId: "sess-other" }));
+    await writer.append(apiRequest({ body: nextTurnBody() }));
+
+    const apiRequests = readRecording(path.join(recordingsRoot, "sess-recorded.jsonl.gz"));
+
+    expect(apiRequests.map((recorded) => recorded.body)).toEqual([
+      redactedUserId(REQUEST_BODY),
+      redactedUserId(nextTurnBody()),
+    ]);
+  });
+
+  it("reads one session's API requests without their bodies, every other field kept", async () => {
+    const writer = openRecordingWriter(recordingsRoot);
+    await writer.append(apiRequest({ agentId: "agent-7", proxyError: "socket hang up", isClientAborted: true }));
+    const filePath = path.join(recordingsRoot, "sess-recorded.jsonl.gz");
+
+    const [withoutBody] = readRecordingWithoutBodies(filePath);
+
+    const [inFull] = readRecording(filePath);
+    const expected: Partial<RecordedApiRequest> = { ...inFull };
+    delete expected.body;
+    expect(withoutBody).toEqual(expected);
+    expect(withoutBody).not.toHaveProperty("body");
+  });
+
+  it("reads API requests without their bodies even when a piece they reference is missing", async () => {
+    await openRecordingWriter(recordingsRoot).append(apiRequest());
+    const filePath = path.join(recordingsRoot, "sess-recorded.jsonl.gz");
+    const apiRequestLines = linesOf(filePath).filter((line) => line.type === "api_request");
+    writeFileSync(filePath, gzipSync(apiRequestLines.map((line) => JSON.stringify(line) + "\n").join("")));
+
+    expect(() => readRecording(filePath)).toThrow(/missing piece/);
+    expect(readRecordingWithoutBodies(filePath).map((recorded) => recorded.response.requestId)).toEqual([
+      "req_fixture01",
+    ]);
   });
 });
 

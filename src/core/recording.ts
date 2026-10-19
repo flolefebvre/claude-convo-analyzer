@@ -4,7 +4,7 @@
 // never touches the database.
 
 import { createHash } from "node:crypto";
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, type Stats, statSync } from "node:fs";
 import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -77,6 +77,20 @@ export type RecordedApiRequest = {
   proxyError?: string;
   /** True when the client disconnected before the response ended. */
   isClientAborted?: boolean;
+};
+
+/** An API request read without its body: what joining it to a Turn needs, nothing of what it sent. */
+export type ApiRequestWithoutBody = Omit<RecordedApiRequest, "body">;
+
+/** One Recording file, as discovery finds it. */
+export type DiscoveredRecording = {
+  /** The session the file is named after; null for `unattributed.jsonl.gz`. */
+  sessionId: string | null;
+  sourcePath: string;
+  /** The file's mtime (epoch ms, floored). */
+  sourceMtime: number;
+  /** The file's size in bytes. */
+  sourceSize: number;
 };
 
 /** Appends API requests to the Recordings under one root. */
@@ -193,14 +207,14 @@ export function openRecordingWriter(recordingsRoot: string): RecordingWriter {
 }
 
 /**
- * Every API request in the Recordings under `recordingsRoot`, in full, file by
- * file (sorted by name) and in append order within a file. A file's last gzip
- * member, if cut short, is read up to its last complete API request.
+ * Every Recording file under `recordingsRoot`, sorted by file name: the
+ * session's files, then `unattributed.jsonl.gz` under a null session id. Empty
+ * for a missing root; a file gone between its listing and its stat is left out.
  *
  * @example
- * const sideRequests = readRecordings(defaultRecordingsRoot()).filter((r) => r.agentId === null);
+ * const recordingBySessionId = new Map(discoverRecordings(defaultRecordingsRoot()).map((r) => [r.sessionId, r]));
  */
-export function readRecordings(recordingsRoot: string): RecordedApiRequest[] {
+export function discoverRecordings(recordingsRoot: string): DiscoveredRecording[] {
   let fileNames: string[];
   try {
     fileNames = readdirSync(recordingsRoot).filter((name) => name.endsWith(RECORDING_FILE_SUFFIX));
@@ -208,20 +222,73 @@ export function readRecordings(recordingsRoot: string): RecordedApiRequest[] {
     return [];
   }
   return fileNames.sort().flatMap((fileName) => {
-    const contentByHash = new Map<string, unknown>();
-    const apiRequests: RecordedApiRequest[] = [];
-    let lines: RecordingLine[];
+    const sourcePath = path.join(recordingsRoot, fileName);
+    let stat: Stats;
     try {
-      lines = linesInFile(readFileSync(path.join(recordingsRoot, fileName)));
+      stat = statSync(sourcePath);
     } catch (error) {
-      throw new Error(`Recording ${fileName} is unreadable`, { cause: error });
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw error;
     }
-    for (const line of lines) {
-      if (line.type === "piece") contentByHash.set(line.hash, line.content);
-      else apiRequests.push({ ...withoutType(line), body: restoredBody(line.body, contentByHash) });
-    }
-    return apiRequests;
+    const fileStem = fileName.slice(0, -RECORDING_FILE_SUFFIX.length);
+    return [
+      {
+        sessionId: fileStem === UNATTRIBUTED_FILE_STEM ? null : fileStem,
+        sourcePath,
+        sourceMtime: Math.floor(stat.mtimeMs),
+        sourceSize: stat.size,
+      },
+    ];
   });
+}
+
+/**
+ * Every API request in the Recording file at `filePath`, in full (each body
+ * restored from its pieces), in append order. A last gzip member cut short is
+ * read up to its last complete API request. Throws on a file it cannot decode
+ * or that references a missing piece.
+ *
+ * @example
+ * const [firstApiRequest] = readRecording(recording.sourcePath);
+ */
+export function readRecording(filePath: string): RecordedApiRequest[] {
+  const contentByHash = new Map<string, unknown>();
+  const apiRequests: RecordedApiRequest[] = [];
+  for (const line of linesOfRecordingFile(filePath)) {
+    if (line.type === "piece") contentByHash.set(line.hash, line.content);
+    else apiRequests.push({ ...withoutType(line), body: restoredBody(line.body, contentByHash) });
+  }
+  return apiRequests;
+}
+
+/**
+ * Every API request in the Recording file at `filePath`, without its body, in
+ * append order: pieces are skipped, never restored, so memory stays the size
+ * of the file. Reads a last member cut short like {@link readRecording}.
+ *
+ * @example
+ * const requestIds = readRecordingWithoutBodies(recording.sourcePath).map((r) => r.response.requestId);
+ */
+export function readRecordingWithoutBodies(filePath: string): ApiRequestWithoutBody[] {
+  return linesOfRecordingFile(filePath).flatMap((line) => {
+    if (line.type === "piece") return [];
+    const apiRequest: Partial<ApiRequestLine> = { ...line };
+    delete apiRequest.type;
+    delete apiRequest.body;
+    return [apiRequest as ApiRequestWithoutBody];
+  });
+}
+
+/**
+ * Every API request in the Recordings under `recordingsRoot`, in full, file by
+ * file (sorted by name) and in append order within a file. Holds every body of
+ * every file at once: for tests and scripts, never for ingestion.
+ *
+ * @example
+ * const sideRequests = readRecordings(defaultRecordingsRoot()).filter((r) => r.agentId === null);
+ */
+export function readRecordings(recordingsRoot: string): RecordedApiRequest[] {
+  return discoverRecordings(recordingsRoot).flatMap((recording) => readRecording(recording.sourcePath));
 }
 
 /** The file an API request of `sessionId` is appended to. */
@@ -352,6 +419,15 @@ function isWholeGzip(bytes: Buffer): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+/** The lines of the Recording file at `filePath`; throws, naming the file, when it cannot be read or decoded. */
+function linesOfRecordingFile(filePath: string): RecordingLine[] {
+  try {
+    return linesInFile(readFileSync(filePath));
+  } catch (error) {
+    throw new Error(`Recording ${path.basename(filePath)} is unreadable`, { cause: error });
   }
 }
 

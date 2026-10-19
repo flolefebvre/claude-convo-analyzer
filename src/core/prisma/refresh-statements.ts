@@ -110,6 +110,23 @@ const TURN_DURATION_COLUMN_BY_FIELD = {
   messageCount: "message_count",
 } as const;
 
+const API_REQUEST_COLUMN_BY_FIELD = {
+  conversationId: "conversation_id",
+  messageId: "message_id",
+  agentId: "agent_id",
+  requestId: "request_id",
+  responseMessageId: "response_message_id",
+  externalAgentId: "external_agent_id",
+  method: "method",
+  path: "path",
+  status: "status",
+  arrivedAt: "arrived_at",
+  firstByteAt: "first_byte_at",
+  endedAt: "ended_at",
+  proxyError: "proxy_error",
+  isClientAborted: "is_client_aborted",
+} as const;
+
 /** A `project` row to insert. */
 export type ProjectRow = InsertRow<keyof typeof PROJECT_COLUMN_BY_FIELD>;
 /** A `conversation` row to insert. */
@@ -124,6 +141,8 @@ export type ToolCallRow = InsertRow<keyof typeof TOOL_CALL_COLUMN_BY_FIELD>;
 export type PrLinkRow = InsertRow<keyof typeof PR_LINK_COLUMN_BY_FIELD>;
 /** A `turn_duration` row to insert. */
 export type TurnDurationRow = InsertRow<keyof typeof TURN_DURATION_COLUMN_BY_FIELD>;
+/** An `api_request` row to insert. */
+export type ApiRequestRow = InsertRow<keyof typeof API_REQUEST_COLUMN_BY_FIELD>;
 
 /** What the skip/changed/delete decision needs of a stored Conversation. */
 export type StoredConversation = {
@@ -226,5 +245,6 @@ export function prepareRefreshStatements(db: Database.Database) {
     insertToolCall: prepareInsert(db, "tool_call", TOOL_CALL_COLUMN_BY_FIELD),
     insertPrLink: prepareInsert(db, "pr_link", PR_LINK_COLUMN_BY_FIELD),
     insertTurnDuration: prepareInsert(db, "turn_duration", TURN_DURATION_COLUMN_BY_FIELD),
+    insertApiRequest: prepareInsert(db, "api_request", API_REQUEST_COLUMN_BY_FIELD),
   };
 }

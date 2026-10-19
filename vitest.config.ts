@@ -1,3 +1,4 @@
+import os from "node:os";
 import path from "node:path";
 import { configDefaults, defineConfig } from "vitest/config";
 
@@ -10,6 +11,10 @@ export default defineConfig({
   test: {
     // The core is server-side only (Node APIs + native sqlite); no DOM needed.
     environment: "node",
+    // A Refresh that is given no `recordingsRoot` reads `defaultRecordingsRoot()`:
+    // point it at a directory that never exists, so no test reads the machine's
+    // real Recordings. A test that wants Recordings passes its own root.
+    env: { CCA_RECORDINGS_ROOT: path.join(os.tmpdir(), "cca-tests-have-no-recordings") },
     include: ["src/**/*.{test,spec}.ts", "src/**/__tests__/**/*.ts", "scripts/**/*.test.ts"],
     // Shared setup modules under `__tests__/helpers/` declare no tests of their
     // own — they would fail the "no test suite found" check if collected.

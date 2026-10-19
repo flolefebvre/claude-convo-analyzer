@@ -266,8 +266,14 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 
 /** A normalized message destined for one `message` row. */
 export type ParsedMessage = {
-  /** Dedup key: assistant `message.id` (== requestId); user records use `uuid`. */
+  /** Dedup key: assistant `message.id`, else the record's `requestId`; null on user Messages. */
   messageId: string | null;
+  /**
+   * The assistant record's own `requestId` (the API's `request-id`), the first
+   * line's for a turn split across lines; null on user Messages. Joins the turn
+   * to its API request in a Recording, before `message.id` does.
+   */
+  requestId: string | null;
   uuid: string | null;
   parentUuid: string | null;
   role: "user" | "assistant";
@@ -630,6 +636,7 @@ export function parseSessionLines(lines: Iterable<string>): ParsedSession {
     const usage = parseUsage(message.usage as RawUsage | undefined);
     const parsed: ParsedMessage = {
       messageId,
+      requestId: asString(record.requestId),
       uuid: asString(record.uuid),
       parentUuid: asString(record.parentUuid),
       role: "assistant",
@@ -733,6 +740,7 @@ function userMessage(
 ): ParsedMessage {
   return {
     messageId: null,
+    requestId: null,
     uuid: asString(record.uuid),
     parentUuid: asString(record.parentUuid),
     role: "user",

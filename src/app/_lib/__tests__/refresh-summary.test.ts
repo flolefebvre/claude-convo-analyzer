@@ -17,6 +17,7 @@ function summary(partial: Partial<RefreshSummary> = {}): RefreshSummary {
     malformedLinesSkipped: partial.malformedLinesSkipped ?? 0,
     duplicateSessionsSkipped: partial.duplicateSessionsSkipped ?? [],
     vanishedLogFilesSkipped: partial.vanishedLogFilesSkipped ?? 0,
+    undecodableRecordingsSkipped: partial.undecodableRecordingsSkipped ?? 0,
     durationMs: partial.durationMs ?? 0,
     durationMsByPhase: partial.durationMsByPhase ?? { discovery: 0, parse: 0, write: 0, links: 0, stamp: 0 },
   };
@@ -78,6 +79,15 @@ describe("formatRefreshSummary", () => {
     );
     expect(formatRefreshSummary(summary({ vanishedLogFilesSkipped: 3 }))).toBe(
       "Everything is up to date, 3 log files vanished during the refresh",
+    );
+  });
+
+  it("adds the Recordings it could not decode, singular at one", () => {
+    expect(formatRefreshSummary(summary({ conversationsParsed: 2, undecodableRecordingsSkipped: 1 }))).toBe(
+      "2 conversations updated, 1 Recording could not be decoded",
+    );
+    expect(formatRefreshSummary(summary({ undecodableRecordingsSkipped: 2 }))).toBe(
+      "Everything is up to date, 2 Recordings could not be decoded",
     );
   });
 });

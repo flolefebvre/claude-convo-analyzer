@@ -9,6 +9,10 @@ import { type RouteShell, expectData, expectInstantLoad } from "./route-shell";
 // A seeded conversation title (`scripts/seed/fake-logs.ts`).
 const TITLE = "Split the billing service out of the monolith";
 
+// The seeded Conversation every Turn of which is recorded, then the one recorded only from mid-way.
+const RECORDED_TITLE = "Add an audit trail to the billing exports";
+const PARTIALLY_RECORDED_TITLE = "Tighten the webhook signature checks";
+
 // The seeded `~/dev/acme-api` repo, a Project with worktree Projects below it.
 const REPO = path.join(os.homedir(), "dev", "acme-api");
 
@@ -57,6 +61,26 @@ test.describe("Conversations (/)", () => {
       await expect(page.getByText(TITLE, { exact: true })).toHaveCount(0);
     });
     await expectData(page, conversations);
+  });
+});
+
+test.describe("Recorded marker", () => {
+  /** The list row of the seeded Conversation titled `title`. */
+  const row = (page: Page, title: string) =>
+    page
+      .locator("#conversations")
+      .getByRole("row")
+      .filter({ has: page.getByText(title, { exact: true }) });
+
+  test("marks the recorded and partially recorded Conversations, and leaves an unrecorded one unmarked", async ({
+    page,
+  }) => {
+    await page.goto("/");
+
+    await expect(row(page, RECORDED_TITLE).getByTitle(/^Recorded/)).toBeVisible();
+    await expect(row(page, PARTIALLY_RECORDED_TITLE).getByTitle(/^Partially recorded/)).toBeVisible();
+    await expect(row(page, TITLE)).toBeVisible();
+    await expect(row(page, TITLE).getByTitle(/recorded/i)).toHaveCount(0);
   });
 });
 

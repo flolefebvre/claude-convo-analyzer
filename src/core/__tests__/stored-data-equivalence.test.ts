@@ -1,6 +1,6 @@
 // Stored data is pinned: a Refresh of each fixture root into a fresh database
 // writes exactly these rows — same count, same ids, same column values and
-// storage types — in all seven tables. The write path is free to change; what
+// storage types — in all eight tables. The write path is free to change; what
 // it stores is not.
 //
 // A MISMATCH means the write path now stores something different: a column
@@ -17,12 +17,22 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { openRecordingWriter, type RecordedApiRequest } from "@/core/recording";
 import { refresh } from "@/core/refresh";
 
 const FIXTURES_DIR = path.join(import.meta.dirname, "fixtures");
 
-/** The seven tables of ADR-0001, each pinned by its row count and checksum. */
-const STORED_TABLES = ["project", "conversation", "agent", "message", "tool_call", "pr_link", "turn_duration"] as const;
+/** The eight tables of ADR-0001, each pinned by its row count and checksum. */
+const STORED_TABLES = [
+  "project",
+  "conversation",
+  "agent",
+  "message",
+  "tool_call",
+  "pr_link",
+  "turn_duration",
+  "api_request",
+] as const;
 
 type StoredTable = (typeof STORED_TABLES)[number];
 
@@ -68,7 +78,7 @@ function fingerprintTable(db: Database.Database, table: StoredTable, logsRoot: s
   return { rowCount: rows.length, sha256: hash.digest("hex") };
 }
 
-/** Fingerprint all seven tables of the database at `dbPath`. */
+/** Fingerprint all eight tables of the database at `dbPath`. */
 function fingerprintStoredData(dbPath: string, logsRoot: string): Record<StoredTable, TableFingerprint> {
   const db = new Database(dbPath, { readonly: true });
   try {
@@ -108,6 +118,7 @@ describe("stored data equivalence", () => {
       tool_call: { rowCount: 34, sha256: "58586fdaa0ea9e906fd5037c8a3c7809fd2fd1d4602ec6280e34db111716b5f4" },
       pr_link: { rowCount: 1, sha256: "efff4b0f419e7b55d6dc8602b3503e06e81829e6fd868d216679845fa0970d16" },
       turn_duration: { rowCount: 1, sha256: "11a23dd83764e1de631b25b7b2fb8a6b5af397fe1503b2086f0404a57cb943c4" },
+      api_request: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
     });
   });
 
@@ -123,6 +134,7 @@ describe("stored data equivalence", () => {
       tool_call: { rowCount: 1, sha256: "a7fdb225fda2bff0ca75f88a22789a86cd79a97f5ea4e2f952e1d4559aa8efd9" },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+      api_request: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
     });
   });
 
@@ -138,6 +150,7 @@ describe("stored data equivalence", () => {
       tool_call: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+      api_request: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
     });
   });
 
@@ -153,6 +166,65 @@ describe("stored data equivalence", () => {
       tool_call: { rowCount: 1, sha256: "e331ea30643c19a0602a2759f557187aacaf1729c796a955560799b9c4dbd73f" },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+      api_request: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+    });
+  });
+
+  it("stores the pinned rows for the recorded logs and their Recording (Turns matched, one API request unmatched)", async () => {
+    copyWithPinnedMtimes(path.join(FIXTURES_DIR, "recorded-logs"), logsRoot);
+    const recordingsRoot = path.join(tmpDir, "recordings");
+    const writer = openRecordingWriter(recordingsRoot);
+    for (const [requestId, messageId, agentId] of [
+      ["rreq-1", "rmsg-1", null],
+      ["rreq-3", "rmsg-3", "rsub1"],
+      [null, "rmsg-2", null],
+      ["req-side", "msg-side", null],
+    ] as const) {
+      await writer.append(recordedApiRequest({ requestId, messageId, agentId }));
+    }
+    await refresh({ logsRoot, dbPath, recordingsRoot });
+
+    // The conversation row is left out: its change key folds in the Recording's
+    // gzip size, which depends on the zlib build, not on what was recorded.
+    const fingerprints: Partial<Record<StoredTable, TableFingerprint>> = fingerprintStoredData(dbPath, logsRoot);
+    delete fingerprints.conversation;
+    expect(fingerprints).toEqual({
+      project: { rowCount: 1, sha256: "ab725077615dfb646309a5ae5611824cd04ea21931ce42ca0228396a8ab86608" },
+      agent: { rowCount: 3, sha256: "9572f6c76b690944c11155fcfebcaa3cfb2f7eb6f4011be028e50a3b182a89e2" },
+      message: { rowCount: 10, sha256: "f9774d86e70fa26c6aa28df6bb3da601ebf705c6be1046db8e00370b2ce54268" },
+      tool_call: { rowCount: 1, sha256: "d3b0ea811a8bceeb37e913ba469534319cacbbcea904a4342deb1fd5cb2cfe73" },
+      pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+      turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+      api_request: { rowCount: 4, sha256: "db778f01fc936c08b933df3bcc887d9f9d746df3747266c5bdea8d10dec566c3" },
     });
   });
 });
+
+/** One API request of the `sess-rec-main` session, with fixed timings and the given ids. */
+function recordedApiRequest(ids: {
+  requestId: string | null;
+  messageId: string;
+  agentId: string | null;
+}): RecordedApiRequest {
+  return {
+    sessionId: "sess-rec-main",
+    agentId: ids.agentId,
+    method: "POST",
+    path: "/v1/messages",
+    query: "",
+    headers: {},
+    body: { model: "claude-opus-4-8", messages: [] },
+    response: {
+      status: 200,
+      requestId: ids.requestId,
+      headers: {},
+      body: { id: ids.messageId, type: "message", content: [] },
+      isStreamed: true,
+    },
+    timings: {
+      arrivedAt: "2026-10-18T10:00:00.000Z",
+      firstByteAt: "2026-10-18T10:00:01.000Z",
+      endedAt: "2026-10-18T10:00:02.000Z",
+    },
+  };
+}
