@@ -1,5 +1,5 @@
 // Read API (ADR-0001, ADR-0002). `listConversations()` and `getConversation()`
-// are the stable read seams over the seven tables written by `refresh()` (the
+// are the stable read seams over the eight tables written by `refresh()` (the
 // ingest spine, in `refresh.ts`). This module is read-only — it issues SUM
 // queries and prices/assembles summaries, and never writes.
 //
@@ -40,7 +40,37 @@ export type ConversationSummary = {
    * `0` for a conversation that never failed.
    */
   errorCount: number;
+  /** Whether its Turns have matching API requests in a Recording (GLOSSARY.md, Recorded). */
+  recordedState: RecordedState;
 };
+
+/**
+ * A Conversation's Recorded state (GLOSSARY.md, Recorded): every Turn the API
+ * answered has a matching API request, only some do, or none does.
+ */
+export type RecordedState = "recorded" | "partially-recorded" | "unrecorded";
+
+/**
+ * The model Claude Code stamps on an assistant Message it wrote itself
+ * (log-format §3): it was never sent, so no API request can match it.
+ */
+const SYNTHETIC_MODEL = "<synthetic>";
+
+/**
+ * A Turn counts toward "recorded" only if the API answered it: assistant
+ * Messages whose model is `<synthetic>` are written locally and never sent,
+ * so they are left out of the Turns an API request must match.
+ */
+const ANSWERED_TURN_WHERE = {
+  role: "assistant",
+  OR: [{ model: null }, { model: { not: SYNTHETIC_MODEL } }],
+} satisfies Prisma.MessageWhereInput;
+
+/** The Recorded state of `answeredTurnCount` Turns, `matchedTurnCount` of them with an API request. */
+function recordedStateOf(answeredTurnCount: number, matchedTurnCount: number): RecordedState {
+  if (matchedTurnCount === 0) return "unrecorded";
+  return matchedTurnCount >= answeredTurnCount ? "recorded" : "partially-recorded";
+}
 
 /**
  * The detail view of one conversation. Extends the SAME `ConversationSummary`
@@ -249,6 +279,17 @@ export async function listConversations(opts: ListOptions = {}): Promise<Convers
       where: { isApiError: true },
       _count: { _all: true },
     });
+    // Recorded state, two more batched groupBys: the Turns the API answered
+    // (see `ANSWERED_TURN_WHERE`), and the distinct Turns an API request joined.
+    const answeredTurnCounts = await prisma.message.groupBy({
+      by: ["conversationId"],
+      where: ANSWERED_TURN_WHERE,
+      _count: { _all: true },
+    });
+    const matchedTurns = await prisma.apiRequest.groupBy({
+      by: ["conversationId", "messageId"],
+      where: { messageId: { not: null } },
+    });
 
     // Bucket the batched rows by conversationId.
     const modelRowsById = new Map<number, ModelSumRow[]>();
@@ -272,6 +313,14 @@ export async function listConversations(opts: ListOptions = {}): Promise<Convers
     for (const c of errorCounts) {
       errorCountById.set(c.conversationId, c._count._all);
     }
+    const answeredTurnCountById = new Map<number, number>();
+    for (const c of answeredTurnCounts) {
+      answeredTurnCountById.set(c.conversationId, c._count._all);
+    }
+    const matchedTurnCountById = new Map<number, number>();
+    for (const t of matchedTurns) {
+      matchedTurnCountById.set(t.conversationId, (matchedTurnCountById.get(t.conversationId) ?? 0) + 1);
+    }
     const continuedFromById = await resolveContinuedFromIds(prisma, conversations);
 
     const summaries = conversations.map((convo) =>
@@ -280,6 +329,10 @@ export async function listConversations(opts: ListOptions = {}): Promise<Convers
         bounds: boundsById.get(convo.id) ?? { startedAt: "", endedAt: "" },
         subAgentCount: subCountById.get(convo.id) ?? 0,
         errorCount: errorCountById.get(convo.id) ?? 0,
+        recordedState: recordedStateOf(
+          answeredTurnCountById.get(convo.id) ?? 0,
+          matchedTurnCountById.get(convo.id) ?? 0,
+        ),
         continuedFromId:
           convo.continuedFromConversationId === null
             ? null
@@ -1561,6 +1614,7 @@ function assembleSummary(
     bounds: { startedAt: string; endedAt: string };
     subAgentCount: number;
     errorCount: number;
+    recordedState: RecordedState;
     continuedFromId: string | null;
   },
 ): ConversationSummary {
@@ -1595,6 +1649,7 @@ function assembleSummary(
     unpriced,
     subAgentCount: parts.subAgentCount,
     errorCount: parts.errorCount,
+    recordedState: parts.recordedState,
     continuedFromId: parts.continuedFromId,
   };
 }
@@ -1617,6 +1672,11 @@ async function summarizeConversation(
   const errorCount = await prisma.message.count({
     where: { conversationId: convo.id, isApiError: true },
   });
+  const answeredTurnCount = await prisma.message.count({ where: { conversationId: convo.id, ...ANSWERED_TURN_WHERE } });
+  const matchedTurns = await prisma.apiRequest.groupBy({
+    by: ["messageId"],
+    where: { conversationId: convo.id, messageId: { not: null } },
+  });
 
   let continuedFromId: string | null = null;
   if (convo.continuedFromConversationId !== null) {
@@ -1632,6 +1692,7 @@ async function summarizeConversation(
     bounds,
     subAgentCount,
     errorCount,
+    recordedState: recordedStateOf(answeredTurnCount, matchedTurns.length),
     continuedFromId,
   });
   return { summary, groups };

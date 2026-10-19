@@ -38,6 +38,7 @@ export function summary(over: {
     unpriced: over.unpriced ?? false,
     subAgentCount: 0,
     errorCount: over.errorCount ?? 0,
+    recordedState: "unrecorded",
     continuedFromId: null,
   };
 }

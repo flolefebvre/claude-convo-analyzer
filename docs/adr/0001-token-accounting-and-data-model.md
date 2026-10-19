@@ -26,7 +26,7 @@ true` and the same per-turn `usage` shape as the main thread — often on a
 
 ## Decision
 
-Model the domain as seven tables:
+Model the domain as eight tables:
 
 - `project` — one per Project path: the directory its Conversations run in,
   per their records' `cwd` (GLOSSARY.md, Project), not the log folder they are
@@ -57,6 +57,11 @@ Model the domain as seven tables:
 - `tool_call` — one per `tool_use` block, FK to `message` + `agent`.
 - `pr_link` — PRs surfaced in a conversation (`pr-link` records).
 - `turn_duration` — wall-clock turn timings (`system/turn_duration` records).
+- `api_request` — one per API request a Recording holds for the
+  Conversation's session (ADR-0006): its ids, status and timings, FK to
+  `conversation`, and to the matched Turn's `message` and `agent` (NULL when no
+  Turn matches). Never what was sent: request bodies grow with the square of
+  the Conversation, and stay in the Recording.
 
 Token accounting rules:
 

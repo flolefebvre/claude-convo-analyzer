@@ -326,6 +326,7 @@ function summary(over: {
     unpriced: false,
     subAgentCount: 0,
     errorCount: 0,
+    recordedState: "unrecorded",
     continuedFromId: null,
   };
 }

@@ -35,6 +35,7 @@ function detail(partial: Partial<ConversationDetail> = {}): ConversationDetail {
     unpriced: false,
     subAgentCount: 0,
     errorCount: 0,
+    recordedState: "unrecorded",
     continuedFromId: null,
     perModel: [],
     subAgents: [],

@@ -1,0 +1,3 @@
+{"type":"ai-title","aiTitle":"A Conversation beside it"}
+{"type":"user","uuid":"ou1","timestamp":"2026-10-18T09:00:00.000Z","cwd":"/Users/me/dev/recorded","version":"2.1.180","message":{"role":"user","content":"bump the lockfile"}}
+{"type":"assistant","uuid":"oa1","parentUuid":"ou1","requestId":"oreq-1","timestamp":"2026-10-18T09:00:05.000Z","cwd":"/Users/me/dev/recorded","version":"2.1.180","message":{"id":"omsg-1","role":"assistant","model":"claude-opus-4-8","content":[{"type":"text","text":"Bumped."}],"usage":{"input_tokens":3,"output_tokens":4,"cache_creation_input_tokens":0,"cache_read_input_tokens":100,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}}}

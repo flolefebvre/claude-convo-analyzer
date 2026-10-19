@@ -1,5 +1,5 @@
 // Claude Conversation Analyzer — data model.
-// Seven tables per ADR-0001 (docs/adr/0001-token-accounting-and-data-model.md).
+// Eight tables per ADR-0001 (docs/adr/0001-token-accounting-and-data-model.md).
 // Prisma 7: `prisma-client` generator + @prisma/adapter-better-sqlite3 driver adapter.
 // The generated client output is gitignored (commit schema + migrations only).
 // The Refresh writes these tables WITHOUT Prisma (ADR-0005): mirror any column
@@ -62,6 +62,7 @@ model Conversation {
   messages          Message[]
   prLinks           PrLink[]
   turnDurations     TurnDuration[]
+  apiRequests       ApiRequest[]
 
   @@index([projectId])
   @@map("conversation")
@@ -95,6 +96,7 @@ model Agent {
   spawnedBy        Message?  @relation("AgentSpawn", fields: [spawnedByMessageId], references: [id], onDelete: SetNull)
   messages         Message[] @relation("AgentMessages")
   toolCalls        ToolCall[]
+  apiRequests      ApiRequest[]
 
   @@index([conversationId])
   @@index([parentAgentId])
@@ -163,6 +165,7 @@ model Message {
   agent         Agent        @relation("AgentMessages", fields: [agentId], references: [id], onDelete: Cascade)
   spawnedAgents Agent[]      @relation("AgentSpawn")
   toolCalls     ToolCall[]
+  apiRequests   ApiRequest[]
 
   @@index([conversationId])
   @@index([agentId])
@@ -228,4 +231,45 @@ model TurnDuration {
 
   @@index([conversationId])
   @@map("turn_duration")
+}
+
+/// One per API request a Recording holds for the Conversation's session
+/// (ADR-0006), joined to its Turn when one matches. Nothing of what was sent.
+model ApiRequest {
+  id             Int  @id @default(autoincrement())
+  conversationId Int  @map("conversation_id")
+  /// The Turn's assistant Message: the one with the same `requestId`, else
+  /// the same `message.id`. NULL when no Turn matches.
+  messageId      Int? @map("message_id")
+  /// The Agent of that Turn; NULL when no Turn matches.
+  agentId        Int? @map("agent_id")
+
+  /// The `request-id` response header.
+  requestId         String? @map("request_id")
+  /// The response body's `message.id`.
+  responseMessageId String? @map("response_message_id")
+  /// The `x-claude-code-agent-id` request header, sent by a sub-agent.
+  externalAgentId   String? @map("external_agent_id")
+  method            String
+  path              String
+  /// The response's HTTP status.
+  status            Int
+  /// When the request reached the Recorder (epoch ms).
+  arrivedAt         BigInt  @map("arrived_at")
+  /// When the first response byte came back (epoch ms); NULL if none did.
+  firstByteAt       BigInt? @map("first_byte_at")
+  /// When the response ended or failed (epoch ms).
+  endedAt           BigInt  @map("ended_at")
+  /// Why the upstream failed: unreachable, or broken mid-response.
+  proxyError        String? @map("proxy_error")
+  /// True when Claude Code disconnected before the response ended.
+  isClientAborted   Boolean @default(false) @map("is_client_aborted")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  message      Message?     @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  agent        Agent?       @relation(fields: [agentId], references: [id], onDelete: SetNull)
+
+  @@index([conversationId])
+  @@index([messageId])
+  @@map("api_request")
 }
