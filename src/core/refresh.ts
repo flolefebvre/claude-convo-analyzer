@@ -132,8 +132,10 @@ type RefreshOptions = {
  * 4 — a Project is identified by its path: a Conversation that switches into a
  *     git worktree belongs to the worktree, and a cwd-less one borrows the
  *     Project of a sibling in its log folder.
+ * 5 — an Agent call's result is stored whole (before, it was truncated to ~10k
+ *     chars like every other tool's, cutting off long hand-backs).
  */
-export const PARSER_VERSION = 4;
+export const PARSER_VERSION = 5;
 
 /**
  * The version a conversation carries while it is written but NOT YET COMPLETE:
@@ -691,10 +693,20 @@ function messageRow(m: ParsedSession["messages"][number], conversationId: number
 const RESULT_TRUNCATE_CHARS = 10_000;
 
 /**
+ * How many chars of a `name` tool's result are stored (ADR-0001): an `Agent`
+ * call's hand-back whole, every other tool's first {@link RESULT_TRUNCATE_CHARS}.
+ *
+ * @example resultStorageCap("Agent") // Infinity
+ */
+function resultStorageCap(name: string): number {
+  return name === "Agent" ? Infinity : RESULT_TRUNCATE_CHARS;
+}
+
+/**
  * Write the `tool_call` rows for one agent's messages, pairing each `tool_use`
- * with its result (matched by `tool_use_id`, finding #6). The result is
- * truncated to ~10k chars for storage; `resultCharSize` keeps the FULL length as
- * a token-cost proxy (ADR-0001). `messageRowByMsgId` maps an assistant
+ * with its result (matched by `tool_use_id`, finding #6). The result is stored
+ * up to its tool's {@link resultStorageCap}; `resultCharSize` keeps the FULL
+ * length as a token-cost proxy (ADR-0001). `messageRowByMsgId` maps an assistant
  * `message.id` to its written row id (tool_uses only live on assistant turns).
  */
 function writeToolCalls(
@@ -711,14 +723,15 @@ function writeToolCalls(
     for (const tu of msg.toolUses) {
       const result = tu.toolUseId === null ? undefined : parsed.toolResults.get(tu.toolUseId);
       const fullResult = result?.resultText ?? null;
-      const truncated = fullResult !== null && fullResult.length > RESULT_TRUNCATE_CHARS;
+      const cap = resultStorageCap(tu.name);
+      const truncated = fullResult !== null && fullResult.length > cap;
       statements.insertToolCall({
         messageId: messageRowId,
         agentId,
         toolUseId: tu.toolUseId,
         name: tu.name,
         inputJson: tu.inputJson,
-        resultText: fullResult === null ? null : fullResult.slice(0, RESULT_TRUNCATE_CHARS),
+        resultText: fullResult === null || !truncated ? fullResult : fullResult.slice(0, cap),
         resultTruncated: truncated,
         resultCharSize: fullResult === null ? null : fullResult.length,
         isError: result?.isError ?? false,

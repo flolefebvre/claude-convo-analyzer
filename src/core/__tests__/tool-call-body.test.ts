@@ -65,6 +65,15 @@ describe("getToolCallBody", () => {
     expect(body?.resultCharSize).toBe(12_000);
   });
 
+  it("returns an Agent call's result whole, however long its hand-back", async () => {
+    const body = await getToolCallBody(await callId("toolu-b-agent-long"), { dbPath: db.dbPath });
+
+    expect(body?.resultTruncated).toBe(false);
+    expect(body?.resultText).toHaveLength(12_000);
+    expect(body?.resultText).toMatch(/long report\n$/);
+    expect(body?.resultCharSize).toBe(12_000);
+  });
+
   it("flags an error result", async () => {
     const body = await getToolCallBody(await callId("toolu-b-edit"), { dbPath: db.dbPath });
 

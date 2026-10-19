@@ -187,7 +187,7 @@ model ToolCall {
   /// Full tool input, serialized JSON (small; powers skill/CLI detection).
   inputJson String  @map("input_json")
 
-  /// Tool result truncated to ~10k chars (NULL until paired).
+  /// Tool result: whole for an `Agent` call, else truncated to ~10k chars (NULL until paired).
   resultText      String? @map("result_text")
   /// True when the result was truncated.
   resultTruncated Boolean @default(false) @map("result_truncated")

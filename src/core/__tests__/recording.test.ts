@@ -153,7 +153,7 @@ describe("a Recording", () => {
     const message = { role: "user", content: "hi" };
     const filePath = path.join(recordingsRoot, "sess-recorded.jsonl.gz");
     const hash = createHash("sha256").update(canonicalJson(message)).digest("hex");
-    const { body: _body, ...withoutBody } = apiRequest();
+    const { body, ...withoutBody } = apiRequest();
     const lines = [
       { type: "piece", hash, content: message },
       { ...withoutBody, type: "api_request", body: { parameters: {}, messages: [hash] } },
