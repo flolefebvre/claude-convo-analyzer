@@ -1,30 +1,33 @@
 // The app bar: the one header on every route — the list, Trends, Tools, search
-// results, a transcript, the 404 page. Brand, section tabs, search, theme, Live
-// and Refresh always sit in the same places at the same width, so moving between
+// results, a transcript, the 404 page. Brand, section tabs, search, theme, the
+// Recorder, Live and Refresh always sit in the same places, so moving between
 // surfaces never rearranges the chrome. Rendered once, by the root layout.
 //
 // Responsive by reordering one flex row rather than rendering twice:
-//   phone    brand ······ theme live refresh   (Live and Refresh shrink to their icons)
+//   phone    mark ···· theme recorder live refresh   (the brand and the last three shrink to their icons)
 //            search ─────────────────────────
 //            tabs
-//   tablet   brand ···· search theme live refresh
+//   tablet   brand ···· search theme recorder live refresh
 //            tabs
-//   desktop  brand  tabs ···· search theme live refresh      (one 56px row)
+//   desktop  brand  tabs ···· search theme recorder live refresh      (one 56px row)
 // The tabs always end flush on the bar's bottom border, where the active tab's
 // clay underline sits.
 //
 // A server component: the URL-dependent pieces (active tab, the search box's
 // query) are client leaves inside their own <Suspense>, so the bar prerenders.
-// So are the current Live and Refresh controls, which read Live and the running
-// Refresh per request; their fallbacks are the off toggle and the idle button,
-// so the shell always has both controls.
+// So are the current Recorder, Live and Refresh controls, which read the
+// Recorder's port, Live and the running Refresh per request; their fallbacks are
+// the neutral Recorder item, the off toggle and the idle button, so the shell
+// always has all three controls.
 
 import Link from "next/link";
 import { Suspense } from "react";
 
 import { CurrentLiveToggle } from "@/app/_components/current-live-toggle";
+import { CurrentRecorderControl } from "@/app/_components/current-recorder-control";
 import { CurrentRefreshButton } from "@/app/_components/current-refresh-button";
 import { InertLiveToggle } from "@/app/_components/live-toggle";
+import { InertRecorderControl } from "@/app/_components/recorder-control";
 import { IdleRefreshButton } from "@/app/_components/refresh-button";
 import { SearchBox } from "@/app/_components/search-box";
 import { SectionNav, SectionTabs } from "@/app/_components/section-nav";
@@ -47,6 +50,9 @@ export function AppBar() {
         <SearchBox className="order-4 w-full md:order-2 md:w-60 lg:order-3 lg:ml-auto" />
         <div className="order-2 flex items-center gap-1.5 sm:gap-2 md:order-3 lg:order-4">
           <ThemeToggle />
+          <Suspense fallback={<InertRecorderControl />}>
+            <CurrentRecorderControl />
+          </Suspense>
           <Suspense fallback={<InertLiveToggle />}>
             <CurrentLiveToggle />
           </Suspense>
@@ -67,9 +73,7 @@ function Brand({ className }: { className?: string }) {
   return (
     <Link href="/" className={`flex h-8 shrink-0 items-center gap-2 rounded-md ${className ?? ""}`}>
       <BrandMark />
-      <span className="text-sm font-semibold tracking-tight">
-        <span className="max-sm:hidden">Claude </span>Conversation Analyzer
-      </span>
+      <span className="text-sm font-semibold tracking-tight max-sm:sr-only">Claude Conversation Analyzer</span>
     </Link>
   );
 }
