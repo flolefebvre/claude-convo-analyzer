@@ -15,7 +15,7 @@ export type { ToolCallBody } from "@/core/read";
 export type { ToolCallFact, ToolCallPart } from "@/core/tool-call-views";
 
 /** What a recorded Turn sent, as core reads it — re-exported for the client leaf, like {@link ToolCallBody}. */
-export type { DiffLine, SentBlock, SentMessage, SentTool, WhatWasSent } from "@/core/what-was-sent";
+export type { DiffLine, FailedAttempt, SentBlock, SentMessage, SentTool, WhatWasSent } from "@/core/what-was-sent";
 
 import { subAgentLabel } from "@/app/_lib/detail";
 import { formatCount, formatLatency, formatTokens } from "@/app/_lib/format";

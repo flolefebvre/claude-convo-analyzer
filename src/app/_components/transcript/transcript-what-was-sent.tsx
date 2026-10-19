@@ -1,7 +1,8 @@
 "use client";
 
 // The "What was sent" disclosure of one recorded Turn. The page ships only the
-// Turn's `api_request` row id; what its API request sent is fetched from
+// Turn's `api_request` row id and its failed-attempt count; what its API
+// request sent, its failed attempts included, is fetched from
 // `GET /api/api-request/<id>` the first time the reader opens it, and kept for
 // every later open. Native `<details>` stays the disclosure, as for tool calls.
 //
@@ -12,7 +13,7 @@ import { callRoute } from "@flefebvre/next-pipe/client";
 import { ChevronRight } from "lucide-react";
 
 import { formatLatency } from "@/app/_lib/format";
-import type { DiffLine, SentBlock, SentMessage, SentTool, WhatWasSent } from "@/app/_lib/transcript";
+import type { DiffLine, FailedAttempt, SentBlock, SentMessage, SentTool, WhatWasSent } from "@/app/_lib/transcript";
 import { Skeleton } from "@/components/ui/skeleton";
 import { routes } from "@/generated/routes";
 
@@ -23,11 +24,21 @@ const MARKER_BY_CHANGE: Record<DiffLine["change"], string> = { added: "+", remov
 
 /**
  * A recorded Turn's "What was sent" `<details>`, fetched by `api_request` row
- * `apiRequestId` on the first open.
+ * `apiRequestId` on the first open; its summary counts the Turn's failed
+ * attempts, which the page ships.
  *
- * @example {message.apiRequestId !== null && <WhatWasSentDisclosure apiRequestId={message.apiRequestId} />}
+ * @example
+ * {message.apiRequestId !== null && (
+ *   <WhatWasSentDisclosure apiRequestId={message.apiRequestId} failedAttemptCount={message.failedAttemptCount} />
+ * )}
  */
-export function WhatWasSentDisclosure({ apiRequestId }: { apiRequestId: number }) {
+export function WhatWasSentDisclosure({
+  apiRequestId,
+  failedAttemptCount,
+}: {
+  apiRequestId: number;
+  failedAttemptCount: number;
+}) {
   const { state, onToggle, detailsRef } = useReadOnFirstOpen<WhatWasSent>(() =>
     callRoute(routes.api["api-request"](String(apiRequestId)).GET()),
   );
@@ -37,6 +48,7 @@ export function WhatWasSentDisclosure({ apiRequestId }: { apiRequestId: number }
       <summary>
         <ChevronRight aria-hidden className="chev" />
         <span className="call-name">What was sent</span>
+        {failedAttemptCount > 0 && <span className="call-meta">{failedAttemptCountLabel(failedAttemptCount)}</span>}
       </summary>
       <div className="call-body sent-body">
         <Body state={state} />
@@ -67,12 +79,26 @@ function Body({ state }: { state: ReadOnFirstOpenState<WhatWasSent> }) {
   }
 }
 
+/** "1 failed attempt", "2 failed attempts". */
+function failedAttemptCountLabel(failedAttemptCount: number): string {
+  return `${failedAttemptCount} failed attempt${failedAttemptCount === 1 ? "" : "s"}`;
+}
+
 function WhatWasSentView({ whatWasSent }: { whatWasSent: WhatWasSent }) {
-  const { newMessages, previousApiRequestId, systemPromptDiff, toolsDiff, fullRequest } = whatWasSent;
+  const { failedAttempts, newMessages, previousApiRequestId, systemPromptDiff, toolsDiff, fullRequest } = whatWasSent;
   const messageCount = `${newMessages.length} message${newMessages.length === 1 ? "" : "s"}`;
   return (
     <>
       <Facts whatWasSent={whatWasSent} />
+
+      {failedAttempts.length > 0 && (
+        <section className="sent-section">
+          <h4 className="io-label">{failedAttemptCountLabel(failedAttempts.length)} before this request</h4>
+          {failedAttempts.map((attempt, index) => (
+            <FailedAttemptLine key={index} attempt={attempt} />
+          ))}
+        </section>
+      )}
 
       <section className="sent-section">
         <h4 className="io-label">
@@ -156,6 +182,16 @@ function Facts({ whatWasSent }: { whatWasSent: WhatWasSent }) {
     `total ${formatLatency(timings.durationMs)}`,
   ].filter(Boolean);
   return <p className="sent-line">{facts.join(" · ")}</p>;
+}
+
+/** One failed attempt, as one line: its status, its error message and the time it lost. */
+function FailedAttemptLine({ attempt }: { attempt: FailedAttempt }) {
+  return (
+    <p className="sent-line">
+      <code>{attempt.status}</code> · {attempt.errorMessage ?? "no error message"} · lost{" "}
+      {formatLatency(attempt.lostMs)}
+    </p>
+  );
 }
 
 function MessageBlocks({ message }: { message: SentMessage }) {
