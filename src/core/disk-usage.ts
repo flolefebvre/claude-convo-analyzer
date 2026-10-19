@@ -1,7 +1,8 @@
 // How much disk a path takes: what the Recorder popover shows for the
 // Recordings, the database and the logs. The walk is async `fs` only, so the
 // stats run on libuv's threadpool and a multi-GB logs root never holds the
-// event loop. Symlinks inside the walk are skipped, not followed; a file or
+// event loop. Symlinks inside the walk are skipped, not followed (a Dirent of a
+// symlink is neither a file nor a folder); a file or
 // folder deleted between its listing and its stat counts as absent.
 
 import type { Dirent } from "node:fs";
@@ -23,20 +24,28 @@ export async function diskUsageInBytes(targetPath: string): Promise<SizeInBytes>
   return stats.isDirectory() ? folderSizeInBytes(targetPath) : stats.size;
 }
 
-/** The summed size of the regular files under `folderPath`, its sub-folders walked in parallel. */
+/**
+ * The summed size of the regular files under `folderPath`. One folder at a
+ * time: its files are stat'ed in parallel, then its sub-folders are walked in
+ * turn. Fanning out across the whole tree at once lands thousands of stat
+ * results in one burst, and a 6 GB logs root held the event loop for 200+ ms.
+ */
 async function folderSizeInBytes(folderPath: string): Promise<SizeInBytes> {
   const entries = await unlessVanished(() => readdir(folderPath, { withFileTypes: true }));
   if (entries === null) return 0;
-  const entrySizes = await Promise.all(entries.map((entry) => entrySizeInBytes(folderPath, entry)));
-  return entrySizes.reduce((total, size) => total + size, 0);
+  const fileSizes = await Promise.all(
+    entries.filter((entry) => entry.isFile()).map((entry) => fileSizeInBytes(folderPath, entry)),
+  );
+  let total = fileSizes.reduce((sum, size) => sum + size, 0);
+  for (const entry of entries) {
+    if (entry.isDirectory()) total += await folderSizeInBytes(path.join(folderPath, entry.name));
+  }
+  return total;
 }
 
-/** The size of one listed entry: a folder walked, a file stat'ed, anything else (a symlink) 0. */
-async function entrySizeInBytes(folderPath: string, entry: Dirent): Promise<SizeInBytes> {
-  const entryPath = path.join(folderPath, entry.name);
-  if (entry.isDirectory()) return folderSizeInBytes(entryPath);
-  if (!entry.isFile()) return 0;
-  return (await unlessVanished(() => stat(entryPath)))?.size ?? 0;
+/** The size of the file `entry` listed in `folderPath`, or 0 when it vanished since. */
+async function fileSizeInBytes(folderPath: string, entry: Dirent): Promise<SizeInBytes> {
+  return (await unlessVanished(() => stat(path.join(folderPath, entry.name))))?.size ?? 0;
 }
 
 /** `read()`'s result, or null when its path is gone (ENOENT) or no longer a folder (ENOTDIR). */
