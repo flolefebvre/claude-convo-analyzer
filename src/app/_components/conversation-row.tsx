@@ -22,6 +22,7 @@ import type { ErrorViewRow } from "@/app/_lib/errors-view";
 import type { FamilyView } from "@/app/_lib/family-view";
 import { PendingLink } from "@/app/_components/pending-link";
 import { formatCompactTokens, formatCost, formatDuration, formatModelName, formatTokens } from "@/app/_lib/format";
+import { SIDE_REQUESTS_TOOLTIP, sideRequestCountLabel } from "@/app/_lib/side-requests";
 import { modelLabel } from "@/app/_lib/sort";
 import { agentHref, withListReturn } from "@/app/_lib/transcript-url";
 import { TableCell, TableRow } from "@/components/ui/table";
@@ -546,7 +547,7 @@ function ErrorList({ errors, listReturn }: { errors: ErrorViewRow[]; listReturn:
   );
 }
 
-/** The cost breakdowns from the server-fetched detail: Model / Skill / Sub-agent. */
+/** The cost breakdowns from the server-fetched detail: Model / Skill / Sub-agent, then the Side requests when there are any. */
 function Breakdowns({
   detail,
   sessionId,
@@ -597,15 +598,45 @@ function Breakdowns({
           <SubAgentBreakdown section={sections.subAgents} sessionId={sessionId} listReturn={listReturn} />
         )}
       </Section>
+
+      {/* Only a Recorded Conversation has Side requests: an unrecorded one
+          shows nothing more than before. */}
+      {!sections.sideRequests.isEmpty && (
+        <Section title="Side requests" hint={SIDE_REQUESTS_TOOLTIP}>
+          <p className="mb-2 text-sm text-muted-foreground">
+            {sideRequestCountLabel(detail.sideRequests.count)} · {detail.sideRequests.unpriced ? "~" : ""}
+            {formatCost(detail.sideRequests.costUsd)}
+          </p>
+          <CostList>
+            {sections.sideRequests.rows.map((group) => (
+              <CostRow
+                key={group.kind}
+                label={group.count > 1 ? `${group.label} ×${group.count}` : group.label}
+                costUsd={group.costUsd}
+                max={sections.sideRequests.totalCost}
+                unpriced={group.unpriced}
+              />
+            ))}
+          </CostList>
+        </Section>
+      )}
     </>
   );
 }
 
-/** A section of the detail panel: a sentence-case heading over its content. */
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+/** A section of the detail panel: a sentence-case heading over its content; `hint` explains the heading's term on hover. */
+function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
     <div>
-      <h3 className="mb-3 text-sm font-medium text-foreground">{title}</h3>
+      <h3 className="mb-3 text-sm font-medium text-foreground">
+        {hint === undefined ? (
+          title
+        ) : (
+          <span className="cursor-help underline decoration-dotted underline-offset-4" title={hint}>
+            {title}
+          </span>
+        )}
+      </h3>
       {children}
     </div>
   );
