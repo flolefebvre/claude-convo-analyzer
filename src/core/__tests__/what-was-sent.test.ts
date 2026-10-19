@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getTranscript, type TranscriptMessage } from "@/core/read";
 import { openRecordingWriter, type RecordedApiRequest } from "@/core/recording";
 import { refresh } from "@/core/refresh";
-import { getWhatWasSent, type SentMessage } from "@/core/what-was-sent";
+import { getWhatWasSent, type SentMessage, VOLATILE_SYSTEM_LINE_PATTERNS } from "@/core/what-was-sent";
 
 const LOGS_ROOT = path.join(import.meta.dirname, "fixtures", "what-was-sent-logs");
 const SESSION_ID = "sess-sent";
@@ -334,6 +334,167 @@ describe("what was sent for a Turn", () => {
     await recordAndRefresh(mainTurns());
 
     expect(await getWhatWasSent(999_999, { dbPath, recordingsRoot })).toBeNull();
+  });
+});
+
+/** The three Main-thread Turns, the third sending `change` instead of what the first two send. */
+function mainTurnsWithThirdChanged(change: { system?: unknown; tools?: unknown[] }): RecordedApiRequest[] {
+  const turns = mainTurns();
+  turns[2] = apiRequest({ ...requestFields(turns[2]), ...change });
+  return turns;
+}
+
+/** A diff's hunks as `+`/`-`/` `-prefixed lines, a volatile changed line marked with a trailing `~`. */
+function diffText(hunks: { lines: { change: string; text: string; isVolatile?: boolean }[] }[] | undefined): string[] {
+  const prefixByChange: Record<string, string> = { added: "+", removed: "-", unchanged: " " };
+  return (hunks ?? []).flatMap((hunk) =>
+    hunk.lines.map((line) => `${prefixByChange[line.change]}${line.text}${line.isVolatile ? " ~" : ""}`),
+  );
+}
+
+describe("the system-prompt diff of a Turn", () => {
+  it("is absent on an Agent's first Turn and when the system prompt did not change", async () => {
+    await recordAndRefresh(mainTurns());
+
+    expect((await whatWasSentForTurn(1))?.systemPromptDiff).toBeNull();
+    expect((await whatWasSentForTurn(2))?.systemPromptDiff).toBeNull();
+  });
+
+  it("is volatile-only when only the git status changed", async () => {
+    const system = [
+      SYSTEM[0],
+      { ...SYSTEM[1], text: "Working directory: /Users/me/dev/sent\nGit status: 2 files modified" },
+    ];
+    await recordAndRefresh(mainTurnsWithThirdChanged({ system }));
+
+    const diff = (await whatWasSentForTurn(3))?.systemPromptDiff;
+
+    expect(diff?.isVolatileOnly).toBe(true);
+    expect(diffText(diff?.hunks)).toEqual([
+      " You are Claude Code, Anthropic's official CLI for Claude.",
+      " Working directory: /Users/me/dev/sent",
+      "-Git status: clean ~",
+      "+Git status: 2 files modified ~",
+    ]);
+  });
+
+  it("is a real change when an instruction changed, its volatile lines still marked", async () => {
+    const system = [
+      { type: "text", text: "You are Claude Code. Never push without being asked." },
+      { ...SYSTEM[1], text: "Working directory: /Users/me/dev/other\nGit status: clean" },
+    ];
+    await recordAndRefresh(mainTurnsWithThirdChanged({ system }));
+
+    const diff = (await whatWasSentForTurn(3))?.systemPromptDiff;
+
+    expect(diff?.isVolatileOnly).toBe(false);
+    expect(diffText(diff?.hunks)).toEqual([
+      "-You are Claude Code, Anthropic's official CLI for Claude.",
+      "-Working directory: /Users/me/dev/sent ~",
+      "+You are Claude Code. Never push without being asked.",
+      "+Working directory: /Users/me/dev/other ~",
+      " Git status: clean",
+    ]);
+  });
+
+  it("reads a system prompt sent as one string as one block", async () => {
+    await recordAndRefresh(mainTurnsWithThirdChanged({ system: "Answer briefly." }));
+
+    const sent = await whatWasSentForTurn(3);
+
+    expect(sent?.systemPromptDiff?.isVolatileOnly).toBe(false);
+    expect(sent?.fullRequest.systemBlocks).toEqual([{ kind: "text", text: "Answer briefly.", cacheControl: null }]);
+  });
+});
+
+describe("a volatile system-prompt line", () => {
+  it.each([
+    "Today's date is 2026-10-19.",
+    "Today's date: 2026-10-19",
+    "Current date: 2026-10-19",
+    "Working directory: /Users/me/dev/sent",
+    "Primary working directory: /Users/me/dev/sent",
+    "gitStatus: This is the git status at the start of the conversation.",
+    "Git status: clean",
+    "Current branch: main",
+    "Status:",
+    "Recent commits:",
+    "M src/core/read.ts",
+    " M src/core/read.ts",
+    "?? docs/notes.md",
+    "7ece6e8 [recorder] Recorded Conversations (#161)",
+    "",
+    "   ",
+  ])("matches %j", (line) => {
+    expect(VOLATILE_SYSTEM_LINE_PATTERNS.some((pattern) => pattern.test(line))).toBe(true);
+  });
+
+  it.each([
+    "A tool call runs in the sandbox.",
+    "A skill is a packaged set of instructions.",
+    "M is for model.",
+    "Keep changes small, run the tests before you report.",
+  ])("does not match the prose line %j", (line) => {
+    expect(VOLATILE_SYSTEM_LINE_PATTERNS.some((pattern) => pattern.test(line))).toBe(false);
+  });
+});
+
+describe("the tools diff of a Turn", () => {
+  const READ_TOOL = {
+    name: "Read",
+    description: "Read a file.",
+    input_schema: { type: "object", properties: { file_path: { type: "string" } } },
+  };
+
+  it("is absent on an Agent's first Turn and when no tool changed", async () => {
+    await recordAndRefresh(
+      mainTurnsWithThirdChanged({ tools: [{ ...TOOLS[0], cache_control: { type: "ephemeral" } }] }),
+    );
+
+    expect((await whatWasSentForTurn(1))?.toolsDiff).toBeNull();
+    expect((await whatWasSentForTurn(3))?.toolsDiff).toBeNull();
+  });
+
+  it("names the tools added and removed", async () => {
+    await recordAndRefresh(mainTurnsWithThirdChanged({ tools: [READ_TOOL] }));
+
+    const diff = (await whatWasSentForTurn(3))?.toolsDiff;
+
+    expect(diff?.added).toEqual([{ name: "Read", definitionJson: JSON.stringify(READ_TOOL, null, 2) }]);
+    expect(diff?.removed).toEqual([{ name: "Bash", definitionJson: JSON.stringify(TOOLS[0], null, 2) }]);
+    expect(diff?.changed).toEqual([]);
+  });
+
+  it("shows a changed description as a line diff of the definition", async () => {
+    await recordAndRefresh(mainTurnsWithThirdChanged({ tools: [{ ...TOOLS[0], description: "Run a command." }] }));
+
+    const diff = (await whatWasSentForTurn(3))?.toolsDiff;
+
+    expect(diff?.added).toEqual([]);
+    expect(diff?.removed).toEqual([]);
+    expect(diff?.changed.map((tool) => [tool.name, tool.changedFields])).toEqual([["Bash", ["description"]]]);
+    expect(diffText(diff?.changed[0]?.hunks).filter((line) => !line.startsWith(" "))).toEqual([
+      '-  "description": "Run a shell command.",',
+      '+  "description": "Run a command.",',
+    ]);
+  });
+
+  it("names a changed input schema, whatever its key order", async () => {
+    const reordered = { ...TOOLS[0], input_schema: { properties: { command: { type: "string" } }, type: "object" } };
+    const widened = {
+      ...TOOLS[0],
+      input_schema: { type: "object", properties: { command: { type: "string" }, timeout: { type: "number" } } },
+    };
+    await recordAndRefresh(
+      mainTurns().map((turn, index) =>
+        apiRequest({ ...requestFields(turn), tools: [index === 2 ? widened : index === 1 ? reordered : TOOLS[0]] }),
+      ),
+    );
+
+    expect((await whatWasSentForTurn(2))?.toolsDiff).toBeNull();
+    expect((await whatWasSentForTurn(3))?.toolsDiff?.changed.map((tool) => tool.changedFields)).toEqual([
+      ["input_schema"],
+    ]);
   });
 });
 

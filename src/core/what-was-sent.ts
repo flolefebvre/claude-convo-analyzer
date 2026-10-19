@@ -4,6 +4,8 @@
 // Recording file provides their bodies, the only two restored (ADR-0006: no
 // body is ever written to the database). Framework-free (ADR-0002).
 
+import { structuredPatch } from "diff";
+
 import { readClient } from "@/core/db";
 import {
   canonicalJson,
@@ -38,6 +40,54 @@ export type SentParameters = {
   betas: string[];
 };
 
+/** One line of a line diff: added, removed, or unchanged context around a change. */
+export type DiffLine = { change: "added" | "removed" | "unchanged"; text: string };
+
+/** A run of changed lines, with up to {@link DIFF_CONTEXT_LINE_COUNT} unchanged lines around it. */
+export type DiffHunk = { lines: DiffLine[] };
+
+/** A system-prompt diff line; a changed one is volatile when it matches {@link VOLATILE_SYSTEM_LINE_PATTERNS}. */
+export type SystemPromptDiffLine = DiffLine & { isVolatile: boolean };
+
+/** The line diff of the system text (its blocks joined by newlines) against the previous API request's. */
+export type SystemPromptDiff = {
+  hunks: { lines: SystemPromptDiffLine[] }[];
+  /** True when every changed line is volatile (dates, git status, the working directory). */
+  isVolatileOnly: boolean;
+};
+
+/** A tool definition whose description or input schema changed, as a line diff of its pretty-printed definition. */
+export type ChangedTool = {
+  name: string;
+  changedFields: ("description" | "input_schema")[];
+  hunks: DiffHunk[];
+};
+
+/** The tool definitions added, removed and changed since the previous API request, keyed by name. */
+export type ToolsDiff = { added: SentTool[]; removed: SentTool[]; changed: ChangedTool[] };
+
+/** How many unchanged lines a diff hunk keeps around its changed lines. */
+const DIFF_CONTEXT_LINE_COUNT = 2;
+
+/**
+ * The system-prompt lines that change between Turns without anything real
+ * changing: today's date, the working directory, the git status section
+ * (status, branch, its file entries and recent commits), and blank lines.
+ */
+export const VOLATILE_SYSTEM_LINE_PATTERNS: readonly RegExp[] = [
+  /^\s*(?:Today's date|Current date)\b/i,
+  /^\s*(?:Primary )?working directory:/i,
+  /^\s*(?:gitStatus|Git status):/i,
+  /^\s*Current branch:/i,
+  /^\s*Status:/i,
+  /^\s*Recent commits:/i,
+  // A git status entry: its status code, then one path-like token and nothing after it.
+  /^\s*[MADRCU?!]{1,2}\s+\S*[/.]\S*$/,
+  // A recent commit: its abbreviated hash, then its subject.
+  /^[0-9a-f]{7,40}\s/,
+  /^\s*$/,
+];
+
 /** How long the API request took, in ms from its arrival at the Recorder. */
 export type SentTimings = {
   /** Null when no response byte ever came back. */
@@ -57,6 +107,10 @@ export type WhatWasSent = {
   previousApiRequestId: number | null;
   /** The messages the previous API request did not send, in order (cache breakpoints ignored). */
   newMessages: SentMessage[];
+  /** How the system prompt changed since the previous API request; null when it did not, or without one. */
+  systemPromptDiff: SystemPromptDiff | null;
+  /** How the tool definitions changed since the previous API request; null when none did, or without one. */
+  toolsDiff: ToolsDiff | null;
   /** The whole request: every system block with its cache breakpoints, every tool definition, every other parameter. */
   fullRequest: {
     systemBlocks: SentSystemBlock[];
@@ -138,6 +192,8 @@ export async function getWhatWasSent(apiRequestId: number, opts: WhatWasSentOpti
       },
       previousApiRequestId: previousBody === null ? null : previousRow!.id,
       newMessages: messagesNewSince(messagesOf(body), previousBody === null ? [] : messagesOf(previousBody)),
+      systemPromptDiff: previousBody === null ? null : systemPromptDiff(previousBody, body),
+      toolsDiff: previousBody === null ? null : toolsDiff(toolsOf(previousBody), toolsOf(body)),
       fullRequest: {
         systemBlocks: systemBlocksOf(body).map(sentSystemBlock),
         tools: toolsOf(body).map(sentTool),
@@ -218,6 +274,80 @@ function messagesNewSince(messages: unknown[], previousMessages: unknown[]): Sen
   return messages
     .filter((message) => !previousMessageJsons.has(canonicalJson(withoutCacheControl(message))))
     .map(sentMessage);
+}
+
+/** The system-prompt diff from `previousBody` to `body`; null when the system text is the same. */
+function systemPromptDiff(previousBody: RequestBody, body: RequestBody): SystemPromptDiff | null {
+  const hunks = lineDiffHunks(systemTextOf(previousBody), systemTextOf(body)).map((hunk) => ({
+    lines: hunk.lines.map((line) => ({
+      ...line,
+      isVolatile:
+        line.change !== "unchanged" && VOLATILE_SYSTEM_LINE_PATTERNS.some((pattern) => pattern.test(line.text)),
+    })),
+  }));
+  if (hunks.length === 0) return null;
+  const changedLines = hunks.flatMap((hunk) => hunk.lines).filter((line) => line.change !== "unchanged");
+  return { hunks, isVolatileOnly: changedLines.every((line) => line.isVolatile) };
+}
+
+/** The system text of `body`: each block's text (any other block as JSON), joined by newlines. */
+function systemTextOf(body: RequestBody): string {
+  return systemBlocksOf(body)
+    .map((block) => {
+      const sent = sentBlock(block);
+      return sent.kind === "text" ? sent.text : sent.json;
+    })
+    .join("\n");
+}
+
+/** The tools diff from `previousTools` to `tools`, by name; null when none was added, removed or changed. */
+function toolsDiff(previousTools: unknown[], tools: unknown[]): ToolsDiff | null {
+  const previousToolByName = new Map(previousTools.map((tool) => [sentTool(tool).name, tool]));
+  const toolNames = new Set(tools.map((tool) => sentTool(tool).name));
+  const added: SentTool[] = [];
+  const changed: ChangedTool[] = [];
+  for (const tool of tools) {
+    const sent = sentTool(tool);
+    const previousTool = previousToolByName.get(sent.name);
+    if (previousTool === undefined) {
+      added.push(sent);
+      continue;
+    }
+    const changedFields = (["description", "input_schema"] as const).filter(
+      (field) => canonicalJson(fieldOf(previousTool, field)) !== canonicalJson(fieldOf(tool, field)),
+    );
+    if (changedFields.length > 0) {
+      changed.push({
+        name: sent.name,
+        changedFields,
+        hunks: lineDiffHunks(sentTool(previousTool).definitionJson, sent.definitionJson),
+      });
+    }
+  }
+  const removed = previousTools.map(sentTool).filter((tool) => !toolNames.has(tool.name));
+  if (added.length + removed.length + changed.length === 0) return null;
+  return { added, removed, changed };
+}
+
+function fieldOf(tool: unknown, field: string): unknown {
+  return isPlainObject(tool) ? tool[field] : undefined;
+}
+
+/** The hunks of the line diff from `previousText` to `text`; empty when they are the same. */
+function lineDiffHunks(previousText: string, text: string): DiffHunk[] {
+  // A final newline on both sides keeps jsdiff from flagging a missing one.
+  const patch = structuredPatch("", "", `${previousText}\n`, `${text}\n`, undefined, undefined, {
+    context: DIFF_CONTEXT_LINE_COUNT,
+  });
+  return patch.hunks.map((hunk) => ({
+    lines: hunk.lines.flatMap((line): DiffLine[] => {
+      const marker = line[0];
+      if (marker === "+") return [{ change: "added", text: line.slice(1) }];
+      if (marker === "-") return [{ change: "removed", text: line.slice(1) }];
+      if (marker === " ") return [{ change: "unchanged", text: line.slice(1) }];
+      return []; // "\ No newline at end of file"
+    }),
+  }));
 }
 
 /** `value` with every `cache_control` key removed, at any depth. */
