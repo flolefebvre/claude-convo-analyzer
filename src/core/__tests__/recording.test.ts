@@ -2,12 +2,14 @@
 // and what the reader gives back. Files are decoded here only to check what is
 // on disk — the deduplication and the redaction are promises about the bytes.
 
+import { createHash } from "node:crypto";
 import { mkdtempSync, readdirSync, readFileSync, rmSync, truncateSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  canonicalJson,
   discoverRecordings,
   openRecordingWriter,
   readRecording,
@@ -123,6 +125,37 @@ describe("a Recording", () => {
 
     const lines = linesOf(path.join(recordingsRoot, "sess-recorded.jsonl.gz"));
     expect(lines.filter((line) => line.type === "piece")).toHaveLength(1);
+  });
+
+  it("names a piece by the first 16 hex characters of its content's sha256", async () => {
+    const writer = openRecordingWriter(recordingsRoot);
+    const message = { role: "user", content: "hi" };
+    await writer.append(apiRequest({ body: { messages: [message] } }));
+
+    const [piece] = linesOf(path.join(recordingsRoot, "sess-recorded.jsonl.gz")).filter(
+      (line) => line.type === "piece",
+    );
+    const sha256 = createHash("sha256").update(canonicalJson(message)).digest("hex");
+    expect(piece.hash).toBe(sha256.slice(0, 16));
+  });
+
+  it("reads, and appends after, a file whose pieces are named by the whole sha256", async () => {
+    const message = { role: "user", content: "hi" };
+    const filePath = path.join(recordingsRoot, "sess-recorded.jsonl.gz");
+    const hash = createHash("sha256").update(canonicalJson(message)).digest("hex");
+    const { body: _body, ...withoutBody } = apiRequest();
+    const lines = [
+      { type: "piece", hash, content: message },
+      { ...withoutBody, type: "api_request", body: { parameters: {}, messages: [hash] } },
+    ];
+    writeFileSync(filePath, gzipSync(lines.map((line) => JSON.stringify(line) + "\n").join("")));
+
+    await openRecordingWriter(recordingsRoot).append(apiRequest({ body: { messages: [message] } }));
+
+    expect(readRecording(filePath).map((recorded) => recorded.body)).toEqual([
+      { messages: [message] },
+      { messages: [message] },
+    ]);
   });
 
   it("keeps a system prompt sent as one string, and a body that is not JSON", async () => {

@@ -411,9 +411,12 @@ function restoredBody(stored: StoredBody, contentByHash: Map<string, unknown>): 
   return body;
 }
 
-/** The hash a piece is stored under: sha256 (hex) of its canonical JSON. */
+/** How many hex characters of the sha256 name a piece: 64 bits, collision-free in practice within one file. */
+const PIECE_HASH_LENGTH = 16;
+
+/** The hash a piece is stored under: the first {@link PIECE_HASH_LENGTH} hex characters of its canonical JSON's sha256. */
 function hashOf(content: unknown): string {
-  return createHash("sha256").update(canonicalJson(content)).digest("hex");
+  return createHash("sha256").update(canonicalJson(content)).digest("hex").slice(0, PIECE_HASH_LENGTH);
 }
 
 /**
