@@ -21,7 +21,8 @@ import { formatTokens } from "@/app/_lib/format";
 
 /**
  * App-side mirror of core's `RESULT_TRUNCATE_CHARS` (`src/core/refresh.ts`): the
- * stored-length cap the refresh applies to a tool result before persisting it.
+ * stored-length cap the refresh applies to every tool result but an Agent call's,
+ * which it stores whole.
  * Re-declared here (NOT imported) so this pure app helper never pulls core
  * runtime across the ADR-0002 boundary. Keep in sync with core.
  */
@@ -96,8 +97,9 @@ export function toolCallSnippet(call: { name: string; inputJson: string }): stri
 
 /**
  * The truncation marker for a tool result, or `null` when nothing was cut. The
- * refresh stores at most {@link RESULT_TRUNCATE_CHARS}; when the full result was
- * longer we surface the original size and the stored cap (thousands-separated
+ * refresh stores at most {@link RESULT_TRUNCATE_CHARS} of a non-Agent result;
+ * when the full result was longer we surface the original size and the stored
+ * cap (thousands-separated
  * via {@link formatTokens}). `resultCharSize` may be unknown (`null`) — then only
  * the stored cap is shown.
  */

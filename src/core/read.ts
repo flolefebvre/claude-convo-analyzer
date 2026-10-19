@@ -657,7 +657,7 @@ export async function getTranscript(id: string, opts: TranscriptOptions = {}): P
 export type ToolCallBody = {
   /** Full tool input, serialized JSON. */
   inputJson: string;
-  /** Stored tool result, truncated to ≤10k chars (NULL until paired). */
+  /** Stored tool result: whole for an Agent call, else truncated to ≤10k chars (NULL until paired). */
   resultText: string | null;
   resultTruncated: boolean;
   /** Full (untruncated) result length; NULL until paired. */

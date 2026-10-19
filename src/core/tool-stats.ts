@@ -265,7 +265,8 @@ export async function getToolCallSamples(name: string, opts: ToolCallSamplesOpti
     const where = { name, ...(await scopeWhere(prisma, opts)) };
     // Both lists are ordered and capped BY THE DATABASE: expanding a heavily
     // used tool over an all-time range must not drag every matching row — each
-    // carrying up to ~10k of `resultText` — into memory to keep five of them.
+    // carrying up to ~10k of `resultText`, or an Agent call's whole hand-back —
+    // into memory to keep five of them.
     // Ties break on `tool_use` id so the order is deterministic.
     const [errorRows, largestRows] = await Promise.all([
       prisma.toolCall.findMany({
