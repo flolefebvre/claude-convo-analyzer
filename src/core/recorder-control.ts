@@ -1,11 +1,11 @@
 // The app's hold on a Recorder (ADR-0006), from outside its process: read its
 // status on a port, start one detached so it outlives the app, and ask it to
 // stop through its stop endpoint. Every answer comes from the port, since the
-// Recorder may have been started from a terminal or by an earlier app; a start
-// uses its new Recorder's pid only to notice it exiting before it answers.
+// Recorder may have been started from a terminal or by an earlier app. A start
+// runs the `--detach` launcher, which alone decides whether the Recorder started.
 
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, readFileSync, statSync } from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { RECORDER_HEALTH_PATH, RECORDER_STOP_PATH, type RecorderHealth } from "@/core/recorder";
@@ -24,7 +24,7 @@ export type RecorderStatus = RecorderHealth | { status: "off"; port: number } | 
 
 /** How a start ended: a Recorder answers on the port (this start's or one already there), or it failed. */
 export type RecorderStartOutcome =
-  { outcome: "started" | "alreadyRunning"; health: RecorderHealth } | { outcome: "failed"; message: string };
+  { outcome: "started" | "alreadyRunning"; port: number } | { outcome: "failed"; message: string };
 
 /** Where a detached Recorder runs from and records to. */
 export type DetachedRecorderOptions = {
@@ -97,11 +97,11 @@ export function requestRecorderStop(port: number): Promise<void> {
 }
 
 /**
- * Start the Recorder through `scripts/recorder.ts --detach`, so it outlives
- * this process and its process tree, its output appended to `recorder.log`
- * beside the Recordings root. Resolves once the health endpoint answers on the
- * port; a Recorder already there is left alone, and a port held by another
- * program fails at once.
+ * Start the Recorder through `scripts/recorder.ts --detach`, which runs
+ * {@link launchDetachedRecorder} and reports its outcome by exit code and
+ * output, so the Recorder outlives this process and its process tree. A
+ * Recorder already on the port is left alone, and a port held by another
+ * program fails at once, without a launch.
  *
  * @example
  * const outcome = await startRecorderDetached({ port: 4242, recordingsRoot: defaultRecordingsRoot(), repoRoot: process.cwd() });
@@ -110,71 +110,95 @@ export function requestRecorderStop(port: number): Promise<void> {
 export async function startRecorderDetached(options: DetachedRecorderOptions): Promise<RecorderStartOutcome> {
   const { port, recordingsRoot, repoRoot } = options;
   const statusBefore = await readRecorderStatus(port);
-  if (statusBefore.status === "running") return { outcome: "alreadyRunning", health: statusBefore };
+  if (statusBefore.status === "running") return { outcome: "alreadyRunning", port };
   if (statusBefore.status === "portTaken") return portTakenOutcome(port);
 
-  const logPath = recorderLogPath(recordingsRoot);
-  const logOffset = existsSync(logPath) ? statSync(logPath).size : 0;
-  const launch = await launchedRecorder(port, recordingsRoot, repoRoot);
-  if (launch.pid === null) {
-    const launcherLines = lastLines(launch.output);
-    const failure = `The Recorder on port ${port} could not be launched`;
-    return { outcome: "failed", message: launcherLines ? `${failure}:\n${launcherLines}` : `${failure}.` };
-  }
-
-  const deadline = Date.now() + START_TIMEOUT_MS;
-  let isRecorderAlive = isProcessAlive(launch.pid);
-  while (isRecorderAlive && Date.now() < deadline) {
-    const status = await readRecorderStatus(port);
-    if (status.status === "running") return { outcome: "started", health: status };
-    if (status.status === "portTaken") return portTakenOutcome(port);
-    await new Promise((resolve) => setTimeout(resolve, START_POLL_INTERVAL_MS));
-    isRecorderAlive = isProcessAlive(launch.pid);
-  }
-  if (isRecorderAlive) process.kill(launch.pid, "SIGTERM");
-  const logLines = existsSync(logPath) ? lastLines(readFileSync(logPath).subarray(logOffset).toString("utf8")) : "";
-  const failure = isRecorderAlive
-    ? `The Recorder on port ${port} did not answer within ${START_TIMEOUT_MS / 1000} s`
-    : `The Recorder on port ${port} exited before it started`;
-  return { outcome: "failed", message: logLines ? `${failure}:\n${logLines}` : `${failure}.` };
-}
-
-/**
- * Run `scripts/recorder.ts --detach`, which leaves the Recorder running as an
- * orphan and exits at once; resolves with the pid it printed (null when it
- * printed none) and everything it printed. The pipes close with the launcher.
- */
-function launchedRecorder(
-  port: number,
-  recordingsRoot: string,
-  repoRoot: string,
-): Promise<{ pid: number | null; output: string }> {
-  return new Promise((resolve) => {
+  const launch = await new Promise<{ exitCode: number | null; stdout: string; stderr: string }>((resolve) => {
     const launcher = spawn(process.execPath, ["--import", "tsx", path.join("scripts", "recorder.ts"), "--detach"], {
       cwd: repoRoot,
       // The inherited `CCA_*` variables (the upstream, above all) reach the Recorder; these two are this start's.
       env: { ...process.env, CCA_RECORDER_PORT: String(port), CCA_RECORDINGS_ROOT: recordingsRoot },
       stdio: ["ignore", "pipe", "pipe"],
     });
-    let output = "";
-    launcher.stdout.on("data", (chunk: Buffer) => (output += chunk.toString("utf8")));
-    launcher.stderr.on("data", (chunk: Buffer) => (output += chunk.toString("utf8")));
-    launcher.once("error", (error) => resolve({ pid: null, output: error.message }));
-    launcher.once("close", (exitCode) => {
-      const printedPid = /^Recorder detached as pid (\d+)/m.exec(output)?.[1];
-      resolve({ pid: exitCode === 0 && printedPid ? Number(printedPid) : null, output });
-    });
+    let stdout = "";
+    let stderr = "";
+    launcher.stdout.on("data", (chunk: Buffer) => (stdout += chunk.toString("utf8")));
+    launcher.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString("utf8")));
+    launcher.once("error", (error) => resolve({ exitCode: null, stdout, stderr: error.message }));
+    launcher.once("close", (exitCode) => resolve({ exitCode, stdout, stderr }));
   });
+  if (launch.exitCode === 0) {
+    return { outcome: /^A Recorder already answers/m.test(launch.stdout) ? "alreadyRunning" : "started", port };
+  }
+  const launcherLines = lastLines(launch.stderr);
+  // The launcher's own failures name the port; anything else is it failing to run at all.
+  if (launcherLines.includes(`port ${port}`) || launcherLines.includes(`Port ${port}`)) {
+    return { outcome: "failed", message: launcherLines };
+  }
+  const failure = `The Recorder on port ${port} could not be launched`;
+  return { outcome: "failed", message: launcherLines ? `${failure}:\n${launcherLines}` : `${failure}.` };
 }
 
-/** Whether a process with this pid exists (the Recorder, orphaned, is reaped by init when it exits). */
-function isProcessAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
+/** Where `launchDetachedRecorder` starts the Recorder from. */
+export type RecorderLaunchOptions = {
+  /** A fixed port on 127.0.0.1, which the launch waits on. */
+  port: number;
+  recordingsRoot: string;
+  /** The Recorder script, run through tsx. */
+  scriptPath: string;
+};
+
+/** How a launch ended: the Recorder answers (with its pid when this launch started it), or it failed. */
+export type RecorderLaunchOutcome =
+  | { outcome: "started"; port: number; pid: number; logPath: string }
+  | { outcome: "alreadyRunning"; port: number }
+  | { outcome: "failed"; message: string };
+
+/**
+ * The `--detach` launcher's work: start the Recorder script in its own
+ * session, its output appended to `recorder.log` beside the Recordings root,
+ * and resolve once its health answers on the port — or with what it logged,
+ * when it exits first or does not answer within 5 s (then it is stopped). The
+ * caller exits right after, leaving the Recorder an orphan. Unref'd once it
+ * answers, so it never holds the caller's event loop.
+ *
+ * @example
+ * const outcome = await launchDetachedRecorder({ port: defaultRecorderPort(), recordingsRoot: defaultRecordingsRoot(), scriptPath: process.argv[1] });
+ */
+export async function launchDetachedRecorder(options: RecorderLaunchOptions): Promise<RecorderLaunchOutcome> {
+  const { port, recordingsRoot, scriptPath } = options;
+  const statusBefore = await readRecorderStatus(port);
+  if (statusBefore.status === "running") return { outcome: "alreadyRunning", port };
+  if (statusBefore.status === "portTaken") return portTakenOutcome(port);
+
+  const logPath = recorderLogPath(recordingsRoot);
+  mkdirSync(path.dirname(logPath), { recursive: true });
+  const logFd = openSync(logPath, "a");
+  const logOffset = statSync(logPath).size;
+  const recorderProcess = spawn(process.execPath, ["--import", "tsx", scriptPath], {
+    detached: true,
+    stdio: ["ignore", logFd, logFd],
+  });
+  closeSync(logFd);
+  let hasRecorderExited = false;
+  recorderProcess.once("exit", () => (hasRecorderExited = true));
+  recorderProcess.once("error", () => (hasRecorderExited = true));
+
+  const deadline = Date.now() + START_TIMEOUT_MS;
+  while (!hasRecorderExited && Date.now() < deadline) {
+    if ((await readRecorderStatus(port)).status === "running" && !hasRecorderExited) {
+      recorderProcess.unref();
+      return { outcome: "started", port, pid: recorderProcess.pid!, logPath };
+    }
+    await new Promise((resolve) => setTimeout(resolve, START_POLL_INTERVAL_MS));
   }
+  if (!hasRecorderExited) recorderProcess.kill("SIGTERM");
+  recorderProcess.unref();
+  const logLines = lastLines(readFileSync(logPath).subarray(logOffset).toString("utf8"));
+  const failure = hasRecorderExited
+    ? `The Recorder on port ${port} exited before it started`
+    : `The Recorder on port ${port} did not answer within ${START_TIMEOUT_MS / 1000} s`;
+  return { outcome: "failed", message: logLines ? `${failure}:\n${logLines}` : `${failure}.` };
 }
 
 /**
@@ -187,7 +211,7 @@ export function recorderLogPath(recordingsRoot: string): string {
   return path.join(path.dirname(recordingsRoot), "recorder.log");
 }
 
-function portTakenOutcome(port: number): RecorderStartOutcome {
+function portTakenOutcome(port: number): { outcome: "failed"; message: string } {
   return { outcome: "failed", message: `Port ${port} is taken by another program.` };
 }
 

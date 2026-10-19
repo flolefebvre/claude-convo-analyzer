@@ -18,7 +18,8 @@ export type RouteShell = {
  * @example await expectShell(page, tools);
  */
 export async function expectShell(page: Page, route: RouteShell) {
-  await expect(page.getByRole("banner").getByRole("button", { name: "Recorder", exact: true })).toBeVisible();
+  // The neutral item on an initial load; on a client navigation, the item as the persisting app bar shows it.
+  await expect(page.getByRole("banner").getByRole("button", { name: /^Recorder/ })).toBeVisible();
   await expect(page.getByRole("banner").getByRole("button", { name: "Live", pressed: false })).toBeVisible();
   await expect(page.getByRole("banner").getByRole("button", { name: "Refresh" })).toBeVisible();
   for (const content of route.shell(page)) await expect(content).toBeVisible();

@@ -70,7 +70,7 @@ export const startRecorder = actionPipe().handle(async () => {
     return error("recorderNotStarted", { message: messageOf(cause) });
   }
   if (outcome.outcome === "failed") return error("recorderNotStarted", { message: outcome.message });
-  return success({ outcome: outcome.outcome, port: outcome.health.port });
+  return success({ outcome: outcome.outcome, port: outcome.port });
 });
 
 /** What `stopRecorder` reads: whether to stop even though sessions sent requests recently. */

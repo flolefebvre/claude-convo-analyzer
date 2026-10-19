@@ -279,6 +279,10 @@ export async function startRecorder(options: RecorderOptions): Promise<RunningRe
       return;
     }
     if (pathname === RECORDER_STOP_PATH) {
+      if (isFromBrowserPage(request.headers)) {
+        response.writeHead(403).end(); // any web page could otherwise stop it, cutting every session off the API
+        return;
+      }
       response.writeHead(202, { connection: "close" }).end();
       void stop().catch(() => {}); // its outcome is `stopped`'s
       return;
@@ -494,6 +498,12 @@ function headersOf(headers: http.IncomingHttpHeaders): RecordedHeaders {
   return Object.fromEntries(
     Object.entries(headers).filter((entry): entry is [string, string | string[]] => entry[1] !== undefined),
   );
+}
+
+/** Whether a request came from a page in a browser, which names its origin; the app's server names none. */
+function isFromBrowserPage(headers: http.IncomingHttpHeaders): boolean {
+  const fetchSite = singleHeader(headers["sec-fetch-site"]);
+  return headers.origin !== undefined || (fetchSite !== null && fetchSite !== "none");
 }
 
 function singleHeader(value: string | string[] | undefined): string | null {

@@ -5,6 +5,8 @@
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import http from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -19,7 +21,7 @@ import {
   textUntilEnd,
   type FakeUpstream,
 } from "@/core/__tests__/helpers/fake-upstream";
-import { freePort, stopDetachedRecorder, waitForRecorderStatus } from "@/core/__tests__/helpers/recorder-port";
+import { freePort, stopDetachedRecorder } from "@/core/__tests__/helpers/recorder-port";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 
@@ -167,9 +169,37 @@ describe("pnpm recorder", () => {
     expect(exitCode).toBe(0);
     expect(stdout).toMatch(/^Recorder detached as pid \d+, logging to .*recorder\.log$/m);
     expect(stdout).toContain(`ANTHROPIC_BASE_URL=http://127.0.0.1:${port}\n`);
-    expect(await waitForRecorderStatus(port, "running")).toBe(true);
     expect(await readRecorderStatus(port)).toMatchObject({ status: "running", recordingsRoot: detachedRecordingsRoot });
     expect(readFileSync(recorderLogPath(detachedRecordingsRoot), "utf8")).toContain(`Recorder on 127.0.0.1:${port}`);
+  });
+
+  it("with --detach, exits 1 with why when another program holds the port", async () => {
+    const holder = http.createServer((_request, response) => response.end("not a recorder"));
+    await new Promise<void>((resolve) => holder.listen(0, "127.0.0.1", resolve));
+    const { port } = holder.address() as AddressInfo;
+
+    const { exitCode, stdout, stderr } = await runToExit(["--detach"], {
+      CCA_RECORDER_PORT: String(port),
+      CCA_RECORDINGS_ROOT: path.join(recordingsRoot, "recordings"),
+    }).finally(() => new Promise((resolve) => holder.close(resolve)));
+
+    expect(exitCode).toBe(1);
+    expect(stdout).not.toContain("ANTHROPIC_BASE_URL");
+    expect(stderr).toContain(`Port ${port} is taken by another program.`);
+  });
+
+  it("with --detach, exits 1 with the log's lines when the Recorder exits before answering", async () => {
+    const port = await freePort();
+
+    const { exitCode, stdout, stderr } = await runToExit(["--detach"], {
+      CCA_RECORDER_PORT: String(port),
+      CCA_RECORDINGS_ROOT: path.join(recordingsRoot, "recordings"),
+      CCA_RECORDER_UPSTREAM: "not a url",
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stdout).not.toContain("ANTHROPIC_BASE_URL");
+    expect(stderr).toMatch(new RegExp(`^The Recorder on port ${port} exited before it started:\n.*Invalid URL`, "s"));
   });
 
   it("refuses --detach on port 0, which only the Recorder would know", async () => {

@@ -76,6 +76,23 @@ describe("stopping the Recorder", () => {
     expect(health.status).toBe(200);
   });
 
+  it.each<Record<string, string>>([{ origin: "https://example.com" }, { "sec-fetch-site": "cross-site" }])(
+    "refuses a stop request a web page sent (%o), and keeps running",
+    async (browserHeaders) => {
+      const upstream = await harness.startUpstream(respondWithEventStream);
+      const recorder = await harness.startRecorder(upstream.url);
+
+      const stopResponse = await fetch(`http://127.0.0.1:${recorder.port}${RECORDER_STOP_PATH}`, {
+        method: "POST",
+        headers: browserHeaders,
+      });
+
+      expect(stopResponse.status).toBe(403);
+      const health = await fetch(`http://127.0.0.1:${recorder.port}${RECORDER_HEALTH_PATH}`);
+      expect(health.status).toBe(200);
+    },
+  );
+
   it("cuts an API request still in flight after the drain timeout", async () => {
     const upstream = await harness.startUpstream(respondWithFirstEventUntil(new Promise(() => {})));
     const recorder = await harness.startRecorder(upstream.url, { drainTimeoutMs: 100 });
