@@ -59,7 +59,14 @@ export function SideRequestPane({
 
       <h2 className="sr-only">{label}: what was sent</h2>
       <div className="transcript">
-        <WhatWasSentDisclosure apiRequestId={sideRequest.apiRequestId} failedAttemptCount={0} isOpenInitially />
+        {/* Keyed by the API request: picking another Side request only changes
+            `?sideRequest=`, which keeps state, so a fresh mount reads anew. */}
+        <WhatWasSentDisclosure
+          key={sideRequest.apiRequestId}
+          apiRequestId={sideRequest.apiRequestId}
+          failedAttemptCount={0}
+          isOpenInitially
+        />
       </div>
     </>
   );

@@ -74,6 +74,14 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     const whatWasSent = page.getByRole("main").getByRole("group").filter({ hasText: "What was sent" });
     await expect(whatWasSent).toHaveAttribute("open", "");
     await expect(whatWasSent.getByText(/every message is new/)).toBeVisible();
+    await expect(whatWasSent.getByText(/max_tokens 512/)).toBeVisible();
+
+    // Another Side request reads its own: the safety monitor sends `max_tokens: 256`.
+    await sideRequests.getByRole("link", { name: /^Safety monitor/ }).click();
+    await expect(sideRequests.getByRole("link", { name: /^Safety monitor/ })).toHaveAttribute("aria-current", "page");
+    await expect(whatWasSent).toHaveAttribute("open", "");
+    await expect(whatWasSent.getByText(/max_tokens 256/)).toBeVisible();
+    await expect(whatWasSent.getByText(/max_tokens 512/)).toHaveCount(0);
   });
 
   test("shows no Side requests for an unrecorded Conversation", async ({ page }) => {
