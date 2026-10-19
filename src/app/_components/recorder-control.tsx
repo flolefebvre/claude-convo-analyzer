@@ -169,7 +169,10 @@ export function RecorderControl({ recorderStatus: statusAsRendered }: { recorder
             </div>
           </div>
         )}
-        <p role="status" className={cn("whitespace-pre-wrap", actionReport?.tone === "error" && "text-destructive")}>
+        <p
+          role="status"
+          className={cn("whitespace-pre-wrap empty:sr-only", actionReport?.tone === "error" && "text-destructive")}
+        >
           {actionReport?.text ?? ""}
         </p>
         <HowToEnable port={recorderStatus.port} />

@@ -152,13 +152,18 @@ from every cost the logs alone give. The **Recorder** fills that gap: an
 optional local proxy that forwards every request to the Anthropic API unchanged
 and keeps a copy on disk.
 
-Start it in its own terminal and leave it running:
+The **Recorder** item in the app bar, beside Live and Refresh, says whether it
+runs ("Recorder: on :4242" or "Recorder: off"). Its **Start** launches the
+Recorder in the background, where it keeps running after the app stops, and logs
+to `~/.claude-convo-analyzer/recorder.log`; if the port is taken, it says so. Or
+start it in its own terminal and leave it running:
 
 ```bash
 pnpm recorder
 ```
 
-It prints the `ANTHROPIC_BASE_URL` line to use; start Claude Code with it:
+Either way, start Claude Code through it, with the line the item's popover
+copies for you (along with a shell alias) and `pnpm recorder` prints:
 
 ```bash
 ANTHROPIC_BASE_URL=http://127.0.0.1:4242 claude
@@ -175,9 +180,11 @@ recorded conversation gains:
 - **Side requests**: Claude Code's background requests, in the Transcript and
   in the conversation's cost.
 
-Stop the Recorder with Ctrl-C; it lets requests in flight finish first (press
-twice to quit at once). Don't stop it while a session started through it is
-still running: that session can't reach the API without it. `CCA_RECORDER_PORT`
+Stop the Recorder with **Stop** in its popover, or with Ctrl-C in its terminal;
+it lets requests in flight finish first (press Ctrl-C twice to quit at once).
+Don't stop it while a session started through it is still running: that session
+can't reach the API without it. Stop asks first when sessions sent requests
+through it in the last 15 minutes. `CCA_RECORDER_PORT`
 (default 4242) and `CCA_RECORDER_UPSTREAM` (default `https://api.anthropic.com`)
 change where it listens and where it forwards; `pnpm recorder --help` lists
 them.
