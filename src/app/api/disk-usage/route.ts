@@ -11,7 +11,7 @@ import { measureDiskUsage } from "@/app/_lib/disk-usage";
 /**
  * The three sizes, each `{ path, bytes }`, keyed `recordings`, `database` and `logs`.
  *
- * @example const res = await callRoute(routes.api.diskUsage.GET());
+ * @example const res = await callRoute(routes.api["disk-usage"].GET());
  */
 export const GET = routePipe<RouteContext<"/api/disk-usage">>().handle(async () => {
   // A measurement at build time would be served to every open.

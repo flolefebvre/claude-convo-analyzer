@@ -7,12 +7,14 @@
 // and at once after a Start or a Stop. Start and Stop go through the
 // `startRecorder` / `stopRecorder` server actions (ADR-0002: no core import from
 // a client file); a Stop that the server refuses because sessions sent requests
-// recently turns into an inline confirmation naming how many.
+// recently turns into an inline confirmation naming how many. Each open also
+// measures the disk usage through `GET /api/disk-usage`; never on first paint.
 
 import { callRoute } from "@flefebvre/next-pipe/client";
 import { Check, Copy, Radio } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { formatBytes } from "@/app/_lib/format";
 import { startRecorder, stopRecorder } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -29,6 +31,15 @@ export type RecorderStatusAsRead = { status: "running" | "off" | "portTaken"; po
 
 /** What the last Start or Stop click left to say, under its button. */
 type ActionReport = { text: string; tone: "status" | "error" };
+
+/** A path the app keeps data in, and its size on disk, as `GET /api/disk-usage` answered. */
+type PathUsageAsRead = { path: string; bytes: number };
+
+/** The Disk usage section's state: measuring, measured, or the measurement failed. */
+type DiskUsageAsRead =
+  | { state: "measuring" }
+  | { state: "measured"; recordings: PathUsageAsRead; database: PathUsageAsRead; logs: PathUsageAsRead }
+  | { state: "failed" };
 
 /**
  * The Recorder item: shows whether the Recorder runs, and opens its controls.
@@ -47,6 +58,17 @@ export function RecorderControl({ recorderStatus: statusAsRendered }: { recorder
   const [actionReport, setActionReport] = useState<ActionReport | null>(null);
   /** The number of recent sessions a refused Stop reported, while its confirmation shows. */
   const [unconfirmedSessionCount, setUnconfirmedSessionCount] = useState<number | null>(null);
+  const [diskUsage, setDiskUsage] = useState<DiskUsageAsRead>({ state: "measuring" });
+
+  async function measureDiskUsage() {
+    setDiskUsage({ state: "measuring" });
+    try {
+      const response = await callRoute(routes.api["disk-usage"].GET());
+      setDiskUsage(response.status === 200 ? { state: "measured", ...response.json } : { state: "failed" });
+    } catch {
+      setDiskUsage({ state: "failed" });
+    }
+  }
 
   async function rereadStatus() {
     try {
@@ -125,6 +147,7 @@ export function RecorderControl({ recorderStatus: statusAsRendered }: { recorder
         setActionReport(null);
         setUnconfirmedSessionCount(null);
         void rereadStatus();
+        void measureDiskUsage();
       }}
     >
       <PopoverTrigger asChild>
@@ -175,6 +198,7 @@ export function RecorderControl({ recorderStatus: statusAsRendered }: { recorder
         >
           {actionReport?.text ?? ""}
         </p>
+        <DiskUsageSection diskUsage={diskUsage} />
         <HowToEnable port={recorderStatus.port} />
       </PopoverContent>
     </Popover>
@@ -189,6 +213,41 @@ export function RecorderControl({ recorderStatus: statusAsRendered }: { recorder
  */
 export function InertRecorderControl() {
   return <RecorderFace isRunning={false} label="Recorder" />;
+}
+
+/** How much disk the Recordings, the database and the Claude Code logs take, each with its path to copy. */
+function DiskUsageSection({ diskUsage }: { diskUsage: DiskUsageAsRead }) {
+  const usageOf = (key: "recordings" | "database" | "logs") => (diskUsage.state === "measured" ? diskUsage[key] : null);
+  return (
+    <div className="flex flex-col gap-2 border-t pt-3">
+      <p className="font-medium">Disk usage</p>
+      {diskUsage.state === "failed" ? (
+        <p className="text-destructive">The sizes could not be measured.</p>
+      ) : (
+        <>
+          <PathUsageLine label="Recordings" pathUsage={usageOf("recordings")} />
+          <PathUsageLine label="Database" pathUsage={usageOf("database")} />
+          <PathUsageLine label="Claude Code logs" pathUsage={usageOf("logs")} />
+          <p className="text-muted-foreground">The app reads these and never deletes them.</p>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** One Disk usage line: its label and size, then its path to copy; "measuring…" until `pathUsage` is read. */
+function PathUsageLine({ label, pathUsage }: { label: string; pathUsage: PathUsageAsRead | null }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <p className="flex justify-between gap-3">
+        <span>{label}</span>
+        <span className={cn("tabular-nums", pathUsage === null && "text-muted-foreground")}>
+          {pathUsage === null ? "measuring…" : formatBytes(pathUsage.bytes)}
+        </span>
+      </p>
+      {pathUsage !== null && <CopyableLine text={pathUsage.path} />}
+    </div>
+  );
 }
 
 /** How to point Claude Code at the Recorder on `port`, with the lines to copy. */
@@ -208,7 +267,7 @@ function HowToEnable({ port }: { port: number }) {
   );
 }
 
-/** A line of shell, with a button putting it on the clipboard. */
+/** A line of shell or a path, with a button putting it on the clipboard. */
 function CopyableLine({ text }: { text: string }) {
   const [isCopied, setIsCopied] = useState(false);
   useEffect(() => {
