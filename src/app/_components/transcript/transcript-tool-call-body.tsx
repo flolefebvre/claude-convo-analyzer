@@ -42,7 +42,6 @@ export function ToolCallDisclosure({
   summary,
   footer,
   labels,
-  showTruncation = true,
 }: {
   /** The Tool call's row id, the route's `[id]`. */
   id: number;
@@ -56,8 +55,6 @@ export function ToolCallDisclosure({
   footer?: React.ReactNode;
   /** The input and result block labels ("Input"/"Result", or "Prompt"/"Returned" for an Agent call). */
   labels: { input: string; result: string };
-  /** Whether a truncated result says so under its block. */
-  showTruncation?: boolean;
 }) {
   // The anchored call starts `loaded` and never fetches.
   const { state, onToggle, detailsRef } = useReadOnFirstOpen<ToolCallBody>(
@@ -75,7 +72,7 @@ export function ToolCallDisclosure({
     >
       {summary}
       <div className="call-body">
-        <Body state={state} labels={labels} showTruncation={showTruncation} />
+        <Body state={state} labels={labels} />
         {footer}
       </div>
     </details>
@@ -86,11 +83,9 @@ export function ToolCallDisclosure({
 function Body({
   state,
   labels,
-  showTruncation,
 }: {
   state: ReadOnFirstOpenState<ToolCallBody>;
   labels: { input: string; result: string };
-  showTruncation: boolean;
 }) {
   switch (state.status) {
     case "idle":
@@ -108,7 +103,7 @@ function Body({
       return <p className="call-body-note">Couldn&rsquo;t load this call — try again.</p>;
     case "loaded": {
       const body = state.value;
-      const note = showTruncation ? truncationNote(body) : null;
+      const note = truncationNote(body);
       return (
         <>
           <IoBlock label={labels.input} text={body.inputJson} parts={body.inputParts} />
