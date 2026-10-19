@@ -830,7 +830,9 @@ function writeApiRequests(
  * For each of `apiRequests` (in append order) that is a failed attempt, the
  * Turn it is an attempt of; null for every other. A failed attempt is an API
  * request that joined no Turn itself and did not succeed (a status outside
- * 2xx, a proxy error, or Claude Code disconnecting), retried by a LATER API
+ * 2xx, an error in the response body — an error response, or a stream an
+ * `error` event cut short —, a proxy error, or Claude Code disconnecting),
+ * retried by a LATER API
  * request of the same Recording — same `x-claude-code-agent-id`, same stored
  * body — that joined a Turn (`joinedTurnRows`). The nearest such retry wins,
  * so every attempt of a chain (attempt, attempt, success) belongs to the one
@@ -856,10 +858,18 @@ function failedAttemptTurnRows(apiRequests: ReadApiRequest[], joinedTurnRows: (T
   return attemptTurnRows;
 }
 
-/** True when the API request did not succeed: a status outside 2xx, a proxy error, or Claude Code disconnecting. */
+/**
+ * True when the API request did not succeed: a status outside 2xx, an error in
+ * the response body — an error response, or a stream an `error` event cut
+ * short —, a proxy error, or Claude Code disconnecting.
+ */
 function isFailedApiRequest(apiRequest: RecordedApiRequestFields): boolean {
   return (
-    apiRequest.status < 200 || apiRequest.status >= 300 || apiRequest.proxyError !== null || apiRequest.isClientAborted
+    apiRequest.status < 200 ||
+    apiRequest.status >= 300 ||
+    apiRequest.errorMessage !== null ||
+    apiRequest.proxyError !== null ||
+    apiRequest.isClientAborted
   );
 }
 

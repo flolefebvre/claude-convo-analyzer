@@ -266,6 +266,29 @@ describe("a failed attempt", () => {
     expect(await failedAttemptCountsOf()).toEqual([2, 0]);
   });
 
+  it("is a stream the API cut short with an error event, though its status was 200", async () => {
+    const [first, second] = everyMainTurn();
+    const attempt = failedAttemptOf(second, { requestId: "req-cut-short", secondsBefore: 3 });
+    const cutShort: RecordedApiRequest = {
+      ...attempt,
+      response: {
+        ...attempt.response,
+        status: 200,
+        isStreamed: true,
+        body: {
+          id: "msg-cut-short",
+          type: "message",
+          content: [{ type: "text", text: "Looking at the" }],
+          error: { type: "overloaded_error", message: "Overloaded" },
+        },
+      },
+    };
+    await record([first, cutShort, second]);
+    await refresh({ logsRoot: LOGS_ROOT, dbPath, recordingsRoot });
+
+    expect(await failedAttemptCountsOf()).toEqual([0, 1]);
+  });
+
   it("belongs to no Turn when no later API request with its body joined one", async () => {
     const [first, second] = everyMainTurn();
     await record([first, second, failedAttemptOf(first, { requestId: "req-overloaded", secondsBefore: 1 })]);
