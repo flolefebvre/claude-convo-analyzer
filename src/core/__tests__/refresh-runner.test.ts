@@ -2,23 +2,9 @@
 // that starts one while it runs. Driven here by a fake job, in-process.
 
 import { describe, expect, it } from "vitest";
-import type { RefreshProgress, RefreshSummary } from "@/core/refresh";
 import { createRefreshRunner, type RefreshRunState } from "@/core/refresh-runner";
+import { controlledJob } from "./helpers/controlled-job";
 import { refreshSummaryOfRun } from "./helpers/refresh-summary";
-
-/** A job the test settles by hand, recording each run it is asked for. */
-function controlledJob() {
-  const runs: {
-    reportProgress: (progress: RefreshProgress) => void;
-    succeed: (summary: RefreshSummary) => void;
-    fail: (error: Error) => void;
-  }[] = [];
-  const job = (onProgress: (progress: RefreshProgress) => void) =>
-    new Promise<RefreshSummary>((resolve, reject) => {
-      runs.push({ reportProgress: onProgress, succeed: resolve, fail: reject });
-    });
-  return { job, runs };
-}
 
 /** A runner over a {@link controlledJob}, with a subscriber recording every state it is told. */
 function observedRunner() {
