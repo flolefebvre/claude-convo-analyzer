@@ -18,18 +18,22 @@ import { cn } from "@/lib/utils-cn";
 /** The line shown when Live could not be switched; the failure's own message is its detail. */
 const FAILURE_TEXT = "Live could not be switched. Hover for the reason, then try again.";
 
+/** Live as the server part read it; each render of that part sends a new object. */
+export type LiveAsRendered = { isOn: boolean };
+
 /**
  * The Live toggle: switches Live and shows whether it is on.
  *
- * @example <LiveToggle isLiveOn={getLive().isOn()} />
+ * @example <LiveToggle live={{ isOn: getLive().isOn() }} />
  */
-export function LiveToggle({ isLiveOn: isLiveOnAsRendered }: { isLiveOn: boolean }) {
-  const [isLiveOn, setIsLiveOn] = useState(isLiveOnAsRendered);
-  // A new render of the server part is Live as it stands now.
-  const [seenIsLiveOnAsRendered, setSeenIsLiveOnAsRendered] = useState(isLiveOnAsRendered);
-  if (seenIsLiveOnAsRendered !== isLiveOnAsRendered) {
-    setSeenIsLiveOnAsRendered(isLiveOnAsRendered);
-    setIsLiveOn(isLiveOnAsRendered);
+export function LiveToggle({ live }: { live: LiveAsRendered }) {
+  const [isLiveOn, setIsLiveOn] = useState(live.isOn);
+  // A new render of the server part is Live as it stands now, even when it
+  // reads the same as the last one: a click may have moved the toggle since.
+  const [seenLive, setSeenLive] = useState(live);
+  if (seenLive !== live) {
+    setSeenLive(live);
+    setIsLiveOn(live.isOn);
   }
   const [isSwitchPending, setIsSwitchPending] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);

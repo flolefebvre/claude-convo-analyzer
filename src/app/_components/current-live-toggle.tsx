@@ -16,5 +16,5 @@ import { getLive } from "@/app/_lib/live";
 export async function CurrentLiveToggle() {
   // Live's state baked into the prerender would show whatever it was at build.
   await connection();
-  return <LiveToggle isLiveOn={getLive().isOn()} />;
+  return <LiveToggle live={{ isOn: getLive().isOn() }} />;
 }

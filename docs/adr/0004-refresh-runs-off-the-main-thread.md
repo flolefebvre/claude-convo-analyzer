@@ -47,7 +47,8 @@ database, and only the user's switch writes it. The boot start is
 `register()` in `src/instrumentation.ts`, which Next runs once per server and
 never during `next build`; it goes through the published runner, so its runs
 reach every page. Each start tells the runner its origin, the user or Live, and
-the page shows no success bubble for Live's. The runner keeps the current
+the page shows no success bubble for Live's, unless the user's own click joined
+that run. The runner keeps the current
 state: idle, running with the latest `{ done, total }`, or the last summary or
 error. It takes the job as a dependency, so its logic is tested in-process. The
 process-wide instance lives in a `globalThis[Symbol.for(…)]` slot, created on
