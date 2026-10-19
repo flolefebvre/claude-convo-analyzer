@@ -188,10 +188,17 @@ block in a turn and paired with a `tool_result`. Carries the tool `name` (e.g.
 `command`, Skill's `skill` name). A Tool call belongs to exactly one Turn of one
 Agent.
 
-In a Transcript a Tool call reads in two parts. Its **summary** is the one line
-it shows collapsed: its kind, name, a snippet of its input, its result size and
-whether it failed. Its **body** is the full input and stored result, shown once
-the reader opens it.
+In a Transcript a Tool call reads as a summary and a body. Its **summary** is
+the one line it shows collapsed: its kind, name, a snippet of its input, its
+result size and whether it failed. Its **body** is the full input and stored
+result, shown once the reader opens it.
+
+The body shows its input, and separately its result, as an ordered list of
+**parts**, chosen by the tool's **view**: `facts` (key/value pairs), `markdown`
+(one agent-written text, such as an Agent call's Task prompt) or `raw` (the
+stored text, pretty-printed). A tool without a view, or a text its view can't
+read, shows one raw part; any rendered part keeps a "Raw" toggle back to the
+stored text.
 
 ### Skill invocation
 
