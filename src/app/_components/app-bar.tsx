@@ -1,27 +1,30 @@
 // The app bar: the one header on every route — the list, Trends, Tools, search
-// results, a transcript, the 404 page. Brand, section tabs, search, theme and
-// Refresh always sit in the same places at the same width, so moving between
+// results, a transcript, the 404 page. Brand, section tabs, search, theme, Live
+// and Refresh always sit in the same places at the same width, so moving between
 // surfaces never rearranges the chrome. Rendered once, by the root layout.
 //
 // Responsive by reordering one flex row rather than rendering twice:
-//   phone    brand ··········· theme refresh   (Refresh shrinks to its icon)
+//   phone    brand ······ theme live refresh   (Live and Refresh shrink to their icons)
 //            search ─────────────────────────
 //            tabs
-//   tablet   brand ···· search theme refresh
+//   tablet   brand ···· search theme live refresh
 //            tabs
-//   desktop  brand  tabs ···· search theme refresh      (one 56px row)
+//   desktop  brand  tabs ···· search theme live refresh      (one 56px row)
 // The tabs always end flush on the bar's bottom border, where the active tab's
 // clay underline sits.
 //
 // A server component: the URL-dependent pieces (active tab, the search box's
 // query) are client leaves inside their own <Suspense>, so the bar prerenders.
-// So is the current Refresh control, which reads the running Refresh per request;
-// its fallback is the idle button, so the shell always has the control.
+// So are the current Live and Refresh controls, which read Live and the running
+// Refresh per request; their fallbacks are the off toggle and the idle button,
+// so the shell always has both controls.
 
 import Link from "next/link";
 import { Suspense } from "react";
 
+import { CurrentLiveToggle } from "@/app/_components/current-live-toggle";
 import { CurrentRefreshButton } from "@/app/_components/current-refresh-button";
+import { InertLiveToggle } from "@/app/_components/live-toggle";
 import { IdleRefreshButton } from "@/app/_components/refresh-button";
 import { SearchBox } from "@/app/_components/search-box";
 import { SectionNav, SectionTabs } from "@/app/_components/section-nav";
@@ -44,6 +47,9 @@ export function AppBar() {
         <SearchBox className="order-4 w-full md:order-2 md:w-60 lg:order-3 lg:ml-auto" />
         <div className="order-2 flex items-center gap-2 md:order-3 lg:order-4">
           <ThemeToggle />
+          <Suspense fallback={<InertLiveToggle />}>
+            <CurrentLiveToggle />
+          </Suspense>
           <Suspense fallback={<IdleRefreshButton variant="outline" collapsible />}>
             <CurrentRefreshButton variant="outline" collapsible reportsOutcome />
           </Suspense>

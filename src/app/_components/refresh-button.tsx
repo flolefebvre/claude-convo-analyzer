@@ -24,10 +24,11 @@
 // count, so the page gets one bubble and one re-render schedule.
 
 import type { Snapshot } from "@flefebvre/next-sse/client";
-import { RefreshCw, X } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 
+import { ControlBubble } from "@/app/_components/control-bubble";
 import { refreshConversations } from "@/app/actions";
 import { isRerenderDue, type RefreshActivity, type RefreshRunId } from "@/app/_lib/refresh-activity";
 import { formatDuplicateSessionDetail, formatRefreshProgress, formatRefreshSummary } from "@/app/_lib/refresh-summary";
@@ -194,24 +195,13 @@ export function RefreshButton({ snapshot, reportsOutcome = false, ...look }: Ref
       </p>
 
       {message !== null && (
-        <div
+        <ControlBubble
           key={message.id}
-          title={message.detail ?? undefined}
-          className={cn(
-            "absolute top-full right-0 z-50 mt-2 flex w-max max-w-[min(18rem,calc(100vw-2rem))] animate-in items-start gap-2 rounded-lg border bg-popover py-2 pr-1.5 pl-3 text-xs text-popover-foreground shadow-md fade-in-0 slide-in-from-top-1",
-            message.tone === "error" && "border-destructive/40 text-destructive-foreground",
-          )}
-        >
-          <span className="py-1">{message.text}</span>
-          <button
-            type="button"
-            onClick={() => setMessage(null)}
-            aria-label="Dismiss"
-            className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-          >
-            <X className="size-3.5" aria-hidden />
-          </button>
-        </div>
+          text={message.text}
+          detail={message.detail}
+          tone={message.tone}
+          onDismiss={() => setMessage(null)}
+        />
       )}
     </div>
   );
