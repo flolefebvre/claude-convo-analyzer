@@ -13,6 +13,13 @@ const PAGE_TWO_TEXT = "Now port the quarterly heatmap export the same way.";
 
 const titleLink = (page: Page) => page.getByRole("link", { name: TITLE, exact: true });
 
+/** Open the seeded Conversation titled `title` from the Conversations list. */
+async function openConversation(page: Page, title: string): Promise<void> {
+  await page.goto("/");
+  await page.getByRole("link", { name: title, exact: true }).click();
+  await page.waitForURL((url) => url.pathname.startsWith("/conversation/"));
+}
+
 const conversation: RouteShell = {
   shell: (page) => [
     page.getByRole("searchbox", { name: "Search conversations" }),
@@ -50,9 +57,7 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
   });
 
   test("renders the messages agents send each other, and their task notifications", async ({ page }) => {
-    await page.goto("/");
-    await page.getByRole("link", { name: AGENT_MESSAGES_TITLE, exact: true }).click();
-    await page.waitForURL((url) => url.pathname.startsWith("/conversation/"));
+    await openConversation(page, AGENT_MESSAGES_TITLE);
 
     // A sub-agent's status message, its sender linked to that sub-agent's transcript.
     const interAgent = page.getByRole("article").filter({ hasText: "Indexing is done" });
@@ -110,6 +115,24 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     await call.locator(size).click();
     await expect(call.getByText(/export function handler/)).toBeVisible();
     await expect(call.getByText("Input", { exact: true })).toBeVisible();
+  });
+
+  test("an opened Agent call shows its facts and its Task prompt as markdown, and Raw shows the stored JSON", async ({
+    page,
+  }) => {
+    await openConversation(page, AGENT_MESSAGES_TITLE);
+
+    // The seeded Plan spawn: collapsed, its summary shows its description.
+    const call = page.getByRole("main").getByRole("group").filter({ hasText: "plan the change" }).first();
+    await call.getByText("plan the change").click();
+
+    await expect(call.getByRole("term").filter({ hasText: "subagent_type" })).toBeVisible();
+    await expect(call.getByRole("heading", { level: 2, name: "Constraints" })).toBeVisible();
+    await expect(call.getByRole("listitem").filter({ hasText: "one commit per slice" })).toBeVisible();
+
+    await call.getByRole("button", { name: "Raw" }).click();
+    await expect(call.getByText(/"prompt": "## Task\\n\\nDraft/)).toBeVisible();
+    await expect(call.getByRole("heading", { name: "Constraints" })).toHaveCount(0);
   });
 
   test("a Tools-page link lands on its call open, with the body already there", async ({ page }) => {

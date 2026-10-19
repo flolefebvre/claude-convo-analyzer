@@ -159,11 +159,34 @@ const SUBAGENT_TYPES = ["Explore", "Plan", "general-purpose"] as const;
  * sub-agent's own transcript — that is how a real log reads. Keyed by the
  * already-picked agent type rather than picked at random, so adding it costs no
  * draw from the PRNG and the rest of the seeded corpus stays byte-identical.
+ * Plan's is a multi-paragraph markdown Task prompt, as agents write them.
  */
 const SUBAGENT_PROMPTS: Record<(typeof SUBAGENT_TYPES)[number], string> = {
   Explore: "Sweep the repo and report where this behaviour is implemented.",
-  Plan: "Draft the implementation plan for this change, smallest slices first.",
+  Plan: [
+    "## Task",
+    "",
+    "Draft the implementation plan for this change, smallest slices first.",
+    "",
+    "## Constraints",
+    "",
+    "- keep the public API unchanged",
+    "- one commit per slice",
+    "",
+    "Start from the entry point:",
+    "",
+    "```ts",
+    'export { handler } from "./server";',
+    "```",
+  ].join("\n"),
   "general-purpose": "Investigate this and report back with what you find.",
+};
+
+/** The `description` an Agent call carries, one per agent type — keyed like {@link SUBAGENT_PROMPTS}, so no PRNG draw. */
+const SUBAGENT_DESCRIPTIONS: Record<(typeof SUBAGENT_TYPES)[number], string> = {
+  Explore: "locate the behaviour",
+  Plan: "plan the change",
+  "general-purpose": "investigate",
 };
 const BASH_CMDS = ["pnpm test", "pnpm lint", "git status", "pnpm build", "npm run typecheck"] as const;
 const READ_FILES = ["src/index.ts", "src/server.ts", "README.md", "src/db.ts", "package.json"] as const;
@@ -541,7 +564,7 @@ function spawnSubAgent(
     type: "tool_use",
     id: toolUseId,
     name: "Agent",
-    input: { subagent_type: agentType, description: "investigate", prompt },
+    input: { subagent_type: agentType, description: SUBAGENT_DESCRIPTIONS[agentType], prompt },
   };
   const ledgerResult = {
     agentId,
