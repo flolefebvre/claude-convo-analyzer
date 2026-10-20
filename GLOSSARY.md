@@ -304,7 +304,8 @@ system prompt and the tool definitions changed since it, the request
 parameters and timings, and the whole system prompt and tool definitions. A
 system-prompt change is **volatile** when only lines that move on their own
 changed — the date, the git status, the working directory — and **real**
-otherwise.
+otherwise. On a Side request the panel shows everything it sent, there being no
+previous request to compare against.
 
 ### Failed attempt
 

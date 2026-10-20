@@ -206,6 +206,26 @@ describe("a Turn's API request", () => {
   });
 });
 
+describe("what was sent for a Side request", () => {
+  it("is marked a Side request, with no previous API request, where a Turn's request is not", async () => {
+    const sideRequest = apiRequest({
+      requestId: "sreq-side",
+      messageId: "smsg-side",
+      arrivedAt: "2026-10-18T10:01:20.000Z",
+      messages: [{ role: "user", content: "Name this coding session" }],
+    });
+    await recordAndRefresh([...mainTurns(), sideRequest]);
+
+    const [listed] = (await getTranscript(SESSION_ID, { dbPath }))?.sideRequests ?? [];
+    expect(listed?.apiRequestId).toEqual(expect.any(Number));
+    const sent = await getWhatWasSent(listed!.apiRequestId, { dbPath, recordingsRoot });
+
+    expect(sent?.isSideRequest).toBe(true);
+    expect(sent?.previousApiRequestId).toBeNull();
+    expect((await whatWasSentForTurn(2))?.isSideRequest).toBe(false);
+  });
+});
+
 describe("what was sent for a Turn", () => {
   it("is every message of the Main thread's first Turn, with no previous API request", async () => {
     await recordAndRefresh(mainTurns());
