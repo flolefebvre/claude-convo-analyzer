@@ -40,6 +40,8 @@ const MARKER_BY_CHANGE: Record<DiffLine["change"], string> = { added: "+", remov
 
 /** How many lines of a block show before it is clamped behind "Show all N lines". */
 const BLOCK_CLAMP_LINES = 15;
+/** How many characters of a block show, when its lines do not overflow, before it is clamped behind "Show all N characters". */
+const BLOCK_CLAMP_CHARS = 2_000;
 
 /**
  * A recorded Turn's "What was sent" `<details>`, fetched by `api_request` row
@@ -386,24 +388,37 @@ function BlockView({ block }: { block: SentBlock }) {
   );
 }
 
-/** `text` in a block; past {@link BLOCK_CLAMP_LINES} lines, its first lines with a "Show all N lines" toggle. */
+/**
+ * `text` in a block, clamped: past {@link BLOCK_CLAMP_LINES} lines, its first
+ * lines with a "Show all N lines" toggle; else past {@link BLOCK_CLAMP_CHARS}
+ * characters — a JSON block holds a tool result as one escaped line — its
+ * first characters with a "Show all N characters" toggle.
+ */
 function ClampedText({ text }: { text: string }) {
   const [isShownWhole, setIsShownWhole] = useState(false);
   const lines = text.split("\n");
-  const isClampable = lines.length > BLOCK_CLAMP_LINES;
+  const isClampedByLines = lines.length > BLOCK_CLAMP_LINES;
+  const isClampedByChars = !isClampedByLines && text.length > BLOCK_CLAMP_CHARS;
+  const clampedText = isClampedByLines
+    ? lines.slice(0, BLOCK_CLAMP_LINES).join("\n")
+    : isClampedByChars
+      ? `${text.slice(0, BLOCK_CLAMP_CHARS)}…`
+      : text;
   return (
     <div>
-      <pre className="sent-pre">
-        {isClampable && !isShownWhole ? lines.slice(0, BLOCK_CLAMP_LINES).join("\n") : text}
-      </pre>
-      {isClampable && (
+      <pre className="sent-pre">{isShownWhole ? text : clampedText}</pre>
+      {(isClampedByLines || isClampedByChars) && (
         <button
           type="button"
           className="sent-clamp-toggle"
           aria-expanded={isShownWhole}
           onClick={() => setIsShownWhole(!isShownWhole)}
         >
-          {isShownWhole ? "Show fewer lines" : `Show all ${lines.length} lines`}
+          {isShownWhole
+            ? "Show less"
+            : isClampedByLines
+              ? `Show all ${lines.length.toLocaleString("en-US")} lines`
+              : `Show all ${text.length.toLocaleString("en-US")} characters`}
         </button>
       )}
     </div>

@@ -714,6 +714,13 @@ describe("the kind of a sent block", () => {
   it("is a text block, or a system-reminder, for a message whose content is a string", async () => {
     expect(await kindsOfContent(SYSTEM_REMINDER)).toEqual([["system-reminder", "text"]]);
   });
+
+  it("is none for a message sent without content: it has no blocks", async () => {
+    const [first] = mainTurns();
+    await recordAndRefresh([apiRequest({ ...requestFields(first), messages: [{ role: "user" } as ApiMessage] })]);
+
+    expect((await whatWasSentForTurn(1))?.fullRequest.messages).toEqual([{ role: "user", blocks: [] }]);
+  });
 });
 
 describe("a volatile system-prompt line", () => {

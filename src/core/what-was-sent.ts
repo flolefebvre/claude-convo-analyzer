@@ -33,7 +33,7 @@ export type SentBlock = { kind: SentBlockKind } & (
   { shownAs: "text"; text: string } | { shownAs: "json"; json: string }
 );
 
-/** One message of an API request: its role, then each content block (a string content is one text block). */
+/** One message of an API request: its role, then each content block (a string content is one text block, a missing one none). */
 export type SentMessage = { role: string; blocks: SentBlock[] };
 
 /** One system block as sent, with the cache breakpoint it carries (`cache_control.type`, plus its `ttl`), if any. */
@@ -502,7 +502,7 @@ function sentMessage(message: unknown): SentMessage {
   const content = message.content;
   return {
     role: typeof message.role === "string" ? message.role : "unknown",
-    blocks: Array.isArray(content) ? content.map(sentBlock) : [sentBlock(content)],
+    blocks: Array.isArray(content) ? content.map(sentBlock) : content === undefined ? [] : [sentBlock(content)],
   };
 }
 
