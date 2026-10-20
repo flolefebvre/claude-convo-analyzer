@@ -105,6 +105,14 @@ The images, each with its height, path and subject:
   call opened by `click "summary:has-text('plan the change')"`: the Task
   prompt and what Plan handed back, as Markdown. The frame ends in the gap
   below a message.
+- `tools-view.png` — 1204, `/tools?expanded=Bash`. The Tools page over 30
+  days, with Bash expanded: its most recent errors and largest results. The
+  frame ends on the table's bottom border.
+- `search-view.png` — 1319, `/search?q=%22auth+middleware%22`. The results
+  for the quoted phrase `"auth middleware"`: highlighted extracts across
+  several conversations, down to the "Refactor auth middleware" card, whose
+  title matches too. The frame ends in the gap below that card. The Search
+  page has no sidebar.
 
 ## Run the e2e specs
 
