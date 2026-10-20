@@ -11,7 +11,8 @@ import { WhatWasSentDisclosure } from "./transcript-what-was-sent";
 import { TurnMarkdown } from "./turn-markdown";
 
 /**
- * One transcript row: a prompt (plain text, or a pretty slash command), an
+ * One transcript row: a prompt (plain text when the human wrote it, markdown
+ * when an agent did, or a pretty slash command), an
  * Inter-agent message, a Task notification, or an assistant turn (markdown
  * body + per-turn cost, with its tool calls nested and collapsed). Which
  * branch is chosen by `kind`, then `role`. Each row is an `<article>` named by
@@ -111,12 +112,12 @@ function anchorProps(message: TranscriptMessage, anchoredMessage: string | undef
   };
 }
 
-/** A prompt. Rendered PLAIN (never markdown) — humans don't write reliable
- *  markdown — except an invoked slash command, shown as a command chip + args.
- *  In a sub-agent's transcript the prompt comes from the parent agent: it is
- *  labelled with that agent's name and ruled in the agent accent. A plugin's
- *  prompt says which plugin sent it; one that arrived while the agent was
- *  working says so. */
+/** A Prompt, rendered by its author: one the human authored stays PLAIN —
+ *  humans don't write reliable markdown — while a Task prompt, authored by the
+ *  parent agent, renders as markdown, labelled with that agent's name and ruled
+ *  in the agent accent. An invoked slash command shows as a command chip + args
+ *  whoever sent it. A plugin's prompt says which plugin sent it; one that
+ *  arrived while the agent was working says so. */
 function PromptRow({
   message,
   time,
@@ -151,8 +152,12 @@ function PromptRow({
           <span className="slash-cmd">{commandLabel}</span>
           {args && <span className="slash-args">{args}</span>}
         </div>
-      ) : (
+      ) : author === null ? (
         <div className="prompt-body">{message.text ?? ""}</div>
+      ) : (
+        <div className="turn-body">
+          <TurnMarkdown text={message.text ?? ""} />
+        </div>
       )}
     </article>
   );

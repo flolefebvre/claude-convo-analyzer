@@ -181,6 +181,25 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     await expect(returned.getByRole("heading", { name: "Plan" })).toHaveCount(0);
   });
 
+  test("a Sub-agent's Task prompt renders as markdown, and a person's Prompt stays plain", async ({ page }) => {
+    await openConversation(page, AGENT_MESSAGES_TITLE);
+
+    const humanPrompt = page.getByRole("main").getByRole("article").filter({ hasText: "Pick up where we left off" });
+    await expect(humanPrompt).toHaveAccessibleName(/^You /);
+    await expect(humanPrompt.getByRole("heading")).toHaveCount(0);
+    await expect(humanPrompt.getByRole("paragraph")).toHaveCount(0);
+
+    // The seeded Plan sub-agent (its type pinned in `agentMessagesConversation`)
+    // opens with its markdown Task prompt.
+    await page.getByRole("navigation", { name: "Agents" }).getByRole("link").filter({ hasText: "Plan" }).click();
+    await page.waitForURL((url) => url.searchParams.has("agent"));
+    const taskPrompt = page.getByRole("main").getByRole("article").filter({ hasText: "Draft the implementation plan" });
+    await expect(taskPrompt).toHaveAccessibleName(/^From /);
+    await expect(taskPrompt.getByRole("heading", { level: 2, name: "Constraints" })).toBeVisible();
+    await expect(taskPrompt.getByRole("listitem").filter({ hasText: "one commit per slice" })).toBeVisible();
+    await expect(taskPrompt.getByRole("code").filter({ hasText: 'export { handler } from "./server";' })).toBeVisible();
+  });
+
   test("a Tools-page link lands on its call open, with the body already there", async ({ page }) => {
     const bodyRequests: string[] = [];
     page.on("request", (request) => {
