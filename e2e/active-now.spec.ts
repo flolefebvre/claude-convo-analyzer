@@ -45,11 +45,24 @@ test.describe("Active now", () => {
     return path.join(log.parentPath, log.name);
   }
 
-  test("marks no Conversation while Live is off", async ({ page }) => {
+  /** Append the same title record again to {@link ACTIVE_TITLE}'s log: the log changes, and nothing it shows does. */
+  function touchActiveLog(): void {
+    appendFileSync(seededLogTitled(ACTIVE_TITLE), JSON.stringify({ type: "ai-title", aiTitle: ACTIVE_TITLE }) + "\n");
+  }
+
+  test("marks no Conversation while Live is off, even one just changed", async ({ page }) => {
     await page.goto(repoListPath);
+    await expect(liveToggle(page)).toHaveAttribute("aria-pressed", "false");
+
+    touchActiveLog();
+    await page.getByRole("banner").getByRole("button", { name: "Refresh" }).click();
+    await expect(page.getByRole("banner").getByText("1 conversation updated").first()).toBeAttached({
+      timeout: 20_000,
+    });
+    // A fresh render, of the change the Refresh just stored.
+    await page.reload();
 
     await expect(activeRow(page)).toBeVisible();
-    await expect(liveToggle(page)).toHaveAttribute("aria-pressed", "false");
     await expect(activeNowMarkers(page)).toHaveCount(0);
   });
 
@@ -63,8 +76,7 @@ test.describe("Active now", () => {
     await liveToggle(page).click();
     try {
       await expect(liveToggle(page)).toHaveAttribute("aria-pressed", "true");
-      // The same title again: the log changes, and nothing it shows does.
-      appendFileSync(seededLogTitled(ACTIVE_TITLE), JSON.stringify({ type: "ai-title", aiTitle: ACTIVE_TITLE }) + "\n");
+      touchActiveLog();
 
       // Live's window, then the Refresh it runs, then the page's re-render.
       await expect(activeNowMarkers(activeRow(page))).toBeVisible({ timeout: 20_000 });
