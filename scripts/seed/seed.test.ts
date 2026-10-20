@@ -19,6 +19,7 @@ import {
   PARTIALLY_RECORDED_SESSION_ID,
   RECORDED_SESSION_ID,
   SCRATCH_PARENT_PATH,
+  SEED_FAVORITE_PATHS,
   WORKTREE_SWITCH_PROJECT_PATH,
   WORKTREE_SWITCH_TITLE,
 } from "./fake-logs";
@@ -65,7 +66,7 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     expect(familyRoots).toHaveLength(2);
   });
 
-  it("keeps its own settings file inside the seed, read as Live off again after each re-seed", async () => {
+  it("keeps its own settings file inside the seed, reset to Live off and the seeded favorites after each re-seed", async () => {
     const seedDir = path.join(tmpDir, "seed");
     const firstSeed = await seedEnvironment({ dir: seedDir, now: NOW });
     expect(path.dirname(firstSeed.settingsPath)).toBe(seedDir);
@@ -73,7 +74,18 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
 
     const reseed = await seedEnvironment({ dir: seedDir, now: NOW });
 
-    await expect(readSettings(reseed.settingsPath)).resolves.toEqual({ live: false, favorites: [] });
+    await expect(readSettings(reseed.settingsPath)).resolves.toEqual({
+      live: false,
+      favorites: [...SEED_FAVORITE_PATHS],
+    });
+  });
+
+  it("favorites two seeded Projects", async () => {
+    const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
+    const projectPaths = new Set((await listConversations({ dbPath: seed.dbPath })).map((c) => c.project.path));
+
+    expect(SEED_FAVORITE_PATHS).toHaveLength(2);
+    for (const favoritePath of SEED_FAVORITE_PATHS) expect(projectPaths).toContain(favoritePath);
   });
 
   it("ingests its Recordings: one Conversation recorded, one partially recorded, every other unrecorded", async () => {
