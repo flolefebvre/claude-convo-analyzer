@@ -108,6 +108,24 @@ describe("toolCallSnippet", () => {
     ).toBe("## Task scan the core readers");
   });
 
+  it("shows a SendMessage call's summary, not its recipient", () => {
+    expect(
+      toolCallSnippet(
+        call({
+          name: "SendMessage",
+          inputJson: '{"to":"docs-site release","summary":"Search API is ready","message":"## Hello\\nthe body"}',
+        }),
+      ),
+    ).toBe("Search API is ready");
+  });
+
+  it.each([
+    ["empty", '{"to":"docs-site release","summary":"","message":"## Hello\\nthe body"}'],
+    ["absent", '{"to":"docs-site release","message":"## Hello\\nthe body"}'],
+  ])("falls back to the start of the message for a SendMessage call whose summary is %s", (_case, inputJson) => {
+    expect(toolCallSnippet(call({ name: "SendMessage", inputJson }))).toBe("## Hello the body");
+  });
+
   it("falls back to the first string field for a generic tool (Read)", () => {
     expect(
       toolCallSnippet(
