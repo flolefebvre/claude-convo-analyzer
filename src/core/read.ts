@@ -57,6 +57,8 @@ export type ConversationSummary = {
   errorCount: number;
   /** Whether its Turns have matching API requests in a Recording (GLOSSARY.md, Recorded). */
   recordedState: RecordedState;
+  /** When its log, a sub-agent transcript or its Recording last changed (ISO), as of the last Refresh. */
+  sourceChangedAt: string;
 };
 
 /**
@@ -249,6 +251,8 @@ export type TranscriptAgentNode = {
 export type TranscriptView = {
   sessionId: string;
   title: string | null;
+  /** When its log, a sub-agent transcript or its Recording last changed (ISO), as {@link ConversationSummary} has it. */
+  sourceChangedAt: string;
   /** The root/main agent, with sub-agents nested under it by lineage. */
   tree: TranscriptAgentNode;
   /** Conversation grand total — every agent's own cost (counted once), plus the unlogged usage's. */
@@ -682,7 +686,7 @@ export async function getTranscript(id: string, opts: TranscriptOptions = {}): P
   try {
     const convo = await prisma.conversation.findUnique({
       where: { sessionId: id },
-      select: { id: true, sessionId: true, title: true },
+      select: { id: true, sessionId: true, title: true, sourceMtime: true },
     });
     if (convo === null) return null;
 
@@ -749,6 +753,7 @@ export async function getTranscript(id: string, opts: TranscriptOptions = {}): P
     return {
       sessionId: convo.sessionId,
       title: convo.title,
+      sourceChangedAt: sourceChangedAtOf(convo.sourceMtime),
       tree,
       totalCostUsd,
       totalTokens,
@@ -1582,6 +1587,7 @@ type ConversationRow = {
   sessionId: string;
   title: string | null;
   continuedFromConversationId: number | null;
+  sourceMtime: bigint;
   project: { path: string };
 };
 
@@ -1783,7 +1789,13 @@ function assembleSummary(
     errorCount: parts.errorCount,
     recordedState: parts.recordedState,
     continuedFromId: parts.continuedFromId,
+    sourceChangedAt: sourceChangedAtOf(convo.sourceMtime),
   };
+}
+
+/** A Conversation's stored composite `sourceMtime` (epoch ms) as the ISO `sourceChangedAt`. */
+function sourceChangedAtOf(sourceMtime: bigint): string {
+  return new Date(Number(sourceMtime)).toISOString();
 }
 
 /**

@@ -53,6 +53,7 @@ describe("batched list rollup == per-conversation detail rollup", () => {
       errorCount: detail.errorCount,
       recordedState: detail.recordedState,
       continuedFromId: detail.continuedFromId,
+      sourceChangedAt: detail.sourceChangedAt,
     };
     expect(summary).toEqual(base);
   });

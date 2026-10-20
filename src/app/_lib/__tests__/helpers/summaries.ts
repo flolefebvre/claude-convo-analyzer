@@ -40,5 +40,6 @@ export function summary(over: {
     errorCount: over.errorCount ?? 0,
     recordedState: "unrecorded",
     continuedFromId: null,
+    sourceChangedAt: over.endedAt ?? "2026-01-01T01:00:00.000Z",
   };
 }
