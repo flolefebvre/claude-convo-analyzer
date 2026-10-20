@@ -43,6 +43,18 @@ function scalarFacts(input: Record<string, unknown>, excludedKeys: readonly stri
 }
 
 /**
+ * The input's other scalar fields as one facts part, then its `markdownKey`
+ * field as a markdown part; each left out when it has nothing to show.
+ */
+function factsThenMarkdown(input: Record<string, unknown>, markdownKey: string): ToolCallPart[] {
+  const facts = scalarFacts(input, [markdownKey]);
+  const parts: ToolCallPart[] = facts.length > 0 ? [{ kind: "facts", facts }] : [];
+  const text = input[markdownKey];
+  if (typeof text === "string" && text !== "") parts.push({ kind: "markdown", text });
+  return parts;
+}
+
+/**
  * A Sub-agent's hand-back in its spawn ledger: the report it sent as a message
  * when there is one (`content` then only points at it), else `content`'s text
  * blocks; `""` when it wrote none.
@@ -73,12 +85,7 @@ const TOOL_CALL_VIEW_BY_TOOL_NAME: Record<string, ToolCallView> = {
   // The Task prompt and the hand-back are agent-written prose; the rest of the
   // spawn ledger (usage, toolStats, the echoed prompt) is left to Raw.
   Agent: {
-    input: (input) => {
-      const facts = scalarFacts(input, ["prompt"]);
-      const parts: ToolCallPart[] = facts.length > 0 ? [{ kind: "facts", facts }] : [];
-      if (typeof input.prompt === "string" && input.prompt !== "") parts.push({ kind: "markdown", text: input.prompt });
-      return parts;
-    },
+    input: (input) => factsThenMarkdown(input, "prompt"),
     result: (resultText) => {
       const ledger = parseJsonObject(resultText);
       if (ledger?.status === "async_launched") {
@@ -90,6 +97,21 @@ const TOOL_CALL_VIEW_BY_TOOL_NAME: Record<string, ToolCallView> = {
       if (text !== "") parts.push({ kind: "markdown", text });
       return parts;
     },
+  },
+  // The message is agent-written prose; the delivery receipt is flat JSON
+  // (`success`, `message`, `msg_id`), any nested field left to Raw.
+  SendMessage: {
+    input: (input) => factsThenMarkdown(input, "message"),
+    result: (resultText) => {
+      const receipt = parseJsonObject(resultText);
+      const facts = receipt === null ? [] : scalarFacts(receipt, []);
+      return facts.length > 0 ? [{ kind: "facts", facts }] : [];
+    },
+  },
+  // The plan is agent-written prose; the result (the approval echoing the
+  // plan, or the rejection) is left to Raw.
+  ExitPlanMode: {
+    input: (input) => factsThenMarkdown(input, "plan"),
   },
 };
 

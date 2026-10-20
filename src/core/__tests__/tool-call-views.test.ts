@@ -163,6 +163,83 @@ describe("toolCallBodyParts", () => {
     expect(agentResultParts(resultText)).toEqual([{ kind: "raw" }]);
   });
 
+  it("shapes a SendMessage call's input into its facts, then its message as markdown", () => {
+    const inputJson = JSON.stringify({
+      to: "developer",
+      summary: "Plan approved",
+      message: "## Go ahead\n\n- one commit per slice",
+      type: "message",
+    });
+
+    expect(toolCallBodyParts({ name: "SendMessage", inputJson, resultText: null }).inputParts).toEqual([
+      {
+        kind: "facts",
+        facts: [
+          { key: "to", value: "developer" },
+          { key: "summary", value: "Plan approved" },
+          { key: "type", value: "message" },
+        ],
+      },
+      { kind: "markdown", text: "## Go ahead\n\n- one commit per slice" },
+    ]);
+  });
+
+  it("gives a SendMessage call with an empty message its facts alone", () => {
+    const inputJson = JSON.stringify({ to: "developer", message: "" });
+
+    expect(toolCallBodyParts({ name: "SendMessage", inputJson, resultText: null }).inputParts).toEqual([
+      { kind: "facts", facts: [{ key: "to", value: "developer" }] },
+    ]);
+  });
+
+  /** The result parts of a SendMessage call whose stored result is `resultText`. */
+  function sendMessageResultParts(resultText: string) {
+    return toolCallBodyParts({ name: "SendMessage", inputJson: '{"to":"developer"}', resultText }).resultParts;
+  }
+
+  it("shapes a SendMessage result into the facts of its scalar fields", () => {
+    const result = {
+      success: true,
+      message: "“Plan approved” → developer",
+      msg_id: "m1",
+      pin: { id: "a1", ref: "d7b25c" },
+    };
+
+    expect(sendMessageResultParts(JSON.stringify(result))).toEqual([
+      {
+        kind: "facts",
+        facts: [
+          { key: "success", value: "true" },
+          { key: "message", value: "“Plan approved” → developer" },
+          { key: "msg_id", value: "m1" },
+        ],
+      },
+    ]);
+  });
+
+  it.each([
+    ["a prose error", "Error: no agent named developer"],
+    ["a result cut off mid-JSON", '{"success":true,"mess'],
+  ])("gives a SendMessage result with %s the single raw part", (_case, resultText) => {
+    expect(sendMessageResultParts(resultText)).toEqual([{ kind: "raw" }]);
+  });
+
+  it("shapes an ExitPlanMode call's input into its plan as markdown, and leaves its result raw", () => {
+    const plan = "# Plan\n\n## Context\n\n- slice one";
+    const resultText = JSON.stringify({ plan, isAgent: false });
+
+    expect(toolCallBodyParts({ name: "ExitPlanMode", inputJson: JSON.stringify({ plan }), resultText })).toEqual({
+      inputParts: [{ kind: "markdown", text: plan }],
+      resultParts: [{ kind: "raw" }],
+    });
+  });
+
+  it("gives an ExitPlanMode call with nothing to render the single raw part", () => {
+    expect(toolCallBodyParts({ name: "ExitPlanMode", inputJson: '{"plan":""}', resultText: null }).inputParts).toEqual([
+      { kind: "raw" },
+    ]);
+  });
+
   it("has no result parts for a call that was never answered", () => {
     expect(toolCallBodyParts({ name: "Bash", inputJson: "{}", resultText: null }).resultParts).toBeNull();
   });
