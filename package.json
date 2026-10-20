@@ -18,7 +18,7 @@
     "e2e:server": "tsx scripts/e2e-server.ts",
     "check": "tsx scripts/gate.ts format:check+lint+duplication+typecheck,test:changed",
     "gate": "tsx scripts/gate.ts format:check+lint+duplication+typecheck,test+build,e2e",
-    "build": "next build",
+    "build": "tsx scripts/build.ts",
     "e2e": "playwright test",
     "start": "next start",
     "lint": "eslint --cache --cache-location node_modules/.cache/eslint/ --cache-strategy content",
