@@ -21,6 +21,7 @@ import { Suspense } from "react";
 
 import { CONVERSATION_COLUMNS, ConversationRow } from "@/app/_components/conversation-row";
 import { EmptyState, EmptyStateLink } from "@/app/_components/empty-state";
+import { FavoriteStar } from "@/app/_components/favorite-star";
 import { ListPager } from "@/app/_components/list-pager";
 import { LoadingRegion } from "@/app/_components/loading-region";
 import { OverviewBand } from "@/app/_components/overview-band";
@@ -36,6 +37,7 @@ import {
   loadConversations,
   loadFamily,
   loadFamilySizes,
+  loadFavoriteFolderPaths,
 } from "@/app/_lib/conversations";
 import { footerLabelColSpan } from "@/app/_lib/columns";
 import { errorsView } from "@/app/_lib/errors-view";
@@ -217,6 +219,10 @@ async function ConversationTable({ searchParams }: { searchParams: Promise<ViewS
   // two Projects still reports its true size while the list is scoped to one.
   const familySize = await loadFamilySizes();
 
+  // Whether the selected Folder is a favorite, for the breadcrumb's star.
+  const favoritePaths = await loadFavoriteFolderPaths();
+  const isSelectedFolderFavorite = selectedFolder !== undefined && favoritePaths.includes(selectedFolder.path);
+
   // Fetch the expanded row's panel detail server-side — only when that row is
   // actually visible in the current view. `rows` is the current PAGE, but a bare
   // `?expanded=` (no `?page=`) opened the page holding it, so only a genuinely
@@ -253,7 +259,13 @@ async function ConversationTable({ searchParams }: { searchParams: Promise<ViewS
     if (!isScoped && !errorsOnly) return <EmptyList scoped={false} links={links} />;
     return (
       <>
-        <ListControls folder={selectedFolder} scope={scope} links={links} pager={null} />
+        <ListControls
+          folder={selectedFolder}
+          isFolderFavorite={isSelectedFolderFavorite}
+          scope={scope}
+          links={links}
+          pager={null}
+        />
         <EmptyList scoped={isScoped} links={links} />
       </>
     );
@@ -263,6 +275,7 @@ async function ConversationTable({ searchParams }: { searchParams: Promise<ViewS
     <>
       <ListControls
         folder={selectedFolder}
+        isFolderFavorite={isSelectedFolderFavorite}
         scope={scope}
         links={links}
         pager={<ListPager variant="compact" page={page} pageCount={pageCount} rowCount={rowCount} links={links} />}
@@ -391,12 +404,15 @@ async function ConversationTable({ searchParams }: { searchParams: Promise<ViewS
  */
 function ListControls({
   folder,
+  isFolderFavorite,
   scope,
   links,
   pager,
 }: {
   /** The selected Folder, when a `?folder=` scope names a tree row. */
   folder: FolderNode | undefined;
+  /** Whether the selected Folder is a favorite. */
+  isFolderFavorite: boolean;
   /** The active scope, which names the Folder narrowed to this folder. */
   scope: FolderScope;
   links: ListLinkContext;
@@ -405,7 +421,11 @@ function ListControls({
 }) {
   return (
     <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-      {folder ? <FolderBreadcrumb folder={folder} scope={scope} links={links} /> : <span />}
+      {folder ? (
+        <FolderBreadcrumb folder={folder} isFavorite={isFolderFavorite} scope={scope} links={links} />
+      ) : (
+        <span />
+      )}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         {pager}
         <ErrorsFilterToggle links={links} />
@@ -482,15 +502,19 @@ function EmptyList({
 
 /**
  * The scope breadcrumb shown above the table when a Folder is selected: its
- * label, with its full path on hover, and a link back to "All folders" that
- * preserves the active sort.
+ * label, with its full path on hover and its Favorite star beside it, and a
+ * link back to "All folders" that preserves the active sort. Narrowed to this
+ * folder, the star still favorites the Folder itself.
  */
 function FolderBreadcrumb({
   folder,
+  isFavorite,
   scope,
   links,
 }: {
   folder: FolderNode;
+  /** Whether the Folder is a favorite. */
+  isFavorite: boolean;
   /** The active scope, which names the Folder narrowed to this folder. */
   scope: FolderScope;
   /** The active view state, preserved by the "All folders" link. */
@@ -507,6 +531,7 @@ function FolderBreadcrumb({
       <span className="font-medium" title={folder.path}>
         {folderScopeLabel(folder, scope)}
       </span>
+      <FavoriteStar folderPath={folder.path} folderLabel={folder.label} isFavorite={isFavorite} className="-ml-1" />
     </nav>
   );
 }

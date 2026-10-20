@@ -12,11 +12,44 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { ControlFailure } from "@/app/_components/control-bubble";
+import { SidebarLink } from "@/app/_components/sidebar-link";
 import { setFolderFavorite } from "@/app/actions";
 import { cn } from "@/lib/utils-cn";
 
 /** The line shown when a favorite could not be saved; the failure's own message is its detail. */
 const FAILURE_TEXT = "The favorite could not be saved. Hover for the reason, then try again.";
+
+/**
+ * A sidebar entry selecting the Folder at `folderPath`, with its star beside
+ * the link in a gutter the link keeps free, so the star never covers the cost.
+ *
+ * @example
+ * <FolderLinkWithStar folderPath={node.path} folderLabel={node.label} isFavorite={favoritePaths.has(node.path)}>
+ *   <FolderRow label={node.label} totals={node} totalCostUsd={totalCostUsd} />
+ * </FolderLinkWithStar>
+ */
+export function FolderLinkWithStar({
+  folderPath,
+  folderLabel,
+  isFavorite,
+  className,
+  children,
+}: Omit<FavoriteStarProps, "isRevealedByRow"> & { children: React.ReactNode }) {
+  return (
+    <div className={cn("group/row relative min-w-0", className)}>
+      <SidebarLink scope={{ folder: folderPath }} title={folderPath} className="pr-9">
+        {children}
+      </SidebarLink>
+      <FavoriteStar
+        folderPath={folderPath}
+        folderLabel={folderLabel}
+        isFavorite={isFavorite}
+        isRevealedByRow
+        className="absolute top-1/2 right-1 -translate-y-1/2"
+      />
+    </div>
+  );
+}
 
 /** The props of {@link FavoriteStar}. */
 export type FavoriteStarProps = {
