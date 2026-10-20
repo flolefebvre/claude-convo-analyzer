@@ -48,7 +48,7 @@ export async function generateMetadata({
 export default function SearchPage({ searchParams }: { searchParams: Promise<PageSearchParams> }) {
   return (
     <main id="main" tabIndex={-1} className="mx-auto w-full max-w-frame px-4 py-6 sm:px-6 lg:py-8">
-      <div className="flex max-w-3xl flex-col gap-5">
+      <div className="flex flex-col gap-5">
         <PageHeader title="Search" description="Your prompts, Claude's replies and conversation titles." />
         <Suspense fallback={<SearchFallback />}>
           <SearchSurface searchParams={searchParams} />
@@ -75,13 +75,13 @@ function SearchFallback() {
         {Array.from({ length: SKELETON_RESULTS }, (_, index) => (
           <div key={index} className="rounded-xl border bg-card p-4">
             <div className="flex h-6 items-center justify-between gap-4">
-              <Skeleton className="h-4 w-72 max-w-[70%]" />
+              <Skeleton className="h-4 w-72" />
               <Skeleton className="h-3 w-16" />
             </div>
             <div className="mt-1 flex h-4 items-center">
               <Skeleton className="h-3 w-40" />
             </div>
-            <div className="mt-3 flex flex-col gap-1.5">
+            <div className="mt-3 flex max-w-measure flex-col gap-1.5">
               {Array.from({ length: (index % 2) + 1 }, (_, extract) => (
                 <Skeleton key={extract} className="h-8 w-full" />
               ))}
@@ -180,7 +180,7 @@ function ResultCard({ result }: { result: SearchResult }) {
         <span title={date.absolute}>{date.label}</span>
       </div>
       {extracts.length > 0 && (
-        <ul className="mt-3 flex flex-col gap-1.5">
+        <ul className="mt-3 flex max-w-measure flex-col gap-1.5">
           {extracts.map((snippet, i) => (
             <li key={`${snippet.source}-${snippet.messageUuid ?? i}`}>
               <SnippetLink result={result} snippet={snippet} />
