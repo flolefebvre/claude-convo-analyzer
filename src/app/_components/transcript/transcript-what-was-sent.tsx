@@ -5,22 +5,41 @@
 // count; what the API request sent, its failed attempts included, is fetched from
 // `GET /api/api-request/<id>` the first time the reader opens it, and kept for
 // every later open. Native `<details>` stays the disclosure, as for tool calls.
+// Under the request's facts, a switch picks the view: Changes (what this
+// request added), Request (all of it, by part) or Raw (its JSON, fetched from
+// `GET /api/api-request/<id>/raw` the first time Raw opens).
 //
 // ADR-0002: no core import — the payload comes over the route, its types from
 // the core-free `_lib/transcript`.
 
 import { callRoute } from "@flefebvre/next-pipe/client";
 import { ChevronRight } from "lucide-react";
+import { useState } from "react";
 
+import { CopyButton } from "@/app/_components/copy-button";
+import { JsonTree } from "@/app/_components/json-tree";
 import { formatLatency } from "@/app/_lib/format";
-import type { DiffLine, FailedAttempt, SentBlock, SentMessage, SentTool, WhatWasSent } from "@/app/_lib/transcript";
+import type {
+  DiffLine,
+  FailedAttempt,
+  JsonValue,
+  RawApiRequest,
+  SentBlock,
+  SentMessage,
+  SentTool,
+  WhatWasSent,
+} from "@/app/_lib/transcript";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { routes } from "@/generated/routes";
 
 import { type ReadOnFirstOpenState, useReadOnFirstOpen } from "./use-read-on-first-open";
 
 /** The +/− marker of a diff line, so a change never reads by colour alone. */
 const MARKER_BY_CHANGE: Record<DiffLine["change"], string> = { added: "+", removed: "-", unchanged: " " };
+
+/** How many lines of a block show before it is clamped behind "Show all N lines". */
+const BLOCK_CLAMP_LINES = 15;
 
 /**
  * A recorded Turn's "What was sent" `<details>`, fetched by `api_request` row
@@ -54,31 +73,41 @@ export function WhatWasSentDisclosure({
         {failedAttemptCount > 0 && <span className="call-meta">{failedAttemptCountLabel(failedAttemptCount)}</span>}
       </summary>
       <div className="call-body sent-body">
-        <Body state={state} />
+        <ReadBody state={state} subject="what was sent">
+          {(whatWasSent) => <WhatWasSentView whatWasSent={whatWasSent} apiRequestId={apiRequestId} />}
+        </ReadBody>
       </div>
     </details>
   );
 }
 
-function Body({ state }: { state: ReadOnFirstOpenState<WhatWasSent> }) {
+/** What a lazy read shows: nothing yet, a skeleton, why it could not load, or `children` of what it read. */
+function ReadBody<Value>({
+  state,
+  subject,
+  children,
+}: {
+  state: ReadOnFirstOpenState<Value>;
+  /** What is read, in the sentence of its loading label and failure notes. */
+  subject: string;
+  children: (value: Value) => React.ReactNode;
+}) {
   switch (state.status) {
     case "idle":
       return null;
     case "loading":
       return (
-        <div role="status" aria-label="Loading what was sent" className="flex flex-col gap-2.5">
+        <div role="status" aria-label={`Loading ${subject}`} className="flex flex-col gap-2.5">
           <Skeleton className="h-3 w-48" />
           <Skeleton className="h-16 w-full" />
         </div>
       );
     case "stale":
-      return (
-        <p className="call-body-note">This transcript changed since the page loaded — reload to see what was sent.</p>
-      );
+      return <p className="call-body-note">This transcript changed since the page loaded — reload to see {subject}.</p>;
     case "failed":
-      return <p className="call-body-note">Couldn&rsquo;t load what was sent — try again.</p>;
+      return <p className="call-body-note">Couldn&rsquo;t load {subject} — try again.</p>;
     case "loaded":
-      return <WhatWasSentView whatWasSent={state.value} />;
+      return children(state.value);
   }
 }
 
@@ -87,18 +116,18 @@ function failedAttemptCountLabel(failedAttemptCount: number): string {
   return `${failedAttemptCount} failed attempt${failedAttemptCount === 1 ? "" : "s"}`;
 }
 
-function WhatWasSentView({ whatWasSent }: { whatWasSent: WhatWasSent }) {
-  const {
-    isSideRequest,
-    failedAttempts,
-    firstNewMessageIndex,
-    previousApiRequestId,
-    systemPromptDiff,
-    toolsDiff,
-    fullRequest,
-  } = whatWasSent;
-  const newMessages = fullRequest.messages.slice(firstNewMessageIndex);
-  const messageCount = `${newMessages.length} message${newMessages.length === 1 ? "" : "s"}`;
+/** "1 message", "3 system blocks": `count`, then `noun`, plural past one. */
+function countLabel(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+/** The request's facts and failed attempts, then the switch between its three views. */
+function WhatWasSentView({ whatWasSent, apiRequestId }: { whatWasSent: WhatWasSent; apiRequestId: number }) {
+  // Held here, not in the Raw view, which unmounts with its tab: switching away and back reads nothing again.
+  const raw = useReadOnFirstOpen<RawApiRequest>(() =>
+    callRoute(routes.api["api-request"](String(apiRequestId)).raw.GET()),
+  );
+  const { failedAttempts } = whatWasSent;
   return (
     <>
       <Facts whatWasSent={whatWasSent} />
@@ -112,20 +141,120 @@ function WhatWasSentView({ whatWasSent }: { whatWasSent: WhatWasSent }) {
         </section>
       )}
 
+      <Tabs
+        defaultValue="changes"
+        className="sent-views"
+        onValueChange={(view) => {
+          if (view === "raw") raw.startReading();
+        }}
+      >
+        <TabsList aria-label="View of what was sent" className="sent-tab-list">
+          <TabsTrigger value="changes" className="sent-tab">
+            Changes
+          </TabsTrigger>
+          <TabsTrigger value="request" className="sent-tab">
+            Request
+          </TabsTrigger>
+          <TabsTrigger value="raw" className="sent-tab">
+            Raw
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="changes" className="sent-view">
+          <ChangesView whatWasSent={whatWasSent} />
+        </TabsContent>
+        <TabsContent value="request" className="sent-view">
+          <RequestView whatWasSent={whatWasSent} />
+        </TabsContent>
+        <TabsContent value="raw" className="sent-view">
+          <ReadBody state={raw.state} subject="the raw request">
+            {(rawApiRequest) => <RawView rawApiRequest={rawApiRequest} />}
+          </ReadBody>
+        </TabsContent>
+      </Tabs>
+    </>
+  );
+}
+
+/** The request parameters and timings, as a key/value grid; the betas as a count that expands to their list. */
+function Facts({ whatWasSent }: { whatWasSent: WhatWasSent }) {
+  const { parameters, timings } = whatWasSent;
+  const facts: [string, React.ReactNode][] = [
+    ["model", parameters.model],
+    ["max_tokens", parameters.maxTokens],
+    ["thinking", parameters.thinking],
+    ["effort", parameters.effort],
+    [
+      "betas",
+      parameters.betas.length > 0 && (
+        <details className="sent-betas">
+          <summary>
+            <ChevronRight aria-hidden className="chev" />
+            {countLabel(parameters.betas.length, "beta")}
+          </summary>
+          <ul>
+            {parameters.betas.map((beta) => (
+              <li key={beta}>
+                <code>{beta}</code>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ),
+    ],
+    ["first byte", timings.timeToFirstByteMs !== null && formatLatency(timings.timeToFirstByteMs)],
+    ["total", formatLatency(timings.durationMs)],
+  ];
+  return (
+    <dl className="sent-facts">
+      {facts
+        .filter(([, value]) => value !== null && value !== false)
+        .map(([name, value]) => (
+          <div key={name} className="sent-fact">
+            <dt>{name}</dt>
+            <dd>{value}</dd>
+          </div>
+        ))}
+    </dl>
+  );
+}
+
+/** One failed attempt, as one line: its status, its error message and the time it lost. */
+function FailedAttemptLine({ attempt }: { attempt: FailedAttempt }) {
+  return (
+    <p className="sent-line">
+      <code>{attempt.status}</code> · {attempt.errorMessage ?? "no error message"} · lost{" "}
+      {formatLatency(attempt.lostMs)}
+    </p>
+  );
+}
+
+/**
+ * What this request added: its new messages, then how the system prompt and
+ * the tool definitions changed — one "unchanged" line each when they did not.
+ * Without a previous request everything is new, so there is nothing to compare.
+ */
+function ChangesView({ whatWasSent }: { whatWasSent: WhatWasSent }) {
+  const { isSideRequest, firstNewMessageIndex, previousApiRequestId, systemPromptDiff, toolsDiff, fullRequest } =
+    whatWasSent;
+  const newMessages = fullRequest.messages.slice(firstNewMessageIndex);
+  const messageCount = countLabel(newMessages.length, "message");
+  const hasPreviousRequest = previousApiRequestId !== null;
+  return (
+    <>
       <section className="sent-section">
         <h4 className="io-label">
           {isSideRequest
             ? `Everything it sent (${messageCount})`
-            : previousApiRequestId === null
-              ? `No earlier API request of this Agent was recorded: every message is new (${messageCount})`
-              : `New since the previous API request (${messageCount})`}
+            : hasPreviousRequest
+              ? `New since the previous API request (${messageCount})`
+              : `No earlier API request of this Agent was recorded: every message is new (${messageCount})`}
         </h4>
         {newMessages.map((message, index) => (
           <MessageBlocks key={index} message={message} />
         ))}
       </section>
 
-      {systemPromptDiff && (
+      {systemPromptDiff ? (
         <section className="sent-section">
           <h4 className="io-label">
             {systemPromptDiff.isVolatileOnly
@@ -134,9 +263,11 @@ function WhatWasSentView({ whatWasSent }: { whatWasSent: WhatWasSent }) {
           </h4>
           <Diff hunks={systemPromptDiff.hunks} />
         </section>
+      ) : (
+        hasPreviousRequest && <p className="sent-line">System prompt: unchanged</p>
       )}
 
-      {toolsDiff && (
+      {toolsDiff ? (
         <section className="sent-section">
           <h4 className="io-label">Tool definitions changed</h4>
           {toolsDiff.added.length > 0 && <ToolNames label="Added" tools={toolsDiff.added} />}
@@ -150,61 +281,87 @@ function WhatWasSentView({ whatWasSent }: { whatWasSent: WhatWasSent }) {
             </div>
           ))}
         </section>
+      ) : (
+        hasPreviousRequest && <p className="sent-line">Tool definitions: unchanged</p>
       )}
-
-      <details className="sent-full">
-        <summary>
-          <ChevronRight aria-hidden className="chev" />
-          Full request: {fullRequest.systemBlocks.length} system blocks, {fullRequest.tools.length} tools
-        </summary>
-        <section className="sent-section">
-          <h4 className="io-label">System prompt</h4>
-          {fullRequest.systemBlocks.map((block, index) => (
-            <div key={index}>
-              <BlockText block={block} />
-              {block.cacheControl && <p className="sent-breakpoint">Cache breakpoint: {block.cacheControl}</p>}
-            </div>
-          ))}
-        </section>
-        <section className="sent-section">
-          <h4 className="io-label">Tools</h4>
-          {fullRequest.tools.map((tool) => (
-            <pre key={tool.name} className="sent-pre">
-              {tool.definitionJson}
-            </pre>
-          ))}
-        </section>
-        <section className="sent-section">
-          <h4 className="io-label">Parameters</h4>
-          <pre className="sent-pre">{JSON.stringify(fullRequest.parameterByName, null, 2)}</pre>
-        </section>
-      </details>
     </>
   );
 }
 
-/** The request parameters and timings, as one line of facts. */
-function Facts({ whatWasSent }: { whatWasSent: WhatWasSent }) {
-  const { parameters, timings } = whatWasSent;
-  const facts = [
-    parameters.model,
-    parameters.maxTokens !== null && `max_tokens ${parameters.maxTokens}`,
-    parameters.thinking !== null && `thinking ${parameters.thinking}`,
-    parameters.effort !== null && `effort ${parameters.effort}`,
-    parameters.betas.length > 0 && `betas ${parameters.betas.join(", ")}`,
-    timings.timeToFirstByteMs !== null && `first byte ${formatLatency(timings.timeToFirstByteMs)}`,
-    `total ${formatLatency(timings.durationMs)}`,
-  ].filter(Boolean);
-  return <p className="sent-line">{facts.join(" · ")}</p>;
+/** The whole request by part: its parameters, system blocks, tool definitions and every message. */
+function RequestView({ whatWasSent }: { whatWasSent: WhatWasSent }) {
+  const { systemBlocks, tools, messages, parameterByName } = whatWasSent.fullRequest;
+  return (
+    <>
+      <section className="sent-section">
+        <h4 className="io-label">Parameters</h4>
+        <JsonTree value={parameterByName} />
+      </section>
+      <section className="sent-section">
+        <h4 className="io-label">System prompt ({countLabel(systemBlocks.length, "block")})</h4>
+        {systemBlocks.map((block, index) => (
+          <div key={index}>
+            <BlockView block={block} />
+            {block.cacheControl && <p className="sent-breakpoint">Cache breakpoint: {block.cacheControl}</p>}
+          </div>
+        ))}
+      </section>
+      <section className="sent-section">
+        <h4 className="io-label">Tools ({countLabel(tools.length, "tool")})</h4>
+        {tools.map((tool) => (
+          <details key={tool.name} className="sent-tool">
+            <summary>
+              <ChevronRight aria-hidden className="chev" />
+              <code>{tool.name}</code>
+            </summary>
+            <pre className="sent-pre">{tool.definitionJson}</pre>
+          </details>
+        ))}
+      </section>
+      <section className="sent-section">
+        <h4 className="io-label">Messages ({countLabel(messages.length, "message")})</h4>
+        {messages.map((message, index) => (
+          <MessageBlocks key={index} message={message} />
+        ))}
+      </section>
+    </>
+  );
 }
 
-/** One failed attempt, as one line: its status, its error message and the time it lost. */
-function FailedAttemptLine({ attempt }: { attempt: FailedAttempt }) {
+/** The parts of a raw API request, each a sub-tab, in order. */
+const RAW_PARTS = [
+  { value: "request-body", label: "Request body", valueOf: (raw: RawApiRequest): JsonValue => raw.requestBody },
+  { value: "response-body", label: "Response body", valueOf: (raw: RawApiRequest): JsonValue => raw.responseBody },
+  {
+    value: "request-headers",
+    label: "Request headers",
+    valueOf: (raw: RawApiRequest): JsonValue => raw.requestHeaders,
+  },
+] as const;
+
+/** The API request as JSON: its request body, response body and request headers, each a sub-tab with a copy button. */
+function RawView({ rawApiRequest }: { rawApiRequest: RawApiRequest }) {
   return (
-    <p className="sent-line">
-      <code>{attempt.status}</code> · {attempt.errorMessage ?? "no error message"} · lost{" "}
-      {formatLatency(attempt.lostMs)}
-    </p>
+    <Tabs defaultValue="request-body" className="sent-views">
+      <TabsList aria-label="Part of the raw request" className="sent-tab-list">
+        {RAW_PARTS.map((part) => (
+          <TabsTrigger key={part.value} value={part.value} className="sent-tab">
+            {part.label}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+      {RAW_PARTS.map((part) => {
+        const value = part.valueOf(rawApiRequest);
+        return (
+          <TabsContent key={part.value} value={part.value} className="sent-view">
+            <div className="sent-raw-toolbar">
+              <CopyButton text={() => JSON.stringify(value, null, 2)} label="Copy JSON" />
+            </div>
+            <JsonTree value={value} />
+          </TabsContent>
+        );
+      })}
+    </Tabs>
   );
 }
 
@@ -213,15 +370,44 @@ function MessageBlocks({ message }: { message: SentMessage }) {
     <div className="sent-message">
       <span className="sent-role">{message.role}</span>
       {message.blocks.map((block, index) => (
-        <BlockText key={index} block={block} />
+        <BlockView key={index} block={block} />
       ))}
     </div>
   );
 }
 
-/** A block as plain text: text as sent, any other block as its pretty-printed JSON. */
-function BlockText({ block }: { block: SentBlock }) {
-  return <pre className="sent-pre">{block.shownAs === "text" ? block.text : block.json}</pre>;
+/** A block under its kind label, as plain text: text as sent, any other block as its pretty-printed JSON. */
+function BlockView({ block }: { block: SentBlock }) {
+  return (
+    <div className="sent-block">
+      <span className={`sent-kind is-${block.kind}`}>{block.kind}</span>
+      <ClampedText text={block.shownAs === "text" ? block.text : block.json} />
+    </div>
+  );
+}
+
+/** `text` in a block; past {@link BLOCK_CLAMP_LINES} lines, its first lines with a "Show all N lines" toggle. */
+function ClampedText({ text }: { text: string }) {
+  const [isShownWhole, setIsShownWhole] = useState(false);
+  const lines = text.split("\n");
+  const isClampable = lines.length > BLOCK_CLAMP_LINES;
+  return (
+    <div>
+      <pre className="sent-pre">
+        {isClampable && !isShownWhole ? lines.slice(0, BLOCK_CLAMP_LINES).join("\n") : text}
+      </pre>
+      {isClampable && (
+        <button
+          type="button"
+          className="sent-clamp-toggle"
+          aria-expanded={isShownWhole}
+          onClick={() => setIsShownWhole(!isShownWhole)}
+        >
+          {isShownWhole ? "Show fewer lines" : `Show all ${lines.length} lines`}
+        </button>
+      )}
+    </div>
+  );
 }
 
 function ToolNames({ label, tools }: { label: string; tools: SentTool[] }) {

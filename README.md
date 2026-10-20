@@ -186,9 +186,11 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:4242 claude
 Only sessions started that way are recorded. Click **Refresh** in the app and a
 recorded conversation gains:
 
-- **What was sent** on each turn: the messages new since the previous request
-  (injected context included), how the system prompt and tools changed, the
-  request parameters and timings.
+- **What was sent** on each turn, in three views: **Changes**, the messages new
+  since the previous request (injected context included) and how the system
+  prompt and tools changed; **Request**, the whole request by part; and
+  **Raw**, its request body, response body and headers as JSON, each copyable.
+  The request parameters and timings sit above all three.
 - **Failed attempts**: the overloaded, rate-limited or dropped requests Claude
   Code retried before the turn succeeded, and the time each one lost.
 - **Side requests**: Claude Code's background requests, in the Transcript and

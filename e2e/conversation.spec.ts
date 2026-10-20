@@ -1,5 +1,5 @@
 import { instant } from "@next/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Locator, test, type Page } from "@playwright/test";
 
 import { type RouteShell, expectData, expectInstantLoad, expectShell } from "./route-shell";
 
@@ -16,6 +16,13 @@ const RECORDED_TITLE = "Add an audit trail to the billing exports";
 const PLAN_HANDOFF_TITLE = "Hand the search plan to the docs team";
 
 const titleLink = (page: Page) => page.getByRole("link", { name: TITLE, exact: true });
+
+/** The value of the fact named `name` in a "What was sent" panel's facts grid. */
+const factOf = (whatWasSent: Locator, name: string) =>
+  whatWasSent
+    .getByRole("term")
+    .filter({ hasText: new RegExp(`^${name}$`) })
+    .locator("xpath=following-sibling::dd[1]");
 
 /** Open the seeded Conversation titled `title` from the Conversations list. */
 async function openConversation(page: Page, title: string): Promise<void> {
@@ -85,15 +92,48 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     // The "What was sent" panel opens on its own and reads what the Side request sent.
     const whatWasSent = page.getByRole("main").getByRole("group").filter({ hasText: "What was sent" });
     await expect(whatWasSent).toHaveAttribute("open", "");
+    await expect(whatWasSent.getByRole("tab", { name: "Changes" })).toHaveAttribute("aria-selected", "true");
     await expect(whatWasSent.getByText(/^Everything it sent \(\d+ messages?\)$/)).toBeVisible();
-    await expect(whatWasSent.getByText(/max_tokens 512/)).toBeVisible();
+    await expect(factOf(whatWasSent, "max_tokens")).toHaveText("512");
 
     // Another Side request reads its own: the safety monitor sends `max_tokens: 256`.
     await sideRequests.getByRole("link", { name: /^Safety monitor/ }).click();
     await expect(sideRequests.getByRole("link", { name: /^Safety monitor/ })).toHaveAttribute("aria-current", "page");
     await expect(whatWasSent).toHaveAttribute("open", "");
-    await expect(whatWasSent.getByText(/max_tokens 256/)).toBeVisible();
-    await expect(whatWasSent.getByText(/max_tokens 512/)).toHaveCount(0);
+    await expect(factOf(whatWasSent, "max_tokens")).toHaveText("256");
+  });
+
+  test("switches what was sent to Request, then by keyboard to Raw, its body, response and headers each copyable", async ({
+    page,
+  }) => {
+    await openConversation(page, RECORDED_TITLE);
+    await page
+      .getByRole("navigation", { name: "Side requests" })
+      .getByRole("link", { name: /^Session naming/ })
+      .click();
+    await page.waitForURL((url) => url.searchParams.has("sideRequest"));
+    const whatWasSent = page.getByRole("main").getByRole("group").filter({ hasText: "What was sent" });
+
+    await whatWasSent.getByRole("tab", { name: "Request" }).click();
+    const requestView = whatWasSent.getByRole("tabpanel", { name: "Request" });
+    await expect(requestView.getByRole("heading", { name: /^System prompt \(1 block\)$/ })).toBeVisible();
+    await expect(requestView.getByRole("heading", { name: /^Messages \(\d+ messages?\)$/ })).toBeVisible();
+
+    // The switch is a tab list: the arrow keys move between its views.
+    await whatWasSent.getByRole("tab", { name: "Request" }).press("ArrowRight");
+    await expect(whatWasSent.getByRole("tab", { name: "Raw" })).toHaveAttribute("aria-selected", "true");
+    const rawView = whatWasSent.getByRole("tabpanel", { name: "Raw" });
+    await expect(
+      rawView.getByRole("tabpanel", { name: "Request body" }).getByText("model:", { exact: true }),
+    ).toBeVisible();
+    await expect(rawView.getByRole("button", { name: "Copy JSON" })).toBeVisible();
+    for (const part of ["Response body", "Request headers"]) {
+      await rawView.getByRole("tab", { name: part }).click();
+      await expect(
+        rawView.getByRole("tabpanel", { name: part }).getByRole("button", { name: "Copy JSON" }),
+      ).toBeVisible();
+    }
+    await expect(rawView.getByText("anthropic-version:", { exact: true })).toBeVisible();
   });
 
   test("shows no Side requests for an unrecorded Conversation", async ({ page }) => {
