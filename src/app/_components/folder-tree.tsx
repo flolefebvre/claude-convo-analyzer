@@ -1,8 +1,9 @@
 "use client";
 
-// The sidebar's folder tree (GLOSSARY.md, **Folder**). Each row is two
-// targets: the chevron only opens or closes the Folder — no navigation — and
-// the name only selects it as the scope, never toggling it. Folders start
+// The sidebar's folder tree (GLOSSARY.md, **Folder**). Each row is three
+// targets: the chevron only opens or closes the Folder — no navigation —, the
+// name only selects it as the scope, never toggling it, and the star beside the
+// name favorites it (GLOSSARY.md, **Favorite**). Folders start
 // closed except the roots (one level) and the path down to the active scope,
 // which a later scope change opens too (never closing anything); the open
 // state lives in this component alone and is not remembered between visits.
@@ -19,6 +20,7 @@ import { ChevronRight } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useId, useState } from "react";
 
+import { FolderLinkWithStar } from "@/app/_components/favorite-star";
 import { FolderRow } from "@/app/_components/folder-rows";
 import { SidebarLink } from "@/app/_components/sidebar-link";
 import { resolveLiveFolderScope } from "@/app/_lib/folder-scope";
@@ -31,12 +33,16 @@ import { type FolderNode, initiallyOpenFolderPaths, openPathsDownToScope } from 
  */
 export function FolderTree({
   roots,
+  favoritePaths,
   totalCostUsd,
 }: {
   roots: FolderNode[];
+  /** Every favorited Folder's path: those rows show a filled star. */
+  favoritePaths: string[];
   /** The spend across every Project: every cost bar, at any depth, is a share of it. */
   totalCostUsd: number;
 }) {
+  const favoritePathSet = new Set(favoritePaths);
   const scope = resolveLiveFolderScope(useSearchParams());
   const scopeKey = `${scope.folder ?? ""}|${scope.thisFolderOnly}`;
   const [openPaths, setOpenPaths] = useState(() => initiallyOpenFolderPaths(roots, scope));
@@ -54,13 +60,22 @@ export function FolderTree({
       return next;
     });
 
-  return <FolderList nodes={roots} openPaths={openPaths} toggle={toggle} totalCostUsd={totalCostUsd} />;
+  return (
+    <FolderList
+      nodes={roots}
+      openPaths={openPaths}
+      toggle={toggle}
+      favoritePathSet={favoritePathSet}
+      totalCostUsd={totalCostUsd}
+    />
+  );
 }
 
-/** What every level of the tree shares: the open Folders, their toggle, and the bars' scale. */
+/** What every level of the tree shares: the open Folders, their toggle, the favorites, and the bars' scale. */
 type TreeState = {
   openPaths: Set<string>;
   toggle: (path: string) => void;
+  favoritePathSet: Set<string>;
   totalCostUsd: number;
 };
 
@@ -103,9 +118,14 @@ function FolderItem({ node, ...tree }: TreeState & { node: FolderNode }) {
         ) : (
           <span aria-hidden className="w-6 shrink-0" />
         )}
-        <SidebarLink scope={{ folder: node.path }} title={node.path} className="min-w-0 flex-1">
+        <FolderLinkWithStar
+          folderPath={node.path}
+          folderLabel={node.label}
+          isFavorite={tree.favoritePathSet.has(node.path)}
+          className="flex-1"
+        >
           <FolderRow label={node.label} totals={node} totalCostUsd={tree.totalCostUsd} />
-        </SidebarLink>
+        </FolderLinkWithStar>
       </div>
       {isOpen && (
         <div id={childrenId} className="mt-1 ml-3">
@@ -115,7 +135,7 @@ function FolderItem({ node, ...tree }: TreeState & { node: FolderNode }) {
               <SidebarLink
                 scope={{ folder: node.path, thisFolderOnly: true }}
                 title={`${node.path}, its own conversations only`}
-                className="min-w-0 flex-1"
+                className="min-w-0 flex-1 pr-9"
               >
                 <FolderRow label="(this folder)" totals={node.thisFolder} totalCostUsd={tree.totalCostUsd} />
               </SidebarLink>

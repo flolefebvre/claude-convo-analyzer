@@ -19,6 +19,9 @@ const REPO = path.join(os.homedir(), "dev", "acme-api");
 // A seeded worktree Project of {@link REPO}.
 const WORKTREE = path.join(REPO, ".claude", "worktrees", "fix-auth-flake");
 
+// A seeded repo that is no seeded favorite, and that no other test names: the one the Favorites test toggles.
+const UNFAVORITED_REPO = path.join(os.homedir(), "dev", "billing-service");
+
 const header = (page: Page) => page.getByRole("heading", { level: 1, name: "Conversations" });
 /** A Folder's chevron, in whichever folder tree (desktop sidebar or phone picker) `scope` holds. */
 const chevron = (scope: Page | Locator, label: string) =>
@@ -26,6 +29,9 @@ const chevron = (scope: Page | Locator, label: string) =>
 /** A Folder's name link, whose accessible name starts with its label. */
 const folderLink = (scope: Locator, label: string) =>
   scope.getByRole("link", { name: new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}\\W`) });
+
+/** The sidebar's Favorites section, in whichever folder tree `scope` holds. */
+const favoritesList = (scope: Page | Locator) => scope.getByRole("list", { name: "Favorites" });
 
 const conversations: RouteShell = {
   shell: (page) => [header(page)],
@@ -36,6 +42,7 @@ const conversations: RouteShell = {
   ],
   data: (page) => [
     page.getByRole("navigation", { name: "Folders" }),
+    favoritesList(page),
     chevron(page, "~"),
     page.getByRole("heading", { level: 2, name: /All projects/ }),
     page.getByText(TITLE, { exact: true }),
@@ -155,6 +162,46 @@ test.describe("Folder tree", () => {
       await expect(folderLink(tree, "fix-auth-flake")).toHaveAttribute("aria-current", "true");
       await expect(chevron(tree, "acme-api")).toHaveAttribute("aria-expanded", "true");
     });
+  });
+});
+
+test.describe("Favorites", () => {
+  // The toggle writes the seed's settings file: its tests never overlap.
+  test.describe.configure({ mode: "serial" });
+
+  test("lists the seeded favorites above All folders, starred in the tree too", async ({ page }) => {
+    await page.goto("/");
+    const tree = page.getByRole("complementary").getByRole("navigation", { name: "Folders" });
+    const favorites = favoritesList(tree);
+
+    await expect(folderLink(favorites, "acme-api")).toBeVisible();
+    await expect(folderLink(favorites, "web-dashboard")).toBeVisible();
+    await chevron(tree, "dev").click();
+    await expect(tree.getByRole("button", { name: "Favorite acme-api", pressed: true })).toHaveCount(2);
+  });
+
+  test("favorites a Folder from its tree row, then unfavorites it from the breadcrumb", async ({ page }) => {
+    await page.goto("/");
+    const tree = page.getByRole("complementary").getByRole("navigation", { name: "Folders" });
+    const favorites = favoritesList(tree);
+    await chevron(tree, "dev").click();
+
+    // The star shows on the row's hover, beside its link.
+    await folderLink(tree, "billing-service").hover();
+    await tree.getByRole("button", { name: "Favorite billing-service", pressed: false }).click();
+    await expect(folderLink(favorites, "billing-service")).toBeVisible();
+    await expect(tree.getByRole("button", { name: "Favorite billing-service", pressed: true })).toHaveCount(2);
+
+    // A favorite selects its scope, and shows as the active entry.
+    await folderLink(favorites, "billing-service").click();
+    await page.waitForURL((url) => url.searchParams.get("folder") === UNFAVORITED_REPO);
+    await expect(folderLink(favorites, "billing-service")).toHaveAttribute("aria-current", "true");
+
+    const breadcrumb = page.getByRole("navigation", { name: "Folder scope" });
+    await breadcrumb.getByRole("button", { name: "Favorite billing-service", pressed: true }).click();
+    await expect(folderLink(favorites, "billing-service")).toHaveCount(0);
+    await expect(breadcrumb.getByRole("button", { name: "Favorite billing-service", pressed: false })).toBeVisible();
+    await expect(tree.getByRole("button", { name: "Favorite billing-service", pressed: false })).toBeVisible();
   });
 });
 

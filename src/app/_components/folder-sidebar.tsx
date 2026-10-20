@@ -15,28 +15,68 @@
 // happens on the client — that stays server-side from the URL.
 //
 // ADR-0002 boundary: this never imports core — it receives the already-derived
-// tree (from `deriveFolderTree`, app-zone) as plain props from the layout.
+// tree and favorites (from `deriveFolderTree` and `deriveFavoriteFolders`,
+// app-zone) as plain props from the layout.
 
-import { AllFoldersRow } from "@/app/_components/folder-rows";
+import { useId } from "react";
+
+import { FolderLinkWithStar } from "@/app/_components/favorite-star";
+import { AllFoldersRow, FolderRow } from "@/app/_components/folder-rows";
 import { FolderTree } from "@/app/_components/folder-tree";
 import { SidebarLink } from "@/app/_components/sidebar-link";
+import type { FavoriteFolder } from "@/app/_lib/favorites";
 import type { FolderNode, FolderTotals } from "@/app/_lib/folder-tree";
 
 /**
- * Render the folder navigation: an "All folders" entry (the spend anchor: total
- * count + total cost, no bar) above the folder tree.
+ * Render the folder navigation: the Favorites section, when a favorite has
+ * Conversations, then an "All folders" entry (the spend anchor: total count +
+ * total cost, no bar) above the folder tree.
  *
- * @example <FolderSidebar folderTree={folderTree} totals={totals} />
+ * @example <FolderSidebar favorites={favorites} favoritePaths={favoritePaths} folderTree={folderTree} totals={totals} />
  */
-export function FolderSidebar({ folderTree, totals }: { folderTree: FolderNode[]; totals: FolderTotals }) {
+export function FolderSidebar({
+  favorites,
+  favoritePaths,
+  folderTree,
+  totals,
+}: {
+  /** The Favorites section's rows, newest first. */
+  favorites: FavoriteFolder[];
+  /** Every favorited Folder's path, shown or not — what fills the tree's stars. */
+  favoritePaths: string[];
+  folderTree: FolderNode[];
+  totals: FolderTotals;
+}) {
   // The "All folders" total deliberately gets no bar — it is the sum (100%),
   // not a peer to rank against.
   return (
     <nav aria-label="Folders" className="flex flex-col gap-1">
-      <SidebarLink scope={{}}>
+      {favorites.length > 0 && <FavoritesSection favorites={favorites} totalCostUsd={totals.costUsd} />}
+      <SidebarLink scope={{}} className="pr-9">
         <AllFoldersRow totals={totals} />
       </SidebarLink>
-      <FolderTree roots={folderTree} totalCostUsd={totals.costUsd} />
+      <FolderTree roots={folderTree} favoritePaths={favoritePaths} totalCostUsd={totals.costUsd} />
     </nav>
+  );
+}
+
+/** The favorites, each a Folder row that selects its scope, above "All folders". */
+function FavoritesSection({ favorites, totalCostUsd }: { favorites: FavoriteFolder[]; totalCostUsd: number }) {
+  const headingId = useId();
+  return (
+    <div className="mb-2 flex flex-col gap-1 border-b pb-2">
+      <h2 id={headingId} className="px-3 pt-1 text-xs font-medium text-muted-foreground">
+        Favorites
+      </h2>
+      <ul aria-labelledby={headingId} className="flex flex-col gap-1">
+        {favorites.map((favorite) => (
+          <li key={favorite.path}>
+            <FolderLinkWithStar folderPath={favorite.path} folderLabel={favorite.label} isFavorite>
+              <FolderRow label={favorite.label} totals={favorite} totalCostUsd={totalCostUsd} />
+            </FolderLinkWithStar>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

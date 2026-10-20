@@ -10,7 +10,7 @@
 
 import { useState } from "react";
 
-import { ControlBubble } from "@/app/_components/control-bubble";
+import { ControlFailure } from "@/app/_components/control-bubble";
 import { setLive } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils-cn";
@@ -63,12 +63,7 @@ export function LiveToggle({ live }: { live: LiveAsRendered }) {
     // this box — the app bar keeps its height.
     <div className="relative flex shrink-0">
       <LiveToggleFace isLiveOn={isLiveOn} isDisabled={isSwitchPending} onClick={handleClick} />
-      <p role="alert" className="sr-only">
-        {failure === null ? "" : FAILURE_TEXT}
-      </p>
-      {failure !== null && (
-        <ControlBubble text={FAILURE_TEXT} detail={failure} tone="error" onDismiss={() => setFailure(null)} />
-      )}
+      <ControlFailure text={FAILURE_TEXT} failure={failure} onDismiss={() => setFailure(null)} />
     </div>
   );
 }

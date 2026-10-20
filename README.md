@@ -20,7 +20,9 @@ path is configurable. Nothing is ever sent anywhere.
 The conversation list — total cost, tokens, and a per-folder breakdown across
 every project, sortable by any column. The folder tree in the sidebar scopes
 every page to one folder and everything under it, so a repo and its git
-worktrees read as one:
+worktrees read as one. Star the folders you always want at hand — on a sidebar
+row, or beside the selected folder's name above the table — and they appear
+under **Favorites** at the top of the sidebar, newest activity first:
 
 ![Conversation list](docs/images/main-view.png)
 
@@ -136,7 +138,9 @@ value resolves against the process working directory (the repo root under
 - `CCA_RECORDINGS_ROOT` — the Recordings that **Refresh** also reads and the
   Recorder writes (default `~/.claude-convo-analyzer/recordings`).
 - `CCA_SETTINGS_PATH` — the settings file that keeps whether **Live** is on
-  (default `~/.claude-convo-analyzer/settings.json`).
+  and your **Favorites** (default `~/.claude-convo-analyzer/settings.json`).
+  It sits outside the database, so a Refresh or a deleted database never loses
+  them.
 
 ```bash
 CCA_DB_PATH=data/demo.db CCA_LOGS_ROOT=/tmp/demo-logs pnpm dev
@@ -267,7 +271,8 @@ It prints `Seeded app: http://localhost:<port>` — the first free port from
 3001, or `PORT` when set — so several checkouts can each run their own. Refresh
 in that app re-reads only the seeded logs, `CCA_RECORDINGS_ROOT` points at
 the seeded Recordings, and `CCA_SETTINGS_PATH` at `data/seed/settings.json`, so
-Live starts off and your own settings are never touched.
+Live starts off with two seeded favorites, and your own settings are never
+touched.
 
 The seeded activity ends now. `pnpm seed` also takes `--now=<ISO>`, and the same
 `--now` always yields the same data, which is what screenshots want; point the

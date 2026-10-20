@@ -14,6 +14,7 @@ import { cache } from "react";
 import { connection } from "next/server";
 
 import { getConversationErrors } from "@/core/errors";
+import { listFavoriteFolders } from "@/core/favorites";
 import { buildFamily, familySizes } from "@/core/family";
 import {
   countConversationsWithOutdatedParserVersion,
@@ -45,6 +46,18 @@ export function homeDirectory(): string {
 export const loadConversations = cache(async () => {
   await connection();
   return listConversations();
+});
+
+/**
+ * Read the favorited Folders' paths, in the order they were favorited, once per
+ * request. Same request-time gating as {@link loadConversations}: a favorite
+ * baked into the prerender would outlive its unfavoriting.
+ *
+ * @example deriveFavoriteFolders(await loadFavoriteFolderPaths(), folders, homeDirectory())
+ */
+export const loadFavoriteFolderPaths = cache(async () => {
+  await connection();
+  return listFavoriteFolders();
 });
 
 /**

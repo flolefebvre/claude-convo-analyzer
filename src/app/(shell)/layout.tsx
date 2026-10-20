@@ -3,7 +3,8 @@ import { Suspense } from "react";
 import { FolderDisclosure } from "@/app/_components/folder-disclosure";
 import { FolderSidebar } from "@/app/_components/folder-sidebar";
 import { LoadingRegion } from "@/app/_components/loading-region";
-import { homeDirectory, loadConversations } from "@/app/_lib/conversations";
+import { homeDirectory, loadConversations, loadFavoriteFolderPaths } from "@/app/_lib/conversations";
+import { deriveFavoriteFolders } from "@/app/_lib/favorites";
 import { buildListView } from "@/app/_lib/list-view";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -50,14 +51,22 @@ export default function ShellLayout({
  * scan: an empty folder tree is no navigation.
  */
 async function Sidebar() {
-  const allRows = await loadConversations();
+  const [allRows, favoritePaths] = await Promise.all([loadConversations(), loadFavoriteFolderPaths()]);
   // No sort intent -> the scope-independent slice only (folder tree + totals);
-  // the table slice is skipped. The "All folders" anchor totals are summed from
-  // the already-derived per-folder entries (no extra core touch).
-  const { folderTree, totals } = buildListView(allRows, homeDirectory());
+  // the table slice is skipped. The "All folders" anchor totals and the
+  // favorites' totals are summed from the already-derived per-folder entries
+  // (no extra core touch).
+  const { folders, folderTree, totals } = buildListView(allRows, homeDirectory());
   if (totals.count === 0) return null;
 
-  const nav = <FolderSidebar folderTree={folderTree} totals={totals} />;
+  const nav = (
+    <FolderSidebar
+      favorites={deriveFavoriteFolders(favoritePaths, folders, homeDirectory())}
+      favoritePaths={favoritePaths}
+      folderTree={folderTree}
+      totals={totals}
+    />
+  );
   return (
     <>
       <aside className="hidden w-64 shrink-0 lg:block">{nav}</aside>
