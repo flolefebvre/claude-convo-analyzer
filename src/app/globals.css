@@ -85,6 +85,10 @@
   /* The app's frame: the widest the app bar, the pages and the banners grow
      (`max-w-frame`), so their edges line up on any screen. */
   --container-frame: 120rem;
+  /* The prose reading measure (`max-w-measure`), shared by the transcript and
+     the Search extracts: about 80 characters (14px Geist averages ~6.5px a
+     character). */
+  --container-measure: 32rem;
 }
 
 /* The one small-caps label: table column headers, kind chips and status badges.
@@ -335,10 +339,9 @@ body:has([data-link-pending]) #main {
 .tview {
   --tview-tree: 280px;
   /* The column follows the pane, which the frame bounds, so tool calls, code,
-     diffs and "What was sent" use the screen's width; prose inside it keeps a
-     measure of about 80 characters (14px Geist averages ~6.5px a character). */
+     diffs and "What was sent" use the screen's width; prose inside it keeps
+     the app's reading measure (`--container-measure`). */
   --tview-col: none;
-  --tview-measure: 32rem;
   --tview-gutter: 32px;
   --radius-node: calc(var(--radius) * 0.6);
   display: flex;
@@ -792,7 +795,7 @@ html:has(.tview) {
   border-left-color: var(--agent);
 }
 .tview .prompt-body {
-  max-width: var(--tview-measure);
+  max-width: var(--container-measure);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -832,7 +835,7 @@ html:has(.tview) {
 /* Prose keeps a comfortable measure; code, tables and tool calls may use the
    column's full width. */
 .tview .turn-body > :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6) {
-  max-width: var(--tview-measure);
+  max-width: var(--container-measure);
 }
 .tview .turn-body > :first-child {
   margin-top: 0;
