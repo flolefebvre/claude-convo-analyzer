@@ -1407,8 +1407,9 @@ export type FakeLogsCounts = {
  * where agents message each other, one long enough to span three Transcript
  * pages, one that enters a worktree and one that states no cwd, three in
  * per-session scratch directories under `/tmp`, the two the Recordings cover,
- * one that hands a plan to another session, then one with no title — 71 in all. The same `now` always writes the same bytes. Returns the
- * counts, and the Conversations as written, for the Recordings to derive from.
+ * one that hands a plan to another session, then one with no title — 71 in
+ * all. The same `now` always writes the same bytes. Returns the counts, and
+ * the Conversations as written, for the Recordings to derive from.
  *
  * @example
  * const { counts, conversations } = generateFakeLogs({ logsRoot: "data/seed/projects", now: new Date() });
