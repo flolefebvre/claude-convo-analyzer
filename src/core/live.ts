@@ -141,12 +141,11 @@ export function watchLogsAndRecordings({
   return ({ onChange, onError }) => {
     mkdirSync(recordingsRoot, { recursive: true });
     const rootsToWatch = [recordingsRoot];
-    // Turbopack's output file tracing cannot resolve this runtime path, so it
-    // would trace the whole project into the build. The logs root lives outside
-    // the project by design (~/.claude/projects), so no scoping or include can
-    // describe it, and the trace is never deployed for this local-only app:
-    // the per-call opt-out is the accurate answer.
-    if (existsSync(/* turbopackIgnore: true */ logsRoot)) rootsToWatch.push(logsRoot);
+    // Turbopack cannot resolve this runtime path, so it would trace the whole project into the build. The path
+    // lies outside the project by design, so no scoping or include can describe it, and this local-only app never
+    // deploys the trace: the per-call opt-out is the accurate answer. It is the same opt-out as the env-root
+    // readers in discovery.ts, db.ts, recording.ts and settings.ts, and the Recorder's cwd in app/_lib/recorder.ts.
+    if (existsSync(/*turbopackIgnore: true*/ logsRoot)) rootsToWatch.push(logsRoot);
     else console.warn(`Live does not watch the logs root ${logsRoot}: it does not exist`);
 
     const directoryWatchers: FSWatcher[] = [];
