@@ -33,6 +33,22 @@ const folderLink = (scope: Locator, label: string) =>
 /** The sidebar's Favorites section, in whichever folder tree `scope` holds. */
 const favoritesList = (scope: Page | Locator) => scope.getByRole("list", { name: "Favorites" });
 
+/** The Favorites section's links, top to bottom. */
+const favoriteLinks = (favorites: Locator) => favorites.getByRole("link");
+
+/** The seeded favorites' order, as {@link favoriteLinks} texts start. */
+const SEEDED_FAVORITE_ORDER = [/^acme-api/, /^web-dashboard/, /^mobile-app/];
+
+/** Wait until the move made from `grip` is saved: the grip takes moves again. */
+const expectSaved = (grip: Locator) => expect(grip).toHaveAttribute("aria-disabled", "false");
+
+/** `locator`'s on-screen box; it must be rendered. */
+async function boxOf(locator: Locator) {
+  const box = await locator.boundingBox();
+  if (box === null) throw new Error(`${locator.toString()} is not rendered`);
+  return box;
+}
+
 const conversations: RouteShell = {
   shell: (page) => [header(page)],
   fallbacks: (page) => [
@@ -174,8 +190,7 @@ test.describe("Favorites", () => {
     const tree = page.getByRole("complementary").getByRole("navigation", { name: "Folders" });
     const favorites = favoritesList(tree);
 
-    await expect(folderLink(favorites, "acme-api")).toBeVisible();
-    await expect(folderLink(favorites, "web-dashboard")).toBeVisible();
+    await expect(favoriteLinks(favorites)).toHaveText(SEEDED_FAVORITE_ORDER);
     await chevron(tree, "dev").click();
     await expect(tree.getByRole("button", { name: "Favorite acme-api", pressed: true })).toHaveCount(2);
   });
@@ -202,6 +217,61 @@ test.describe("Favorites", () => {
     await expect(folderLink(favorites, "billing-service")).toHaveCount(0);
     await expect(breadcrumb.getByRole("button", { name: "Favorite billing-service", pressed: false })).toBeVisible();
     await expect(tree.getByRole("button", { name: "Favorite billing-service", pressed: false })).toBeVisible();
+  });
+
+  test("moves a favorite with Alt+arrows on its grip, announced, and keeps the order across a reload", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    const tree = page.getByRole("complementary").getByRole("navigation", { name: "Folders" });
+    const favorites = favoritesList(tree);
+    const grip = favorites.getByRole("button", { name: "Reorder acme-api" });
+
+    await grip.focus();
+    await page.keyboard.press("Alt+ArrowDown");
+    await expect(favoriteLinks(favorites)).toHaveText([/^web-dashboard/, /^acme-api/, /^mobile-app/]);
+    await expect(tree.getByText("acme-api moved to position 2 of 3")).toBeAttached();
+    await expect(grip).toBeFocused();
+    await expectSaved(grip);
+
+    await page.reload();
+    await expect(favoriteLinks(favorites)).toHaveText([/^web-dashboard/, /^acme-api/, /^mobile-app/]);
+
+    // Back to the seeded order, for the tests after this one.
+    await grip.focus();
+    await page.keyboard.press("Alt+ArrowUp");
+    await expect(favoriteLinks(favorites)).toHaveText(SEEDED_FAVORITE_ORDER);
+    await expectSaved(grip);
+  });
+
+  test("moves a favorite dragged by its grip, and keeps the order across a reload", async ({ page }) => {
+    await page.goto("/");
+    const tree = page.getByRole("complementary").getByRole("navigation", { name: "Folders" });
+    const favorites = favoritesList(tree);
+    const grip = favorites.getByRole("button", { name: "Reorder mobile-app" });
+
+    // Drag the last favorite above the first one's middle.
+    await folderLink(favorites, "mobile-app").hover();
+    const gripBox = await boxOf(grip);
+    const firstRowBox = await boxOf(folderLink(favorites, "acme-api"));
+    await page.mouse.move(gripBox.x + gripBox.width / 2, gripBox.y + gripBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(gripBox.x + gripBox.width / 2, firstRowBox.y + 4, { steps: 10 });
+    await page.mouse.up();
+    await expect(favoriteLinks(favorites)).toHaveText([/^mobile-app/, /^acme-api/, /^web-dashboard/]);
+    await expectSaved(grip);
+
+    await page.reload();
+    await expect(favoriteLinks(favorites)).toHaveText([/^mobile-app/, /^acme-api/, /^web-dashboard/]);
+
+    // Back to the seeded order, for the tests after this one.
+    await grip.focus();
+    await page.keyboard.press("Alt+ArrowDown");
+    await expect(favoriteLinks(favorites)).toHaveText([/^acme-api/, /^mobile-app/, /^web-dashboard/]);
+    await expectSaved(grip);
+    await page.keyboard.press("Alt+ArrowDown");
+    await expect(favoriteLinks(favorites)).toHaveText(SEEDED_FAVORITE_ORDER);
+    await expectSaved(grip);
   });
 });
 

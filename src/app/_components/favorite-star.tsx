@@ -11,7 +11,7 @@ import { Star } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { ControlFailure } from "@/app/_components/control-bubble";
+import { type ControlBubbleProps, ControlFailure } from "@/app/_components/control-bubble";
 import { SidebarLink } from "@/app/_components/sidebar-link";
 import { setFolderFavorite } from "@/app/actions";
 import { cn } from "@/lib/utils-cn";
@@ -21,7 +21,8 @@ const FAILURE_TEXT = "The favorite could not be saved. Hover for the reason, the
 
 /**
  * A sidebar entry selecting the Folder at `folderPath`, with its star beside
- * the link in a gutter the link keeps free, so the star never covers the cost.
+ * the link in a gutter the link keeps free, so the star never covers the cost;
+ * a `grip` (a favorite's reorder handle) widens the gutter to sit left of the star.
  *
  * @example
  * <FolderLinkWithStar folderPath={node.path} folderLabel={node.label} isFavorite={favoritePaths.has(node.path)}>
@@ -32,19 +33,25 @@ export function FolderLinkWithStar({
   folderPath,
   folderLabel,
   isFavorite,
+  grip,
   className,
   children,
-}: Omit<FavoriteStarProps, "isRevealedByRow"> & { children: React.ReactNode }) {
+}: Omit<FavoriteStarProps, "isRevealedByRow" | "failureAlignedEdge"> & {
+  grip?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <div className={cn("group/row relative min-w-0", className)}>
-      <SidebarLink scope={{ folder: folderPath }} title={folderPath} className="pr-9">
+      <SidebarLink scope={{ folder: folderPath }} title={folderPath} className={grip ? "pr-15" : "pr-9"}>
         {children}
       </SidebarLink>
+      {grip && <div className="absolute top-1/2 right-7 flex -translate-y-1/2">{grip}</div>}
       <FavoriteStar
         folderPath={folderPath}
         folderLabel={folderLabel}
         isFavorite={isFavorite}
         isRevealedByRow
+        failureAlignedEdge="leftFromLg"
         className="absolute top-1/2 right-1 -translate-y-1/2"
       />
     </div>
@@ -65,6 +72,8 @@ export type FavoriteStarProps = {
    * star always shows.
    */
   isRevealedByRow?: boolean;
+  /** The star's edge its failure bubble lines up with, as {@link ControlBubbleProps} `alignedEdge` reads it. */
+  failureAlignedEdge?: ControlBubbleProps["alignedEdge"];
   className?: string;
 };
 
@@ -78,6 +87,7 @@ export function FavoriteStar({
   folderLabel,
   isFavorite: isFavoriteAsRendered,
   isRevealedByRow = false,
+  failureAlignedEdge = "right",
   className,
 }: FavoriteStarProps) {
   const router = useRouter();
@@ -136,7 +146,12 @@ export function FavoriteStar({
       >
         <Star className={cn("size-3.5", isFavorite && "fill-current")} aria-hidden />
       </button>
-      <ControlFailure text={FAILURE_TEXT} failure={failure} onDismiss={() => setFailure(null)} />
+      <ControlFailure
+        text={FAILURE_TEXT}
+        failure={failure}
+        onDismiss={() => setFailure(null)}
+        alignedEdge={failureAlignedEdge}
+      />
     </div>
   );
 }

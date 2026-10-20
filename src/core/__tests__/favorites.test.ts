@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { favoriteFolder, listFavoriteFolders, unfavoriteFolder } from "@/core/favorites";
+import { favoriteFolder, listFavoriteFolders, moveFavoriteFolder, unfavoriteFolder } from "@/core/favorites";
 import { readSettings, writeSettings } from "@/core/settings";
 
 describe("favorites", () => {
@@ -70,6 +70,89 @@ describe("favorites", () => {
       "/home/me/dev/api",
       "/home/me/dev/docs",
     ]);
+  });
+
+  describe("moving a favorite", () => {
+    beforeEach(async () => {
+      await writeSettings(
+        { live: true, favorites: ["/home/me/dev/web", "/home/me/dev/api", "/home/me/dev/docs"] },
+        settingsPath,
+      );
+    });
+
+    it("puts a favorite immediately before another", async () => {
+      await moveFavoriteFolder("/home/me/dev/docs", "/home/me/dev/api", settingsPath);
+
+      await expect(listFavoriteFolders(settingsPath)).resolves.toEqual([
+        "/home/me/dev/web",
+        "/home/me/dev/docs",
+        "/home/me/dev/api",
+      ]);
+    });
+
+    it("moves a favorite to the top", async () => {
+      await moveFavoriteFolder("/home/me/dev/api", "/home/me/dev/web", settingsPath);
+
+      await expect(listFavoriteFolders(settingsPath)).resolves.toEqual([
+        "/home/me/dev/api",
+        "/home/me/dev/web",
+        "/home/me/dev/docs",
+      ]);
+    });
+
+    it("moves a favorite last when it goes before none", async () => {
+      await moveFavoriteFolder("/home/me/dev/web", null, settingsPath);
+
+      await expect(listFavoriteFolders(settingsPath)).resolves.toEqual([
+        "/home/me/dev/api",
+        "/home/me/dev/docs",
+        "/home/me/dev/web",
+      ]);
+    });
+
+    it("keeps a hidden favorite between its neighbours when a shown one moves past it", async () => {
+      // `/home/me/dev/api` has no Conversations: the Favorites section shows web, then docs.
+      await moveFavoriteFolder("/home/me/dev/web", null, settingsPath);
+      await moveFavoriteFolder("/home/me/dev/web", "/home/me/dev/docs", settingsPath);
+
+      await expect(listFavoriteFolders(settingsPath)).resolves.toEqual([
+        "/home/me/dev/api",
+        "/home/me/dev/web",
+        "/home/me/dev/docs",
+      ]);
+    });
+
+    it("leaves the favorites as they were when the moved Folder is no favorite", async () => {
+      await moveFavoriteFolder("/home/me/dev/gone", "/home/me/dev/web", settingsPath);
+
+      await expect(listFavoriteFolders(settingsPath)).resolves.toEqual([
+        "/home/me/dev/web",
+        "/home/me/dev/api",
+        "/home/me/dev/docs",
+      ]);
+    });
+
+    it("leaves the favorites as they were when the Folder to go before is no favorite", async () => {
+      await moveFavoriteFolder("/home/me/dev/docs", "/home/me/dev/gone", settingsPath);
+
+      await expect(listFavoriteFolders(settingsPath)).resolves.toEqual([
+        "/home/me/dev/web",
+        "/home/me/dev/api",
+        "/home/me/dev/docs",
+      ]);
+    });
+
+    it("keeps a favorite added while it moves, and the user's Live choice", async () => {
+      await Promise.all([
+        moveFavoriteFolder("/home/me/dev/docs", "/home/me/dev/web", settingsPath),
+        favoriteFolder("/home/me/dev/cli", settingsPath),
+      ]);
+
+      await expect(readSettings(settingsPath)).resolves.toEqual({
+        live: true,
+        favorites: ["/home/me/dev/docs", "/home/me/dev/web", "/home/me/dev/api", "/home/me/dev/cli"],
+      });
+    });
   });
 
   it("keeps the user's Live choice when favoriting", async () => {

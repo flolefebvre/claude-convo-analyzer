@@ -1,7 +1,7 @@
 "use server";
 
 // Server Actions for the app: the Refresh, the Live switch, the Recorder's
-// Start and Stop and the Favorite star, its mutations — reads (the list, the
+// Start and Stop, the Favorite star and the favorites' order, its mutations — reads (the list, the
 // expanded row's detail) are served by the server components via the `_lib`
 // seams, driven by the URL, and the Recorder's status by `GET /api/recorder`.
 // A mutation with nothing to compose calls the core directly (this is a server
@@ -13,7 +13,7 @@ import { actionPipe } from "@flefebvre/next-pipe/pipes";
 import { error, success } from "@flefebvre/next-pipe/server";
 import { z } from "zod";
 
-import { favoriteFolder, unfavoriteFolder } from "@/core/favorites";
+import { favoriteFolder, moveFavoriteFolder, unfavoriteFolder } from "@/core/favorites";
 import { getLive, switchLive } from "@/app/_lib/live";
 import { readConfiguredRecorderStatus, requestStopOfRecorder, startConfiguredRecorder } from "@/app/_lib/recorder";
 import { getPublishedRefreshRunner, startOrJoinRefresh } from "@/app/_lib/refresh-events";
@@ -126,6 +126,31 @@ export const setFolderFavorite = actionPipe(folderFavoriteSchema).handle(async (
     return error("favoriteNotSaved", { message: messageOf(cause) });
   }
   return success({ isFavorite: input.isFavorite });
+});
+
+/** What `moveFavorite` reads: the favorite's absolute path, and the path of the favorite it goes before, or null for last. */
+const favoriteMoveSchema = z.object({
+  path: z.string().startsWith("/"),
+  before: z.string().startsWith("/").nullable(),
+});
+
+/**
+ * Move the favorite at `path` immediately before the favorite `before`, or
+ * last when `before` is null, and save the order; the favorites the Favorites
+ * section hides keep their places. A save that failed comes back as an error
+ * with the reason.
+ *
+ * @example
+ * const result = await moveFavorite({ path: "/home/me/dev/acme-api", before: null });
+ * if (result.status === "error") show(result.error.data.message);
+ */
+export const moveFavorite = actionPipe(favoriteMoveSchema).handle(async ({ input }) => {
+  try {
+    await moveFavoriteFolder(input.path, input.before);
+  } catch (cause) {
+    return error("favoriteNotMoved", { message: messageOf(cause) });
+  }
+  return success({ path: input.path, before: input.before });
 });
 
 function messageOf(cause: unknown): string {

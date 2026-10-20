@@ -63,8 +63,8 @@ const PROJECTS: readonly SeedProject[] = [
   { path: path.join(os.homedir(), "dev", "docs-site"), repo: "acme/docs-site" },
 ];
 
-/** The Folders the seeded settings file favorites: the first two repos, in that order. */
-export const SEED_FAVORITE_PATHS: readonly string[] = [PROJECTS[0].path, PROJECTS[1].path];
+/** The Folders the seeded settings file favorites, in that order: three repos, so a favorite can move into the middle. */
+export const SEED_FAVORITE_PATHS: readonly string[] = [PROJECTS[0].path, PROJECTS[1].path, PROJECTS[3].path];
 
 /** The git worktree of the first repo that a continuation is resumed in (issue #120). */
 export const FAMILY_WORKTREE_PROJECT_PATH = `${PROJECTS[0].path}/.claude/worktrees/billing-spike`;

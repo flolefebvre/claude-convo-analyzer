@@ -80,11 +80,11 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     });
   });
 
-  it("favorites two seeded Projects", async () => {
+  it("favorites three seeded Projects", async () => {
     const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
     const projectPaths = new Set((await listConversations({ dbPath: seed.dbPath })).map((c) => c.project.path));
 
-    expect(SEED_FAVORITE_PATHS).toHaveLength(2);
+    expect(SEED_FAVORITE_PATHS).toHaveLength(3);
     for (const favoritePath of SEED_FAVORITE_PATHS) expect(projectPaths).toContain(favoritePath);
   });
 
