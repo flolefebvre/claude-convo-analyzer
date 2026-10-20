@@ -1237,6 +1237,62 @@ function recordableConversations(g: Gen): Conversation[] {
   ];
 }
 
+/** The seeded Conversation whose main agent leaves plan mode, then messages a peer (issue #149). */
+export const PLAN_HANDOFF_TITLE = "Hand the search plan to the docs team";
+
+/** The plan its ExitPlanMode call proposes, as a model writes one. */
+const HANDOFF_PLAN =
+  "# Search API handoff\n\n## Context\n\nThe ranking rewrite ships behind a flag.\n\n## Steps\n\n" +
+  "- document the new `rank` parameter\n- keep the old endpoint answering";
+
+/** The message its SendMessage call sends. */
+const HANDOFF_MESSAGE =
+  "## Search API is ready\n\nThe new `rank` parameter is live behind a flag.\n\n" +
+  "- the old endpoint keeps answering\n- docs freeze still Friday";
+
+/**
+ * A Conversation whose main agent calls ExitPlanMode, approved, then
+ * SendMessage to another session, its delivery receipt stored as the JSON
+ * object Claude Code writes.
+ *
+ * Drawn last, so every earlier Conversation keeps its draws.
+ */
+function planHandoffConversation(g: Gen, index: number): Conversation {
+  const cwd = PROJECTS[5].path;
+  const logFolderName = logFolderNameOf(cwd);
+  const model = MODELS[0];
+  let t = g.now - 5 * 3_600_000;
+  const lines = [
+    JSON.stringify({ type: "ai-title", aiTitle: PLAN_HANDOFF_TITLE }),
+    userPrompt(g, t, cwd, "Plan the search API handoff, then tell the docs session."),
+  ];
+  const call = (name: string, input: object, result: object) => {
+    const toolUseId = g.uid("tu");
+    lines.push(
+      assistantTurn(g, (t += 30_000), cwd, model, { toolUses: [{ type: "tool_use", id: toolUseId, name, input }] }),
+    );
+    lines.push(toolResult(g, (t += 5_000), cwd, toolUseId, result));
+  };
+  call("ExitPlanMode", { plan: HANDOFF_PLAN }, { plan: HANDOFF_PLAN, isAgent: false });
+  const to = "docs-site release";
+  const summary = "Search API is ready";
+  call(
+    "SendMessage",
+    { to, summary, message: HANDOFF_MESSAGE },
+    { success: true, message: `“${summary}” → ${to}`, msg_id: g.uid("msg") },
+  );
+  lines.push(assistantTurn(g, (t += 20_000), cwd, model));
+
+  return {
+    logFolderName,
+    projectPath: cwd,
+    sessionId: `seed-${logFolderName.slice(1)}-${index}`,
+    mainLines: lines,
+    subAgents: [],
+    resumePoint: { uuid: lastAssistantUuid(lines), ms: t },
+  };
+}
+
 /** Every seeded Conversation, its conversations starting up to three weeks before `anchor`. */
 function buildCorpus(anchor: number): Conversation[] {
   const g = createGen(anchor);
@@ -1254,6 +1310,7 @@ function buildCorpus(anchor: number): Conversation[] {
   conversations.push(...projectPathConversations(g, conversations.length));
   conversations.push(...scratchConversations(g, conversations.length));
   conversations.push(...recordableConversations(g));
+  conversations.push(planHandoffConversation(g, conversations.length));
   return conversations;
 }
 
