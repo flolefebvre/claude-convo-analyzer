@@ -11,7 +11,7 @@
 // live params without a full reload.
 //
 // ADR-0002 boundary: this imports NO core values — the label and figures come
-// in as `children`. Data filtering stays server-side from the URL.
+// in as `children`, the cost share as a number. Data filtering stays server-side from the URL.
 
 import { useSearchParams } from "next/navigation";
 
@@ -29,12 +29,15 @@ import { cn } from "@/lib/utils-cn";
  */
 export function SidebarLink({
   scope,
+  costShare,
   title,
   className,
   children,
 }: {
   /** The Folder scope this entry selects; `{}` for "All folders". */
   scope: FolderScope;
+  /** The entry's share of the total spend, in `[0, 1]`, drawn as a data bar behind it; none on "All folders". */
+  costShare?: number;
   title?: string;
   className?: string;
   children: React.ReactNode;
@@ -49,13 +52,16 @@ export function SidebarLink({
       scroll={false}
       title={title}
       aria-current={active ? "true" : undefined}
+      // The data bar and the active wash are both this element's background,
+      // so they always span the same box, at any indent.
+      style={costShare === undefined ? undefined : ({ "--share": `${costShare * 100}%` } as React.CSSProperties)}
       className={cn(
-        // A block (not inline-flex) so each entry can stack its label/cost over a
-        // cost bar. The active scope gets a faint clay wash + a clay left marker
-        // (the `before` bar) — the signature accent, used sparingly.
-        "relative block rounded-md px-3 py-2 text-sm transition-colors",
+        // The active scope gets a clay wash + a clay left marker (the `before`
+        // bar) — the signature accent, used sparingly.
+        "relative flex h-7 items-center rounded-md px-2 text-sm transition-colors",
+        costShare !== undefined && "share-bar",
         active
-          ? "bg-cost-muted text-foreground before:absolute before:top-1/2 before:left-0 before:h-7 before:w-[3px] before:-translate-y-1/2 before:rounded-r before:bg-cost"
+          ? "bg-cost-muted text-foreground before:absolute before:top-1/2 before:left-0 before:h-5 before:w-[3px] before:-translate-y-1/2 before:rounded-r before:bg-cost"
           : "text-muted-foreground hover:bg-muted/50 hover:text-foreground has-data-link-pending:bg-muted/50 has-data-link-pending:text-foreground",
         className,
       )}

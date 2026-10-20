@@ -21,7 +21,7 @@ import { useSearchParams } from "next/navigation";
 import { useId, useState } from "react";
 
 import { FolderLinkWithStar } from "@/app/_components/favorite-star";
-import { FolderRow } from "@/app/_components/folder-rows";
+import { FolderRow, SidebarLeadingSlot, folderCostShare } from "@/app/_components/folder-rows";
 import { SidebarLink } from "@/app/_components/sidebar-link";
 import { resolveLiveFolderScope } from "@/app/_lib/folder-scope";
 import { type FolderNode, initiallyOpenFolderPaths, openPathsDownToScope } from "@/app/_lib/folder-tree";
@@ -82,7 +82,7 @@ type TreeState = {
 /** One level of the tree. */
 function FolderList({ nodes, ...tree }: TreeState & { nodes: FolderNode[] }) {
   return (
-    <ul className="flex flex-col gap-1">
+    <ul className="flex flex-col">
       {nodes.map((node) => (
         <FolderItem key={node.path} node={node} {...tree} />
       ))}
@@ -100,44 +100,43 @@ function FolderItem({ node, ...tree }: TreeState & { node: FolderNode }) {
   const isOpen = hasSubFolders && tree.openPaths.has(node.path);
   return (
     <li>
-      <div className="flex items-start">
-        {hasSubFolders ? (
-          <button
-            type="button"
-            aria-expanded={isOpen}
-            aria-controls={isOpen ? childrenId : undefined}
-            aria-label={`${node.label} sub-folders`}
-            onClick={() => tree.toggle(node.path)}
-            className="group/chevron mt-2 grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground aria-expanded:text-foreground"
-          >
-            <ChevronRight
-              className="size-4 transition-transform duration-150 group-aria-expanded/chevron:rotate-90"
-              aria-hidden
-            />
-          </button>
-        ) : (
-          <span aria-hidden className="w-6 shrink-0" />
-        )}
-        <FolderLinkWithStar
-          folderPath={node.path}
-          folderLabel={node.label}
-          isFavorite={tree.favoritePathSet.has(node.path)}
-          className="flex-1"
-        >
-          <FolderRow label={node.label} totals={node} totalCostUsd={tree.totalCostUsd} />
-        </FolderLinkWithStar>
-      </div>
+      <FolderLinkWithStar
+        folderPath={node.path}
+        folderLabel={node.label}
+        isFavorite={tree.favoritePathSet.has(node.path)}
+        costShare={folderCostShare(node, tree.totalCostUsd)}
+        leading={
+          hasSubFolders && (
+            <button
+              type="button"
+              aria-expanded={isOpen}
+              aria-controls={isOpen ? childrenId : undefined}
+              aria-label={`${node.label} sub-folders`}
+              onClick={() => tree.toggle(node.path)}
+              className="group/chevron grid size-5 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground aria-expanded:text-foreground"
+            >
+              <ChevronRight
+                className="size-4 transition-transform duration-150 group-aria-expanded/chevron:rotate-90"
+                aria-hidden
+              />
+            </button>
+          )
+        }
+      >
+        <FolderRow label={node.label} totals={node} />
+      </FolderLinkWithStar>
       {isOpen && (
-        <div id={childrenId} className="mt-1 ml-3">
+        <div id={childrenId} className="ml-2.5 border-l pl-2.5">
           {node.thisFolder && (
-            <div className="mb-1 flex items-start">
-              <span aria-hidden className="w-6 shrink-0" />
+            <div className="flex items-center">
+              <SidebarLeadingSlot />
               <SidebarLink
                 scope={{ folder: node.path, thisFolderOnly: true }}
+                costShare={folderCostShare(node.thisFolder, tree.totalCostUsd)}
                 title={`${node.path}, its own conversations only`}
                 className="min-w-0 flex-1 pr-9"
               >
-                <FolderRow label="(this folder)" totals={node.thisFolder} totalCostUsd={tree.totalCostUsd} />
+                <FolderRow label="(this folder)" totals={node.thisFolder} />
               </SidebarLink>
             </div>
           )}

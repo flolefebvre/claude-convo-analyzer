@@ -1,70 +1,65 @@
-// The two lines of every folder sidebar entry — label and cost, then a cost bar
-// and the conversation count — shared by the server-rendered "All folders"
-// anchor and the client folder tree. Hook-free, so either side can render it.
+// The one line of every folder sidebar entry — label, then the conversation
+// count and the cost in fixed, right-aligned columns that line up down the
+// whole sidebar — shared by the server-rendered "All folders" anchor, the
+// Favorites and the client folder tree. Hook-free, so either side can render it.
 //
 // ADR-0002 boundary: plain numbers and labels in, no core import.
 
-import { CostBar } from "@/app/_components/cost-bar";
 import type { FolderTotals } from "@/app/_lib/folder-tree";
 import { formatCount, formatGrandTotalCost } from "@/app/_lib/format";
 
-/**
- * The "All folders" anchor: the same two lines as a Folder row — label and
- * cost, then the count — with no bar (it is the whole, not a share).
- *
- * @example <AllFoldersRow totals={{ count: 64, costUsd: 120.5, unpriced: false }} />
- */
-export function AllFoldersRow({ totals }: { totals: FolderTotals }) {
-  return (
-    <>
-      <RowHead label={<span className="font-medium">All folders</span>} totals={totals} />
-      <div className="mt-1 flex items-center justify-end">
-        <ConversationCount count={totals.count} spelled />
-      </div>
-    </>
-  );
-}
+/** The count column's width; the sidebar skeleton draws the same. */
+export const FOLDER_ROW_COUNT_COLUMN = "min-w-8";
+
+/** The cost column's width; the sidebar skeleton draws the same. */
+export const FOLDER_ROW_COST_COLUMN = "min-w-16";
 
 /**
- * A Folder entry: its label and summed cost, then a cost bar (scaled to the
- * total spend → its share of the whole) with the conversation count.
+ * A sidebar entry's line: its label, truncated, then its conversation count
+ * and summed cost. `isCountSpelledOnHover` puts "N conversations" in the
+ * count's tooltip — on "All folders", which teaches what the bare figures mean.
  *
- * @example <FolderRow label="acme-api" totals={node} totalCostUsd={totals.costUsd} />
+ * @example <FolderRow label={node.label} totals={node} />
  */
 export function FolderRow({
   label,
   totals,
-  totalCostUsd,
+  isCountSpelledOnHover = false,
 }: {
   label: React.ReactNode;
   totals: FolderTotals;
-  /** The spend across every Project, which every bar is a share of. */
-  totalCostUsd: number;
+  isCountSpelledOnHover?: boolean;
 }) {
+  const countNoun = `conversation${totals.count === 1 ? "" : "s"}`;
   return (
-    <>
-      <RowHead label={label} totals={totals} />
-      <div className="mt-1 flex items-center gap-3">
-        <CostBar value={totals.costUsd} max={totalCostUsd} className="h-1 min-w-0 flex-1" />
-        <ConversationCount count={totals.count} />
-      </div>
-    </>
-  );
-}
-
-/** Line one of every entry: the label, truncated, and its cost. */
-function RowHead({ label, totals }: { label: React.ReactNode; totals: FolderTotals }) {
-  return (
-    <div className="flex items-baseline justify-between gap-2">
-      <span className="truncate">{label}</span>
+    <span className="flex min-w-0 flex-1 items-center gap-2">
+      <span className="min-w-0 flex-1 truncate">{label}</span>
       <span
-        className="shrink-0 text-xs text-muted-foreground"
+        className={`${FOLDER_ROW_COUNT_COLUMN} shrink-0 text-right text-xs text-muted-foreground`}
+        {...(isCountSpelledOnHover ? { title: `${formatCount(totals.count)} ${countNoun}` } : {})}
+      >
+        {formatCount(totals.count)}
+        <span className="sr-only"> {countNoun}</span>
+      </span>
+      <span
+        className={`${FOLDER_ROW_COST_COLUMN} shrink-0 text-right text-xs text-muted-foreground`}
         {...(totals.unpriced ? { title: "Includes unpriced model usage — a lower bound." } : {})}
       >
         {formatFolderCost(totals)}
       </span>
-    </div>
+    </span>
   );
+}
+
+/**
+ * The 20px column left of every sidebar link: a tree row's chevron, a
+ * favorite's grip, or empty — so every label starts on the same line, and a
+ * level of the tree indents by exactly its width.
+ *
+ * @example <SidebarLeadingSlot>{chevron}</SidebarLeadingSlot>
+ */
+export function SidebarLeadingSlot({ children }: { children?: React.ReactNode }) {
+  return <span className="flex w-5 shrink-0 justify-center">{children}</span>;
 }
 
 /**
@@ -76,14 +71,11 @@ export function formatFolderCost(totals: Pick<FolderTotals, "costUsd" | "unprice
   return `${totals.unpriced ? "~" : ""}${formatGrandTotalCost(totals.costUsd)}`;
 }
 
-/** The entry's conversation count: worded on the "All folders" anchor, which
- *  teaches what the bare figures under it mean, and always named for screen readers. */
-function ConversationCount({ count, spelled = false }: { count: number; spelled?: boolean }) {
-  const noun = `conversation${count === 1 ? "" : "s"}`;
-  return (
-    <span className="shrink-0 text-xs text-muted-foreground">
-      {formatCount(count)}
-      <span className={spelled ? undefined : "sr-only"}> {noun}</span>
-    </span>
-  );
+/**
+ * A Folder's share of the total spend, in `[0, 1]` — how far its row's data bar reaches.
+ *
+ * @example folderCostShare(node, totals.costUsd) // 0.25
+ */
+export function folderCostShare(totals: Pick<FolderTotals, "costUsd">, totalCostUsd: number): number {
+  return totalCostUsd > 0 ? Math.min(1, Math.max(0, totals.costUsd / totalCostUsd)) : 0;
 }

@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { type ControlBubbleProps, ControlFailure } from "@/app/_components/control-bubble";
+import { SidebarLeadingSlot } from "@/app/_components/folder-rows";
 import { SidebarLink } from "@/app/_components/sidebar-link";
 import { setFolderFavorite } from "@/app/actions";
 import { cn } from "@/lib/utils-cn";
@@ -20,32 +21,41 @@ import { cn } from "@/lib/utils-cn";
 const FAILURE_TEXT = "The favorite could not be saved. Hover for the reason, then try again.";
 
 /**
- * A sidebar entry selecting the Folder at `folderPath`, with its star beside
- * the link in a gutter the link keeps free, so the star never covers the cost;
- * a `grip` (a favorite's reorder handle) widens the gutter to sit left of the star.
+ * A sidebar entry selecting the Folder at `folderPath`: its `leading` control
+ * (a tree row's chevron, a favorite's reorder grip, or nothing) in the
+ * {@link SidebarLeadingSlot}, then the link with its cost-share bar, then its
+ * star in a gutter the link keeps free, so the star never covers the cost.
  *
  * @example
- * <FolderLinkWithStar folderPath={node.path} folderLabel={node.label} isFavorite={favoritePaths.has(node.path)}>
- *   <FolderRow label={node.label} totals={node} totalCostUsd={totalCostUsd} />
+ * <FolderLinkWithStar folderPath={node.path} folderLabel={node.label} isFavorite={favoritePaths.has(node.path)} costShare={0.25} leading={chevron}>
+ *   <FolderRow label={node.label} totals={node} />
  * </FolderLinkWithStar>
  */
 export function FolderLinkWithStar({
   folderPath,
   folderLabel,
   isFavorite,
-  grip,
+  costShare,
+  leading,
   className,
   children,
 }: Omit<FavoriteStarProps, "isRevealedByRow" | "failureAlignedEdge"> & {
-  grip?: React.ReactNode;
+  /** The Folder's share of the total spend, in `[0, 1]`. */
+  costShare: number;
+  leading?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
-    <div className={cn("group/row relative min-w-0", className)}>
-      <SidebarLink scope={{ folder: folderPath }} title={folderPath} className={grip ? "pr-15" : "pr-9"}>
+    <div className={cn("group/row relative flex min-w-0 items-center", className)}>
+      <SidebarLeadingSlot>{leading}</SidebarLeadingSlot>
+      <SidebarLink
+        scope={{ folder: folderPath }}
+        costShare={costShare}
+        title={folderPath}
+        className="min-w-0 flex-1 pr-9"
+      >
         {children}
       </SidebarLink>
-      {grip && <div className="absolute top-1/2 right-7 flex -translate-y-1/2">{grip}</div>}
       <FavoriteStar
         folderPath={folderPath}
         folderLabel={folderLabel}
