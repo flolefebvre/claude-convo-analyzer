@@ -6,6 +6,7 @@ import {
   formatDuplicateSessionDetail,
   formatOutdatedParserNotice,
   formatRefreshProgress,
+  formatRefreshProgressCounts,
   formatRefreshSummary,
 } from "@/app/_lib/refresh-summary";
 
@@ -125,5 +126,11 @@ describe("formatOutdatedParserNotice", () => {
 describe("formatRefreshProgress", () => {
   it("shows the committed count out of the total, with thousands separators", () => {
     expect(formatRefreshProgress({ done: 1200, total: 2450 })).toBe("1,200 / 2,450 conversations");
+  });
+});
+
+describe("formatRefreshProgressCounts", () => {
+  it("shows the same counts as the progress, without the noun", () => {
+    expect(formatRefreshProgressCounts({ done: 1200, total: 2450 })).toBe("1,200 / 2,450");
   });
 });

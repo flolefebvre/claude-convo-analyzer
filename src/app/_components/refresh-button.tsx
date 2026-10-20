@@ -4,7 +4,8 @@
 // running, through the `refreshConversations` server action, which returns at
 // once (ADR-0002: no core import from a client file). Everything after that
 // arrives on the `refresh` Channel: every open page's control follows the same
-// run, with `n / m conversations` as its label while it runs.
+// run, with `n / m conversations` as its label while it runs (`n / m` on the
+// app bar's, whose screen-reader label keeps the noun).
 //
 // It starts from a Snapshot of the run taken by its server part
 // (`current-refresh-button.tsx`), so a page opened mid-run shows the count at once,
@@ -32,7 +33,12 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { ControlBubble } from "@/app/_components/control-bubble";
 import { refreshConversations } from "@/app/actions";
 import { isRerenderDue, type RefreshActivity, type RefreshRunId } from "@/app/_lib/refresh-activity";
-import { formatDuplicateSessionDetail, formatRefreshProgress, formatRefreshSummary } from "@/app/_lib/refresh-summary";
+import {
+  formatDuplicateSessionDetail,
+  formatRefreshProgress,
+  formatRefreshProgressCounts,
+  formatRefreshSummary,
+} from "@/app/_lib/refresh-summary";
 import { channels, useChannel } from "@/app/_lib/sse.client";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils-cn";
@@ -52,11 +58,14 @@ type Message = {
   id: number;
 };
 
-/** How the button looks: its shadcn variant and size, and whether its label collapses below desktop. */
+/** How the button looks: its shadcn variant and size, and whether its label collapses below 1280px. */
 type RefreshButtonLook = {
   variant?: React.ComponentProps<typeof Button>["variant"];
   size?: React.ComponentProps<typeof Button>["size"];
-  /** Hides the label below the `lg` breakpoint, leaving the icon (the app bar's phone and tablet layouts). */
+  /**
+   * The app bar's look: below the `xl` breakpoint (1280px) the label is hidden,
+   * leaving the icon; from it, a running Refresh shows its counts alone ("n / m").
+   */
   collapsible?: boolean;
 };
 
@@ -182,7 +191,10 @@ export function RefreshButton({ snapshot, reportsOutcome = false, ...look }: Ref
   }
 
   const isRunning = activity.isRunning || isAwaitingRun;
-  const label = activity.isRunning && activity.progress !== null ? formatRefreshProgress(activity.progress) : "Refresh";
+  const progress = activity.isRunning ? activity.progress : null;
+  const label = progress !== null ? formatRefreshProgress(progress) : "Refresh";
+  // The app bar has no room for the noun; its screen-reader label keeps it.
+  const shownLabel = progress !== null && look.collapsible ? formatRefreshProgressCounts(progress) : label;
 
   return (
     // `relative` so the result bubble can hang below the button without growing
@@ -191,6 +203,7 @@ export function RefreshButton({ snapshot, reportsOutcome = false, ...look }: Ref
       <RefreshButtonFace
         {...look}
         label={label}
+        shownLabel={shownLabel}
         isRunning={isRunning}
         isDisabled={isClickPending}
         onClick={handleClick}
@@ -230,16 +243,27 @@ export function IdleRefreshButton(look: RefreshButtonLook) {
   );
 }
 
-/** The button itself: the icon spins while a Refresh runs, the label carries its count. */
+/**
+ * The button itself: the icon spins while a Refresh runs, the label carries its
+ * count. A `shownLabel` other than `label` is what the eye reads, while
+ * screen readers read `label`.
+ */
 function RefreshButtonFace({
   variant = "default",
   size = "default",
   collapsible = false,
   label,
+  shownLabel = label,
   isRunning,
   isDisabled,
   onClick,
-}: RefreshButtonLook & { label: string; isRunning: boolean; isDisabled: boolean; onClick?: () => void }) {
+}: RefreshButtonLook & {
+  label: string;
+  shownLabel?: string;
+  isRunning: boolean;
+  isDisabled: boolean;
+  onClick?: () => void;
+}) {
   return (
     <Button
       variant={variant}
@@ -248,10 +272,19 @@ function RefreshButtonFace({
       disabled={isDisabled}
       aria-busy={isRunning}
       title="Re-scan your Claude Code logs"
-      className={cn("tabular-nums", collapsible && "max-lg:w-8 max-lg:px-0")}
+      className={cn("tabular-nums", collapsible && "max-xl:w-8 max-xl:px-0")}
     >
       <RefreshCw className={cn(isRunning && "animate-spin")} aria-hidden />
-      <span className={cn(collapsible && "max-lg:sr-only")}>{label}</span>
+      {shownLabel === label ? (
+        <span className={cn(collapsible && "max-xl:sr-only")}>{label}</span>
+      ) : (
+        <>
+          <span aria-hidden className={cn(collapsible && "max-xl:hidden")}>
+            {shownLabel}
+          </span>
+          <span className="sr-only">{label}</span>
+        </>
+      )}
     </Button>
   );
 }

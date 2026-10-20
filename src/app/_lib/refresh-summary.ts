@@ -43,12 +43,22 @@ export function formatRefreshSummary(summary: RefreshSummary): string {
 }
 
 /**
- * A running Refresh's progress, for the Refresh control's label.
+ * A running Refresh's progress, for the Refresh control's label and accessible name.
  *
  * @example formatRefreshProgress({ done: 1200, total: 2450 }) // "1,200 / 2,450 conversations"
  */
-export function formatRefreshProgress({ done, total }: RefreshProgress): string {
-  return `${formatCount(done)} / ${formatCount(total)} conversations`;
+export function formatRefreshProgress(progress: RefreshProgress): string {
+  return `${formatRefreshProgressCounts(progress)} conversations`;
+}
+
+/**
+ * A running Refresh's progress as its two counts alone, for the app bar's
+ * label, which has no room for the noun.
+ *
+ * @example formatRefreshProgressCounts({ done: 1200, total: 2450 }) // "1,200 / 2,450"
+ */
+export function formatRefreshProgressCounts({ done, total }: RefreshProgress): string {
+  return `${formatCount(done)} / ${formatCount(total)}`;
 }
 
 /**
