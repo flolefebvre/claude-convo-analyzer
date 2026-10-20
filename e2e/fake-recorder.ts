@@ -10,6 +10,8 @@ import { RECORDER_HEALTH_PATH, RECORDER_STOP_PATH, type RecorderHealth } from "@
 export type FakeRecorder = {
   /** Settles once the app has asked it to stop; it then stops listening, as the real one does. */
   stopReceived: Promise<void>;
+  /** Whether the app has asked it to stop yet. */
+  hasReceivedStop(): boolean;
   /** Stop listening now, if it still does. */
   close(): Promise<void>;
 };
@@ -29,6 +31,7 @@ export async function startFakeRecorder({
   port: number;
   sessionIds: string[];
 }): Promise<FakeRecorder> {
+  let hasReceivedStop = false;
   let resolveStopReceived = () => {};
   const stopReceived = new Promise<void>((resolve) => (resolveStopReceived = resolve));
 
@@ -45,6 +48,7 @@ export async function startFakeRecorder({
       return;
     }
     if (request.method === "POST" && request.url === RECORDER_STOP_PATH) {
+      hasReceivedStop = true;
       response.writeHead(202).end(() => {
         resolveStopReceived();
         void close();
@@ -66,5 +70,5 @@ export async function startFakeRecorder({
     server.once("error", reject);
     server.listen(port, "127.0.0.1", () => resolve());
   });
-  return { stopReceived, close };
+  return { stopReceived, hasReceivedStop: () => hasReceivedStop, close };
 }

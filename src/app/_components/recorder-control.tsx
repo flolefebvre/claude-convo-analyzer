@@ -197,11 +197,12 @@ export function RecorderControl({ recorderStatus: statusAsRendered }: { recorder
                 : `${unconfirmedSessionCount} sessions sent requests in the last 15 minutes; they will lose the API.`}
             </p>
             <div className="flex justify-end gap-2">
-              <Button size="sm" variant="ghost" onClick={() => setUnconfirmedSessionCount(null)}>
+              {/* The focus goes to the safe answer: a held or double Enter on Stop then bounces Stop → Cancel → Stop
+                  and never answers the question for the user. Stop anyway is one Tab away. */}
+              <Button autoFocus size="sm" variant="ghost" onClick={() => setUnconfirmedSessionCount(null)}>
                 Cancel
               </Button>
               <PendingButton
-                autoFocus
                 size="sm"
                 variant="destructive"
                 isPending={isActionPending}
