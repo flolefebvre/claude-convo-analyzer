@@ -19,6 +19,9 @@ const REPO = path.join(os.homedir(), "dev", "acme-api");
 // A seeded worktree Project of {@link REPO}.
 const WORKTREE = path.join(REPO, ".claude", "worktrees", "fix-auth-flake");
 
+// The session id of the seeded Conversation with no title (`scripts/seed/fake-logs.ts`).
+const UNTITLED_SESSION_ID = "5eed0000-0000-4000-8000-000000000003";
+
 // A seeded repo that is no seeded favorite, and that no other test names: the one the Favorites test toggles.
 const UNFAVORITED_REPO = path.join(os.homedir(), "dev", "billing-service");
 
@@ -121,6 +124,18 @@ test.describe("Recorded marker", () => {
     for (const kind of ["Session naming", "Quota probe", "Safety monitor", "Suggestion", "Token count", "Other"]) {
       await expect(section.getByText(kind, { exact: true })).toBeVisible();
     }
+  });
+});
+
+test.describe("Title cell", () => {
+  test("reads in full on hover: the title, or the session id of an untitled Conversation", async ({ page }) => {
+    await page.goto("/");
+    const table = page.locator("#conversations");
+
+    await expect(table.getByRole("link", { name: TITLE, exact: true })).toHaveAttribute("title", TITLE);
+    const untitled = table.getByRole("link", { name: UNTITLED_SESSION_ID, exact: true });
+    await expect(untitled).toHaveText(UNTITLED_SESSION_ID);
+    await expect(untitled).toHaveAttribute("title", UNTITLED_SESSION_ID);
   });
 });
 

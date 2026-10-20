@@ -638,8 +638,13 @@ function buildConversation(
      *  prompt carries that session's record as `parentUuid`, and it starts a few
      *  hours later. */
     resumeFrom?: ResumePoint;
-    /** Overrides the random title — used so a family reads as one piece of work. */
-    title?: string;
+    /** Overrides the random title — used so a family reads as one piece of work.
+     *  `null` leaves it untitled: no `ai-title` record, and another session's
+     *  message in place of the first prompt — a Conversation without a title
+     *  takes its first Prompt as one, so it must have none. */
+    title?: string | null;
+    /** Starts it this long before the anchor, in ms, rather than at a random offset. */
+    startedAgo?: number;
     /** Puts the first turn on this Resolved model; the rest stay on priced ones. */
     unpricedModel?: string;
     /** `"forced"`: the first turn is followed by an API error, whatever the draws.
@@ -652,16 +657,32 @@ function buildConversation(
   const sessionId = `seed-${logFolderName.slice(1)}-${index}`;
 
   const start =
-    opts.resumeFrom === undefined
-      ? g.now - g.int(0, 21) * DAY - g.int(0, 18) * 3_600_000
-      : opts.resumeFrom.ms + g.int(1, 8) * 3_600_000;
+    opts.resumeFrom !== undefined
+      ? opts.resumeFrom.ms + g.int(1, 8) * 3_600_000
+      : opts.startedAgo !== undefined
+        ? g.now - opts.startedAgo
+        : g.now - g.int(0, 21) * DAY - g.int(0, 18) * 3_600_000;
   let t = start;
   const lines: string[] = [];
   const subAgents: SubAgent[] = [];
 
-  const title = opts.title ?? g.pick(TITLES);
-  lines.push(JSON.stringify({ type: "ai-title", aiTitle: title }));
-  lines.push(userPrompt(g, t, cwd, g.pick(PROMPTS), opts.resumeFrom?.uuid));
+  const title = opts.title === undefined ? g.pick(TITLES) : opts.title;
+  if (title === null) {
+    const body = g.pick(PROMPTS);
+    lines.push(
+      originRecord(
+        g,
+        t,
+        cwd,
+        { kind: "peer", from: "team-lead", name: "team-lead", body },
+        `Another Claude session sent a message:\n<agent-message from="team-lead">\n${body}\n</agent-message>`,
+        { isMeta: true, permissionMode: "default" },
+      ),
+    );
+  } else {
+    lines.push(JSON.stringify({ type: "ai-title", aiTitle: title }));
+    lines.push(userPrompt(g, t, cwd, g.pick(PROMPTS), opts.resumeFrom?.uuid));
+  }
 
   // Most conversations have a dominant model; some are mixed.
   const dominant = g.pick(MODELS);
@@ -1293,6 +1314,21 @@ function planHandoffConversation(g: Gen, index: number): Conversation {
   };
 }
 
+/** The session id of the seeded Conversation with no title, which the list shows in its place (issue #202). */
+export const UNTITLED_SESSION_ID = "5eed0000-0000-4000-8000-000000000003";
+
+/**
+ * A Conversation that has no title, opened by another session's message. It
+ * starts two days back, so it is on the list's first page, and ends long
+ * before the agent-messages one, so the anchor does not move.
+ *
+ * Drawn last, so every earlier Conversation keeps its draws.
+ */
+function untitledConversation(g: Gen, index: number): Conversation {
+  const convo = buildConversation(g, PROJECTS[2], index, { title: null, startedAgo: 2 * DAY });
+  return { ...convo, sessionId: UNTITLED_SESSION_ID };
+}
+
 /** Every seeded Conversation, its conversations starting up to three weeks before `anchor`. */
 function buildCorpus(anchor: number): Conversation[] {
   const g = createGen(anchor);
@@ -1311,6 +1347,7 @@ function buildCorpus(anchor: number): Conversation[] {
   conversations.push(...scratchConversations(g, conversations.length));
   conversations.push(...recordableConversations(g));
   conversations.push(planHandoffConversation(g, conversations.length));
+  conversations.push(untitledConversation(g, conversations.length));
   return conversations;
 }
 
@@ -1369,9 +1406,10 @@ export type FakeLogsCounts = {
  * (seven more), 23 covering pagination, unpriced usage and API errors, one
  * where agents message each other, one long enough to span three Transcript
  * pages, one that enters a worktree and one that states no cwd, three in
- * per-session scratch directories under `/tmp`, then the two the Recordings
- * cover — 69 in all. The same `now` always writes the same bytes. Returns the
- * counts, and the Conversations as written, for the Recordings to derive from.
+ * per-session scratch directories under `/tmp`, the two the Recordings cover,
+ * one that hands a plan to another session, then one with no title — 71 in
+ * all. The same `now` always writes the same bytes. Returns the counts, and
+ * the Conversations as written, for the Recordings to derive from.
  *
  * @example
  * const { counts, conversations } = generateFakeLogs({ logsRoot: "data/seed/projects", now: new Date() });
