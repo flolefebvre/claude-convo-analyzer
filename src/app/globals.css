@@ -1314,6 +1314,78 @@ html:has(.tview) {
   flex-direction: column;
   gap: 10px;
 }
+/* The JSON tree (`json-tree.tsx`): native `<details>` nodes, indented by
+   nesting, in the mono face of the panel's blocks. */
+.tview .json-tree {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  background: var(--muted);
+  border-radius: 6px;
+  padding: 6px 10px;
+  overflow-wrap: anywhere;
+}
+.tview .json-children {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.tview .json-children .json-children {
+  margin-left: 7px;
+  padding-left: 12px;
+  border-left: 1px solid var(--border);
+}
+.tview details.json-node > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.tview details.json-node > summary::-webkit-details-marker {
+  display: none;
+}
+.tview details.json-node > summary:hover {
+  background: var(--border);
+}
+.tview details.json-node > summary:focus-visible {
+  @apply focus-inset;
+}
+.tview .json-entry {
+  padding-left: 18px;
+}
+.tview .json-key {
+  color: var(--foreground);
+  font-weight: 500;
+}
+.tview .json-summary,
+.tview .json-punctuation,
+.tview .json-null {
+  color: var(--muted-foreground);
+}
+.tview .json-string {
+  color: var(--agent-foreground);
+  white-space: pre-wrap;
+}
+.tview .json-number,
+.tview .json-boolean {
+  color: var(--skill-foreground);
+}
+.tview .json-clamp-toggle,
+.tview .sent-clamp-toggle {
+  margin-left: 6px;
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.tview .json-clamp-toggle:hover,
+.tview .sent-clamp-toggle:hover {
+  color: var(--foreground);
+}
 /* The one line a body shows when it could not be loaded. */
 .tview .call-body-note {
   font-size: var(--text-xs);

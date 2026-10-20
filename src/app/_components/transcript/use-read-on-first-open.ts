@@ -1,8 +1,9 @@
 "use client";
 
 // The lazy read behind a transcript disclosure (a Tool call's body, what a
-// recorded Turn sent): nothing is fetched until the reader first opens the
-// `<details>`, and what came back is kept for every later open.
+// recorded Turn sent, its Raw view): nothing is fetched until the reader first
+// opens the `<details>` or the tab, and what came back is kept for every later
+// open.
 
 import { useState } from "react";
 
@@ -17,10 +18,11 @@ export type ReadOnFirstOpenState<Value> =
   | { status: "failed" };
 
 /**
- * The state of `read` and the two `<details>` hooks that start it on the first
- * open: `onToggle`, and `detailsRef` for a disclosure opened before hydration
- * (its one `toggle` fired with no listener attached). `preloaded` starts it
- * loaded, never fetching.
+ * The state of `read` and what starts it on the first open: `onToggle` and
+ * `detailsRef` for a `<details>` (the ref catches one opened before
+ * hydration, its one `toggle` fired with no listener attached), or
+ * `startReading` for any other opening, such as a tab's first activation.
+ * `preloaded` starts it loaded, never fetching.
  *
  * @example const { state, onToggle, detailsRef } = useReadOnFirstOpen(() => callRoute(routes.api["tool-call"](id).GET()));
  */
@@ -29,6 +31,8 @@ export function useReadOnFirstOpen<Value>(
   preloaded?: Value,
 ): {
   state: ReadOnFirstOpenState<Value>;
+  /** Start the read, unless it is on its way, done, or stale. */
+  startReading: () => void;
   onToggle: (event: React.ToggleEvent<HTMLDetailsElement>) => void;
   detailsRef: (details: HTMLDetailsElement | null) => void;
 } {
@@ -47,10 +51,15 @@ export function useReadOnFirstOpen<Value>(
     }
   }
 
+  function startReading() {
+    if (state.status === "idle" || state.status === "failed") void load();
+  }
+
   return {
     state,
+    startReading,
     onToggle(event) {
-      if (event.currentTarget.open && (state.status === "idle" || state.status === "failed")) void load();
+      if (event.currentTarget.open) startReading();
     },
     detailsRef(details) {
       if (details?.open && state.status === "idle") void load();
