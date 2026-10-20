@@ -19,18 +19,22 @@ export function ControlFailure({
   text,
   failure,
   onDismiss,
+  alignedEdge,
 }: {
   text: string;
   /** The failure's own message, or null when there is none. */
   failure: string | null;
   onDismiss: () => void;
+  alignedEdge?: ControlBubbleProps["alignedEdge"];
 }) {
   return (
     <>
       <p role="alert" className="sr-only">
         {failure === null ? "" : text}
       </p>
-      {failure !== null && <ControlBubble text={text} detail={failure} tone="error" onDismiss={onDismiss} />}
+      {failure !== null && (
+        <ControlBubble text={text} detail={failure} tone="error" onDismiss={onDismiss} alignedEdge={alignedEdge} />
+      )}
     </>
   );
 }
@@ -42,6 +46,8 @@ export type ControlBubbleProps = {
   detail: string | null;
   tone: "status" | "error";
   onDismiss: () => void;
+  /** The control's edge the bubble lines up with, growing away from it: `right` (the default) for an app bar control, `left` in the sidebar, which has no room on its left. */
+  alignedEdge?: "left" | "right";
 };
 
 /**
@@ -49,12 +55,13 @@ export type ControlBubbleProps = {
  *
  * @example <ControlBubble text="Live could not start" detail={failure} tone="error" onDismiss={clear} />
  */
-export function ControlBubble({ text, detail, tone, onDismiss }: ControlBubbleProps) {
+export function ControlBubble({ text, detail, tone, onDismiss, alignedEdge = "right" }: ControlBubbleProps) {
   return (
     <div
       title={detail ?? undefined}
       className={cn(
-        "absolute top-full right-0 z-50 mt-2 flex w-max max-w-[min(18rem,calc(100vw-2rem))] animate-in items-start gap-2 rounded-lg border bg-popover py-2 pr-1.5 pl-3 text-xs text-popover-foreground shadow-md fade-in-0 slide-in-from-top-1",
+        "absolute top-full z-50 mt-2 flex w-max max-w-[min(18rem,calc(100vw-2rem))] animate-in items-start gap-2 rounded-lg border bg-popover py-2 pr-1.5 pl-3 text-xs text-popover-foreground shadow-md fade-in-0 slide-in-from-top-1",
+        alignedEdge === "right" ? "right-0" : "left-0",
         tone === "error" && "border-destructive/40 text-destructive-foreground",
       )}
     >

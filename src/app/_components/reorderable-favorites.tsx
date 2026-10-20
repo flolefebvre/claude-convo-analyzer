@@ -260,7 +260,7 @@ export function ReorderableFavorites({
       <p aria-live="polite" className="sr-only">
         {announcement}
       </p>
-      <ControlFailure text={FAILURE_TEXT} failure={failure} onDismiss={() => setFailure(null)} />
+      <ControlFailure text={FAILURE_TEXT} failure={failure} onDismiss={() => setFailure(null)} alignedEdge="left" />
     </div>
   );
 }
