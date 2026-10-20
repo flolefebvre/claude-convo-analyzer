@@ -11,17 +11,19 @@
 //            tabs
 //   desktop  brand  tabs ···· search theme recorder live refresh      (one 56px row)
 // The search keeps its 240px from tablet up. The Recorder, Live and Refresh are
-// icons below 1280px, and show their labels from it, the only width with room:
+// icons below 1280px, and show their labels from it, the only width with room.
+// The row's gap is 16px at every width from 640px:
 //   tablet    at 768px the brand with its name, the search and the icon controls
 //             take 711 of the 720px row.
 //   desktop   at 1024px, brand 223 + tabs 230 + search 240 + icon controls 216 +
-//             three 16px gaps take 957 of 976.
-//   from xl   the bar caps at 1232px of content: the labelled controls get 467
-//             beside three 24px gaps, and take at most 461 ("Recorder: off" and
-//             a running Refresh's "12,450 / 12,450"). So the labels say only
-//             what the state is: the Recorder's port and how to enable it sit in
-//             its title and popover, the Refresh's noun in its screen-reader
-//             label. Six-digit counts overflow the row by about 10px.
+//             three gaps take 957 of 976.
+//   from xl   the bar caps at 1232px of content: the labelled controls get 491,
+//             476 beside a classic 15px scrollbar, and take 461 at five-digit
+//             counts ("Recorder: off" and a running Refresh's "12,450 / 12,450"),
+//             about 478 at six. So the labels say only what the state is: the
+//             Recorder's port and how to enable it sit in its title and popover,
+//             the Refresh's noun in its screen-reader label. Only six-digit
+//             counts beside a classic scrollbar overflow, by about 2px.
 // The tabs always end flush on the bar's bottom border, where the active tab's
 // clay underline sits.
 //
@@ -54,7 +56,7 @@ import { ThemeToggle } from "@/app/_components/theme-toggle";
 export function AppBar() {
   return (
     <header className="border-b bg-background">
-      <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-x-2 gap-y-2 px-4 pt-2 sm:gap-x-4 sm:px-6 lg:flex-nowrap lg:pt-0 xl:gap-x-6">
+      <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-x-2 gap-y-2 px-4 pt-2 sm:gap-x-4 sm:px-6 lg:flex-nowrap lg:pt-0">
         <Brand className="order-1 mr-auto lg:mr-0" />
         <Suspense fallback={<SectionTabs className={TABS_CLASS} />}>
           <SectionNav className={TABS_CLASS} />
