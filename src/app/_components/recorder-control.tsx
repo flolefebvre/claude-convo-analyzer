@@ -166,13 +166,22 @@ export function RecorderControl({ recorderStatus: statusAsRendered }: { recorder
           <p className="text-sm font-medium">
             {isRunning ? `The Recorder is on, at 127.0.0.1:${recorderStatus.port}` : "The Recorder is off"}
           </p>
+          {/* Each control that swaps in takes the focus from the one it replaces (`autoFocus`). Stop and Start are
+              the same `PendingButton` in the same slot, so the reread after a stop updates the focused button
+              rather than replacing it: after Stop anyway, the focus stays on it as it turns into Start. */}
           {unconfirmedSessionCount === null &&
             (isRunning ? (
-              <PendingButton size="sm" variant="outline" isPending={isActionPending} onClick={() => handleStop(false)}>
+              <PendingButton
+                autoFocus
+                size="sm"
+                variant="outline"
+                isPending={isActionPending}
+                onClick={() => handleStop(false)}
+              >
                 Stop
               </PendingButton>
             ) : (
-              <PendingButton size="sm" isPending={isActionPending} onClick={handleStart}>
+              <PendingButton autoFocus size="sm" isPending={isActionPending} onClick={handleStart}>
                 Start
               </PendingButton>
             ))}
@@ -192,6 +201,7 @@ export function RecorderControl({ recorderStatus: statusAsRendered }: { recorder
                 Cancel
               </Button>
               <PendingButton
+                autoFocus
                 size="sm"
                 variant="destructive"
                 isPending={isActionPending}
