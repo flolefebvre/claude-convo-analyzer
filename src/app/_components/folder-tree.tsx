@@ -7,6 +7,8 @@
 // closed except the roots (one level) and the path down to the active scope,
 // which a later scope change opens too (never closing anything); the open
 // state lives in this component alone and is not remembered between visits.
+// An open Folder's children hang off an indent guide, and every scope change
+// scrolls the selected row into view.
 //
 // A client component because both the open state and the active scope come
 // from the browser: the shell layout cannot read `searchParams`, so the
@@ -18,13 +20,14 @@
 
 import { ChevronRight } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { FolderLinkWithStar } from "@/app/_components/favorite-star";
 import { FolderRow, SidebarLeadingSlot, folderCostShare } from "@/app/_components/folder-rows";
 import { SidebarLink } from "@/app/_components/sidebar-link";
-import { resolveLiveFolderScope } from "@/app/_lib/folder-scope";
+import { isProjectInFolderScope, resolveLiveFolderScope } from "@/app/_lib/folder-scope";
 import { type FolderNode, initiallyOpenFolderPaths, openPathsDownToScope } from "@/app/_lib/folder-tree";
+import { cn } from "@/lib/utils-cn";
 
 /**
  * The folder tree's rows, below the "All folders" anchor.
@@ -53,6 +56,17 @@ export function FolderTree({
     setOpenedForScopeKey(scopeKey);
     setOpenPaths(openPathsDownToScope(openPaths, roots, scope));
   }
+  // A scope change, whatever caused it, brings the selected row into view —
+  // in this rendering of the tree only; the hidden one has nothing to scroll.
+  // `nearest` leaves a row already in view where it is. Not on mount: a
+  // page load keeps the page where it starts.
+  const treeRef = useRef<HTMLDivElement>(null);
+  const scrolledForScopeKey = useRef(scopeKey);
+  useEffect(() => {
+    if (scrolledForScopeKey.current === scopeKey) return;
+    scrolledForScopeKey.current = scopeKey;
+    treeRef.current?.querySelector('[aria-current="true"]')?.scrollIntoView({ block: "nearest" });
+  }, [scopeKey]);
   const toggle = (path: string) =>
     setOpenPaths((current) => {
       const next = new Set(current);
@@ -61,22 +75,29 @@ export function FolderTree({
     });
 
   return (
-    <FolderList
-      nodes={roots}
-      openPaths={openPaths}
-      toggle={toggle}
-      favoritePathSet={favoritePathSet}
-      totalCostUsd={totalCostUsd}
-    />
+    <div ref={treeRef}>
+      <FolderList
+        nodes={roots}
+        openPaths={openPaths}
+        toggle={toggle}
+        favoritePathSet={favoritePathSet}
+        totalCostUsd={totalCostUsd}
+        selectedFolderPath={scope.folder}
+      />
+    </div>
   );
 }
 
-/** What every level of the tree shares: the open Folders, their toggle, the favorites, and the bars' scale. */
+/**
+ * What every level of the tree shares: the open Folders, their toggle, the
+ * favorites, the bars' scale, and the selected Folder the guides lead to.
+ */
 type TreeState = {
   openPaths: Set<string>;
   toggle: (path: string) => void;
   favoritePathSet: Set<string>;
   totalCostUsd: number;
+  selectedFolderPath: string | undefined;
 };
 
 /** One level of the tree. */
@@ -126,7 +147,17 @@ function FolderItem({ node, ...tree }: TreeState & { node: FolderNode }) {
         <FolderRow label={node.label} totals={node} />
       </FolderLinkWithStar>
       {isOpen && (
-        <div id={childrenId} className="ml-2.5 border-l pl-2.5">
+        // The indent guide: one line per open level, from under the chevron
+        // down its children, in clay on the way to the selected Folder.
+        <div
+          id={childrenId}
+          className={cn(
+            "ml-2.5 border-l pl-2.5",
+            tree.selectedFolderPath !== undefined &&
+              isProjectInFolderScope(tree.selectedFolderPath, { folder: node.path }) &&
+              "border-cost",
+          )}
+        >
           {node.thisFolder && (
             <div className="flex items-center">
               <SidebarLeadingSlot />
@@ -134,7 +165,7 @@ function FolderItem({ node, ...tree }: TreeState & { node: FolderNode }) {
                 scope={{ folder: node.path, thisFolderOnly: true }}
                 costShare={folderCostShare(node.thisFolder, tree.totalCostUsd)}
                 title={`${node.path}, its own conversations only`}
-                className="min-w-0 flex-1 pr-9"
+                className="min-w-0 flex-1 pr-7"
               >
                 <FolderRow label="(this folder)" totals={node.thisFolder} />
               </SidebarLink>
