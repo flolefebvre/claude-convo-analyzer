@@ -265,6 +265,11 @@ change, so open pages follow Conversations as they happen. Switching it on
 first starts watching, then runs a catch-up Refresh, so nothing written in
 between is missed.
 
+A Conversation is **active now** while Live is on and its newest source change
+— its log, any of its sub-agent transcripts, or its Recording — is under 2
+minutes old. It is a Live-only notion: with Live off the stored data is only as
+fresh as the last Refresh, so no Conversation is active now.
+
 ### Recorder
 
 A local proxy that sits between Claude Code and the Anthropic API, forwarding

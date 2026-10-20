@@ -9,6 +9,20 @@ import { defaultLogsRoot } from "@/core/discovery";
 import { defaultRecordingsRoot } from "@/core/recording";
 import type { RefreshRunner } from "@/core/refresh-runner";
 
+/** How long after its newest source change a Conversation stays active now (GLOSSARY.md, Active now). */
+export const ACTIVE_WINDOW_MS = 2 * 60_000;
+
+/**
+ * Whether a Conversation whose newest source change was at `sourceChangedAt`
+ * (ISO) is active now at `now`: the change is under {@link ACTIVE_WINDOW_MS}
+ * old. Only meaningful while Live is on; the caller checks that.
+ *
+ * @example isActiveNow(row.sourceChangedAt, new Date()) && getLive().isOn()
+ */
+export function isActiveNow(sourceChangedAt: string, now: Date): boolean {
+  return now.getTime() - Date.parse(sourceChangedAt) < ACTIVE_WINDOW_MS;
+}
+
 /** What a watcher tells Live: something changed under a root, or the watcher broke. */
 export type LiveWatchHandlers = {
   onChange: () => void;
