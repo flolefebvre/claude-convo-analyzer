@@ -29,6 +29,10 @@ let recordingsRoot: string;
 let upstream: FakeUpstream;
 let releaseRest: () => void;
 let recorderProcess: ChildProcess | undefined;
+/** Everything `recorderProcess` has printed on stdout so far. */
+let recorderStdout = "";
+/** Checks rerun on each stdout chunk, by the waits `recorderPrints` started. */
+let stdoutWatchers = new Set<() => void>();
 /** Ports a `--detach` run left a Recorder on, stopped after the test. */
 let detachedRecorderPorts: number[] = [];
 
@@ -42,6 +46,8 @@ beforeEach(async () => {
 afterEach(async () => {
   recorderProcess?.kill("SIGKILL");
   recorderProcess = undefined;
+  recorderStdout = "";
+  stdoutWatchers = new Set();
   for (const port of detachedRecorderPorts) await stopDetachedRecorder(port);
   detachedRecorderPorts = [];
   releaseRest();
@@ -63,16 +69,29 @@ function startRecorderProcess(): Promise<string> {
   });
   let stderr = "";
   recorderProcess.stderr!.on("data", (chunk: Buffer) => (stderr += chunk.toString("utf8")));
+  recorderProcess.stdout!.on("data", (chunk: Buffer) => {
+    recorderStdout += chunk.toString("utf8");
+    for (const check of stdoutWatchers) check();
+  });
   return new Promise((resolve, reject) => {
-    let stdout = "";
-    recorderProcess!.stdout!.on("data", (chunk: Buffer) => {
-      stdout += chunk.toString("utf8");
-      const baseUrl = /^ANTHROPIC_BASE_URL=(\S+)$/m.exec(stdout)?.[1];
-      if (baseUrl) resolve(baseUrl);
-    });
+    recorderPrints(/^ANTHROPIC_BASE_URL=(\S+)$/m).then((match) => resolve(match[1]), reject);
     recorderProcess!.once("exit", (code) =>
       reject(new Error(`recorder exited with ${code} before listening: ${stderr}`)),
     );
+  });
+}
+
+/** Resolves with the match once the running script's stdout matches `pattern`. */
+function recorderPrints(pattern: RegExp): Promise<RegExpExecArray> {
+  return new Promise((resolve) => {
+    const check = () => {
+      const match = pattern.exec(recorderStdout);
+      if (!match) return;
+      stdoutWatchers.delete(check);
+      resolve(match);
+    };
+    stdoutWatchers.add(check);
+    check();
   });
 }
 
@@ -117,7 +136,10 @@ const askToStopBy: Record<string, (baseUrl: string) => Promise<void>> = {
   },
 };
 
-describe("pnpm recorder", () => {
+// The budget outlasts the Recorder's 10 s drain, so a stop that goes wrong — a
+// missed second signal leaves it draining, then exiting 0 — fails on its exit
+// code rather than on the clock.
+describe("pnpm recorder", { timeout: 15_000 }, () => {
   it("prints the ANTHROPIC_BASE_URL to use, on 127.0.0.1", async () => {
     expect(await startRecorderProcess()).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
   });
@@ -217,6 +239,9 @@ describe("pnpm recorder", () => {
     const exited = exitCodeOf(recorderProcess!);
 
     recorderProcess!.kill("SIGTERM");
+    // The Recorder times its window from when it handles the first signal, which
+    // a busy machine delays: start the second from there, not from the kill.
+    await recorderPrints(/^Recorder: SIGTERM,/m);
     await new Promise((resolve) => setTimeout(resolve, 1100));
     recorderProcess!.kill("SIGINT");
 
