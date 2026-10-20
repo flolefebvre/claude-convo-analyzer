@@ -57,7 +57,7 @@ pnpm typecheck     Next route typegen, then TypeScript with no emit
 pnpm test          Vitest, once
 pnpm test:changed  Vitest, once, only the tests affected since $CHECK_BASE (default origin/main)
 pnpm test:watch    Vitest in watch mode
-pnpm build         next build
+pnpm build         next build; fails on any Turbopack warning (scripts/build.ts)
 pnpm e2e           Playwright instant-navigation specs against its own e2e:server on :3123 (or $E2E_PORT)
 ```
 
