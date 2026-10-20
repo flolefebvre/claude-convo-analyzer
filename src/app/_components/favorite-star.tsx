@@ -61,7 +61,8 @@ export type FavoriteStarProps = {
   isFavorite: boolean;
   /**
    * Whether an empty star shows only while its row (the nearest `group/row`)
-   * is hovered or holds the focus; a filled star always shows.
+   * is hovered or holds the focus, on a device with a fine pointer; a filled
+   * star always shows.
    */
   isRevealedByRow?: boolean;
   className?: string;
@@ -92,6 +93,7 @@ export function FavoriteStar({
   const [failure, setFailure] = useState<string | null>(null);
 
   async function handleClick() {
+    if (isSavePending) return;
     const wasFavorite = isFavorite;
     setFailure(null);
     setIsFavorite(!wasFavorite);
@@ -117,14 +119,19 @@ export function FavoriteStar({
       <button
         type="button"
         onClick={handleClick}
-        disabled={isSavePending}
+        // Not `disabled`: that would throw a keyboard user's focus to <body>
+        // mid-save, and with it the row's focus that keeps the star shown.
+        aria-disabled={isSavePending}
         aria-pressed={isFavorite}
         aria-label={`Favorite ${folderLabel}`}
         title={isFavorite ? "Remove from Favorites" : "Add to Favorites"}
         className={cn(
           "grid size-6 shrink-0 place-items-center rounded-md transition-colors hover:bg-muted focus-visible:opacity-100",
           isFavorite ? "text-cost" : "text-muted-foreground hover:text-foreground",
-          isRevealedByRow && !isFavorite && "opacity-0 group-focus-within/row:opacity-100 group-hover/row:opacity-100",
+          // A device that cannot hover always shows it: never an invisible target under a finger.
+          isRevealedByRow &&
+            !isFavorite &&
+            "opacity-0 group-focus-within/row:opacity-100 group-hover/row:opacity-100 pointer-coarse:opacity-100",
         )}
       >
         <Star className={cn("size-3.5", isFavorite && "fill-current")} aria-hidden />

@@ -5,7 +5,20 @@ import { deriveFolders } from "@/app/_lib/folders";
 
 import { summary } from "./helpers/summaries";
 
+/** The home directory the folder tree labels `~`. */
+const HOME = "/home/me";
+
 describe("deriveFavoriteFolders", () => {
+  it("labels the favorited home directory `~`, as the folder tree does", () => {
+    const folders = deriveFolders([summary({ id: "a", path: "/home/me/dev/api" })]);
+
+    expect(
+      deriveFavoriteFolders([HOME, "/home/me/dev"], folders, HOME)
+        .map((f) => f.label)
+        .sort(),
+    ).toEqual(["dev", "~"]);
+  });
+
   it("sums every Project at or below a favorite into its totals", () => {
     const folders = deriveFolders([
       summary({ id: "a", path: "/home/me/dev/api", costUsd: 2 }),
@@ -13,7 +26,7 @@ describe("deriveFavoriteFolders", () => {
       summary({ id: "c", path: "/home/me/dev/apiary", costUsd: 7 }),
     ]);
 
-    expect(deriveFavoriteFolders(["/home/me/dev/api"], folders)).toEqual([
+    expect(deriveFavoriteFolders(["/home/me/dev/api"], folders, HOME)).toEqual([
       {
         path: "/home/me/dev/api",
         label: "api",
@@ -29,13 +42,13 @@ describe("deriveFavoriteFolders", () => {
     // `/home/me/dev` holds one sub-Folder only, so the tree compacts it into `dev/mylibs`.
     const folders = deriveFolders([summary({ id: "a", path: "/home/me/dev/mylibs/ui" })]);
 
-    expect(deriveFavoriteFolders(["/home/me/dev"], folders).map((favorite) => favorite.count)).toEqual([1]);
+    expect(deriveFavoriteFolders(["/home/me/dev"], folders, HOME).map((favorite) => favorite.count)).toEqual([1]);
   });
 
   it("hides a favorite with no Conversations at or below it", () => {
     const folders = deriveFolders([summary({ id: "a", path: "/home/me/dev/api" })]);
 
-    expect(deriveFavoriteFolders(["/home/me/dev/gone", "/home/me/dev/api"], folders).map((f) => f.path)).toEqual([
+    expect(deriveFavoriteFolders(["/home/me/dev/gone", "/home/me/dev/api"], folders, HOME).map((f) => f.path)).toEqual([
       "/home/me/dev/api",
     ]);
   });
@@ -46,7 +59,7 @@ describe("deriveFavoriteFolders", () => {
       summary({ id: "b", path: "/home/me/dev/new", endedAt: "2026-03-01T00:00:00.000Z" }),
     ]);
 
-    expect(deriveFavoriteFolders(["/home/me/dev/old", "/home/me/dev/new"], folders).map((f) => f.label)).toEqual([
+    expect(deriveFavoriteFolders(["/home/me/dev/old", "/home/me/dev/new"], folders, HOME).map((f) => f.label)).toEqual([
       "new",
       "old",
     ]);
@@ -60,10 +73,10 @@ describe("deriveFavoriteFolders", () => {
     ]);
 
     expect(
-      deriveFavoriteFolders(["/home/me/dev/app", "/home/me/tmp/app"], folders)
+      deriveFavoriteFolders(["/home/me/dev/app", "/home/me/tmp/app"], folders, HOME)
         .map((f) => f.label)
         .sort(),
     ).toEqual(["dev/app", "tmp/app"]);
-    expect(deriveFavoriteFolders(["/home/me/dev/app"], folders).map((f) => f.label)).toEqual(["app"]);
+    expect(deriveFavoriteFolders(["/home/me/dev/app"], folders, HOME).map((f) => f.label)).toEqual(["app"]);
   });
 });

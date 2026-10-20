@@ -53,7 +53,7 @@ export const loadConversations = cache(async () => {
  * request. Same request-time gating as {@link loadConversations}: a favorite
  * baked into the prerender would outlive its unfavoriting.
  *
- * @example deriveFavoriteFolders(await loadFavoriteFolderPaths(), folders)
+ * @example deriveFavoriteFolders(await loadFavoriteFolderPaths(), folders, homeDirectory())
  */
 export const loadFavoriteFolderPaths = cache(async () => {
   await connection();

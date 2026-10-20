@@ -61,7 +61,7 @@ async function Sidebar() {
 
   const nav = (
     <FolderSidebar
-      favorites={deriveFavoriteFolders(favoritePaths, folders)}
+      favorites={deriveFavoriteFolders(favoritePaths, folders, homeDirectory())}
       favoritePaths={favoritePaths}
       folderTree={folderTree}
       totals={totals}

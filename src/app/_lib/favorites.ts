@@ -20,20 +20,24 @@ export type FavoriteFolder = FolderTotals & {
   latestActivity: string;
 };
 
+/** The home directory's label, as the folder tree shows its root. */
+const HOME_LABEL = "~";
+
 /**
  * The Favorites section's rows: each favorite with Conversations at or below
- * it, newest activity first; a favorite with none is left out.
+ * it, newest activity first; a favorite with none is left out. The favorited
+ * `home` is labelled `~`, as the folder tree labels it.
  *
- * @example deriveFavoriteFolders(await loadFavoriteFolderPaths(), folders)
+ * @example deriveFavoriteFolders(await loadFavoriteFolderPaths(), folders, homeDirectory())
  */
-export function deriveFavoriteFolders(favoritePaths: string[], folders: FolderEntry[]): FavoriteFolder[] {
+export function deriveFavoriteFolders(favoritePaths: string[], folders: FolderEntry[], home: string): FavoriteFolder[] {
   const favorites: FavoriteFolder[] = [];
   for (const favoritePath of favoritePaths) {
     const inScope = folders.filter((entry) => isProjectInFolderScope(entry.path, { folder: favoritePath }));
     if (inScope.length === 0) continue;
     favorites.push({
       path: favoritePath,
-      label: friendlyFolderName(favoritePath),
+      label: favoritePath === home ? HOME_LABEL : friendlyFolderName(favoritePath),
       count: inScope.reduce((sum, entry) => sum + entry.count, 0),
       costUsd: inScope.reduce((sum, entry) => sum + entry.costUsd, 0),
       unpriced: inScope.some((entry) => entry.unpriced),
