@@ -69,11 +69,11 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     const seedDir = path.join(tmpDir, "seed");
     const firstSeed = await seedEnvironment({ dir: seedDir, now: NOW });
     expect(path.dirname(firstSeed.settingsPath)).toBe(seedDir);
-    await writeSettings({ live: true }, firstSeed.settingsPath);
+    await writeSettings({ live: true, favorites: [] }, firstSeed.settingsPath);
 
     const reseed = await seedEnvironment({ dir: seedDir, now: NOW });
 
-    await expect(readSettings(reseed.settingsPath)).resolves.toEqual({ live: false });
+    await expect(readSettings(reseed.settingsPath)).resolves.toEqual({ live: false, favorites: [] });
   });
 
   it("ingests its Recordings: one Conversation recorded, one partially recorded, every other unrecorded", async () => {

@@ -7,7 +7,7 @@
 
 import { getPublishedRefreshRunner } from "@/app/_lib/refresh-events";
 import { createLive, type Live, watchLogsAndRecordings } from "@/core/live";
-import { readSettings, writeSettings } from "@/core/settings";
+import { readSettings, updateSettings } from "@/core/settings";
 
 /** How long Live gathers changes before it runs a Refresh. */
 const LIVE_DEBOUNCE_MS = 2000;
@@ -43,12 +43,12 @@ export async function switchLive(on: boolean): Promise<void> {
   const live = getLive();
   if (!on) {
     live.turnOff();
-    await writeSettings({ live: false });
+    await updateSettings({ live: false });
     return;
   }
   live.turnOn();
   try {
-    await writeSettings({ live: true });
+    await updateSettings({ live: true });
   } catch (error) {
     live.turnOff();
     throw error;
