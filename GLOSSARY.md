@@ -45,6 +45,15 @@ Project and also has sub-Folders can be narrowed to **this folder** — its own
 Conversations only.
 _Avoid_: using Folder for the on-disk log folder under `~/.claude/projects/`.
 
+### Favorite
+
+A Folder the user starred to keep at hand: it is listed under **Favorites** at
+the top of the sidebar, newest activity first, and selects its scope like its
+tree row. Favorites are kept by Folder path in the settings file, not in the
+database, so neither a Refresh nor a database reset touches them. A favorite with
+no Conversations at or below it stays kept but is not listed, until some exist
+there again.
+
 ### Conversation (Session)
 
 One continuous Claude Code session. On disk it is a single `<sessionId>.jsonl`
