@@ -13,6 +13,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { PAGE_SIZE } from "@/app/_lib/list-view";
+import { DEFAULT_SORT, sortConversations } from "@/app/_lib/sort";
 import { SIDE_REQUEST_KINDS } from "@/core/api-request-kind";
 import { getConversation, getToolCallBody, getTranscript, listConversations } from "@/core/read";
 import { discoverRecordings, readRecording, readRecordings, type RecordedApiRequest } from "@/core/recording";
@@ -30,6 +31,7 @@ import {
   RECORDED_SESSION_ID,
   SCRATCH_PARENT_PATH,
   SEED_FAVORITE_PATHS,
+  UNTITLED_SESSION_ID,
   WORKTREE_SWITCH_PROJECT_PATH,
   WORKTREE_SWITCH_TITLE,
 } from "./fake-logs";
@@ -65,8 +67,8 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     expect(seed.summary.duplicateSessionsSkipped).toEqual([]);
 
     const conversations = await listConversations({ dbPath: seed.dbPath });
-    expect(conversations).toHaveLength(70);
-    expect(conversations.reduce((sum, c) => sum + c.subAgentCount, 0)).toBe(83);
+    expect(conversations).toHaveLength(71);
+    expect(conversations.reduce((sum, c) => sum + c.subAgentCount, 0)).toBe(86);
 
     const continued = conversations.filter((c) => c.continuedFromId !== null);
     expect(continued).toHaveLength(5);
@@ -116,6 +118,15 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     expect(switching?.project.path).toBe(WORKTREE_SWITCH_PROJECT_PATH);
     const cwdLess = conversations.find((c) => c.title === CWD_LESS_TITLE);
     expect(cwdLess?.project.path).toBe(path.join(os.homedir(), "dev", "acme-api"));
+  });
+
+  it("seeds one untitled Conversation, on the list's first page", async () => {
+    const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
+
+    const conversations = await listConversations({ dbPath: seed.dbPath });
+    expect(conversations.filter((c) => c.title === null).map((c) => c.id)).toEqual([UNTITLED_SESSION_ID]);
+    const firstPage = sortConversations(conversations, DEFAULT_SORT).slice(0, PAGE_SIZE);
+    expect(firstPage.map((c) => c.id)).toContain(UNTITLED_SESSION_ID);
   });
 
   it("seeds a repo with two worktree Projects, and a /tmp parent with per-session sub-Folders", async () => {
@@ -395,7 +406,7 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     const after = await seedEnvironment({ dir, now: NOW });
 
     expect(existsSync(leftover)).toBe(false);
-    expect(await listConversations({ dbPath: after.dbPath })).toHaveLength(70);
+    expect(await listConversations({ dbPath: after.dbPath })).toHaveLength(71);
   });
 });
 
