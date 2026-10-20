@@ -12,8 +12,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { ControlFailure } from "@/app/_components/control-bubble";
+import { PendingButton } from "@/app/_components/pending-button";
 import { setLive } from "@/app/actions";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils-cn";
 
 /** The line shown when Live could not be switched; the failure's own message is its detail. */
@@ -67,7 +67,7 @@ export function LiveToggle({ live }: { live: LiveAsRendered }) {
     // `relative` so the error bubble can hang below the toggle without growing
     // this box — the app bar keeps its height.
     <div className="relative flex shrink-0">
-      <LiveToggleFace isLiveOn={isLiveOn} isDisabled={isSwitchPending} onClick={handleClick} />
+      <LiveToggleFace isLiveOn={isLiveOn} isPending={isSwitchPending} onClick={handleClick} />
       <ControlFailure text={FAILURE_TEXT} failure={failure} onDismiss={() => setFailure(null)} />
     </div>
   );
@@ -82,7 +82,7 @@ export function LiveToggle({ live }: { live: LiveAsRendered }) {
 export function InertLiveToggle() {
   return (
     <div className="relative flex shrink-0">
-      <LiveToggleFace isLiveOn={false} isDisabled={false} />
+      <LiveToggleFace isLiveOn={false} isPending={false} />
     </div>
   );
 }
@@ -90,18 +90,18 @@ export function InertLiveToggle() {
 /** The toggle itself: a dot, pulsing while Live is on, and the label, which collapses below 1280px. */
 function LiveToggleFace({
   isLiveOn,
-  isDisabled,
+  isPending,
   onClick,
 }: {
   isLiveOn: boolean;
-  isDisabled: boolean;
+  isPending: boolean;
   onClick?: () => void;
 }) {
   return (
-    <Button
+    <PendingButton
       variant="outline"
       onClick={onClick}
-      disabled={isDisabled}
+      isPending={isPending}
       aria-pressed={isLiveOn}
       title={isLiveOn ? "Stop following your Claude Code logs" : "Follow your Claude Code logs as they change"}
       className={cn("max-xl:w-8 max-xl:px-0", isLiveOn && "border-cost/60")}
@@ -113,6 +113,6 @@ function LiveToggleFace({
         />
       </span>
       <span className="max-xl:sr-only">Live</span>
-    </Button>
+    </PendingButton>
   );
 }

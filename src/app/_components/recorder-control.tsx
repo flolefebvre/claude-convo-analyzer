@@ -14,6 +14,7 @@ import { callRoute } from "@flefebvre/next-pipe/client";
 import { Check, Copy, Radio } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { PendingButton } from "@/app/_components/pending-button";
 import { formatBytes } from "@/app/_lib/format";
 import { startRecorder, stopRecorder } from "@/app/actions";
 import { Button } from "@/components/ui/button";
@@ -167,13 +168,13 @@ export function RecorderControl({ recorderStatus: statusAsRendered }: { recorder
           </p>
           {unconfirmedSessionCount === null &&
             (isRunning ? (
-              <Button size="sm" variant="outline" disabled={isActionPending} onClick={() => handleStop(false)}>
+              <PendingButton size="sm" variant="outline" isPending={isActionPending} onClick={() => handleStop(false)}>
                 Stop
-              </Button>
+              </PendingButton>
             ) : (
-              <Button size="sm" disabled={isActionPending} onClick={handleStart}>
+              <PendingButton size="sm" isPending={isActionPending} onClick={handleStart}>
                 Start
-              </Button>
+              </PendingButton>
             ))}
         </div>
         {recorderStatus.status === "portTaken" && actionReport === null && (
@@ -190,9 +191,14 @@ export function RecorderControl({ recorderStatus: statusAsRendered }: { recorder
               <Button size="sm" variant="ghost" onClick={() => setUnconfirmedSessionCount(null)}>
                 Cancel
               </Button>
-              <Button size="sm" variant="destructive" disabled={isActionPending} onClick={() => handleStop(true)}>
+              <PendingButton
+                size="sm"
+                variant="destructive"
+                isPending={isActionPending}
+                onClick={() => handleStop(true)}
+              >
                 Stop anyway
-              </Button>
+              </PendingButton>
             </div>
           </div>
         )}
