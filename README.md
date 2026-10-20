@@ -20,7 +20,8 @@ path is configurable. Nothing is ever sent anywhere.
 The conversation list — total cost, tokens, and a per-folder breakdown across
 every project, sortable by any column. The folder tree in the sidebar scopes
 every page to one folder and everything under it, so a repo and its git
-worktrees read as one. Star the folders you always want at hand — on a sidebar
+worktrees read as one; each row's tint shows its folder's share of the total
+spend, and a conversation's folder name in the list jumps to that folder. Star the folders you always want at hand — on a sidebar
 row, or beside the selected folder's name above the table — and they appear
 under **Favorites** at the top of the sidebar, in the order you starred them.
 Drag a favorite by its grip to put it elsewhere (or press `Alt+↑`/`Alt+↓` on

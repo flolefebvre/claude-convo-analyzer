@@ -2,7 +2,7 @@ import { Suspense } from "react";
 
 import { FolderDisclosure } from "@/app/_components/folder-disclosure";
 import { FolderSidebar } from "@/app/_components/folder-sidebar";
-import { FOLDER_ROW_COST_COLUMN, FOLDER_ROW_COUNT_COLUMN, SidebarLeadingSlot } from "@/app/_components/folder-rows";
+import { FOLDER_ROW_COST_COLUMN, SidebarLeadingSlot } from "@/app/_components/folder-rows";
 import { LoadingRegion } from "@/app/_components/loading-region";
 import { homeDirectory, loadConversations, loadFavoriteFolderPaths } from "@/app/_lib/conversations";
 import { deriveFavoriteFolders } from "@/app/_lib/favorites";
@@ -101,7 +101,7 @@ function SidebarFallback() {
               <span className="min-w-0 flex-1">
                 <Skeleton className="h-3.5 w-28 max-w-full" />
               </span>
-              <span className={`${FOLDER_ROW_COUNT_COLUMN} flex justify-end`}>
+              <span className="hidden min-w-6 justify-end xl:flex">
                 <Skeleton className="h-3 w-5" />
               </span>
               <span className={`${FOLDER_ROW_COST_COLUMN} flex justify-end`}>

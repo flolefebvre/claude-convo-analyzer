@@ -8,8 +8,11 @@
 import type { FolderTotals } from "@/app/_lib/folder-tree";
 import { formatCount, formatGrandTotalCost } from "@/app/_lib/format";
 
-/** The count column's width; the sidebar skeleton draws the same. */
-export const FOLDER_ROW_COUNT_COLUMN = "min-w-6";
+/**
+ * The count column: hidden, yet still read out, in the 256px `lg` sidebar,
+ * where the names need the room; the skeleton draws the same.
+ */
+export const FOLDER_ROW_COUNT_COLUMN = "min-w-6 lg:max-xl:sr-only";
 
 /** The cost column's width; the sidebar skeleton draws the same. */
 export const FOLDER_ROW_COST_COLUMN = "min-w-15";
