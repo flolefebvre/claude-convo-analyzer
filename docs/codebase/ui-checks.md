@@ -39,36 +39,60 @@ pnpm exec playwright-cli -s=<worktree> close
   `pnpm exec playwright-cli install-browser chrome-for-testing` (into the user
   cache, no sudo).
 
-## README screenshot
+## README screenshots
 
-Regenerate `docs/images/main-view.png` after a UI change it shows. Start
+Regenerate an image in `docs/images/` after a UI change it shows. Start
 `PORT=<port> pnpm e2e:server` as in "Start the seeded app" (same seed, same
 `Seeded app:` line), then:
 
 ```sh
 pnpm exec playwright-cli -s=<worktree> open --config .playwright/readme-screenshot.config.json http://localhost:<port>
-pnpm exec playwright-cli -s=<worktree> click "role=button[name='dev sub-folders']"
-pnpm exec playwright-cli -s=<worktree> click "role=button[name='acme-api sub-folders']"
-pnpm exec playwright-cli -s=<worktree> click "role=button[name='.claude/worktrees sub-folders']"
-pnpm exec playwright-cli -s=<worktree> click "role=heading[name='Conversations']"
+# then, for each image in the list below:
+pnpm exec playwright-cli -s=<worktree> goto "http://localhost:<port><path>"
+pnpm exec playwright-cli -s=<worktree> resize 1920 <height>
+# the image's clicks, if any
 pnpm exec playwright-cli -s=<worktree> mousemove 0 0
 pnpm exec playwright-cli -s=<worktree> screenshot --hires
-cp .playwright-cli/<printed>.png docs/images/main-view.png
+cp .playwright-cli/<printed>.png docs/images/<image>.png
+# once every image is taken:
 pnpm exec playwright-cli -s=<worktree> close
 ```
 
 - `e2e:server`, not `dev:seed`: `next start` shows no dev indicator. Its build
   overwrites `.next/`; pick another port if an e2e run is going.
 - The config is `.playwright/cli.config.json` plus a 1920×1182 viewport at
-  device scale 2, like the other `docs/images/` captures; 1920 is the `2xl`
-  sidebar width.
-- 1182 ends the viewport on a table row's bottom border; re-measure if the
-  chrome above the table changes height.
-- The scope stays All folders, in light mode (headless Chrome's default); the
-  three clicks open the tree down to `billing-spike` and `fix-auth-flake`, so
-  the indent guides and share bars show.
-- Clicking the heading moves focus off the last toggle, which would otherwise
-  show its row's favorite star; `mousemove 0 0` leaves no row hovered.
+  device scale 2; 1920 is the `2xl` sidebar width. `resize` sets the viewport
+  and keeps the scale, so an image is 3840 px wide and twice its height tall.
+- Every image is the visible viewport, never `--full-page`. Its height is the
+  smallest from 1182 up that ends on a table row's bottom border or an expanded
+  panel's; re-measure, on a taller `resize`, when the chrome above the table or
+  the panel changes height.
+- Every image is in light mode (headless Chrome's default) and All folders,
+  with the tree as it opens unless the image's clicks say otherwise.
+  `mousemove 0 0` leaves no row hovered.
+- The seed's titles, session ids and order don't depend on the instant it is
+  built; only the dates do.
+- View each PNG before committing it: the paragraph above it in `README.md`
+  says what it must show.
+
+The images, each with its path, height and subject:
+
+- `main-view.png` — `/`, 1182. Clicks
+  `"role=button[name='dev sub-folders']"`,
+  `"role=button[name='acme-api sub-folders']"` and
+  `"role=button[name='.claude/worktrees sub-folders']"`, opening the tree down
+  to `billing-spike` and `fix-auth-flake` so the indent guides and share bars
+  show, then `"role=heading[name='Conversations']"`: it moves focus off the
+  last toggle, which would otherwise show its row's favorite star.
+- `conversation-detail.png` — `/?sortBy=cost&dir=desc&expanded=seed-home-prezbar-dev-web-dashboard-13`, 1206. Sorted by cost, "Debug the memory leak in the worker" (web-dashboard)
+  is expanded: three models, the `tdd` skill, and the general-purpose and Plan
+  sub-agents. The frame ends on the next row's bottom border.
+- `continuation-family.png` — `/?expanded=seed-home-prezbar-dev-acme-api-31`, 1292. "Billing split — extract the invoice writer" is expanded: the
+  five-conversation family tree, with it highlighted and the worktree sitting
+  labelled `billing-spike`. The frame ends on the panel's bottom border.
+- `api-errors.png` — `/?errors=1&expanded=seed-home-prezbar-dev-web-dashboard-43`, 1184. With "Only with errors" on, the higher of the two
+  web-dashboard "Containerize the service" rows (2 errors) is expanded: one failure in main, one in a
+  general-purpose sub-agent.
 
 ## Run the e2e specs
 
