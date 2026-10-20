@@ -79,7 +79,7 @@ async function Sidebar() {
 }
 
 /** The sidebar column's width, which its skeleton holds too, so the page does not jump sideways. */
-const SIDEBAR_WIDTH = "lg:w-64 xl:w-80";
+const SIDEBAR_WIDTH = "lg:w-64 2xl:w-80";
 
 /** The folder entries the sidebar skeleton draws, "All folders" included. */
 const SKELETON_FOLDERS = 7;
@@ -101,7 +101,7 @@ function SidebarFallback() {
               <span className="min-w-0 flex-1">
                 <Skeleton className="h-3.5 w-28 max-w-full" />
               </span>
-              <span className="hidden min-w-6 justify-end xl:flex">
+              <span className="hidden min-w-6 justify-end 2xl:flex">
                 <Skeleton className="h-3 w-5" />
               </span>
               <span className={`${FOLDER_ROW_COST_COLUMN} flex justify-end`}>

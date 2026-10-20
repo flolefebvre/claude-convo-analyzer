@@ -149,11 +149,12 @@ function FolderItem({ node, ...tree }: TreeState & { node: FolderNode }) {
       {isOpen && (
         // The indent guide: one line per open level, from under the chevron
         // down its children, in clay on the way to the selected Folder. A
-        // level indents 20px, or 12px in the narrow `lg` sidebar.
+        // level indents 20px, or 12px below `2xl`, where the sidebar is its
+        // narrow 256px.
         <div
           id={childrenId}
           className={cn(
-            "ml-2.5 border-l pl-2.5 lg:max-xl:pl-px",
+            "ml-2.5 border-l pl-2.5 lg:max-2xl:pl-px",
             tree.selectedFolderPath !== undefined &&
               isProjectInFolderScope(tree.selectedFolderPath, { folder: node.path }) &&
               "border-cost",
