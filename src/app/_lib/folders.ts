@@ -110,13 +110,16 @@ function trailingSuffix(path: string, depth: number): string {
 
 /**
  * Widen the `label` of any entries whose bare basename collides with another
- * entry's, in place. Each colliding GROUP is widened to the minimal trailing
- * path suffix (fewest segments) that makes every member of that group unique —
- * entries with a unique basename keep their bare basename. Entries are keyed
- * by path, so the full path always tells two of them apart.
+ * entry's, in place; each `label` starts as its path's basename. Each colliding
+ * GROUP is widened to the minimal trailing path suffix (fewest segments) that
+ * makes every member of that group unique — entries with a unique basename keep
+ * their bare basename. Entries are keyed by path, so the full path always tells
+ * two of them apart.
+ *
+ * @example disambiguateLabels(entries) // "/a/app", "/b/app" → "a/app", "b/app"
  */
-function disambiguateLabels(entries: FolderEntry[]): void {
-  const byBasename = new Map<string, FolderEntry[]>();
+export function disambiguateLabels(entries: { path: string; label: string }[]): void {
+  const byBasename = new Map<string, { path: string; label: string }[]>();
   for (const e of entries) {
     const group = byBasename.get(e.label);
     if (group) group.push(e);
