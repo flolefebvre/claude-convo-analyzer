@@ -148,7 +148,7 @@ export function ConversationRow({
           <div className="flex min-w-0 items-start gap-1.5 @xl:items-center">
             <Link
               href={withListReturn(agentHref(row.id), listReturn)}
-              title={row.title ?? undefined}
+              title={row.title ?? row.id}
               className="min-w-0 rounded-sm break-words hover:underline focus-visible:whitespace-normal @max-xl:line-clamp-2 @max-xl:whitespace-normal @xl:truncate"
             >
               {row.title ?? <span className="text-muted-foreground">{row.id}</span>}
@@ -487,7 +487,7 @@ function FamilyTree({ family }: { family: FamilyView }) {
               <span aria-hidden className="shrink-0 text-xs">
                 {member.depth === 0 ? "◆" : "◇"}
               </span>
-              <span className="truncate">
+              <span className="truncate" title={member.title ?? member.id}>
                 {member.title ?? <span className="text-muted-foreground">{member.id}</span>}
               </span>
               {member.isCurrent && <span className="sr-only">(this conversation)</span>}
