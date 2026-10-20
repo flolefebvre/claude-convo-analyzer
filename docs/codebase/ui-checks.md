@@ -64,9 +64,9 @@ pnpm exec playwright-cli -s=<worktree> close
   device scale 2; 1920 is the `2xl` sidebar width. `resize` sets the viewport
   and keeps the scale, so an image is 3840 px wide and twice its height tall.
 - Every image is the visible viewport, never `--full-page`. Its height is the
-  smallest from 1182 up that ends on a table row's bottom border or an expanded
-  panel's; re-measure, on a taller `resize`, when the chrome above the table or
-  the panel changes height.
+  smallest from 1182 up that ends on a clean edge: a table row's or an expanded
+  panel's bottom border, or the gap between two cards. Re-measure, on a taller
+  `resize`, when what is above that edge changes height.
 - Every image is in light mode (headless Chrome's default) and All folders,
   with the tree as it opens unless the image's clicks say otherwise.
   `mousemove 0 0` leaves no row hovered.
@@ -75,24 +75,36 @@ pnpm exec playwright-cli -s=<worktree> close
 - View each PNG before committing it: the paragraph above it in `README.md`
   says what it must show.
 
-The images, each with its path, height and subject:
+The images, each with its height, path and subject:
 
-- `main-view.png` — `/`, 1182. Clicks
+- `main-view.png` — 1182, `/`. Clicks
   `"role=button[name='dev sub-folders']"`,
   `"role=button[name='acme-api sub-folders']"` and
   `"role=button[name='.claude/worktrees sub-folders']"`, opening the tree down
   to `billing-spike` and `fix-auth-flake` so the indent guides and share bars
   show, then `"role=heading[name='Conversations']"`: it moves focus off the
   last toggle, which would otherwise show its row's favorite star.
-- `conversation-detail.png` — `/?sortBy=cost&dir=desc&expanded=seed-home-prezbar-dev-web-dashboard-13`, 1206. Sorted by cost, "Debug the memory leak in the worker" (web-dashboard)
-  is expanded: three models, the `tdd` skill, and the general-purpose and Plan
+- `conversation-detail.png` — 1206,
+  `/?sortBy=cost&dir=desc&expanded=seed-home-prezbar-dev-web-dashboard-13`.
+  Sorted by cost, "Debug the memory leak in the worker" (web-dashboard) is
+  expanded: three models, the `tdd` skill, and the general-purpose and Plan
   sub-agents. The frame ends on the next row's bottom border.
-- `continuation-family.png` — `/?expanded=seed-home-prezbar-dev-acme-api-31`, 1292. "Billing split — extract the invoice writer" is expanded: the
-  five-conversation family tree, with it highlighted and the worktree sitting
-  labelled `billing-spike`. The frame ends on the panel's bottom border.
-- `api-errors.png` — `/?errors=1&expanded=seed-home-prezbar-dev-web-dashboard-43`, 1184. With "Only with errors" on, the higher of the two
-  web-dashboard "Containerize the service" rows (2 errors) is expanded: one failure in main, one in a
-  general-purpose sub-agent.
+- `continuation-family.png` — 1292,
+  `/?expanded=seed-home-prezbar-dev-acme-api-31`. "Billing split — extract the
+  invoice writer" is expanded: the five-conversation family tree, with it
+  highlighted and the worktree sitting labelled `billing-spike`. The frame ends
+  on the panel's bottom border.
+- `api-errors.png` — 1184,
+  `/?errors=1&expanded=seed-home-prezbar-dev-web-dashboard-43`. With "Only with
+  errors" on, the higher of the two web-dashboard "Containerize the service"
+  rows (2 errors) is expanded: one failure in main, one in a general-purpose
+  sub-agent.
+- `transcript-view.png` — 1182,
+  `/conversation/seed-home-prezbar-dev-docs-site-60`. The Transcript of
+  "Coordinate the search rewrite across agents", on main, with its Plan Agent
+  call opened by `click "summary:has-text('plan the change')"`: the Task
+  prompt and what Plan handed back, as Markdown. The frame ends in the gap
+  below a message.
 
 ## Run the e2e specs
 
