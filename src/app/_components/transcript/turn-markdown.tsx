@@ -2,10 +2,10 @@ import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 // Renders agent-written text as GitHub-flavoured markdown: assistant turns,
-// Inter-agent message bodies, Task notification results and an opened Tool
-// call's markdown parts (the Agent call's Task prompt). Humans don't write
-// reliable markdown, so user prompts never go through this — they render plain
-// (see `TranscriptMessage`).
+// Inter-agent message bodies, Task notification results, a Sub-agent's Task
+// prompt, and an opened Tool call's markdown parts (the Agent call's Task
+// prompt). Humans don't write reliable markdown, so a Prompt the human authored
+// never goes through this — it renders plain (see `PromptRow`).
 //
 // Security: react-markdown escapes raw HTML by default and we deliberately do
 // NOT add `rehype-raw` (or any dangerous-HTML plugin), so a turn containing

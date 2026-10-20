@@ -61,7 +61,8 @@ and one agent's turn-by-turn transcript on the right. Click a row's title to
 land on the main agent, or a sub-agent in the cost breakdown to jump straight
 into its transcript. Open a tool call for its full input and result; an Agent
 call shows the Task prompt it gave its sub-agent and what that sub-agent handed
-back, rendered as Markdown:
+back, rendered as Markdown, and the sub-agent's own transcript opens on that
+same Task prompt, rendered as Markdown too; your own prompts stay plain text:
 
 ![Transcript view](docs/images/transcript-view.png)
 
