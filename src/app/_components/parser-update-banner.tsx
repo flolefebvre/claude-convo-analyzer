@@ -30,7 +30,7 @@ export async function ParserUpdateBanner() {
 
   return (
     <div role="status" className="border-b bg-muted/60">
-      <div className="mx-auto flex w-full max-w-7xl items-center gap-3 px-4 py-1.5 sm:px-6">
+      <div className="mx-auto flex w-full max-w-frame items-center gap-3 px-4 py-1.5 sm:px-6">
         <Info className="size-4 shrink-0 text-muted-foreground" aria-hidden />
         <p className="flex-1 text-ui">{formatOutdatedParserNotice(outdatedCount)}</p>
         <RefreshButton variant="outline" size="sm" snapshot={refreshSnapshot} />

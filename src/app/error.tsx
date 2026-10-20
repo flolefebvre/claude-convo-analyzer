@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 
 export default function ErrorPage({ error, retry }: { error: Error & { digest?: string }; retry: () => void }) {
   return (
-    <main id="main" tabIndex={-1} className="mx-auto w-full max-w-7xl flex-1 px-4 py-10 sm:px-6 lg:py-16">
+    <main id="main" tabIndex={-1} className="mx-auto w-full max-w-frame flex-1 px-4 py-10 sm:px-6 lg:py-16">
       <EmptyState
         icon={AlertTriangle}
         title="This page could not be loaded"

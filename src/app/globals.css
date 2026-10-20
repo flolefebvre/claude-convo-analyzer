@@ -82,6 +82,9 @@
   --text-2xs--line-height: 1rem;
   --text-ui: 0.8125rem;
   --text-ui--line-height: 1.25rem;
+  /* The app's frame: the widest the app bar, the pages and the banners grow
+     (`max-w-frame`), so their edges line up on any screen. */
+  --container-frame: 120rem;
 }
 
 /* The one small-caps label: table column headers, kind chips and status badges.
