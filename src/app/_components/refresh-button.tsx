@@ -31,6 +31,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 
 import { ControlBubble } from "@/app/_components/control-bubble";
+import { PendingButton, type PendingButtonProps } from "@/app/_components/pending-button";
 import { refreshConversations } from "@/app/actions";
 import { isRerenderDue, type RefreshActivity, type RefreshRunId } from "@/app/_lib/refresh-activity";
 import {
@@ -40,7 +41,6 @@ import {
   formatRefreshSummary,
 } from "@/app/_lib/refresh-summary";
 import { channels, useChannel } from "@/app/_lib/sse.client";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils-cn";
 
 /** How long a success message stays up. */
@@ -60,8 +60,8 @@ type Message = {
 
 /** How the button looks: its shadcn variant and size, and whether its label collapses below 1280px. */
 type RefreshButtonLook = {
-  variant?: React.ComponentProps<typeof Button>["variant"];
-  size?: React.ComponentProps<typeof Button>["size"];
+  variant?: PendingButtonProps["variant"];
+  size?: PendingButtonProps["size"];
   /**
    * The app bar's look: below the `xl` breakpoint (1280px) the label is hidden,
    * leaving the icon; from it, a running Refresh shows its counts alone ("n / m").
@@ -205,7 +205,7 @@ export function RefreshButton({ snapshot, reportsOutcome = false, ...look }: Ref
         label={label}
         shownLabel={shownLabel}
         isRunning={isRunning}
-        isDisabled={isClickPending}
+        isPending={isClickPending}
         onClick={handleClick}
       />
 
@@ -238,7 +238,7 @@ export function RefreshButton({ snapshot, reportsOutcome = false, ...look }: Ref
 export function IdleRefreshButton(look: RefreshButtonLook) {
   return (
     <div className="relative flex shrink-0">
-      <RefreshButtonFace {...look} label="Refresh" isRunning={false} isDisabled={false} />
+      <RefreshButtonFace {...look} label="Refresh" isRunning={false} isPending={false} />
     </div>
   );
 }
@@ -255,21 +255,21 @@ function RefreshButtonFace({
   label,
   shownLabel = label,
   isRunning,
-  isDisabled,
+  isPending,
   onClick,
 }: RefreshButtonLook & {
   label: string;
   shownLabel?: string;
   isRunning: boolean;
-  isDisabled: boolean;
+  isPending: boolean;
   onClick?: () => void;
 }) {
   return (
-    <Button
+    <PendingButton
       variant={variant}
       size={size}
       onClick={onClick}
-      disabled={isDisabled}
+      isPending={isPending}
       aria-busy={isRunning}
       title="Re-scan your Claude Code logs"
       className={cn("tabular-nums", collapsible && "max-xl:w-8 max-xl:px-0")}
@@ -285,6 +285,6 @@ function RefreshButtonFace({
           <span className="sr-only">{label}</span>
         </>
       )}
-    </Button>
+    </PendingButton>
   );
 }

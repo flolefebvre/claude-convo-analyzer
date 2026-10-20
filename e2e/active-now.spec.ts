@@ -66,6 +66,50 @@ test.describe("Active now", () => {
     await expect(activeNowMarkers(page)).toHaveCount(0);
   });
 
+  test("keeps the keyboard focus on the Live toggle through a switch, and ignores a second Enter meanwhile", async ({
+    page,
+  }) => {
+    await page.goto(repoListPath);
+    await expect(liveToggle(page)).toHaveAttribute("aria-pressed", "false");
+
+    // Holds every server action's request until `releaseActions()`, so the switch stays pending meanwhile.
+    let releaseActions = () => {};
+    const actionsReleased = new Promise<void>((resolve) => {
+      releaseActions = resolve;
+    });
+    let actionRequestCount = 0;
+    await page.route("**/*", async (route) => {
+      const request = route.request();
+      if (request.method() !== "POST" || (await request.headerValue("next-action")) === null) {
+        return route.fallback();
+      }
+      actionRequestCount += 1;
+      await actionsReleased;
+      await route.continue();
+    });
+
+    await liveToggle(page).focus();
+    await page.keyboard.press("Enter");
+    try {
+      await expect(liveToggle(page)).toHaveAttribute("aria-disabled", "true");
+      await expect(liveToggle(page)).toBeFocused();
+      await page.keyboard.press("Enter");
+
+      releaseActions();
+      await expect(liveToggle(page)).toHaveAttribute("aria-pressed", "true");
+      await expect(liveToggle(page)).toHaveAttribute("aria-disabled", "false");
+      await expect(liveToggle(page)).toBeFocused();
+      expect(actionRequestCount).toBe(1);
+    } finally {
+      releaseActions();
+      await page.unrouteAll({ behavior: "wait" });
+      // A switch still pending would land after the check below.
+      await expect(liveToggle(page)).toBeEnabled();
+      if ((await liveToggle(page).getAttribute("aria-pressed")) === "true") await liveToggle(page).click();
+      await expect(liveToggle(page)).toHaveAttribute("aria-pressed", "false");
+    }
+  });
+
   test("marks a Conversation written to while Live is on, until two quiet minutes pass", async ({ page }) => {
     // Before the page loads, so its timers run on the clock the test advances.
     await page.clock.install();
