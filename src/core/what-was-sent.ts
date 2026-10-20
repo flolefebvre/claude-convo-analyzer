@@ -2,7 +2,8 @@
 // sent the model, read on demand when the reader opens it. The database
 // locates the API request and the previous one of the same Agent; the
 // Recording file provides their bodies, the only two restored (ADR-0006: no
-// body is ever written to the database). Framework-free (ADR-0002).
+// body is ever written to the database). Its Raw view reads one API request
+// the same way, as the Recording holds it. Framework-free (ADR-0002).
 
 import { structuredPatch } from "diff";
 
@@ -17,10 +18,22 @@ import {
   recordingFilePath,
 } from "@/core/recording";
 
-/** One content block as sent: text shown as text, any other block as pretty-printed JSON. */
-export type SentBlock = { kind: "text"; text: string } | { kind: "json"; json: string };
+/** A value as parsed from JSON: what a body, or any part of one, is. */
+export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
-/** One message of an API request: its role, then each content block (a string content is one text block). */
+/**
+ * What a sent block is: `text`, `tool_use`, `tool_result`, `image`, a
+ * `system-reminder` (a text block opening with its tag), else the block's
+ * own `type` (`thinking`, `document`, …), or `unknown` without one.
+ */
+export type SentBlockKind = string;
+
+/** One content block as sent, with its kind: a text block shown as text, any other as pretty-printed JSON. */
+export type SentBlock = { kind: SentBlockKind } & (
+  { shownAs: "text"; text: string } | { shownAs: "json"; json: string }
+);
+
+/** One message of an API request: its role, then each content block (a string content is one text block, a missing one none). */
 export type SentMessage = { role: string; blocks: SentBlock[] };
 
 /** One system block as sent, with the cache breakpoint it carries (`cache_control.type`, plus its `ttl`), if any. */
@@ -124,19 +137,34 @@ export type WhatWasSent = {
    * request, which has no Agent, and then every message is new.
    */
   previousApiRequestId: number | null;
-  /** The messages after those this request shares, in order, with the previous one (cache breakpoints ignored). */
-  newMessages: SentMessage[];
+  /**
+   * Index in `fullRequest.messages` of the first message the previous API
+   * request did not send — the messages before it are those the two share, in
+   * order (cache breakpoints ignored); 0 without a previous one.
+   */
+  firstNewMessageIndex: number;
   /** How the system prompt changed since the previous API request; null when it did not, or without one. */
   systemPromptDiff: SystemPromptDiff | null;
   /** How the tool definitions changed since the previous API request; null when none did, or without one. */
   toolsDiff: ToolsDiff | null;
-  /** The whole request: every system block with its cache breakpoints, every tool definition, every other parameter. */
+  /** The whole request: every system block with its cache breakpoints, every tool definition and message, every other body field. */
   fullRequest: {
     systemBlocks: SentSystemBlock[];
     tools: SentTool[];
-    /** Every body field but `system`, `tools` and `messages`, pretty-printed. */
-    parametersJson: string;
+    messages: SentMessage[];
+    /** Every body field but `system`, `tools` and `messages`, as sent. */
+    parameterByName: Record<string, JsonValue>;
   };
+};
+
+/** An API request raw (GLOSSARY.md, What was sent), as JSON: what the panel's Raw view shows. Plain and serializable. */
+export type RawApiRequest = {
+  /** The request body exactly as sent, rebuilt from the Recording's pieces (`metadata.user_id` redacted). */
+  requestBody: JsonValue;
+  /** The response body as the Recording reassembled it (a stream's events folded into one message); null without one. */
+  responseBody: JsonValue;
+  /** The request headers, credentials redacted. */
+  requestHeaders: RecordedHeaders;
 };
 
 type WhatWasSentOptions = {
@@ -158,7 +186,7 @@ type ApiRequestKey = {
 const PIECE_FIELDS = new Set(["system", "tools", "messages"]);
 
 /** A request body that is a JSON object: what a Messages request is. */
-type RequestBody = Record<string, unknown>;
+type RequestBody = Record<string, JsonValue>;
 
 /**
  * What the API request of `api_request` row `apiRequestId` sent, against the
@@ -173,13 +201,7 @@ type RequestBody = Record<string, unknown>;
  * const whatWasSent = await getWhatWasSent(message.apiRequestId);
  */
 export async function getWhatWasSent(apiRequestId: number, opts: WhatWasSentOptions = {}): Promise<WhatWasSent | null> {
-  const { prisma, owned } = readClient(opts.dbPath);
-  try {
-    const row = await prisma.apiRequest.findUnique({
-      where: { id: apiRequestId },
-      include: { conversation: { select: { sessionId: true } } },
-    });
-    if (row === null) return null;
+  return withApiRequestRow(apiRequestId, opts.dbPath, async (row, prisma) => {
     const previousRow =
       row.agentId === null
         ? null
@@ -202,18 +224,17 @@ export async function getWhatWasSent(apiRequestId: number, opts: WhatWasSentOpti
             select: { status: true, errorMessage: true, arrivedAt: true, endedAt: true },
           });
 
-    const filePath = recordingFilePath(opts.recordingsRoot ?? defaultRecordingsRoot(), row.conversation.sessionId);
-    if (filePath === null) return null;
-    const keys = previousRow === null ? [row] : [row, previousRow];
-    const apiRequests = readApiRequestsUnlessVanished(filePath, keys);
-    const apiRequest = apiRequestOf(apiRequests, row);
+    const [apiRequest, previousApiRequest = null] = recordedApiRequestsOf(
+      row.conversation.sessionId,
+      previousRow === null ? [row] : [row, previousRow],
+      opts,
+    );
     if (apiRequest === null || !isRequestBody(apiRequest.body)) return null;
-    const previousApiRequest = previousRow === null ? null : apiRequestOf(apiRequests, previousRow);
     const previousBody =
       previousApiRequest !== null && isRequestBody(previousApiRequest.body) ? previousApiRequest.body : null;
 
     const body = apiRequest.body;
-    const parameters = Object.fromEntries(Object.entries(body).filter(([field]) => !PIECE_FIELDS.has(field)));
+    const messages = messagesOf(body);
     return {
       isSideRequest: isSideRequestKind(row.kind),
       parameters: sentParameters(body, apiRequest.headers),
@@ -228,20 +249,89 @@ export async function getWhatWasSent(apiRequestId: number, opts: WhatWasSentOpti
         arrivedAt: new Date(Number(attempt.arrivedAt)).toISOString(),
       })),
       previousApiRequestId: previousBody === null ? null : previousRow!.id,
-      newMessages: messagesNewSince(messagesOf(body), previousBody === null ? [] : messagesOf(previousBody)),
+      firstNewMessageIndex: sharedPrefixLength(messages, previousBody === null ? [] : messagesOf(previousBody)),
       systemPromptDiff: previousBody === null ? null : systemPromptDiff(previousBody, body),
       toolsDiff: previousBody === null ? null : toolsDiff(toolsOf(previousBody), toolsOf(body)),
       fullRequest: {
         systemBlocks: systemBlocksOf(body).map(sentSystemBlock),
         tools: toolsOf(body).map(sentTool),
-        parametersJson: JSON.stringify(parameters, null, 2),
+        messages: messages.map(sentMessage),
+        parameterByName: Object.fromEntries(Object.entries(body).filter(([field]) => !PIECE_FIELDS.has(field))),
       },
     };
+  });
+}
+
+/**
+ * The API request of `api_request` row `apiRequestId` raw, as its Recording
+ * holds it: the request body rebuilt from its pieces, exactly as sent but for
+ * the Recording's redaction; the response body as the Recording reassembled
+ * it; the request headers, credentials redacted. Null for an unknown row, or
+ * when the Recording no longer holds the API request.
+ *
+ * @example
+ * const rawApiRequest = await getRawApiRequest(message.apiRequestId);
+ */
+export async function getRawApiRequest(
+  apiRequestId: number,
+  opts: WhatWasSentOptions = {},
+): Promise<RawApiRequest | null> {
+  return withApiRequestRow(apiRequestId, opts.dbPath, async (row) => {
+    const [apiRequest] = recordedApiRequestsOf(row.conversation.sessionId, [row], opts);
+    if (apiRequest === null) return null;
+    return {
+      // Both bodies were parsed from JSON when the Recording was read.
+      requestBody: (apiRequest.body ?? null) as JsonValue,
+      responseBody: (apiRequest.response.body ?? null) as JsonValue,
+      requestHeaders: apiRequest.headers,
+    };
+  });
+}
+
+/** The client {@link readClient} hands out. */
+type ReadPrisma = ReturnType<typeof readClient>["prisma"];
+
+/** The `api_request` row `apiRequestId`, with its Conversation's session id; null for an unknown one. */
+function findApiRequestRow(prisma: ReadPrisma, apiRequestId: number) {
+  return prisma.apiRequest.findUnique({
+    where: { id: apiRequestId },
+    include: { conversation: { select: { sessionId: true } } },
+  });
+}
+
+type ApiRequestRow = NonNullable<Awaited<ReturnType<typeof findApiRequestRow>>>;
+
+/** What `read` makes of `api_request` row `apiRequestId`, read from the database at `dbPath`; null for an unknown row. */
+async function withApiRequestRow<Result>(
+  apiRequestId: number,
+  dbPath: string | undefined,
+  read: (row: ApiRequestRow, prisma: ReadPrisma) => Promise<Result | null>,
+): Promise<Result | null> {
+  const { prisma, owned } = readClient(dbPath);
+  try {
+    const row = await findApiRequestRow(prisma, apiRequestId);
+    return row === null ? null : await read(row, prisma);
   } finally {
     // Only a caller-owned (non-default) client is disconnected; the shared
     // default singleton stays open for the next request.
     if (owned) await prisma.$disconnect();
   }
+}
+
+/**
+ * The API request of each of `keys` in the Recording of session `sessionId`,
+ * in the order of `keys`: null for one the Recording does not hold, or for
+ * every one when the Recording is gone.
+ */
+function recordedApiRequestsOf(
+  sessionId: string,
+  keys: ApiRequestKey[],
+  opts: WhatWasSentOptions,
+): (RecordedApiRequest | null)[] {
+  const filePath = recordingFilePath(opts.recordingsRoot ?? defaultRecordingsRoot(), sessionId);
+  if (filePath === null) return keys.map(() => null);
+  const apiRequests = readApiRequestsUnlessVanished(filePath, keys);
+  return keys.map((key) => apiRequestOf(apiRequests, key));
 }
 
 /** The API requests of the file at `filePath` that match one of `keys`, in full; none when the file is gone. */
@@ -306,20 +396,20 @@ function thinkingText(thinking: unknown): string {
 }
 
 /**
- * The messages of `messages` after the longest prefix it shares with
- * `previousMessages`, compared position by position without their cache
- * breakpoints — so a new prompt that repeats an earlier one is still new.
+ * The length of the longest prefix `messages` shares with `previousMessages`,
+ * compared position by position without their cache breakpoints — so a new
+ * prompt that repeats an earlier one is still new.
  */
-function messagesNewSince(messages: unknown[], previousMessages: unknown[]): SentMessage[] {
+function sharedPrefixLength(messages: unknown[], previousMessages: unknown[]): number {
   const comparableJson = (message: unknown) => canonicalJson(withoutCacheControl(message));
-  let sharedPrefixLength = 0;
+  let length = 0;
   while (
-    sharedPrefixLength < Math.min(messages.length, previousMessages.length) &&
-    comparableJson(messages[sharedPrefixLength]) === comparableJson(previousMessages[sharedPrefixLength])
+    length < Math.min(messages.length, previousMessages.length) &&
+    comparableJson(messages[length]) === comparableJson(previousMessages[length])
   ) {
-    sharedPrefixLength += 1;
+    length += 1;
   }
-  return messages.slice(sharedPrefixLength).map(sentMessage);
+  return length;
 }
 
 /** The system-prompt diff from `previousBody` to `body`; null when the system text is the same. */
@@ -341,7 +431,7 @@ function systemTextOf(body: RequestBody): string {
   return systemBlocksOf(body)
     .map((block) => {
       const sent = sentBlock(block);
-      return sent.kind === "text" ? sent.text : sent.json;
+      return sent.shownAs === "text" ? sent.text : sent.json;
     })
     .join("\n");
 }
@@ -412,17 +502,30 @@ function sentMessage(message: unknown): SentMessage {
   const content = message.content;
   return {
     role: typeof message.role === "string" ? message.role : "unknown",
-    blocks: Array.isArray(content) ? content.map(sentBlock) : [sentBlock(content)],
+    blocks: Array.isArray(content) ? content.map(sentBlock) : content === undefined ? [] : [sentBlock(content)],
   };
 }
 
+/** The tag opening a system-reminder: context Claude Code injects into a text block. */
+const SYSTEM_REMINDER_TAG = "<system-reminder>";
+
 /** A string, or a `text` block, as its text; anything else as pretty-printed JSON. */
 function sentBlock(block: unknown): SentBlock {
-  if (typeof block === "string") return { kind: "text", text: block };
-  if (isPlainObject(block) && block.type === "text" && typeof block.text === "string") {
-    return { kind: "text", text: block.text };
+  const text =
+    typeof block === "string"
+      ? block
+      : isPlainObject(block) && block.type === "text" && typeof block.text === "string"
+        ? block.text
+        : null;
+  if (text !== null) {
+    return {
+      kind: text.trimStart().startsWith(SYSTEM_REMINDER_TAG) ? "system-reminder" : "text",
+      shownAs: "text",
+      text,
+    };
   }
-  return { kind: "json", json: JSON.stringify(block, null, 2) };
+  const kind = isPlainObject(block) && typeof block.type === "string" ? block.type : "unknown";
+  return { kind, shownAs: "json", json: JSON.stringify(block, null, 2) };
 }
 
 function sentSystemBlock(block: unknown): SentSystemBlock {

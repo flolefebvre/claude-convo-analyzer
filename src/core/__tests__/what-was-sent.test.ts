@@ -1,9 +1,10 @@
 // What was sent (GLOSSARY.md): for a recorded Turn, what its API request sent
 // the model — the messages new since the previous API request of the same
 // Agent, the request parameters and timings, and the whole system prompt and
-// tool definitions — located through the database, read from the Recording.
+// tool definitions, and the API request raw — located through the database,
+// read from the Recording.
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -11,7 +12,13 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getTranscript, type TranscriptMessage } from "@/core/read";
 import { openRecordingWriter, type RecordedApiRequest } from "@/core/recording";
 import { refresh } from "@/core/refresh";
-import { getWhatWasSent, type SentMessage, VOLATILE_SYSTEM_LINE_PATTERNS } from "@/core/what-was-sent";
+import {
+  getRawApiRequest,
+  getWhatWasSent,
+  type SentMessage,
+  VOLATILE_SYSTEM_LINE_PATTERNS,
+  type WhatWasSent,
+} from "@/core/what-was-sent";
 
 const LOGS_ROOT = path.join(import.meta.dirname, "fixtures", "what-was-sent-logs");
 const SESSION_ID = "sess-sent";
@@ -174,11 +181,16 @@ async function whatWasSentForTurn(ordinal: number, agentId?: string) {
 }
 
 /** Messages as their role and the text (or JSON) of each block. */
-function summarized(messages: SentMessage[] | undefined): string[][] {
-  return (messages ?? []).map((message) => [
+function summarized(messages: SentMessage[]): string[][] {
+  return messages.map((message) => [
     message.role,
-    ...message.blocks.map((block) => (block.kind === "text" ? block.text : block.json)),
+    ...message.blocks.map((block) => (block.shownAs === "text" ? block.text : block.json)),
   ]);
+}
+
+/** The messages `sent` sent that the previous API request did not: those from its first new one on. */
+function newMessagesOf(sent: WhatWasSent | null): SentMessage[] {
+  return sent === null ? [] : sent.fullRequest.messages.slice(sent.firstNewMessageIndex);
 }
 
 describe("a Turn's API request", () => {
@@ -233,7 +245,7 @@ describe("what was sent for a Turn", () => {
     const sent = await whatWasSentForTurn(1);
 
     expect(sent?.previousApiRequestId).toBeNull();
-    expect(summarized(sent?.newMessages)).toEqual([["user", "audit the exports"]]);
+    expect(summarized(newMessagesOf(sent))).toEqual([["user", "audit the exports"]]);
   });
 
   it("is the whole opening of a sub-agent's first Turn", async () => {
@@ -242,7 +254,7 @@ describe("what was sent for a Turn", () => {
     const sent = await whatWasSentForTurn(1, SUB_AGENT_ID);
 
     expect(sent?.previousApiRequestId).toBeNull();
-    expect(summarized(sent?.newMessages)).toEqual([["user", "Find the export code."]]);
+    expect(summarized(newMessagesOf(sent))).toEqual([["user", "Find the export code."]]);
   });
 
   it("is only the messages the previous API request of the same Agent did not send, system-reminders included", async () => {
@@ -250,10 +262,31 @@ describe("what was sent for a Turn", () => {
 
     const sent = await whatWasSentForTurn(2);
 
-    expect(summarized(sent?.newMessages)).toEqual([
+    expect(summarized(newMessagesOf(sent))).toEqual([
       ["assistant", JSON.stringify(AGENT_TOOL_USE, null, 2)],
       ["user", JSON.stringify(AGENT_TOOL_RESULT, null, 2), SYSTEM_REMINDER],
     ]);
+  });
+
+  it("holds every message it sent, the new ones starting at the first new message", async () => {
+    await recordAndRefresh(mainTurns());
+
+    const sent = await whatWasSentForTurn(3);
+
+    expect(sent?.fullRequest.messages.map((message) => message.role)).toEqual([
+      "user",
+      "assistant",
+      "user",
+      "assistant",
+      "user",
+    ]);
+    expect(sent?.firstNewMessageIndex).toBe(3);
+  });
+
+  it("starts its new messages at the first one on a Turn with no previous API request", async () => {
+    await recordAndRefresh(mainTurns());
+
+    expect((await whatWasSentForTurn(1))?.firstNewMessageIndex).toBe(0);
   });
 
   it("is the whole context on the first recorded Turn of a partially recorded Agent", async () => {
@@ -262,7 +295,7 @@ describe("what was sent for a Turn", () => {
     const sent = await whatWasSentForTurn(2);
 
     expect(sent?.previousApiRequestId).toBeNull();
-    expect(sent?.newMessages.map((message) => message.role)).toEqual(["user", "assistant", "user"]);
+    expect(newMessagesOf(sent).map((message) => message.role)).toEqual(["user", "assistant", "user"]);
     expect(sent?.systemPromptDiff).toBeNull();
     expect(sent?.toolsDiff).toBeNull();
   });
@@ -278,7 +311,7 @@ describe("what was sent for a Turn", () => {
 
     const sent = await whatWasSentForTurn(3);
 
-    expect(summarized(sent?.newMessages)).toEqual([
+    expect(summarized(newMessagesOf(sent))).toEqual([
       ["assistant", "The exports live in billing/export.ts."],
       ["user", "audit the exports"],
     ]);
@@ -297,7 +330,7 @@ describe("what was sent for a Turn", () => {
 
     const sent = await whatWasSentForTurn(2);
 
-    expect(sent?.newMessages.map((message) => message.role)).toEqual(["assistant", "user"]);
+    expect(newMessagesOf(sent).map((message) => message.role)).toEqual(["assistant", "user"]);
   });
 
   it("skips a Side request and a failed attempt between the two Turns", async () => {
@@ -321,7 +354,7 @@ describe("what was sent for a Turn", () => {
     const second = (await turnsOf())[1];
 
     expect(sent?.previousApiRequestId).toBe(second?.apiRequestId);
-    expect(summarized(sent?.newMessages)).toEqual([
+    expect(summarized(newMessagesOf(sent))).toEqual([
       ["assistant", "The exports live in billing/export.ts."],
       ["user", "now add a test"],
     ]);
@@ -349,6 +382,19 @@ describe("what was sent for a Turn", () => {
     expect(sent?.timings).toEqual({ timeToFirstByteMs: 800, durationMs: 3000 });
   });
 
+  it("holds every body field but the system prompt, the tools and the messages, as sent", async () => {
+    const [first] = mainTurns();
+    const thinking = { type: "enabled", budget_tokens: 31999 };
+    await recordAndRefresh([apiRequest({ ...requestFields(first), parameters: { thinking, stream: true } })]);
+
+    expect((await whatWasSentForTurn(1))?.fullRequest.parameterByName).toEqual({
+      model: "claude-opus-4-8",
+      max_tokens: 32000,
+      thinking,
+      stream: true,
+    });
+  });
+
   it("shows a thinking parameter of any shape", async () => {
     const [first] = mainTurns();
     await recordAndRefresh([apiRequest({ ...requestFields(first), parameters: { thinking: "adaptive-ish" } })]);
@@ -362,8 +408,8 @@ describe("what was sent for a Turn", () => {
     const sent = await whatWasSentForTurn(2);
 
     expect(sent?.fullRequest.systemBlocks).toEqual([
-      { kind: "text", text: SYSTEM[0].text, cacheControl: null },
-      { kind: "text", text: SYSTEM[1].text, cacheControl: "ephemeral" },
+      { kind: "text", shownAs: "text", text: SYSTEM[0].text, cacheControl: null },
+      { kind: "text", shownAs: "text", text: SYSTEM[1].text, cacheControl: "ephemeral" },
     ]);
     expect(sent?.fullRequest.tools).toEqual([{ name: "Bash", definitionJson: JSON.stringify(TOOLS[0], null, 2) }]);
   });
@@ -414,6 +460,59 @@ function failedAttemptOf(
 
 /** The response body of an overloaded API, as the API sends it. */
 const OVERLOADED_BODY = { type: "error", error: { type: "overloaded_error", message: "Overloaded" } };
+
+/** A Messages request body as Claude Code sends it: system blocks, tools, messages and a `metadata.user_id`. */
+const MESSAGES_REQUEST_BODY = JSON.parse(
+  readFileSync(path.join(import.meta.dirname, "fixtures", "recording", "messages-request.json"), "utf8"),
+) as { metadata: { user_id: string } } & Record<string, unknown>;
+
+describe("the raw API request of a Turn", () => {
+  /** The first Turn's API request, sending the fixture body with a credential header, answered `responseBody`. */
+  function firstTurnSending(responseBody: unknown): RecordedApiRequest {
+    const [first] = mainTurns();
+    return {
+      ...first,
+      headers: { "anthropic-version": "2023-06-01", "x-api-key": "sk-ant-fixture-secret" },
+      body: MESSAGES_REQUEST_BODY,
+      response: { ...first.response, body: responseBody },
+    };
+  }
+
+  it("is the body as sent, rebuilt from the Recording's pieces, with only the documented redaction applied", async () => {
+    const responseBody = { id: "smsg-1", type: "message", content: [{ type: "text", text: "Here they are." }] };
+    await recordAndRefresh([firstTurnSending(responseBody)]);
+    const [turn] = await turnsOf();
+
+    const raw = await getRawApiRequest(turn!.apiRequestId!, { dbPath, recordingsRoot });
+
+    // The Recording keeps the system blocks, tools and messages as hashed
+    // pieces; rebuilt, the body is the one sent, but for the redaction its
+    // writer applies before writing (docs/recording-format.md §4): the
+    // `metadata.user_id` keeps only its session id. Nothing else differs.
+    expect(raw?.requestBody).toEqual({
+      ...MESSAGES_REQUEST_BODY,
+      metadata: {
+        user_id: JSON.stringify({ device_id: "<redacted>", account_uuid: "<redacted>", session_id: "sess-recorded" }),
+      },
+    });
+    expect(raw?.responseBody).toEqual(responseBody);
+    expect(raw?.requestHeaders).toEqual({ "anthropic-version": "2023-06-01", "x-api-key": "<redacted>" });
+  });
+
+  it("is null when the Recording no longer holds the API request", async () => {
+    await recordAndRefresh([firstTurnSending({ id: "smsg-1", type: "message", content: [] })]);
+    const [turn] = await turnsOf();
+    rmSync(recordingsRoot, { recursive: true, force: true });
+
+    expect(await getRawApiRequest(turn!.apiRequestId!, { dbPath, recordingsRoot })).toBeNull();
+  });
+
+  it("is null for an unknown API request", async () => {
+    await recordAndRefresh(mainTurns());
+
+    expect(await getRawApiRequest(999_999, { dbPath, recordingsRoot })).toBeNull();
+  });
+});
 
 describe("the failed attempts of a Turn", () => {
   it("are listed oldest first, each with its status, error message and the time it lost", async () => {
@@ -468,7 +567,7 @@ describe("the failed attempts of a Turn", () => {
     const secondTurn = (await turnsOf())[1];
 
     expect(sent?.previousApiRequestId).toBe(secondTurn?.apiRequestId);
-    expect(summarized(sent?.newMessages)).toEqual([
+    expect(summarized(newMessagesOf(sent))).toEqual([
       ["assistant", "The exports live in billing/export.ts."],
       ["user", "now add a test"],
     ]);
@@ -557,7 +656,70 @@ describe("the system-prompt diff of a Turn", () => {
     const sent = await whatWasSentForTurn(3);
 
     expect(sent?.systemPromptDiff?.isVolatileOnly).toBe(false);
-    expect(sent?.fullRequest.systemBlocks).toEqual([{ kind: "text", text: "Answer briefly.", cacheControl: null }]);
+    expect(sent?.fullRequest.systemBlocks).toEqual([
+      { kind: "text", shownAs: "text", text: "Answer briefly.", cacheControl: null },
+    ]);
+  });
+});
+
+describe("the kind of a sent block", () => {
+  /** The blocks of the first Turn's one message, sent as `content`, as their kind and how they show. */
+  async function kindsOfContent(content: unknown): Promise<[string, string][]> {
+    const [first] = mainTurns();
+    await recordAndRefresh([apiRequest({ ...requestFields(first), messages: [{ role: "user", content }] })]);
+    const [message] = (await whatWasSentForTurn(1))?.fullRequest.messages ?? [];
+    return (message?.blocks ?? []).map((block) => [block.kind, block.shownAs]);
+  }
+
+  it("is its type, a text block shown as text and any other as JSON", async () => {
+    expect(
+      await kindsOfContent([
+        { type: "text", text: "audit the exports" },
+        AGENT_TOOL_RESULT,
+        { type: "image", source: { type: "base64", media_type: "image/png", data: "iVBORw0KGgo=" } },
+        { type: "thinking", thinking: "Look at billing first.", signature: "sig" },
+        { type: "document", source: { type: "text", media_type: "text/plain", data: "notes" } },
+      ]),
+    ).toEqual([
+      ["text", "text"],
+      ["tool_result", "json"],
+      ["image", "json"],
+      ["thinking", "json"],
+      ["document", "json"],
+    ]);
+  });
+
+  it("is a tool_use for a tool call the model made", async () => {
+    await recordAndRefresh(mainTurns());
+
+    const [reply] = newMessagesOf(await whatWasSentForTurn(2));
+
+    expect(reply?.blocks.map((block) => block.kind)).toEqual(["tool_use"]);
+  });
+
+  it("is a system-reminder for a text block opening with its tag, leading whitespace aside", async () => {
+    expect(
+      await kindsOfContent([
+        { type: "text", text: SYSTEM_REMINDER },
+        { type: "text", text: `\n  ${SYSTEM_REMINDER}` },
+        { type: "text", text: `See this: ${SYSTEM_REMINDER}` },
+      ]),
+    ).toEqual([
+      ["system-reminder", "text"],
+      ["system-reminder", "text"],
+      ["text", "text"],
+    ]);
+  });
+
+  it("is a text block, or a system-reminder, for a message whose content is a string", async () => {
+    expect(await kindsOfContent(SYSTEM_REMINDER)).toEqual([["system-reminder", "text"]]);
+  });
+
+  it("is none for a message sent without content: it has no blocks", async () => {
+    const [first] = mainTurns();
+    await recordAndRefresh([apiRequest({ ...requestFields(first), messages: [{ role: "user" } as ApiMessage] })]);
+
+    expect((await whatWasSentForTurn(1))?.fullRequest.messages).toEqual([{ role: "user", blocks: [] }]);
   });
 });
 

@@ -26,7 +26,7 @@ import {
 } from "@/core/read";
 import { searchConversations } from "@/core/search";
 import { getToolCallSamples, getToolStats } from "@/core/tool-stats";
-import { getWhatWasSent } from "@/core/what-was-sent";
+import { getRawApiRequest, getWhatWasSent } from "@/core/what-was-sent";
 
 /**
  * The home directory of the user running the app — the folder tree's `~` root.
@@ -167,6 +167,18 @@ export const loadToolCallBody = cache(async (id: number) => {
 export const loadWhatWasSent = cache(async (apiRequestId: number) => {
   await connection();
   return getWhatWasSent(apiRequestId);
+});
+
+/**
+ * Read the API request of `api_request` row `apiRequestId` raw (its bodies and
+ * request headers), from the default database and Recordings root. Gated and
+ * `null` like {@link loadWhatWasSent}.
+ *
+ * @example const rawApiRequest = await loadRawApiRequest(apiRequestId);
+ */
+export const loadRawApiRequest = cache(async (apiRequestId: number) => {
+  await connection();
+  return getRawApiRequest(apiRequestId);
 });
 
 /**

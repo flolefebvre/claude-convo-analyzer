@@ -301,11 +301,13 @@ What a recorded Turn's API request actually gave the model, shown on that
 Turn: the messages new since the previous API request of the same Agent (the
 system-reminders and other injected context the logs omit included), how the
 system prompt and the tool definitions changed since it, the request
-parameters and timings, and the whole system prompt and tool definitions. A
-system-prompt change is **volatile** when only lines that move on their own
-changed — the date, the git status, the working directory — and **real**
-otherwise. On a Side request the panel shows everything it sent, there being no
-previous request to compare against.
+parameters and timings, and the whole system prompt and tool definitions. It
+also gives the API request **raw**: its body exactly as sent, its headers
+(credentials redacted) and its response body, as JSON. A system-prompt change
+is **volatile** when only lines that move on their own changed — the date, the
+git status, the working directory — and **real** otherwise. On a Side request
+the panel shows everything it sent, there being no previous request to compare
+against.
 
 ### Failed attempt
 

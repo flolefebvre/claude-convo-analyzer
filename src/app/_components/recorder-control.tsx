@@ -11,9 +11,10 @@
 // measures the disk usage through `GET /api/disk-usage`; never on first paint.
 
 import { callRoute } from "@flefebvre/next-pipe/client";
-import { Check, Copy, Radio } from "lucide-react";
+import { Radio } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { CopyButton } from "@/app/_components/copy-button";
 import { PendingButton } from "@/app/_components/pending-button";
 import { formatBytes } from "@/app/_lib/format";
 import { startRecorder, stopRecorder } from "@/app/actions";
@@ -24,8 +25,6 @@ import { cn } from "@/lib/utils-cn";
 
 /** How often the item re-reads the Recorder's status while the page is visible. */
 const STATUS_POLL_INTERVAL_MS = 10_000;
-/** How long a copy button shows "Copied". */
-const COPIED_MS = 1500;
 
 /** The Recorder's status as the item needs it: what answers on the port, and the port. */
 export type RecorderStatusAsRead = { status: "running" | "off" | "portTaken"; port: number };
@@ -290,25 +289,10 @@ function HowToEnable({ port }: { port: number }) {
 
 /** A line of shell or a path, with a button putting it on the clipboard. */
 function CopyableLine({ text }: { text: string }) {
-  const [isCopied, setIsCopied] = useState(false);
-  useEffect(() => {
-    if (!isCopied) return;
-    const timer = setTimeout(() => setIsCopied(false), COPIED_MS);
-    return () => clearTimeout(timer);
-  }, [isCopied]);
-
   return (
     <div className="flex items-center gap-1 rounded-md bg-muted py-1 pr-1 pl-2">
       <code className="min-w-0 flex-1 overflow-x-auto font-mono text-[11px] whitespace-nowrap">{text}</code>
-      <Button
-        size="sm"
-        variant="ghost"
-        className="shrink-0"
-        onClick={() => void navigator.clipboard.writeText(text).then(() => setIsCopied(true))}
-      >
-        {isCopied ? <Check aria-hidden /> : <Copy aria-hidden />}
-        {isCopied ? "Copied" : "Copy"}
-      </Button>
+      <CopyButton text={text} className="shrink-0" />
     </div>
   );
 }
