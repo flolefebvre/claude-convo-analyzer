@@ -28,7 +28,7 @@ src/
     prisma/     Schema, generated client, and migrations
   generated/    Typed route builders from `pnpm gen`; generated, gitignored, never hand-edit
   lib/          Shared helpers
-e2e/            Playwright specs, one per route
+e2e/            Playwright specs, one per route, plus the Live one run after them (docs/codebase/testing.md)
 scripts/        Repo tooling, run with tsx (the gate, seeding fake demo data)
 data/           The local SQLite database (`analyzer.db`); generated, never hand-edit
 docs/

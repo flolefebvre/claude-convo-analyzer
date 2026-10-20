@@ -40,6 +40,7 @@ import { SideRequestPane } from "@/app/_components/transcript/side-request-pane"
 import { TranscriptPane } from "@/app/_components/transcript/transcript-pane";
 import { BackLink, TranscriptTree } from "@/app/_components/transcript/transcript-tree";
 import { loadConversations, loadFamily, loadTranscript } from "@/app/_lib/conversations";
+import { activeNowUntil } from "@/app/_lib/live";
 import { resolvePage } from "@/app/_lib/search-params";
 import { agentLabels } from "@/app/_lib/transcript";
 import {
@@ -137,6 +138,7 @@ async function TreeRegion(props: RouteProps) {
       lowerBound={view.hasUnpriced}
       listReturn={listReturn}
       selectedSideRequestId={selectedSideRequest?.apiRequestId}
+      activeUntil={activeNowUntil(view.sourceChangedAt, new Date())}
     />
   );
 }

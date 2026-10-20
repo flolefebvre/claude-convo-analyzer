@@ -13,6 +13,7 @@
 import { AlertTriangle, CircleDot, GitBranch } from "lucide-react";
 import Link from "next/link";
 
+import { ActiveNowMarker } from "@/app/_components/active-now-marker";
 import { CostList, CostRow } from "@/app/_components/cost-list";
 import { ExpandToggle } from "@/app/_components/expand-toggle";
 import { SubAgentBreakdown } from "@/app/_components/sub-agent-breakdown";
@@ -82,6 +83,9 @@ export function ConversationRow({
   // The list view as a query (`listReturnQuery`), carried on every link into a
   // transcript so its back link returns to this view.
   listReturn,
+  // When the row stops being active now (`activeNowUntil`), or `null` when it
+  // is not active now.
+  activeUntil = null,
 }: {
   row: ConversationSummary;
   date: { label: string; absolute: string };
@@ -94,6 +98,7 @@ export function ConversationRow({
   errors?: ErrorViewRow[] | null;
   toggleHref: string;
   listReturn?: string;
+  activeUntil?: number | null;
 }) {
   const model = modelLabel(row.models);
 
@@ -172,6 +177,7 @@ export function ConversationRow({
             {/* Recorded: its Turns have their API requests in a Recording. An
                 unrecorded Conversation shows nothing, exactly as before. */}
             {row.recordedState !== "unrecorded" && <RecordedMarker recordedState={row.recordedState} />}
+            {activeUntil !== null && <ActiveNowMarker activeUntil={activeUntil} />}
           </div>
           {/* What the hidden columns would say, under the title: the date below
               `@xl`, the folder until its own column appears at `@4xl`. */}

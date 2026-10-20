@@ -4,6 +4,9 @@ import { defineConfig, devices } from "@playwright/test";
 const port = process.env.E2E_PORT ?? "3123";
 const baseURL = `http://localhost:${port}`;
 
+// The one spec that switches Live on, by its exact path.
+const LIVE_SPEC = /[\\/]e2e[\\/]active-now\.spec\.ts$/;
+
 export default defineConfig({
   testDir: "e2e",
   fullyParallel: true,
@@ -12,7 +15,13 @@ export default defineConfig({
   retries: 0,
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
   use: { baseURL, trace: "retain-on-failure" },
-  projects: [{ name: "chromium", use: devices["Desktop Chrome"] }],
+  // A Live Refresh publishes `finished` to every open page, whose `router.refresh()` lands inside another
+  // worker's `instant()` lock: a spec that switches Live on runs in `live`, after every other spec, and
+  // never holds an `instant()` check itself. A failure in `chromium` skips `live`.
+  projects: [
+    { name: "chromium", use: devices["Desktop Chrome"], testIgnore: LIVE_SPEC },
+    { name: "live", use: devices["Desktop Chrome"], testMatch: LIVE_SPEC, dependencies: ["chromium"] },
+  ],
   webServer: {
     command: "pnpm e2e:server",
     env: { PORT: port },

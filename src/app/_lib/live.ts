@@ -6,7 +6,7 @@
 // boot tries again.
 
 import { getPublishedRefreshRunner } from "@/app/_lib/refresh-events";
-import { createLive, type Live, watchLogsAndRecordings } from "@/core/live";
+import { ACTIVE_WINDOW_MS, createLive, isActiveNow, type Live, watchLogsAndRecordings } from "@/core/live";
 import { readSettings, updateSettings } from "@/core/settings";
 
 /** How long Live gathers changes before it runs a Refresh. */
@@ -30,6 +30,19 @@ export function getLive(): Live {
     debounceMs: LIVE_DEBOUNCE_MS,
   });
   return globalForLive[liveSlot];
+}
+
+/**
+ * When a Conversation whose newest source change was at `sourceChangedAt`
+ * stops being active now (epoch ms), or `null` when it is not active now at
+ * `now`: Live is off, or the change is too old (GLOSSARY.md, Active now).
+ * Request-time: call it only below a `connection()`.
+ *
+ * @example const activeUntil = activeNowUntil(row.sourceChangedAt, now);
+ */
+export function activeNowUntil(sourceChangedAt: string, now: Date): number | null {
+  if (!getLive().isOn() || !isActiveNow(sourceChangedAt, now)) return null;
+  return Date.parse(sourceChangedAt) + ACTIVE_WINDOW_MS;
 }
 
 /**

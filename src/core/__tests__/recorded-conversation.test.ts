@@ -324,7 +324,8 @@ describe("Turn usage and Cost of a Recorded Conversation", () => {
 
     expect(await failedAttemptCountsOf()).toEqual([0, 1]);
     expect(withAttempt?.costUsd).toBe(withoutAttempt?.costUsd);
-    expect(withAttempt).toEqual(withoutAttempt);
+    // The two Recordings were written at different moments.
+    expect({ ...withAttempt, sourceChangedAt: null }).toEqual({ ...withoutAttempt, sourceChangedAt: null });
   });
 
   it("are identical with and without its Recording", async () => {
@@ -339,9 +340,11 @@ describe("Turn usage and Cost of a Recorded Conversation", () => {
     const listedWithRecording = await listConversations({ dbPath });
 
     expect(withRecording?.recordedState).toBe("recorded");
-    expect({ ...withRecording, recordedState: null }).toEqual({ ...withoutRecording, recordedState: null });
+    // The Recording is a source of its own, so it also moves the newest source change.
+    const unrecorded = { recordedState: null, sourceChangedAt: null };
+    expect({ ...withRecording, ...unrecorded }).toEqual({ ...withoutRecording, ...unrecorded });
     const withoutState = (summaries: ConversationSummary[]) =>
-      summaries.map((summary) => ({ ...summary, recordedState: null }));
+      summaries.map((summary) => ({ ...summary, ...unrecorded }));
     expect(withoutState(listedWithRecording)).toEqual(withoutState(listedWithoutRecording));
   });
 });

@@ -8,6 +8,7 @@
 // (`current-live-toggle.tsx`) read it; a re-render of the page brings it up to
 // date, as another tab may have switched it.
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { ControlFailure } from "@/app/_components/control-bubble";
@@ -27,6 +28,7 @@ export type LiveAsRendered = { isOn: boolean };
  * @example <LiveToggle live={{ isOn: getLive().isOn() }} />
  */
 export function LiveToggle({ live }: { live: LiveAsRendered }) {
+  const router = useRouter();
   const [isLiveOn, setIsLiveOn] = useState(live.isOn);
   // A new render of the server part is Live as it stands now, even when it
   // reads the same as the last one: a click may have moved the toggle since.
@@ -45,6 +47,9 @@ export function LiveToggle({ live }: { live: LiveAsRendered }) {
       const result = await setLive({ on: !isLiveOn });
       if (result.status === "success") {
         setIsLiveOn(result.data.isLiveOn);
+        // Switched off, the page re-renders without its Active now markers;
+        // switched on, the catch-up Refresh re-renders it.
+        if (!result.data.isLiveOn) router.refresh();
       } else if (result.error.type === "liveNotSwitched") {
         setIsLiveOn(result.error.data.isLiveOn);
         setFailure(result.error.data.message);
