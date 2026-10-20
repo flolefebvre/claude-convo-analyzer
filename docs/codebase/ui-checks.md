@@ -71,7 +71,9 @@ pnpm exec playwright-cli -s=<worktree> close
   with the tree as it opens unless the image's clicks say otherwise.
   `mousemove 0 0` leaves no row hovered.
 - The seed's titles, session ids and order don't depend on the instant it is
-  built; only the dates do.
+  built; only the dates do. A seeded session id embeds the home directory:
+  `<home>` below is `$HOME` with every `/` and `.` turned into `-`, without
+  the leading one (`home-alice` for `/home/alice`).
 - View each PNG before committing it: the paragraph above it in `README.md`
   says what it must show.
 
@@ -85,22 +87,22 @@ The images, each with its height, path and subject:
   show, then `"role=heading[name='Conversations']"`: it moves focus off the
   last toggle, which would otherwise show its row's favorite star.
 - `conversation-detail.png` — 1206,
-  `/?sortBy=cost&dir=desc&expanded=seed-home-prezbar-dev-web-dashboard-13`.
+  `/?sortBy=cost&dir=desc&expanded=seed-<home>-dev-web-dashboard-13`.
   Sorted by cost, "Debug the memory leak in the worker" (web-dashboard) is
   expanded: three models, the `tdd` skill, and the general-purpose and Plan
   sub-agents. The frame ends on the next row's bottom border.
 - `continuation-family.png` — 1292,
-  `/?expanded=seed-home-prezbar-dev-acme-api-31`. "Billing split — extract the
+  `/?expanded=seed-<home>-dev-acme-api-31`. "Billing split — extract the
   invoice writer" is expanded: the five-conversation family tree, with it
   highlighted and the worktree sitting labelled `billing-spike`. The frame ends
   on the panel's bottom border.
 - `api-errors.png` — 1184,
-  `/?errors=1&expanded=seed-home-prezbar-dev-web-dashboard-43`. With "Only with
+  `/?errors=1&expanded=seed-<home>-dev-web-dashboard-43`. With "Only with
   errors" on, the higher of the two web-dashboard "Containerize the service"
   rows (2 errors) is expanded: one failure in main, one in a general-purpose
   sub-agent.
 - `transcript-view.png` — 1182,
-  `/conversation/seed-home-prezbar-dev-docs-site-60`. The Transcript of
+  `/conversation/seed-<home>-dev-docs-site-60`. The Transcript of
   "Coordinate the search rewrite across agents", on main, with its Plan Agent
   call opened by `click "summary:has-text('plan the change')"`: the Task
   prompt and what Plan handed back, as Markdown. The frame ends in the gap
