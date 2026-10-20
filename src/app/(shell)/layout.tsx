@@ -2,6 +2,7 @@ import { Suspense } from "react";
 
 import { FolderDisclosure } from "@/app/_components/folder-disclosure";
 import { FolderSidebar } from "@/app/_components/folder-sidebar";
+import { FOLDER_ROW_COST_COLUMN, SidebarLeadingSlot } from "@/app/_components/folder-rows";
 import { LoadingRegion } from "@/app/_components/loading-region";
 import { homeDirectory, loadConversations, loadFavoriteFolderPaths } from "@/app/_lib/conversations";
 import { deriveFavoriteFolders } from "@/app/_lib/favorites";
@@ -69,7 +70,7 @@ async function Sidebar() {
   );
   return (
     <>
-      <aside className="hidden w-64 shrink-0 lg:block">{nav}</aside>
+      <aside className={`hidden shrink-0 lg:block ${SIDEBAR_WIDTH}`}>{nav}</aside>
       <FolderDisclosure className="lg:hidden" folderTree={folderTree} totals={totals}>
         {nav}
       </FolderDisclosure>
@@ -77,28 +78,35 @@ async function Sidebar() {
   );
 }
 
+/** The sidebar column's width, which its skeleton holds too, so the page does not jump sideways. */
+const SIDEBAR_WIDTH = "lg:w-64 2xl:w-80";
+
 /** The folder entries the sidebar skeleton draws, "All folders" included. */
 const SKELETON_FOLDERS = 7;
 
 /**
  * The sidebar's skeleton: the disclosure's one line below `lg`, the folder
- * column from `lg` up — each entry a label and cost over a bar and a count,
- * at the real entry's line heights.
+ * column from `lg` up — each entry the real row's one line: the leading slot,
+ * a label, then the count and cost columns, in the same gutters.
  */
 function SidebarFallback() {
   return (
-    <LoadingRegion label="Loading folders" className="shrink-0 lg:w-64">
+    <LoadingRegion label="Loading folders" className={`shrink-0 ${SIDEBAR_WIDTH}`}>
       <Skeleton className="h-12 rounded-xl lg:hidden" />
-      <div className="hidden flex-col gap-1 lg:flex">
+      <div className="hidden flex-col lg:flex">
         {Array.from({ length: SKELETON_FOLDERS }, (_, index) => (
-          <div key={index} className="px-3 py-2">
-            <div className="flex h-5 items-center justify-between gap-2">
-              <Skeleton className="h-3.5 w-28" />
-              <Skeleton className="h-3 w-10" />
-            </div>
-            <div className="mt-1 flex h-4 items-center gap-3">
-              {index === 0 ? <span className="flex-1" /> : <Skeleton className="h-1 flex-1" />}
-              <Skeleton className="h-3 w-6" />
+          <div key={index} className="flex h-7 items-center">
+            <SidebarLeadingSlot />
+            <div className="flex min-w-0 flex-1 items-center gap-1.5 pr-7 pl-2">
+              <span className="min-w-0 flex-1">
+                <Skeleton className="h-3.5 w-28 max-w-full" />
+              </span>
+              <span className="hidden min-w-6 justify-end 2xl:flex">
+                <Skeleton className="h-3 w-5" />
+              </span>
+              <span className={`${FOLDER_ROW_COST_COLUMN} flex justify-end`}>
+                <Skeleton className="h-3 w-12" />
+              </span>
             </div>
           </div>
         ))}

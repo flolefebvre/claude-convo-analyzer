@@ -7,6 +7,8 @@
 // closed except the roots (one level) and the path down to the active scope,
 // which a later scope change opens too (never closing anything); the open
 // state lives in this component alone and is not remembered between visits.
+// An open Folder's children hang off an indent guide, and every scope change
+// scrolls the selected row into view.
 //
 // A client component because both the open state and the active scope come
 // from the browser: the shell layout cannot read `searchParams`, so the
@@ -18,13 +20,14 @@
 
 import { ChevronRight } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { FolderLinkWithStar } from "@/app/_components/favorite-star";
-import { FolderRow } from "@/app/_components/folder-rows";
+import { FolderRow, SidebarLeadingSlot, folderCostShare } from "@/app/_components/folder-rows";
 import { SidebarLink } from "@/app/_components/sidebar-link";
-import { resolveLiveFolderScope } from "@/app/_lib/folder-scope";
+import { isProjectInFolderScope, resolveLiveFolderScope } from "@/app/_lib/folder-scope";
 import { type FolderNode, initiallyOpenFolderPaths, openPathsDownToScope } from "@/app/_lib/folder-tree";
+import { cn } from "@/lib/utils-cn";
 
 /**
  * The folder tree's rows, below the "All folders" anchor.
@@ -53,6 +56,17 @@ export function FolderTree({
     setOpenedForScopeKey(scopeKey);
     setOpenPaths(openPathsDownToScope(openPaths, roots, scope));
   }
+  // A scope change, whatever caused it, brings the selected row into view —
+  // in this rendering of the tree only; the hidden one has nothing to scroll.
+  // `nearest` leaves a row already in view where it is. Not on mount: a
+  // page load keeps the page where it starts.
+  const treeRef = useRef<HTMLDivElement>(null);
+  const scrolledForScopeKey = useRef(scopeKey);
+  useEffect(() => {
+    if (scrolledForScopeKey.current === scopeKey) return;
+    scrolledForScopeKey.current = scopeKey;
+    treeRef.current?.querySelector('[aria-current="true"]')?.scrollIntoView({ block: "nearest" });
+  }, [scopeKey]);
   const toggle = (path: string) =>
     setOpenPaths((current) => {
       const next = new Set(current);
@@ -61,28 +75,35 @@ export function FolderTree({
     });
 
   return (
-    <FolderList
-      nodes={roots}
-      openPaths={openPaths}
-      toggle={toggle}
-      favoritePathSet={favoritePathSet}
-      totalCostUsd={totalCostUsd}
-    />
+    <div ref={treeRef}>
+      <FolderList
+        nodes={roots}
+        openPaths={openPaths}
+        toggle={toggle}
+        favoritePathSet={favoritePathSet}
+        totalCostUsd={totalCostUsd}
+        selectedFolderPath={scope.folder}
+      />
+    </div>
   );
 }
 
-/** What every level of the tree shares: the open Folders, their toggle, the favorites, and the bars' scale. */
+/**
+ * What every level of the tree shares: the open Folders, their toggle, the
+ * favorites, the bars' scale, and the selected Folder the guides lead to.
+ */
 type TreeState = {
   openPaths: Set<string>;
   toggle: (path: string) => void;
   favoritePathSet: Set<string>;
   totalCostUsd: number;
+  selectedFolderPath: string | undefined;
 };
 
 /** One level of the tree. */
 function FolderList({ nodes, ...tree }: TreeState & { nodes: FolderNode[] }) {
   return (
-    <ul className="flex flex-col gap-1">
+    <ul className="flex flex-col">
       {nodes.map((node) => (
         <FolderItem key={node.path} node={node} {...tree} />
       ))}
@@ -100,44 +121,55 @@ function FolderItem({ node, ...tree }: TreeState & { node: FolderNode }) {
   const isOpen = hasSubFolders && tree.openPaths.has(node.path);
   return (
     <li>
-      <div className="flex items-start">
-        {hasSubFolders ? (
-          <button
-            type="button"
-            aria-expanded={isOpen}
-            aria-controls={isOpen ? childrenId : undefined}
-            aria-label={`${node.label} sub-folders`}
-            onClick={() => tree.toggle(node.path)}
-            className="group/chevron mt-2 grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground aria-expanded:text-foreground"
-          >
-            <ChevronRight
-              className="size-4 transition-transform duration-150 group-aria-expanded/chevron:rotate-90"
-              aria-hidden
-            />
-          </button>
-        ) : (
-          <span aria-hidden className="w-6 shrink-0" />
-        )}
-        <FolderLinkWithStar
-          folderPath={node.path}
-          folderLabel={node.label}
-          isFavorite={tree.favoritePathSet.has(node.path)}
-          className="flex-1"
-        >
-          <FolderRow label={node.label} totals={node} totalCostUsd={tree.totalCostUsd} />
-        </FolderLinkWithStar>
-      </div>
+      <FolderLinkWithStar
+        folderPath={node.path}
+        folderLabel={node.label}
+        isFavorite={tree.favoritePathSet.has(node.path)}
+        costShare={folderCostShare(node, tree.totalCostUsd)}
+        leading={
+          hasSubFolders && (
+            <button
+              type="button"
+              aria-expanded={isOpen}
+              aria-controls={isOpen ? childrenId : undefined}
+              aria-label={`${node.label} sub-folders`}
+              onClick={() => tree.toggle(node.path)}
+              className="group/chevron grid size-5 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground aria-expanded:text-foreground"
+            >
+              <ChevronRight
+                className="size-4 transition-transform duration-150 group-aria-expanded/chevron:rotate-90"
+                aria-hidden
+              />
+            </button>
+          )
+        }
+      >
+        <FolderRow label={node.label} totals={node} />
+      </FolderLinkWithStar>
       {isOpen && (
-        <div id={childrenId} className="mt-1 ml-3">
+        // The indent guide: one line per open level, from under the chevron
+        // down its children, in clay on the way to the selected Folder. A
+        // level indents 20px, or 12px below `2xl`, where the sidebar is its
+        // narrow 256px.
+        <div
+          id={childrenId}
+          className={cn(
+            "ml-2.5 border-l pl-2.5 lg:max-2xl:pl-px",
+            tree.selectedFolderPath !== undefined &&
+              isProjectInFolderScope(tree.selectedFolderPath, { folder: node.path }) &&
+              "border-cost",
+          )}
+        >
           {node.thisFolder && (
-            <div className="mb-1 flex items-start">
-              <span aria-hidden className="w-6 shrink-0" />
+            <div className="flex items-center">
+              <SidebarLeadingSlot />
               <SidebarLink
                 scope={{ folder: node.path, thisFolderOnly: true }}
+                costShare={folderCostShare(node.thisFolder, tree.totalCostUsd)}
                 title={`${node.path}, its own conversations only`}
-                className="min-w-0 flex-1 pr-9"
+                className="min-w-0 flex-1 pr-7"
               >
-                <FolderRow label="(this folder)" totals={node.thisFolder} totalCostUsd={tree.totalCostUsd} />
+                <FolderRow label="(this folder)" totals={node.thisFolder} />
               </SidebarLink>
             </div>
           )}

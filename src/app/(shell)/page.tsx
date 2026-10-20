@@ -330,6 +330,7 @@ async function ConversationTable({ searchParams }: { searchParams: Promise<ViewS
                 row={row}
                 date={formatDate(row.startedAt, now)}
                 folderLabel={folderLabelInScope(row.project.path, scope)}
+                folderHref={folderHref({ folder: row.project.path }, links)}
                 isFolderColumnHidden={isFolderColumnHidden}
                 expanded={row.id === expandedRow?.id}
                 detail={row.id === expandedRow?.id ? expandedDetail : null}

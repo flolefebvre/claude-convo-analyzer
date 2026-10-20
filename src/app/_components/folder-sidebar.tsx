@@ -4,10 +4,11 @@
 // layout and persists across `?folder=`/sort navigations without flashing
 // (PR #13).
 //
-// Beyond navigation it doubles as a spend read-out: each Folder shows its summed
-// cost and a `CostBar` (the app's signature motif, scaled to the TOTAL spend at
-// every depth, so each bar reads as that Folder's share of the whole). Ordering
-// stays newest-first — the bars, not the order, carry the cost ranking.
+// Beyond navigation it doubles as a spend read-out: each Folder row shows its
+// count and summed cost in columns aligned down the whole sidebar, over a data
+// bar scaled to the TOTAL spend at every depth, so each bar reads as that
+// Folder's share of the whole. Ordering stays newest-first — the bars, not the
+// order, carry the cost ranking.
 //
 // The active-entry HIGHLIGHT, the link HREFs and the open Folders are the
 // client-driven pieces: layouts cannot read `searchParams`, so each entry is a
@@ -20,7 +21,7 @@
 
 import { useId } from "react";
 
-import { AllFoldersRow } from "@/app/_components/folder-rows";
+import { FolderRow, SidebarLeadingSlot } from "@/app/_components/folder-rows";
 import { FolderTree } from "@/app/_components/folder-tree";
 import { ReorderableFavorites } from "@/app/_components/reorderable-favorites";
 import { SidebarLink } from "@/app/_components/sidebar-link";
@@ -50,11 +51,14 @@ export function FolderSidebar({
   // The "All folders" total deliberately gets no bar — it is the sum (100%),
   // not a peer to rank against.
   return (
-    <nav aria-label="Folders" className="flex flex-col gap-1">
+    <nav aria-label="Folders" className="flex flex-col">
       {favorites.length > 0 && <FavoritesSection favorites={favorites} totalCostUsd={totals.costUsd} />}
-      <SidebarLink scope={{}} className="pr-9">
-        <AllFoldersRow totals={totals} />
-      </SidebarLink>
+      <div className="flex items-center">
+        <SidebarLeadingSlot />
+        <SidebarLink scope={{}} className="min-w-0 flex-1 pr-7">
+          <FolderRow label={<span className="font-medium">All folders</span>} totals={totals} isCountSpelledOnHover />
+        </SidebarLink>
+      </div>
       <FolderTree roots={folderTree} favoritePaths={favoritePaths} totalCostUsd={totals.costUsd} />
     </nav>
   );
@@ -64,8 +68,8 @@ export function FolderSidebar({
 function FavoritesSection({ favorites, totalCostUsd }: { favorites: FavoriteFolder[]; totalCostUsd: number }) {
   const headingId = useId();
   return (
-    <div className="mb-2 flex flex-col gap-1 border-b pb-2">
-      <h2 id={headingId} className="px-3 pt-1 text-xs font-medium text-muted-foreground">
+    <div className="mb-2 flex flex-col border-b pb-2">
+      <h2 id={headingId} className="pt-1 pr-2 pb-1 pl-7 text-xs font-medium text-muted-foreground">
         Favorites
       </h2>
       <ReorderableFavorites favorites={favorites} totalCostUsd={totalCostUsd} labelledBy={headingId} />

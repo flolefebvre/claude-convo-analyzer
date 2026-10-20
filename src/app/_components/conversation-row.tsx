@@ -50,7 +50,7 @@ export const CONVERSATION_COLUMNS = {
 /**
  * One conversation as a table row, plus its detail panel row when expanded.
  *
- * @example <ConversationRow row={row} date={formatDate(row.startedAt, now)} folderLabel={folderLabelInScope(row.project.path, scope)} toggleHref={expandHref(row.id, expandedId, links)} />
+ * @example <ConversationRow row={row} date={formatDate(row.startedAt, now)} folderLabel={folderLabelInScope(row.project.path, scope)} folderHref={folderHref({ folder: row.project.path }, links)} toggleHref={expandHref(row.id, expandedId, links)} />
  */
 export function ConversationRow({
   row,
@@ -60,6 +60,9 @@ export function ConversationRow({
   // The row's Project as the Folder cell names it under the active scope
   // (`folderLabelInScope`); the full Project path stays on hover.
   folderLabel,
+  // The Folder label's target: the list scoped to exactly this row's Project
+  // (`folderHref`), the rest of the view kept.
+  folderHref,
   // True when every row in scope comes from one Project (a leaf Folder, or
   // this folder), so the Folder cell is redundant and hidden — the page shows
   // the scope once as a breadcrumb instead. The expand toggle therefore lives
@@ -90,6 +93,7 @@ export function ConversationRow({
   row: ConversationSummary;
   date: { label: string; absolute: string };
   folderLabel: string;
+  folderHref: string;
   isFolderColumnHidden?: boolean;
   expanded?: boolean;
   detail?: ConversationDetail | null;
@@ -129,7 +133,9 @@ export function ConversationRow({
             title={row.project.path}
             className={`${CONVERSATION_COLUMNS.folder} truncate text-left text-muted-foreground [direction:rtl]`}
           >
-            <span dir="ltr">{folderLabel}</span>
+            <PendingLink href={folderHref} scroll={false} dir="ltr" className="rounded-sm hover:underline">
+              {folderLabel}
+            </PendingLink>
           </TableCell>
         )}
         {/* The title deep-links into the Transcript view for this conversation
@@ -194,9 +200,14 @@ export function ConversationRow({
                 <span aria-hidden className="@xl:hidden">
                   ·
                 </span>
-                <span className="truncate" title={row.project.path}>
+                <PendingLink
+                  href={folderHref}
+                  scroll={false}
+                  title={row.project.path}
+                  className="truncate rounded-sm hover:underline"
+                >
                   {folderLabel}
-                </span>
+                </PendingLink>
               </>
             )}
           </div>

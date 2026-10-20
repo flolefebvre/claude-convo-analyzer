@@ -518,6 +518,20 @@ describe("the page axis resets on a filter change and travels with the rest", ()
     expect(sortHref("cost", ON_PAGE_4)).toBe("?sortBy=cost&dir=desc");
   });
 
+  it("a row's Folder link scopes to exactly its Project — a worktree, never narrowed — keeping sort, range and errors", () => {
+    const narrowedWithRowOpen: ListLinkContext = {
+      sort: { sortBy: "cost", dir: "asc" },
+      folder: "/home/dev/api",
+      thisFolderOnly: true,
+      range: "7",
+      errorsOnly: true,
+      page: 4,
+    };
+    expect(folderHref({ folder: "/home/dev/api/.claude/worktrees/spike" }, narrowedWithRowOpen)).toBe(
+      "?sortBy=cost&dir=asc&folder=%2Fhome%2Fdev%2Fapi%2F.claude%2Fworktrees%2Fspike&range=7&errors=1",
+    );
+  });
+
   it("folderHref drops the page: a new scope starts at page 1", () => {
     expect(folderHref({ folder: "/Users/me/dev/demo" }, ON_PAGE_4)).toBe(
       "?sortBy=date&dir=desc&folder=%2FUsers%2Fme%2Fdev%2Fdemo",

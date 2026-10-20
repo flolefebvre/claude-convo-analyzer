@@ -1,7 +1,7 @@
 "use client";
 
 // The Favorites section's rows, reorderable by hand (GLOSSARY.md, **Favorite**).
-// Each row carries a grip beside its star: drag it (mouse, pen or finger — one
+// Each row carries a grip before its name: drag it (mouse, pen or finger — one
 // Pointer Events path), or press Alt+↑/Alt+↓ on it. The list follows the
 // pointer at once, and a move is saved through the `moveFavorite` server
 // action (ADR-0002: no core import from a client file) as "before this
@@ -15,7 +15,7 @@ import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "re
 
 import { ControlFailure } from "@/app/_components/control-bubble";
 import { FolderLinkWithStar } from "@/app/_components/favorite-star";
-import { FolderRow } from "@/app/_components/folder-rows";
+import { FolderRow, folderCostShare } from "@/app/_components/folder-rows";
 import { moveFavorite } from "@/app/actions";
 import { dropIndexForPointer, type FavoriteMove, moveFavoriteToIndex } from "@/app/_lib/favorite-order";
 import type { FavoriteFolder } from "@/app/_lib/favorites";
@@ -208,7 +208,7 @@ export function ReorderableFavorites({
       <ul
         ref={listRef}
         aria-labelledby={labelledBy}
-        className={cn("flex flex-col gap-1", isDragging && "cursor-grabbing select-none")}
+        className={cn("flex flex-col", isDragging && "cursor-grabbing select-none")}
         onPointerMove={handleListPointerMove}
         onPointerUp={handleListPointerUp}
         onPointerCancel={cancelPress}
@@ -230,7 +230,8 @@ export function ReorderableFavorites({
               folderPath={favorite.path}
               folderLabel={favorite.label}
               isFavorite
-              grip={
+              costShare={folderCostShare(favorite, totalCostUsd)}
+              leading={
                 <button
                   type="button"
                   ref={(grip) => {
@@ -245,7 +246,7 @@ export function ReorderableFavorites({
                   aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
                   title="Drag to reorder, or press Alt+↑ / Alt+↓"
                   className={cn(
-                    "grid size-6 shrink-0 cursor-grab touch-none place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:opacity-100",
+                    "grid size-5 shrink-0 cursor-grab touch-none place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:opacity-100",
                     // A device that cannot hover always shows it: never an invisible target under a finger.
                     draggedPath === favorite.path
                       ? "cursor-grabbing text-foreground"
@@ -256,7 +257,7 @@ export function ReorderableFavorites({
                 </button>
               }
             >
-              <FolderRow label={favorite.label} totals={favorite} totalCostUsd={totalCostUsd} />
+              <FolderRow label={favorite.label} totals={favorite} />
             </FolderLinkWithStar>
           </li>
         ))}

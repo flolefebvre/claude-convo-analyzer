@@ -99,6 +99,14 @@
   text-transform: uppercase;
 }
 
+/* A row's share of a whole, as a clay fill behind its content from the left
+   edge to `--share` (a percentage). Fainter than `cost-muted`, so the active
+   row's wash stays the stronger tint. */
+@utility share-bar {
+  --share-bar-color: color-mix(in oklab, var(--cost-muted) 55%, transparent);
+  background-image: linear-gradient(to right, var(--share-bar-color) var(--share, 0%), transparent var(--share, 0%));
+}
+
 /* Draw the focus ring INSIDE the element — for focusables whose container clips
    overflow (a `<summary>` in a rounded, `overflow: hidden` card), where the
    default outset ring would be cut off. */
