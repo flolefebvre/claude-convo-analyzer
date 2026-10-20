@@ -153,7 +153,8 @@ export function RecorderControl({ recorderStatus: statusAsRendered }: { recorder
       <PopoverTrigger asChild>
         <RecorderFace
           isRunning={isRunning}
-          label={isRunning ? `Recorder: on :${recorderStatus.port}` : "Recorder: off · how to enable"}
+          label={isRunning ? "Recorder: on" : "Recorder: off"}
+          title={isRunning ? `Recorder: on :${recorderStatus.port}` : "Recorder: off · how to enable"}
         />
       </PopoverTrigger>
       <PopoverContent
@@ -295,7 +296,11 @@ function CopyableLine({ text }: { text: string }) {
   );
 }
 
-/** The item's button: the Recorder's icon, lit while it runs, and the label, which collapses below desktop. */
+/**
+ * The item's button: the Recorder's icon, lit while it runs, and the label,
+ * which collapses below 1280px. A `title` carries the detail the label leaves
+ * out; without one, the label is the title.
+ */
 function RecorderFace({
   isRunning,
   label,
@@ -305,11 +310,11 @@ function RecorderFace({
     <Button
       variant="outline"
       title={label}
-      className={cn("max-lg:w-8 max-lg:px-0", isRunning && "border-cost/60")}
+      className={cn("max-xl:w-8 max-xl:px-0", isRunning && "border-cost/60")}
       {...triggerProps}
     >
       <Radio aria-hidden className={cn(isRunning ? "text-cost" : "text-muted-foreground")} />
-      <span className="max-lg:sr-only">{label}</span>
+      <span className="max-xl:sr-only">{label}</span>
     </Button>
   );
 }

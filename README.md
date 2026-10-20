@@ -165,8 +165,8 @@ optional local proxy that forwards every request to the Anthropic API unchanged
 and keeps a copy on disk.
 
 The **Recorder** item in the app bar, beside Live and Refresh, says whether it
-runs ("Recorder: on :4242" or "Recorder: off"). Its **Start** launches the
-Recorder in the background, where it keeps running after the app stops, and logs
+runs ("Recorder: on" or "Recorder: off"; hover it for the port). Its **Start**
+launches the Recorder in the background, where it keeps running after the app stops, and logs
 to `~/.claude-convo-analyzer/recorder.log`; if the port is taken, it says so. Or
 start it in its own terminal and leave it running:
 

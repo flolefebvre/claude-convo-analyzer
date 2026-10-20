@@ -58,11 +58,14 @@ type Message = {
   id: number;
 };
 
-/** How the button looks: its shadcn variant and size, and whether its label collapses below desktop. */
+/** How the button looks: its shadcn variant and size, and whether its label collapses below 1280px. */
 type RefreshButtonLook = {
   variant?: React.ComponentProps<typeof Button>["variant"];
   size?: React.ComponentProps<typeof Button>["size"];
-  /** Hides the label below the `lg` breakpoint, leaving the icon (the app bar's phone and tablet layouts). */
+  /**
+   * The app bar's look: below the `xl` breakpoint (1280px) the label is hidden,
+   * leaving the icon; from it, a running Refresh shows its counts alone ("n / m").
+   */
   collapsible?: boolean;
 };
 
@@ -269,14 +272,14 @@ function RefreshButtonFace({
       disabled={isDisabled}
       aria-busy={isRunning}
       title="Re-scan your Claude Code logs"
-      className={cn("tabular-nums", collapsible && "max-lg:w-8 max-lg:px-0")}
+      className={cn("tabular-nums", collapsible && "max-xl:w-8 max-xl:px-0")}
     >
       <RefreshCw className={cn(isRunning && "animate-spin")} aria-hidden />
       {shownLabel === label ? (
-        <span className={cn(collapsible && "max-lg:sr-only")}>{label}</span>
+        <span className={cn(collapsible && "max-xl:sr-only")}>{label}</span>
       ) : (
         <>
-          <span aria-hidden className={cn(collapsible && "max-lg:hidden")}>
+          <span aria-hidden className={cn(collapsible && "max-xl:hidden")}>
             {shownLabel}
           </span>
           <span className="sr-only">{label}</span>
