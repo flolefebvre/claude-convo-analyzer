@@ -318,22 +318,27 @@ body:has([data-link-pending]) #main {
    `details[open]` chevron rotation, sticky blurred header) live here as real
    CSS.
 
-   The DOCUMENT scrolls (so the keyboard, find-in-page and scroll restoration
+   The view (tree + pane) sits in the app's frame (`--container-frame`), under
+   the app bar's edges. The DOCUMENT scrolls (so the keyboard, find-in-page and scroll restoration
    work from the first load); the agent tree sticks beside the transcript and
    scrolls on its own when taller than the viewport. The pane header, the
    continuation banner and the transcript share one centred column
    (`--tview-col`), so their left and right edges line up. --------------- */
 .tview {
   --tview-tree: 280px;
-  /* The column's content width; prose inside it keeps a measure of about 80
-     characters (14px Geist averages ~6.5px a character). */
-  --tview-col: 44rem;
+  /* The column follows the pane, which the frame bounds, so tool calls, code,
+     diffs and "What was sent" use the screen's width; prose inside it keeps a
+     measure of about 80 characters (14px Geist averages ~6.5px a character). */
+  --tview-col: none;
   --tview-measure: 32rem;
   --tview-gutter: 32px;
   --radius-node: calc(var(--radius) * 0.6);
   display: flex;
   align-items: flex-start;
   flex: 1;
+  width: 100%;
+  max-width: var(--container-frame);
+  margin-inline: auto;
   font-size: var(--text-sm);
   line-height: 1.55;
   /* The tree column's surface and its rule run the page's full height,
