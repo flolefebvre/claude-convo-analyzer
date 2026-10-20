@@ -12,6 +12,8 @@ const LONG_TITLE = "Port every report to the new rendering engine";
 const PAGE_TWO_TEXT = "Now port the quarterly heatmap export the same way.";
 // The seeded Conversation every Turn of which is recorded, with one Side request of each kind.
 const RECORDED_TITLE = "Add an audit trail to the billing exports";
+// The seeded Conversation with an ExitPlanMode call, then a SendMessage call (issue #149).
+const PLAN_HANDOFF_TITLE = "Hand the search plan to the docs team";
 
 const titleLink = (page: Page) => page.getByRole("link", { name: TITLE, exact: true });
 
@@ -179,6 +181,29 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     await returned.getByRole("button", { name: "Raw" }).click();
     await expect(returned.getByText(/"status": "completed"/)).toBeVisible();
     await expect(returned.getByRole("heading", { name: "Plan" })).toHaveCount(0);
+  });
+
+  test("an opened SendMessage call shows its facts and its message as markdown, and Raw shows the stored JSON", async ({
+    page,
+  }) => {
+    await openConversation(page, PLAN_HANDOFF_TITLE);
+
+    const call = page.getByRole("main").getByRole("group").filter({ hasText: "SendMessage" }).first();
+    await call.getByText("SendMessage").click();
+    const input = call.getByRole("group", { name: "Input" });
+    const result = call.getByRole("group", { name: "Result" });
+
+    await expect(input.getByRole("term").filter({ hasText: "summary" })).toBeVisible();
+    await expect(input.getByRole("definition").filter({ hasText: "Search API is ready" })).toBeVisible();
+    await expect(input.getByRole("heading", { level: 2, name: "Search API is ready" })).toBeVisible();
+    await expect(input.getByRole("listitem").filter({ hasText: "docs freeze still Friday" })).toBeVisible();
+
+    await expect(result.getByRole("term").filter({ hasText: "msg_id" })).toBeVisible();
+    await expect(result.getByRole("definition").filter({ hasText: "true" })).toBeVisible();
+
+    await result.getByRole("button", { name: "Raw" }).click();
+    await expect(result.getByText(/"success": true/)).toBeVisible();
+    await expect(result.getByRole("term")).toHaveCount(0);
   });
 
   test("a Sub-agent's Task prompt renders as markdown, and a person's Prompt stays plain", async ({ page }) => {

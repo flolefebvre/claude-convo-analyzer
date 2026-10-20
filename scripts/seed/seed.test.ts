@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { PAGE_SIZE } from "@/app/_lib/list-view";
 import { SIDE_REQUEST_KINDS } from "@/core/api-request-kind";
-import { getConversation, getTranscript, listConversations } from "@/core/read";
+import { getConversation, getToolCallBody, getTranscript, listConversations } from "@/core/read";
 import { discoverRecordings, readRecording, readRecordings, type RecordedApiRequest } from "@/core/recording";
 import { readSettings, writeSettings } from "@/core/settings";
 
@@ -26,6 +26,7 @@ import {
   LONG_PAGE_TWO_TEXT,
   LONG_TITLE,
   PARTIALLY_RECORDED_SESSION_ID,
+  PLAN_HANDOFF_TITLE,
   RECORDED_SESSION_ID,
   SCRATCH_PARENT_PATH,
   SEED_FAVORITE_PATHS,
@@ -64,7 +65,7 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     expect(seed.summary.duplicateSessionsSkipped).toEqual([]);
 
     const conversations = await listConversations({ dbPath: seed.dbPath });
-    expect(conversations).toHaveLength(69);
+    expect(conversations).toHaveLength(70);
     expect(conversations.reduce((sum, c) => sum + c.subAgentCount, 0)).toBe(83);
 
     const continued = conversations.filter((c) => c.continuedFromId !== null);
@@ -181,6 +182,23 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     expect(first?.messages.some((m) => m.text === LONG_PAGE_TWO_TEXT)).toBe(false);
     const second = await getTranscript(convo?.id ?? "", { dbPath: seed.dbPath, page: 2 });
     expect(second?.messages.some((m) => m.text === LONG_PAGE_TWO_TEXT)).toBe(true);
+  });
+
+  it("seeds an ExitPlanMode call and a SendMessage call whose stored JSON receipt reads as facts", async () => {
+    const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
+
+    const convo = (await listConversations({ dbPath: seed.dbPath })).find((c) => c.title === PLAN_HANDOFF_TITLE);
+    expect(convo).toBeDefined();
+    const transcript = await getTranscript(convo?.id ?? "", { dbPath: seed.dbPath });
+    const calls = transcript?.messages.flatMap((m) => m.toolCalls) ?? [];
+    expect(calls.map((c) => c.name)).toEqual(["ExitPlanMode", "SendMessage"]);
+    const [plan, send] = await Promise.all(calls.map((c) => getToolCallBody(c.id, { dbPath: seed.dbPath })));
+
+    expect(plan?.inputParts.map((p) => p.kind)).toEqual(["markdown"]);
+    expect(plan?.resultParts).toEqual([{ kind: "raw" }]);
+    expect(send?.inputParts.map((p) => p.kind)).toEqual(["facts", "markdown"]);
+    expect(JSON.parse(send?.resultText ?? "")).toMatchObject({ success: true, message: expect.any(String) });
+    expect(send?.resultParts?.map((p) => p.kind)).toEqual(["facts"]);
   });
 
   it("ends the seeded activity at the anchor", async () => {
@@ -377,7 +395,7 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     const after = await seedEnvironment({ dir, now: NOW });
 
     expect(existsSync(leftover)).toBe(false);
-    expect(await listConversations({ dbPath: after.dbPath })).toHaveLength(69);
+    expect(await listConversations({ dbPath: after.dbPath })).toHaveLength(70);
   });
 });
 
