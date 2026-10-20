@@ -88,8 +88,16 @@ function failedAttemptCountLabel(failedAttemptCount: number): string {
 }
 
 function WhatWasSentView({ whatWasSent }: { whatWasSent: WhatWasSent }) {
-  const { isSideRequest, failedAttempts, newMessages, previousApiRequestId, systemPromptDiff, toolsDiff, fullRequest } =
-    whatWasSent;
+  const {
+    isSideRequest,
+    failedAttempts,
+    firstNewMessageIndex,
+    previousApiRequestId,
+    systemPromptDiff,
+    toolsDiff,
+    fullRequest,
+  } = whatWasSent;
+  const newMessages = fullRequest.messages.slice(firstNewMessageIndex);
   const messageCount = `${newMessages.length} message${newMessages.length === 1 ? "" : "s"}`;
   return (
     <>
@@ -168,7 +176,7 @@ function WhatWasSentView({ whatWasSent }: { whatWasSent: WhatWasSent }) {
         </section>
         <section className="sent-section">
           <h4 className="io-label">Parameters</h4>
-          <pre className="sent-pre">{fullRequest.parametersJson}</pre>
+          <pre className="sent-pre">{JSON.stringify(fullRequest.parameterByName, null, 2)}</pre>
         </section>
       </details>
     </>
@@ -213,7 +221,7 @@ function MessageBlocks({ message }: { message: SentMessage }) {
 
 /** A block as plain text: text as sent, any other block as its pretty-printed JSON. */
 function BlockText({ block }: { block: SentBlock }) {
-  return <pre className="sent-pre">{block.kind === "text" ? block.text : block.json}</pre>;
+  return <pre className="sent-pre">{block.shownAs === "text" ? block.text : block.json}</pre>;
 }
 
 function ToolNames({ label, tools }: { label: string; tools: SentTool[] }) {

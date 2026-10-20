@@ -17,8 +17,20 @@ import {
   recordingFilePath,
 } from "@/core/recording";
 
-/** One content block as sent: text shown as text, any other block as pretty-printed JSON. */
-export type SentBlock = { kind: "text"; text: string } | { kind: "json"; json: string };
+/** A value as parsed from JSON: what a body, or any part of one, is. */
+export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+
+/**
+ * What a sent block is: `text`, `tool_use`, `tool_result`, `image`, a
+ * `system-reminder` (a text block opening with its tag), else the block's
+ * own `type` (`thinking`, `document`, …), or `unknown` without one.
+ */
+export type SentBlockKind = string;
+
+/** One content block as sent, with its kind: a text block shown as text, any other as pretty-printed JSON. */
+export type SentBlock = { kind: SentBlockKind } & (
+  { shownAs: "text"; text: string } | { shownAs: "json"; json: string }
+);
 
 /** One message of an API request: its role, then each content block (a string content is one text block). */
 export type SentMessage = { role: string; blocks: SentBlock[] };
@@ -124,18 +136,23 @@ export type WhatWasSent = {
    * request, which has no Agent, and then every message is new.
    */
   previousApiRequestId: number | null;
-  /** The messages after those this request shares, in order, with the previous one (cache breakpoints ignored). */
-  newMessages: SentMessage[];
+  /**
+   * Index in `fullRequest.messages` of the first message the previous API
+   * request did not send — the messages before it are those the two share, in
+   * order (cache breakpoints ignored); 0 without a previous one.
+   */
+  firstNewMessageIndex: number;
   /** How the system prompt changed since the previous API request; null when it did not, or without one. */
   systemPromptDiff: SystemPromptDiff | null;
   /** How the tool definitions changed since the previous API request; null when none did, or without one. */
   toolsDiff: ToolsDiff | null;
-  /** The whole request: every system block with its cache breakpoints, every tool definition, every other parameter. */
+  /** The whole request: every system block with its cache breakpoints, every tool definition and message, every other body field. */
   fullRequest: {
     systemBlocks: SentSystemBlock[];
     tools: SentTool[];
-    /** Every body field but `system`, `tools` and `messages`, pretty-printed. */
-    parametersJson: string;
+    messages: SentMessage[];
+    /** Every body field but `system`, `tools` and `messages`, as sent. */
+    parameterByName: Record<string, JsonValue>;
   };
 };
 
@@ -158,7 +175,7 @@ type ApiRequestKey = {
 const PIECE_FIELDS = new Set(["system", "tools", "messages"]);
 
 /** A request body that is a JSON object: what a Messages request is. */
-type RequestBody = Record<string, unknown>;
+type RequestBody = Record<string, JsonValue>;
 
 /**
  * What the API request of `api_request` row `apiRequestId` sent, against the
@@ -213,7 +230,7 @@ export async function getWhatWasSent(apiRequestId: number, opts: WhatWasSentOpti
       previousApiRequest !== null && isRequestBody(previousApiRequest.body) ? previousApiRequest.body : null;
 
     const body = apiRequest.body;
-    const parameters = Object.fromEntries(Object.entries(body).filter(([field]) => !PIECE_FIELDS.has(field)));
+    const messages = messagesOf(body);
     return {
       isSideRequest: isSideRequestKind(row.kind),
       parameters: sentParameters(body, apiRequest.headers),
@@ -228,13 +245,14 @@ export async function getWhatWasSent(apiRequestId: number, opts: WhatWasSentOpti
         arrivedAt: new Date(Number(attempt.arrivedAt)).toISOString(),
       })),
       previousApiRequestId: previousBody === null ? null : previousRow!.id,
-      newMessages: messagesNewSince(messagesOf(body), previousBody === null ? [] : messagesOf(previousBody)),
+      firstNewMessageIndex: sharedPrefixLength(messages, previousBody === null ? [] : messagesOf(previousBody)),
       systemPromptDiff: previousBody === null ? null : systemPromptDiff(previousBody, body),
       toolsDiff: previousBody === null ? null : toolsDiff(toolsOf(previousBody), toolsOf(body)),
       fullRequest: {
         systemBlocks: systemBlocksOf(body).map(sentSystemBlock),
         tools: toolsOf(body).map(sentTool),
-        parametersJson: JSON.stringify(parameters, null, 2),
+        messages: messages.map(sentMessage),
+        parameterByName: Object.fromEntries(Object.entries(body).filter(([field]) => !PIECE_FIELDS.has(field))),
       },
     };
   } finally {
@@ -306,20 +324,20 @@ function thinkingText(thinking: unknown): string {
 }
 
 /**
- * The messages of `messages` after the longest prefix it shares with
- * `previousMessages`, compared position by position without their cache
- * breakpoints — so a new prompt that repeats an earlier one is still new.
+ * The length of the longest prefix `messages` shares with `previousMessages`,
+ * compared position by position without their cache breakpoints — so a new
+ * prompt that repeats an earlier one is still new.
  */
-function messagesNewSince(messages: unknown[], previousMessages: unknown[]): SentMessage[] {
+function sharedPrefixLength(messages: unknown[], previousMessages: unknown[]): number {
   const comparableJson = (message: unknown) => canonicalJson(withoutCacheControl(message));
-  let sharedPrefixLength = 0;
+  let length = 0;
   while (
-    sharedPrefixLength < Math.min(messages.length, previousMessages.length) &&
-    comparableJson(messages[sharedPrefixLength]) === comparableJson(previousMessages[sharedPrefixLength])
+    length < Math.min(messages.length, previousMessages.length) &&
+    comparableJson(messages[length]) === comparableJson(previousMessages[length])
   ) {
-    sharedPrefixLength += 1;
+    length += 1;
   }
-  return messages.slice(sharedPrefixLength).map(sentMessage);
+  return length;
 }
 
 /** The system-prompt diff from `previousBody` to `body`; null when the system text is the same. */
@@ -341,7 +359,7 @@ function systemTextOf(body: RequestBody): string {
   return systemBlocksOf(body)
     .map((block) => {
       const sent = sentBlock(block);
-      return sent.kind === "text" ? sent.text : sent.json;
+      return sent.shownAs === "text" ? sent.text : sent.json;
     })
     .join("\n");
 }
@@ -416,13 +434,26 @@ function sentMessage(message: unknown): SentMessage {
   };
 }
 
+/** The tag opening a system-reminder: context Claude Code injects into a text block. */
+const SYSTEM_REMINDER_TAG = "<system-reminder>";
+
 /** A string, or a `text` block, as its text; anything else as pretty-printed JSON. */
 function sentBlock(block: unknown): SentBlock {
-  if (typeof block === "string") return { kind: "text", text: block };
-  if (isPlainObject(block) && block.type === "text" && typeof block.text === "string") {
-    return { kind: "text", text: block.text };
+  const text =
+    typeof block === "string"
+      ? block
+      : isPlainObject(block) && block.type === "text" && typeof block.text === "string"
+        ? block.text
+        : null;
+  if (text !== null) {
+    return {
+      kind: text.trimStart().startsWith(SYSTEM_REMINDER_TAG) ? "system-reminder" : "text",
+      shownAs: "text",
+      text,
+    };
   }
-  return { kind: "json", json: JSON.stringify(block, null, 2) };
+  const kind = isPlainObject(block) && typeof block.type === "string" ? block.type : "unknown";
+  return { kind, shownAs: "json", json: JSON.stringify(block, null, 2) };
 }
 
 function sentSystemBlock(block: unknown): SentSystemBlock {

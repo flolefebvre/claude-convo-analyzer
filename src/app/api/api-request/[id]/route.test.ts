@@ -57,7 +57,10 @@ describe("GET /api/api-request/[id]", () => {
       parameters: { model: "claude-opus-4-8", maxTokens: 32000 },
       timings: { timeToFirstByteMs: 1000, durationMs: 3000 },
       previousApiRequestId: null,
-      newMessages: [{ role: "user", blocks: [{ kind: "text", text: "audit the exports" }] }],
+      firstNewMessageIndex: 0,
+      fullRequest: {
+        messages: [{ role: "user", blocks: [{ kind: "text", shownAs: "text", text: "audit the exports" }] }],
+      },
     });
   });
 
