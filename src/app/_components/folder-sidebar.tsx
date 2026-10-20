@@ -40,7 +40,7 @@ export function FolderSidebar({
   folderTree,
   totals,
 }: {
-  /** The Favorites section's rows, newest first. */
+  /** The Favorites section's rows, in the user's order. */
   favorites: FavoriteFolder[];
   /** Every favorited Folder's path, shown or not — what fills the tree's stars. */
   favoritePaths: string[];

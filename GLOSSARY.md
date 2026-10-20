@@ -48,11 +48,12 @@ _Avoid_: using Folder for the on-disk log folder under `~/.claude/projects/`.
 ### Favorite
 
 A Folder the user starred to keep at hand: it is listed under **Favorites** at
-the top of the sidebar, newest activity first, and selects its scope like its
-tree row. Favorites are kept by Folder path in the settings file, not in the
+the top of the sidebar, in the user's order (favorited order, a new favorite
+last, until the user moves one by its grip), and selects its scope like its tree
+row. Favorites are kept by Folder path in the settings file, not in the
 database, so neither a Refresh nor a database reset touches them. A favorite with
 no Conversations at or below it stays kept but is not listed, until some exist
-there again.
+there again, back in its place between its neighbours.
 
 ### Conversation (Session)
 

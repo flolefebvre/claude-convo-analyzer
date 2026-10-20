@@ -33,7 +33,6 @@ describe("deriveFavoriteFolders", () => {
         count: 2,
         costUsd: 5,
         unpriced: true,
-        latestActivity: "2026-01-01T01:00:00.000Z",
       },
     ]);
   });
@@ -53,15 +52,15 @@ describe("deriveFavoriteFolders", () => {
     ]);
   });
 
-  it("orders favorites newest activity first", () => {
+  it("keeps the favorited order, whatever the activity", () => {
     const folders = deriveFolders([
       summary({ id: "a", path: "/home/me/dev/old", endedAt: "2026-01-01T00:00:00.000Z" }),
       summary({ id: "b", path: "/home/me/dev/new", endedAt: "2026-03-01T00:00:00.000Z" }),
     ]);
 
     expect(deriveFavoriteFolders(["/home/me/dev/old", "/home/me/dev/new"], folders, HOME).map((f) => f.label)).toEqual([
-      "new",
       "old",
+      "new",
     ]);
   });
 
