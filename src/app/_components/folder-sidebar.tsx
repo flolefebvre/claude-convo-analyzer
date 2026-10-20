@@ -55,7 +55,7 @@ export function FolderSidebar({
       {favorites.length > 0 && <FavoritesSection favorites={favorites} totalCostUsd={totals.costUsd} />}
       <div className="flex items-center">
         <SidebarLeadingSlot />
-        <SidebarLink scope={{}} className="min-w-0 flex-1 pr-9">
+        <SidebarLink scope={{}} className="min-w-0 flex-1 pr-7">
           <FolderRow label={<span className="font-medium">All folders</span>} totals={totals} isCountSpelledOnHover />
         </SidebarLink>
       </div>

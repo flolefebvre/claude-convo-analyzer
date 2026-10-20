@@ -9,10 +9,10 @@ import type { FolderTotals } from "@/app/_lib/folder-tree";
 import { formatCount, formatGrandTotalCost } from "@/app/_lib/format";
 
 /** The count column's width; the sidebar skeleton draws the same. */
-export const FOLDER_ROW_COUNT_COLUMN = "min-w-8";
+export const FOLDER_ROW_COUNT_COLUMN = "min-w-6";
 
 /** The cost column's width; the sidebar skeleton draws the same. */
-export const FOLDER_ROW_COST_COLUMN = "min-w-16";
+export const FOLDER_ROW_COST_COLUMN = "min-w-15";
 
 /**
  * A sidebar entry's line: its label, truncated, then its conversation count
@@ -32,7 +32,7 @@ export function FolderRow({
 }) {
   const countNoun = `conversation${totals.count === 1 ? "" : "s"}`;
   return (
-    <span className="flex min-w-0 flex-1 items-center gap-2">
+    <span className="flex min-w-0 flex-1 items-center gap-1.5">
       <span className="min-w-0 flex-1 truncate">{label}</span>
       <span
         className={`${FOLDER_ROW_COUNT_COLUMN} shrink-0 text-right text-xs text-muted-foreground`}

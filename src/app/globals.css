@@ -103,7 +103,7 @@
    edge to `--share` (a percentage). Fainter than `cost-muted`, so the active
    row's wash stays the stronger tint. */
 @utility share-bar {
-  --share-bar-color: color-mix(in oklab, var(--cost-muted) 70%, transparent);
+  --share-bar-color: color-mix(in oklab, var(--cost-muted) 55%, transparent);
   background-image: linear-gradient(to right, var(--share-bar-color) var(--share, 0%), transparent var(--share, 0%));
 }
 

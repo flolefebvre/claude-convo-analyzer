@@ -52,7 +52,7 @@ export function FolderLinkWithStar({
         scope={{ folder: folderPath }}
         costShare={costShare}
         title={folderPath}
-        className="min-w-0 flex-1 pr-9"
+        className="min-w-0 flex-1 pr-7"
       >
         {children}
       </SidebarLink>
@@ -62,7 +62,7 @@ export function FolderLinkWithStar({
         isFavorite={isFavorite}
         isRevealedByRow
         failureAlignedEdge="leftFromLg"
-        className="absolute top-1/2 right-1 -translate-y-1/2"
+        className="absolute top-1/2 right-0 -translate-y-1/2"
       />
     </div>
   );
