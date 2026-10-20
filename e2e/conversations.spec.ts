@@ -165,6 +165,21 @@ test.describe("Folder tree", () => {
     await expect(folderLink(tree, "fix-auth-flake")).toHaveAttribute("aria-current", "true");
   });
 
+  test("a row's Folder scopes the list to exactly its Project, and the tree opens down to it", async ({ page }) => {
+    await page.goto(`/?${new URLSearchParams({ sortBy: "cost", dir: "asc", folder: REPO, range: "90" }).toString()}`);
+    const tree = page.getByRole("complementary").getByRole("navigation", { name: "Folders" });
+
+    await page
+      .locator("#conversations")
+      .getByRole("link", { name: ".claude/worktrees/fix-auth-flake", exact: true })
+      .first()
+      .click();
+    await page.waitForURL((url) => url.searchParams.get("folder") === WORKTREE);
+    const params = new URL(page.url()).searchParams;
+    expect(Object.fromEntries(params)).toEqual({ sortBy: "cost", dir: "asc", folder: WORKTREE, range: "90" });
+    await expect(folderLink(tree, "fix-auth-flake")).toHaveAttribute("aria-current", "true");
+  });
+
   test.describe("on a phone", () => {
     test.use({ viewport: { width: 390, height: 844 } });
 
