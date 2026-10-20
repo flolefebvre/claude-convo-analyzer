@@ -46,8 +46,13 @@ export type ControlBubbleProps = {
   detail: string | null;
   tone: "status" | "error";
   onDismiss: () => void;
-  /** The control's edge the bubble lines up with, growing away from it: `right` (the default) for an app bar control, `left` in the sidebar, which has no room on its left. */
-  alignedEdge?: "left" | "right";
+  /**
+   * The control's edge the bubble lines up with, growing away from it: `right`
+   * (the default) for an app bar control; `left` for one at the sidebar's left;
+   * `leftFromLg` for one at the sidebar's right, which is the screen's right
+   * edge below `lg`, in the phone picker.
+   */
+  alignedEdge?: "left" | "right" | "leftFromLg";
 };
 
 /**
@@ -61,7 +66,11 @@ export function ControlBubble({ text, detail, tone, onDismiss, alignedEdge = "ri
       title={detail ?? undefined}
       className={cn(
         "absolute top-full z-50 mt-2 flex w-max max-w-[min(18rem,calc(100vw-2rem))] animate-in items-start gap-2 rounded-lg border bg-popover py-2 pr-1.5 pl-3 text-xs text-popover-foreground shadow-md fade-in-0 slide-in-from-top-1",
-        alignedEdge === "right" ? "right-0" : "left-0",
+        {
+          right: "right-0",
+          left: "left-0",
+          leftFromLg: "right-0 lg:right-auto lg:left-0",
+        }[alignedEdge],
         tone === "error" && "border-destructive/40 text-destructive-foreground",
       )}
     >

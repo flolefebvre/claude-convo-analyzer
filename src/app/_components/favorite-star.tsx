@@ -11,7 +11,7 @@ import { Star } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { ControlFailure } from "@/app/_components/control-bubble";
+import { type ControlBubbleProps, ControlFailure } from "@/app/_components/control-bubble";
 import { SidebarLink } from "@/app/_components/sidebar-link";
 import { setFolderFavorite } from "@/app/actions";
 import { cn } from "@/lib/utils-cn";
@@ -36,7 +36,10 @@ export function FolderLinkWithStar({
   grip,
   className,
   children,
-}: Omit<FavoriteStarProps, "isRevealedByRow"> & { grip?: React.ReactNode; children: React.ReactNode }) {
+}: Omit<FavoriteStarProps, "isRevealedByRow" | "failureAlignedEdge"> & {
+  grip?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <div className={cn("group/row relative min-w-0", className)}>
       <SidebarLink scope={{ folder: folderPath }} title={folderPath} className={grip ? "pr-15" : "pr-9"}>
@@ -48,6 +51,7 @@ export function FolderLinkWithStar({
         folderLabel={folderLabel}
         isFavorite={isFavorite}
         isRevealedByRow
+        failureAlignedEdge="leftFromLg"
         className="absolute top-1/2 right-1 -translate-y-1/2"
       />
     </div>
@@ -68,6 +72,8 @@ export type FavoriteStarProps = {
    * star always shows.
    */
   isRevealedByRow?: boolean;
+  /** The star's edge its failure bubble lines up with, as {@link ControlBubbleProps} `alignedEdge` reads it. */
+  failureAlignedEdge?: ControlBubbleProps["alignedEdge"];
   className?: string;
 };
 
@@ -81,6 +87,7 @@ export function FavoriteStar({
   folderLabel,
   isFavorite: isFavoriteAsRendered,
   isRevealedByRow = false,
+  failureAlignedEdge = "right",
   className,
 }: FavoriteStarProps) {
   const router = useRouter();
@@ -139,7 +146,12 @@ export function FavoriteStar({
       >
         <Star className={cn("size-3.5", isFavorite && "fill-current")} aria-hidden />
       </button>
-      <ControlFailure text={FAILURE_TEXT} failure={failure} onDismiss={() => setFailure(null)} />
+      <ControlFailure
+        text={FAILURE_TEXT}
+        failure={failure}
+        onDismiss={() => setFailure(null)}
+        alignedEdge={failureAlignedEdge}
+      />
     </div>
   );
 }
