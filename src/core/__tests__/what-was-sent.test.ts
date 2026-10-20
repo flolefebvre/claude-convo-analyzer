@@ -1,9 +1,10 @@
 // What was sent (GLOSSARY.md): for a recorded Turn, what its API request sent
 // the model — the messages new since the previous API request of the same
 // Agent, the request parameters and timings, and the whole system prompt and
-// tool definitions — located through the database, read from the Recording.
+// tool definitions, and the API request raw — located through the database,
+// read from the Recording.
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -12,6 +13,7 @@ import { getTranscript, type TranscriptMessage } from "@/core/read";
 import { openRecordingWriter, type RecordedApiRequest } from "@/core/recording";
 import { refresh } from "@/core/refresh";
 import {
+  getRawApiRequest,
   getWhatWasSent,
   type SentMessage,
   VOLATILE_SYSTEM_LINE_PATTERNS,
@@ -458,6 +460,59 @@ function failedAttemptOf(
 
 /** The response body of an overloaded API, as the API sends it. */
 const OVERLOADED_BODY = { type: "error", error: { type: "overloaded_error", message: "Overloaded" } };
+
+/** A Messages request body as Claude Code sends it: system blocks, tools, messages and a `metadata.user_id`. */
+const MESSAGES_REQUEST_BODY = JSON.parse(
+  readFileSync(path.join(import.meta.dirname, "fixtures", "recording", "messages-request.json"), "utf8"),
+) as { metadata: { user_id: string } } & Record<string, unknown>;
+
+describe("the raw API request of a Turn", () => {
+  /** The first Turn's API request, sending the fixture body with a credential header, answered `responseBody`. */
+  function firstTurnSending(responseBody: unknown): RecordedApiRequest {
+    const [first] = mainTurns();
+    return {
+      ...first,
+      headers: { "anthropic-version": "2023-06-01", "x-api-key": "sk-ant-fixture-secret" },
+      body: MESSAGES_REQUEST_BODY,
+      response: { ...first.response, body: responseBody },
+    };
+  }
+
+  it("is the body as sent, rebuilt from the Recording's pieces, with only the documented redaction applied", async () => {
+    const responseBody = { id: "smsg-1", type: "message", content: [{ type: "text", text: "Here they are." }] };
+    await recordAndRefresh([firstTurnSending(responseBody)]);
+    const [turn] = await turnsOf();
+
+    const raw = await getRawApiRequest(turn!.apiRequestId!, { dbPath, recordingsRoot });
+
+    // The Recording keeps the system blocks, tools and messages as hashed
+    // pieces; rebuilt, the body is the one sent, but for the redaction its
+    // writer applies before writing (docs/recording-format.md §4): the
+    // `metadata.user_id` keeps only its session id. Nothing else differs.
+    expect(raw?.requestBody).toEqual({
+      ...MESSAGES_REQUEST_BODY,
+      metadata: {
+        user_id: JSON.stringify({ device_id: "<redacted>", account_uuid: "<redacted>", session_id: "sess-recorded" }),
+      },
+    });
+    expect(raw?.responseBody).toEqual(responseBody);
+    expect(raw?.requestHeaders).toEqual({ "anthropic-version": "2023-06-01", "x-api-key": "<redacted>" });
+  });
+
+  it("is null when the Recording no longer holds the API request", async () => {
+    await recordAndRefresh([firstTurnSending({ id: "smsg-1", type: "message", content: [] })]);
+    const [turn] = await turnsOf();
+    rmSync(recordingsRoot, { recursive: true, force: true });
+
+    expect(await getRawApiRequest(turn!.apiRequestId!, { dbPath, recordingsRoot })).toBeNull();
+  });
+
+  it("is null for an unknown API request", async () => {
+    await recordAndRefresh(mainTurns());
+
+    expect(await getRawApiRequest(999_999, { dbPath, recordingsRoot })).toBeNull();
+  });
+});
 
 describe("the failed attempts of a Turn", () => {
   it("are listed oldest first, each with its status, error message and the time it lost", async () => {

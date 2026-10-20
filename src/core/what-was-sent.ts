@@ -2,7 +2,8 @@
 // sent the model, read on demand when the reader opens it. The database
 // locates the API request and the previous one of the same Agent; the
 // Recording file provides their bodies, the only two restored (ADR-0006: no
-// body is ever written to the database). Framework-free (ADR-0002).
+// body is ever written to the database). Its Raw view reads one API request
+// the same way, as the Recording holds it. Framework-free (ADR-0002).
 
 import { structuredPatch } from "diff";
 
@@ -156,6 +157,16 @@ export type WhatWasSent = {
   };
 };
 
+/** An API request raw (GLOSSARY.md, What was sent), as JSON: what the panel's Raw view shows. Plain and serializable. */
+export type RawApiRequest = {
+  /** The request body exactly as sent, rebuilt from the Recording's pieces (`metadata.user_id` redacted). */
+  requestBody: JsonValue;
+  /** The response body as the Recording reassembled it (a stream's events folded into one message); null without one. */
+  responseBody: JsonValue;
+  /** The request headers, credentials redacted. */
+  requestHeaders: RecordedHeaders;
+};
+
 type WhatWasSentOptions = {
   dbPath?: string;
   /** Where the Recordings are read from; `defaultRecordingsRoot()` when absent. */
@@ -190,13 +201,7 @@ type RequestBody = Record<string, JsonValue>;
  * const whatWasSent = await getWhatWasSent(message.apiRequestId);
  */
 export async function getWhatWasSent(apiRequestId: number, opts: WhatWasSentOptions = {}): Promise<WhatWasSent | null> {
-  const { prisma, owned } = readClient(opts.dbPath);
-  try {
-    const row = await prisma.apiRequest.findUnique({
-      where: { id: apiRequestId },
-      include: { conversation: { select: { sessionId: true } } },
-    });
-    if (row === null) return null;
+  return withApiRequestRow(apiRequestId, opts.dbPath, async (row, prisma) => {
     const previousRow =
       row.agentId === null
         ? null
@@ -219,13 +224,12 @@ export async function getWhatWasSent(apiRequestId: number, opts: WhatWasSentOpti
             select: { status: true, errorMessage: true, arrivedAt: true, endedAt: true },
           });
 
-    const filePath = recordingFilePath(opts.recordingsRoot ?? defaultRecordingsRoot(), row.conversation.sessionId);
-    if (filePath === null) return null;
-    const keys = previousRow === null ? [row] : [row, previousRow];
-    const apiRequests = readApiRequestsUnlessVanished(filePath, keys);
-    const apiRequest = apiRequestOf(apiRequests, row);
+    const [apiRequest, previousApiRequest = null] = recordedApiRequestsOf(
+      row.conversation.sessionId,
+      previousRow === null ? [row] : [row, previousRow],
+      opts,
+    );
     if (apiRequest === null || !isRequestBody(apiRequest.body)) return null;
-    const previousApiRequest = previousRow === null ? null : apiRequestOf(apiRequests, previousRow);
     const previousBody =
       previousApiRequest !== null && isRequestBody(previousApiRequest.body) ? previousApiRequest.body : null;
 
@@ -255,11 +259,79 @@ export async function getWhatWasSent(apiRequestId: number, opts: WhatWasSentOpti
         parameterByName: Object.fromEntries(Object.entries(body).filter(([field]) => !PIECE_FIELDS.has(field))),
       },
     };
+  });
+}
+
+/**
+ * The API request of `api_request` row `apiRequestId` raw, as its Recording
+ * holds it: the request body rebuilt from its pieces, exactly as sent but for
+ * the Recording's redaction; the response body as the Recording reassembled
+ * it; the request headers, credentials redacted. Null for an unknown row, or
+ * when the Recording no longer holds the API request.
+ *
+ * @example
+ * const rawApiRequest = await getRawApiRequest(message.apiRequestId);
+ */
+export async function getRawApiRequest(
+  apiRequestId: number,
+  opts: WhatWasSentOptions = {},
+): Promise<RawApiRequest | null> {
+  return withApiRequestRow(apiRequestId, opts.dbPath, async (row) => {
+    const [apiRequest] = recordedApiRequestsOf(row.conversation.sessionId, [row], opts);
+    if (apiRequest === null) return null;
+    return {
+      // Both bodies were parsed from JSON when the Recording was read.
+      requestBody: (apiRequest.body ?? null) as JsonValue,
+      responseBody: (apiRequest.response.body ?? null) as JsonValue,
+      requestHeaders: apiRequest.headers,
+    };
+  });
+}
+
+/** The client {@link readClient} hands out. */
+type ReadPrisma = ReturnType<typeof readClient>["prisma"];
+
+/** The `api_request` row `apiRequestId`, with its Conversation's session id; null for an unknown one. */
+function findApiRequestRow(prisma: ReadPrisma, apiRequestId: number) {
+  return prisma.apiRequest.findUnique({
+    where: { id: apiRequestId },
+    include: { conversation: { select: { sessionId: true } } },
+  });
+}
+
+type ApiRequestRow = NonNullable<Awaited<ReturnType<typeof findApiRequestRow>>>;
+
+/** What `read` makes of `api_request` row `apiRequestId`, read from the database at `dbPath`; null for an unknown row. */
+async function withApiRequestRow<Result>(
+  apiRequestId: number,
+  dbPath: string | undefined,
+  read: (row: ApiRequestRow, prisma: ReadPrisma) => Promise<Result | null>,
+): Promise<Result | null> {
+  const { prisma, owned } = readClient(dbPath);
+  try {
+    const row = await findApiRequestRow(prisma, apiRequestId);
+    return row === null ? null : await read(row, prisma);
   } finally {
     // Only a caller-owned (non-default) client is disconnected; the shared
     // default singleton stays open for the next request.
     if (owned) await prisma.$disconnect();
   }
+}
+
+/**
+ * The API request of each of `keys` in the Recording of session `sessionId`,
+ * in the order of `keys`: null for one the Recording does not hold, or for
+ * every one when the Recording is gone.
+ */
+function recordedApiRequestsOf(
+  sessionId: string,
+  keys: ApiRequestKey[],
+  opts: WhatWasSentOptions,
+): (RecordedApiRequest | null)[] {
+  const filePath = recordingFilePath(opts.recordingsRoot ?? defaultRecordingsRoot(), sessionId);
+  if (filePath === null) return keys.map(() => null);
+  const apiRequests = readApiRequestsUnlessVanished(filePath, keys);
+  return keys.map((key) => apiRequestOf(apiRequests, key));
 }
 
 /** The API requests of the file at `filePath` that match one of `keys`, in full; none when the file is gone. */
