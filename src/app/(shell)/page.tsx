@@ -46,6 +46,7 @@ import { type FolderScope, folderLabelInScope, resolveFolderScope } from "@/app/
 import { type FolderNode, findFolderNode, folderScopeLabel } from "@/app/_lib/folder-tree";
 import { formatCount, formatDate, formatGrandTotalCost, formatTokens } from "@/app/_lib/format";
 import { buildListView } from "@/app/_lib/list-view";
+import { activeNowUntil } from "@/app/_lib/live";
 import { type ViewSearchParams, firstParam, resolvePage } from "@/app/_lib/search-params";
 import {
   type ListLinkContext,
@@ -337,6 +338,7 @@ async function ConversationTable({ searchParams }: { searchParams: Promise<ViewS
                 errors={row.id === expandedRow?.id ? expandedErrors : null}
                 toggleHref={expandHref(row.id, expandedId, links)}
                 listReturn={listReturn}
+                activeUntil={activeNowUntil(row.sourceChangedAt, now)}
               />
             ))}
           </TableBody>

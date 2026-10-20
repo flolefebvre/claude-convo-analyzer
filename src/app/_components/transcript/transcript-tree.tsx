@@ -1,6 +1,7 @@
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 
+import { ActiveNowMarker } from "@/app/_components/active-now-marker";
 import { formatClock } from "@/app/_lib/format";
 import { SIDE_REQUESTS_TOOLTIP, sideRequestLabel } from "@/app/_lib/side-requests";
 import type { AgentLabel } from "@/app/_lib/transcript";
@@ -42,6 +43,7 @@ export function TranscriptTree({
   lowerBound,
   listReturn,
   selectedSideRequestId,
+  activeUntil = null,
 }: {
   view: TranscriptView;
   /** Every agent's display name, from `agentLabels(view.tree)`. */
@@ -53,12 +55,21 @@ export function TranscriptTree({
   listReturn: string | undefined;
   /** The `api_request` row id of the Side request the pane shows; no agent is then current. */
   selectedSideRequestId?: number;
+  /** When the Conversation stops being active now (`activeNowUntil`), or `null` when it is not. */
+  activeUntil?: number | null;
 }) {
   return (
     <>
       <div className="tree-header">
         {/* The page's h1 is in the pane (<main>); here the title is a label. */}
-        <p className="conv-title">{view.title ?? "Untitled conversation"}</p>
+        <p className="conv-title">
+          {view.title ?? "Untitled conversation"}
+          {activeUntil !== null && (
+            <span className="ml-1.5 inline-block align-middle">
+              <ActiveNowMarker activeUntil={activeUntil} />
+            </span>
+          )}
+        </p>
         <div className="conv-meta" title="Session id">
           {view.sessionId}
         </div>

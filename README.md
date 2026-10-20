@@ -119,7 +119,9 @@ the app says so and asks for a Refresh.
 To skip the clicking, switch on **Live**, the toggle next to Refresh (off by
 default). While it is on, the app watches your logs and Recordings and refreshes
 a couple of seconds after they change, so open pages follow your conversations
-as they happen. A pulsing dot shows while it is on. The choice is saved in
+as they happen. A pulsing dot shows while it is on, and the same dot marks a
+conversation as **active now**, in the list and on its transcript, while its log
+or Recording changed in the last 2 minutes. The choice is saved in
 `~/.claude-convo-analyzer/settings.json`, so a server restarted with Live on
 starts watching again and catches up on what it missed.
 
