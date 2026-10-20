@@ -52,11 +52,11 @@ type Message = {
   id: number;
 };
 
-/** How the button looks: its shadcn variant and size, and whether its label collapses on phones. */
+/** How the button looks: its shadcn variant and size, and whether its label collapses below desktop. */
 type RefreshButtonLook = {
   variant?: React.ComponentProps<typeof Button>["variant"];
   size?: React.ComponentProps<typeof Button>["size"];
-  /** Hides the label below the `sm` breakpoint, leaving the icon (the app bar's phone layout). */
+  /** Hides the label below the `lg` breakpoint, leaving the icon (the app bar's phone and tablet layouts). */
   collapsible?: boolean;
 };
 
@@ -248,10 +248,10 @@ function RefreshButtonFace({
       disabled={isDisabled}
       aria-busy={isRunning}
       title="Re-scan your Claude Code logs"
-      className={cn("tabular-nums", collapsible && "max-sm:w-8 max-sm:px-0")}
+      className={cn("tabular-nums", collapsible && "max-lg:w-8 max-lg:px-0")}
     >
       <RefreshCw className={cn(isRunning && "animate-spin")} aria-hidden />
-      <span className={cn(collapsible && "max-sm:sr-only")}>{label}</span>
+      <span className={cn(collapsible && "max-lg:sr-only")}>{label}</span>
     </Button>
   );
 }

@@ -4,12 +4,15 @@
 // surfaces never rearranges the chrome. Rendered once, by the root layout.
 //
 // Responsive by reordering one flex row rather than rendering twice:
-//   phone    mark ···· theme recorder live refresh   (the brand and the last three shrink to their icons)
+//   phone    brand ···· theme recorder live refresh   (the brand's name from 640px, the mark alone below)
 //            search ─────────────────────────
 //            tabs
 //   tablet   brand ···· search theme recorder live refresh
 //            tabs
 //   desktop  brand  tabs ···· search theme recorder live refresh      (one 56px row)
+// The Recorder, Live and Refresh show their labels on desktop only; below it they
+// are icons, since the tablet row has no room for them: at 768px the brand with
+// its name, the 240px search and the icon controls take 711 of its 720px.
 // The tabs always end flush on the bar's bottom border, where the active tab's
 // clay underline sits.
 //
