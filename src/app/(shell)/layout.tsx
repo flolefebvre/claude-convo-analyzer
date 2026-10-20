@@ -28,7 +28,7 @@ export default function ShellLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row lg:items-start lg:gap-8 lg:py-8">
+    <div className="mx-auto flex w-full max-w-frame flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row lg:items-start lg:gap-8 lg:py-8">
       {/* The folder tree is fetched at request time and its entries read the
           live URL — both reasons to keep it inside a Suspense boundary so the
           shell can prerender (Next local docs: use-search-params

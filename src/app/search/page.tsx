@@ -47,7 +47,7 @@ export async function generateMetadata({
 
 export default function SearchPage({ searchParams }: { searchParams: Promise<PageSearchParams> }) {
   return (
-    <main id="main" tabIndex={-1} className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:py-8">
+    <main id="main" tabIndex={-1} className="mx-auto w-full max-w-frame px-4 py-6 sm:px-6 lg:py-8">
       <div className="flex max-w-3xl flex-col gap-5">
         <PageHeader title="Search" description="Your prompts, Claude's replies and conversation titles." />
         <Suspense fallback={<SearchFallback />}>

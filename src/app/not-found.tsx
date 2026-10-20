@@ -13,7 +13,7 @@ export const metadata: Metadata = { title: "Not found" };
 
 export default function NotFound() {
   return (
-    <main id="main" tabIndex={-1} className="mx-auto w-full max-w-7xl flex-1 px-4 py-10 sm:px-6 lg:py-16">
+    <main id="main" tabIndex={-1} className="mx-auto w-full max-w-frame flex-1 px-4 py-10 sm:px-6 lg:py-16">
       <EmptyState
         icon={FileQuestion}
         title="Page not found"
