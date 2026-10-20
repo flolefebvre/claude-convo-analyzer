@@ -8,6 +8,33 @@ import { X } from "lucide-react";
 
 import { cn } from "@/lib/utils-cn";
 
+/**
+ * A control's failure: `text` announced to screen readers, and shown in an
+ * error bubble with `failure` as its detail; nothing while `failure` is null.
+ * The live region stays mounted, so the announcement is never missed.
+ *
+ * @example <ControlFailure text="Live could not be switched." failure={failure} onDismiss={() => setFailure(null)} />
+ */
+export function ControlFailure({
+  text,
+  failure,
+  onDismiss,
+}: {
+  text: string;
+  /** The failure's own message, or null when there is none. */
+  failure: string | null;
+  onDismiss: () => void;
+}) {
+  return (
+    <>
+      <p role="alert" className="sr-only">
+        {failure === null ? "" : text}
+      </p>
+      {failure !== null && <ControlBubble text={text} detail={failure} tone="error" onDismiss={onDismiss} />}
+    </>
+  );
+}
+
 /** The props of {@link ControlBubble}. */
 export type ControlBubbleProps = {
   text: string;

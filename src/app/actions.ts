@@ -1,16 +1,19 @@
 "use server";
 
-// Server Actions for the app: the Refresh, the Live switch and the Recorder's
-// Start and Stop, its mutations — reads (the list, the expanded row's detail)
-// are served by the server components via the `_lib` seams, driven by the URL,
-// and the Recorder's status by `GET /api/recorder`. A "use server" module's
-// exports may be imported and called from a "use client" component, but the
-// client never imports core itself (ADR-0002).
+// Server Actions for the app: the Refresh, the Live switch, the Recorder's
+// Start and Stop and the Favorite star, its mutations — reads (the list, the
+// expanded row's detail) are served by the server components via the `_lib`
+// seams, driven by the URL, and the Recorder's status by `GET /api/recorder`.
+// A mutation with nothing to compose calls the core directly (this is a server
+// module); one composed over app state goes through its `_lib` seam. A
+// "use server" module's exports may be imported and called from a "use client"
+// component, but the client never imports core itself (ADR-0002).
 
 import { actionPipe } from "@flefebvre/next-pipe/pipes";
 import { error, success } from "@flefebvre/next-pipe/server";
 import { z } from "zod";
 
+import { favoriteFolder, unfavoriteFolder } from "@/core/favorites";
 import { getLive, switchLive } from "@/app/_lib/live";
 import { readConfiguredRecorderStatus, requestStopOfRecorder, startConfiguredRecorder } from "@/app/_lib/recorder";
 import { getPublishedRefreshRunner, startOrJoinRefresh } from "@/app/_lib/refresh-events";
@@ -98,6 +101,31 @@ export const stopRecorder = actionPipe(recorderStopSchema).handle(async ({ input
     return error("recorderNotStopped", { message: messageOf(cause) });
   }
   return success("stopping" as const);
+});
+
+/** What `setFolderFavorite` reads: the Folder's absolute path, and whether it is to be a favorite. */
+const folderFavoriteSchema = z.object({
+  path: z.string().startsWith("/"),
+  isFavorite: z.boolean(),
+});
+
+/**
+ * Favorite or unfavorite the Folder at `path`, as the user chose, and save the
+ * choice. Returns whether it is a favorite now; a save that failed comes back
+ * as an error with the reason.
+ *
+ * @example
+ * const result = await setFolderFavorite({ path: "/home/me/dev/acme-api", isFavorite: true });
+ * if (result.status === "success") show(result.data.isFavorite); // true
+ */
+export const setFolderFavorite = actionPipe(folderFavoriteSchema).handle(async ({ input }) => {
+  try {
+    if (input.isFavorite) await favoriteFolder(input.path);
+    else await unfavoriteFolder(input.path);
+  } catch (cause) {
+    return error("favoriteNotSaved", { message: messageOf(cause) });
+  }
+  return success({ isFavorite: input.isFavorite });
 });
 
 function messageOf(cause: unknown): string {
