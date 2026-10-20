@@ -88,7 +88,8 @@ function failedAttemptCountLabel(failedAttemptCount: number): string {
 }
 
 function WhatWasSentView({ whatWasSent }: { whatWasSent: WhatWasSent }) {
-  const { failedAttempts, newMessages, previousApiRequestId, systemPromptDiff, toolsDiff, fullRequest } = whatWasSent;
+  const { isSideRequest, failedAttempts, newMessages, previousApiRequestId, systemPromptDiff, toolsDiff, fullRequest } =
+    whatWasSent;
   const messageCount = `${newMessages.length} message${newMessages.length === 1 ? "" : "s"}`;
   return (
     <>
@@ -105,9 +106,11 @@ function WhatWasSentView({ whatWasSent }: { whatWasSent: WhatWasSent }) {
 
       <section className="sent-section">
         <h4 className="io-label">
-          {previousApiRequestId === null
-            ? `No earlier API request of this Agent was recorded: every message is new (${messageCount})`
-            : `New since the previous API request (${messageCount})`}
+          {isSideRequest
+            ? `Everything it sent (${messageCount})`
+            : previousApiRequestId === null
+              ? `No earlier API request of this Agent was recorded: every message is new (${messageCount})`
+              : `New since the previous API request (${messageCount})`}
         </h4>
         {newMessages.map((message, index) => (
           <MessageBlocks key={index} message={message} />

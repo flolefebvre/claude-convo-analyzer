@@ -6,6 +6,7 @@
 
 import { structuredPatch } from "diff";
 
+import { isSideRequestKind } from "@/core/api-request-kind";
 import { readClient } from "@/core/db";
 import {
   canonicalJson,
@@ -109,16 +110,18 @@ export type FailedAttempt = {
   arrivedAt: string;
 };
 
-/** Everything the "What was sent" panel of one Turn shows. Plain and serializable. */
+/** Everything the "What was sent" panel of one Turn or Side request shows. Plain and serializable. */
 export type WhatWasSent = {
+  /** True when the API request is a Side request (GLOSSARY.md), which belongs to no Agent. */
+  isSideRequest: boolean;
   parameters: SentParameters;
   timings: SentTimings;
   /** The failed attempts that preceded this API request, oldest first; empty when it succeeded at the first try. */
   failedAttempts: FailedAttempt[];
   /**
    * Row id of the previous API request of the same Agent; null when none was
-   * recorded (the Agent's first Turn, or the first recorded one), and then
-   * every message is new.
+   * recorded (the Agent's first Turn, or the first recorded one) or on a Side
+   * request, which has no Agent, and then every message is new.
    */
   previousApiRequestId: number | null;
   /** The messages after those this request shares, in order, with the previous one (cache breakpoints ignored). */
@@ -162,8 +165,9 @@ type RequestBody = Record<string, unknown>;
  * previous API request of the same Agent: the latest of its Conversation and
  * Agent to arrive earlier that is a Turn's request other than this one (so
  * Side requests and failed attempts are skipped), with the failed attempts
- * that preceded it. Null for an unknown row, or when the Recording no longer
- * holds the API request.
+ * that preceded it. A Side request has no Agent, so no previous API request:
+ * everything it sent is new. Null for an unknown row, or when the Recording no
+ * longer holds the API request.
  *
  * @example
  * const whatWasSent = await getWhatWasSent(message.apiRequestId);
@@ -211,6 +215,7 @@ export async function getWhatWasSent(apiRequestId: number, opts: WhatWasSentOpti
     const body = apiRequest.body;
     const parameters = Object.fromEntries(Object.entries(body).filter(([field]) => !PIECE_FIELDS.has(field)));
     return {
+      isSideRequest: isSideRequestKind(row.kind),
       parameters: sentParameters(body, apiRequest.headers),
       timings: {
         timeToFirstByteMs: row.firstByteAt === null ? null : Number(row.firstByteAt - row.arrivedAt),
