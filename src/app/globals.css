@@ -379,39 +379,29 @@ html:has(.tview) {
 
 /* ---- Agent-tree sidebar ---- */
 /* The tree sticks to the viewport top and scrolls on its own when taller than
-   the viewport. While the app bar is still in view, the tree starts below it,
-   so its height leaves the bar's room: otherwise its last nodes would sit below
-   the fold, out of reach of its own scroll. The bar's height per layout mirrors
-   `app-bar.tsx` (three rows on a phone, two on a tablet, one on a desktop). */
+   the viewport. While the chrome (app bar, banner) is still in view, the tree
+   starts below it, so its height leaves the chrome's room: otherwise its last
+   nodes would sit below the fold, out of reach of its own scroll.
+   `--chrome-height` is the chrome's rendered height, which `MeasuredChrome`
+   sets after hydration; until then the tree takes the full viewport height. */
 .tview .tree {
-  --app-bar-h: 129px;
   position: sticky;
   top: 0;
   width: var(--tview-tree);
-  max-height: calc(100dvh - var(--app-bar-h));
+  max-height: calc(100dvh - var(--chrome-height, 0px));
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
-@media (width >= 48rem) {
-  .tview .tree {
-    --app-bar-h: 89px;
-  }
-}
-@media (width >= 64rem) {
-  .tview .tree {
-    --app-bar-h: 57px;
-  }
-}
 /* Where the browser can tie an animation to the page scroll, the tree grows
-   back to the full viewport height as the app bar scrolls away. */
+   back to the full viewport height as the chrome scrolls away. */
 @supports (animation-timeline: scroll()) {
   .tview .tree {
     animation: tree-full-height linear both;
     animation-timeline: scroll(root block);
-    animation-range: 0 var(--app-bar-h);
+    animation-range: 0 var(--chrome-height, 0px);
   }
 }
 @keyframes tree-full-height {

@@ -60,6 +60,16 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     await expectData(page, conversation);
   });
 
+  test("publishes the chrome's measured height, which the agent tree fits under", async ({ page }) => {
+    await openConversation(page, TITLE);
+
+    // The seed has no outdated Conversation, so the chrome is the app bar alone.
+    const appBarHeight = (await page.getByRole("banner").boundingBox())!.height;
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.style.getPropertyValue("--chrome-height")))
+      .toBe(`${appBarHeight}px`);
+  });
+
   test("lists the recorded Conversation's Side requests beside its Agents, each opening what it sent", async ({
     page,
   }) => {
