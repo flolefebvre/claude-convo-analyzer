@@ -295,7 +295,7 @@ function CopyableLine({ text }: { text: string }) {
   );
 }
 
-/** The item's button: the Recorder's icon, lit while it runs, and the label, which collapses on phones. */
+/** The item's button: the Recorder's icon, lit while it runs, and the label, which collapses below desktop. */
 function RecorderFace({
   isRunning,
   label,
@@ -305,11 +305,11 @@ function RecorderFace({
     <Button
       variant="outline"
       title={label}
-      className={cn("max-sm:w-8 max-sm:px-0", isRunning && "border-cost/60")}
+      className={cn("max-lg:w-8 max-lg:px-0", isRunning && "border-cost/60")}
       {...triggerProps}
     >
       <Radio aria-hidden className={cn(isRunning ? "text-cost" : "text-muted-foreground")} />
-      <span className="max-sm:sr-only">{label}</span>
+      <span className="max-lg:sr-only">{label}</span>
     </Button>
   );
 }

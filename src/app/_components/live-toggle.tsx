@@ -87,7 +87,7 @@ export function InertLiveToggle() {
   );
 }
 
-/** The toggle itself: a dot, pulsing while Live is on, and the label, which collapses on phones. */
+/** The toggle itself: a dot, pulsing while Live is on, and the label, which collapses below desktop. */
 function LiveToggleFace({
   isLiveOn,
   isDisabled,
@@ -104,7 +104,7 @@ function LiveToggleFace({
       disabled={isDisabled}
       aria-pressed={isLiveOn}
       title={isLiveOn ? "Stop following your Claude Code logs" : "Follow your Claude Code logs as they change"}
-      className={cn("max-sm:w-8 max-sm:px-0", isLiveOn && "border-cost/60")}
+      className={cn("max-lg:w-8 max-lg:px-0", isLiveOn && "border-cost/60")}
     >
       <span aria-hidden className="relative flex size-2">
         {isLiveOn && <span className="absolute inline-flex size-full animate-ping rounded-full bg-cost opacity-75" />}
@@ -112,7 +112,7 @@ function LiveToggleFace({
           className={cn("relative inline-flex size-2 rounded-full", isLiveOn ? "bg-cost" : "bg-muted-foreground/40")}
         />
       </span>
-      <span className="max-sm:sr-only">Live</span>
+      <span className="max-lg:sr-only">Live</span>
     </Button>
   );
 }
