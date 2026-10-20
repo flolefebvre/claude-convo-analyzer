@@ -5,6 +5,7 @@ import { Suspense } from "react";
 
 import "./globals.css";
 import { AppBar } from "@/app/_components/app-bar";
+import { MeasuredChrome } from "@/app/_components/measured-chrome";
 import { ParserUpdateBanner } from "@/app/_components/parser-update-banner";
 import { ThemeProvider } from "@/app/_components/theme-provider";
 import { sse } from "@/app/_lib/sse";
@@ -81,12 +82,16 @@ export default function RootLayout({
             {/* The page's one Server-Sent Events connection (`/api/sse`),
                 shared by every subscribing component under it. */}
             <SSEProvider sse={sse}>
-              <AppBar />
-              {/* Absent in the normal state, so no skeleton: one would flash a
-                  phantom banner on every load (docs/codebase/app-router.md). */}
-              <Suspense fallback={null}>
-                <ParserUpdateBanner />
-              </Suspense>
+              {/* Its height is `--chrome-height`, which the transcript's agent
+                  tree fits under. */}
+              <MeasuredChrome>
+                <AppBar />
+                {/* Absent in the normal state, so no skeleton: one would flash a
+                    phantom banner on every load (docs/codebase/app-router.md). */}
+                <Suspense fallback={null}>
+                  <ParserUpdateBanner />
+                </Suspense>
+              </MeasuredChrome>
               {children}
             </SSEProvider>
           </TooltipProvider>
