@@ -1312,6 +1312,7 @@ html:has(.tview) {
 .tview details.sent-betas > summary,
 .tview details.sent-tool > summary {
   list-style: none;
+  padding: 0 2px;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -1424,6 +1425,7 @@ html:has(.tview) {
 }
 .tview details.json-node > summary {
   list-style: none;
+  padding: 0 2px;
   display: flex;
   align-items: center;
   gap: 4px;
