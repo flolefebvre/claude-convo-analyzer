@@ -1,0 +1,12 @@
+{
+  "browser": {
+    "browserName": "chromium",
+    "launchOptions": {
+      "channel": "chrome-for-testing"
+    },
+    "contextOptions": {
+      "viewport": { "width": 1920, "height": 1182 },
+      "deviceScaleFactor": 2
+    }
+  }
+}

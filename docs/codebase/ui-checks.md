@@ -39,6 +39,37 @@ pnpm exec playwright-cli -s=<worktree> close
   `pnpm exec playwright-cli install-browser chrome-for-testing` (into the user
   cache, no sudo).
 
+## README screenshot
+
+Regenerate `docs/images/main-view.png` after a UI change it shows. Start
+`PORT=<port> pnpm e2e:server` as in "Start the seeded app" (same seed, same
+`Seeded app:` line), then:
+
+```sh
+pnpm exec playwright-cli -s=<worktree> open --config .playwright/readme-screenshot.config.json http://localhost:<port>
+pnpm exec playwright-cli -s=<worktree> click "role=button[name='dev sub-folders']"
+pnpm exec playwright-cli -s=<worktree> click "role=button[name='acme-api sub-folders']"
+pnpm exec playwright-cli -s=<worktree> click "role=button[name='.claude/worktrees sub-folders']"
+pnpm exec playwright-cli -s=<worktree> click "role=heading[name='Conversations']"
+pnpm exec playwright-cli -s=<worktree> mousemove 0 0
+pnpm exec playwright-cli -s=<worktree> screenshot --hires
+cp .playwright-cli/<printed>.png docs/images/main-view.png
+pnpm exec playwright-cli -s=<worktree> close
+```
+
+- `e2e:server`, not `dev:seed`: `next start` shows no dev indicator. Its build
+  overwrites `.next/`; pick another port if an e2e run is going.
+- The config is `.playwright/cli.config.json` plus a 1920×1182 viewport at
+  device scale 2, like the other `docs/images/` captures; 1920 is the `2xl`
+  sidebar width.
+- 1182 ends the viewport on a table row's bottom border; re-measure if the
+  chrome above the table changes height.
+- The scope stays All folders, in light mode (headless Chrome's default); the
+  three clicks open the tree down to `billing-spike` and `fix-auth-flake`, so
+  the indent guides and share bars show.
+- Clicking the heading moves focus off the last toggle, which would otherwise
+  show its row's favorite star; `mousemove 0 0` leaves no row hovered.
+
 ## Run the e2e specs
 
 `pnpm e2e` runs `e2e/*.spec.ts` (`docs/codebase/testing.md`, "End-to-end")
