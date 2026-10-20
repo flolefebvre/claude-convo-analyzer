@@ -11,7 +11,7 @@ import { z } from "zod";
 const settingsSchema = z.object({
   /** Whether the user switched Live on. */
   live: z.boolean().catch(false),
-  /** The favorited Folders' absolute paths, in the order they were favorited. */
+  /** The favorited Folders' absolute paths, in the user's order: favorited order, until one is moved. */
   favorites: z.array(z.string()).catch([]),
 });
 
