@@ -1,7 +1,7 @@
 // Active now (GLOSSARY.md, under Live): the one spec that switches Live and
 // writes under the seeded roots. A Live Refresh re-renders every open page, so
-// `playwright.config.ts` runs this file after every other spec, never beside
-// an `instant()` scope.
+// `playwright.config.ts` runs this file in its `shared-state` project, after
+// every other spec, never beside an `instant()` scope.
 
 import { appendFileSync, readdirSync, readFileSync } from "node:fs";
 import os from "node:os";

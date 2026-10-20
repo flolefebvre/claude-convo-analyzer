@@ -34,12 +34,15 @@ This project uses TDD. The rules that matter here:
   watch it fail on that element, then revert.
 - Query the seeded data (`scripts/seed/fake-logs.ts`) with role and text
   locators. Don't add test ids.
-- The one exception to one spec per route: a test that switches Live on
-  lives in `e2e/active-now.spec.ts`, which `playwright.config.ts` runs as the
-  `live` project after every other spec. A Live Refresh re-renders every open
-  page, and that re-render lands inside other workers' `instant()` scopes and
-  breaks them. The `live` project holds no `instant()` check, and a failure
-  elsewhere skips it.
+- The exceptions to one spec per route: a spec with side effects on state
+  every open page shares — `e2e/active-now.spec.ts`, which switches Live on,
+  and `e2e/recorder.spec.ts`, which runs a fake Recorder (`e2e/fake-recorder.ts`)
+  on the e2e server's own Recorder port (`e2e/ports.ts`). `playwright.config.ts`
+  runs them as the `shared-state` project, after every other spec and one file
+  at a time. A Live Refresh re-renders every open page, and that re-render
+  lands inside other workers' `instant()` scopes and breaks them; a fake
+  Recorder turns every page's Recorder item on. The `shared-state` project
+  holds no `instant()` check, and a failure elsewhere skips it.
 - The specs run against a production build (`pnpm e2e:server`), because `next dev`
   doesn't prefetch. A dev `instant()` GREEN on a client navigation is not
   evidence that the prefetched shell commits.
