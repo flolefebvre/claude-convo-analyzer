@@ -21,7 +21,8 @@ const FAILURE_TEXT = "The favorite could not be saved. Hover for the reason, the
 
 /**
  * A sidebar entry selecting the Folder at `folderPath`, with its star beside
- * the link in a gutter the link keeps free, so the star never covers the cost.
+ * the link in a gutter the link keeps free, so the star never covers the cost;
+ * a `grip` (a favorite's reorder handle) widens the gutter to sit left of the star.
  *
  * @example
  * <FolderLinkWithStar folderPath={node.path} folderLabel={node.label} isFavorite={favoritePaths.has(node.path)}>
@@ -32,14 +33,16 @@ export function FolderLinkWithStar({
   folderPath,
   folderLabel,
   isFavorite,
+  grip,
   className,
   children,
-}: Omit<FavoriteStarProps, "isRevealedByRow"> & { children: React.ReactNode }) {
+}: Omit<FavoriteStarProps, "isRevealedByRow"> & { grip?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className={cn("group/row relative min-w-0", className)}>
-      <SidebarLink scope={{ folder: folderPath }} title={folderPath} className="pr-9">
+      <SidebarLink scope={{ folder: folderPath }} title={folderPath} className={grip ? "pr-15" : "pr-9"}>
         {children}
       </SidebarLink>
+      {grip && <div className="absolute top-1/2 right-7 flex -translate-y-1/2">{grip}</div>}
       <FavoriteStar
         folderPath={folderPath}
         folderLabel={folderLabel}

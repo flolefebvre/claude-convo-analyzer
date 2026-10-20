@@ -20,9 +20,9 @@
 
 import { useId } from "react";
 
-import { FolderLinkWithStar } from "@/app/_components/favorite-star";
-import { AllFoldersRow, FolderRow } from "@/app/_components/folder-rows";
+import { AllFoldersRow } from "@/app/_components/folder-rows";
 import { FolderTree } from "@/app/_components/folder-tree";
+import { ReorderableFavorites } from "@/app/_components/reorderable-favorites";
 import { SidebarLink } from "@/app/_components/sidebar-link";
 import type { FavoriteFolder } from "@/app/_lib/favorites";
 import type { FolderNode, FolderTotals } from "@/app/_lib/folder-tree";
@@ -60,7 +60,7 @@ export function FolderSidebar({
   );
 }
 
-/** The favorites, each a Folder row that selects its scope, above "All folders". */
+/** The favorites, each a Folder row that selects its scope, in the user's order, above "All folders". */
 function FavoritesSection({ favorites, totalCostUsd }: { favorites: FavoriteFolder[]; totalCostUsd: number }) {
   const headingId = useId();
   return (
@@ -68,15 +68,7 @@ function FavoritesSection({ favorites, totalCostUsd }: { favorites: FavoriteFold
       <h2 id={headingId} className="px-3 pt-1 text-xs font-medium text-muted-foreground">
         Favorites
       </h2>
-      <ul aria-labelledby={headingId} className="flex flex-col gap-1">
-        {favorites.map((favorite) => (
-          <li key={favorite.path}>
-            <FolderLinkWithStar folderPath={favorite.path} folderLabel={favorite.label} isFavorite>
-              <FolderRow label={favorite.label} totals={favorite} totalCostUsd={totalCostUsd} />
-            </FolderLinkWithStar>
-          </li>
-        ))}
-      </ul>
+      <ReorderableFavorites favorites={favorites} totalCostUsd={totalCostUsd} labelledBy={headingId} />
     </div>
   );
 }
