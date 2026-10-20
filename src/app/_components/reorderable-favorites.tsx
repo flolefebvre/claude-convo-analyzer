@@ -11,7 +11,7 @@
 
 import { GripVertical } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 
 import { ControlFailure } from "@/app/_components/control-bubble";
 import { FolderLinkWithStar } from "@/app/_components/favorite-star";
@@ -36,6 +36,8 @@ type GripPress = {
   isDragging: boolean;
   /** The order when the press began: what a cancel restores, and what the move is saved against. */
   orderAtPress: string[];
+  /** The order as the drag has made it so far, set with each move before React renders it: what a release saves. */
+  order: string[];
 };
 
 /**
@@ -136,6 +138,7 @@ export function ReorderableFavorites({
       startY: event.clientY,
       isDragging: false,
       orderAtPress: order,
+      order,
     };
   }
 
@@ -147,19 +150,20 @@ export function ReorderableFavorites({
       press.isDragging = true;
       setDraggedPath(press.movedPath);
     }
-    const otherRowBoxes = order
+    const otherRowBoxes = press.order
       .filter((favoritePath) => favoritePath !== press.movedPath)
       .flatMap((favoritePath) => rowByPath.current.get(favoritePath)?.getBoundingClientRect() ?? []);
     const toIndex = dropIndexForPointer(otherRowBoxes, event.clientY);
-    if (order.indexOf(press.movedPath) !== toIndex)
-      setOrder(moveFavoriteToIndex(order, press.movedPath, toIndex).order);
+    if (press.order.indexOf(press.movedPath) === toIndex) return;
+    press.order = moveFavoriteToIndex(press.order, press.movedPath, toIndex).order;
+    setOrder(press.order);
   }
 
   function handleListPointerUp(event: React.PointerEvent) {
     const press = gripPress.current;
     if (press === null || event.pointerId !== press.pointerId) return;
     endPress();
-    const toIndex = order.indexOf(press.movedPath);
+    const toIndex = press.order.indexOf(press.movedPath);
     if (!press.isDragging || press.orderAtPress.indexOf(press.movedPath) === toIndex) return;
     void saveMove(
       press.movedPath,
@@ -188,16 +192,16 @@ export function ReorderableFavorites({
 
   // Escape cancels a drag wherever the focus is: a press does not focus the grip on every platform.
   const isDragging = draggedPath !== null;
+  const handleEscapeDuringDrag = useEffectEvent((event: KeyboardEvent) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    cancelPress();
+  });
   useEffect(() => {
     if (!isDragging) return;
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      cancelPress();
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  });
+    window.addEventListener("keydown", handleEscapeDuringDrag);
+    return () => window.removeEventListener("keydown", handleEscapeDuringDrag);
+  }, [isDragging]);
 
   return (
     <div className="relative">
