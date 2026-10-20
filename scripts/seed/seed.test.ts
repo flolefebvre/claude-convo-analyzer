@@ -1,4 +1,13 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import os, { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -6,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PAGE_SIZE } from "@/app/_lib/list-view";
 import { SIDE_REQUEST_KINDS } from "@/core/api-request-kind";
 import { getConversation, getTranscript, listConversations } from "@/core/read";
-import { readRecordings, type RecordedApiRequest } from "@/core/recording";
+import { discoverRecordings, readRecording, readRecordings, type RecordedApiRequest } from "@/core/recording";
 import { readSettings, writeSettings } from "@/core/settings";
 
 import { seedEnvironment } from "./environment";
@@ -185,6 +194,35 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     expect(latest).toBe(NOW.toISOString());
   });
 
+  it("dates each log and Recording file at its latest record, as if written then", async () => {
+    const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
+
+    const logs = Object.entries(readTree(seed.logsRoot));
+    expect(logs).toHaveLength(seed.generated.conversations + seed.generated.subAgents);
+    for (const [file, text] of logs) {
+      const timestamps = text
+        .split("\n")
+        .filter((line) => line !== "")
+        .map((line) => (JSON.parse(line) as { timestamp?: string }).timestamp)
+        .filter((timestamp) => timestamp !== undefined)
+        .map((timestamp) => Date.parse(timestamp));
+      expect({ file, mtime: mtimeOf(path.join(seed.logsRoot, file)) }).toEqual({
+        file,
+        mtime: Math.max(...timestamps),
+      });
+    }
+
+    const recordings = discoverRecordings(seed.recordingsRoot);
+    expect(recordings.length).toBeGreaterThan(0);
+    for (const recording of recordings) {
+      const endedAt = readRecording(recording.sourcePath).map((apiRequest) => Date.parse(apiRequest.timings.endedAt));
+      expect({ file: recording.sourcePath, mtime: recording.sourceMtime }).toEqual({
+        file: recording.sourcePath,
+        mtime: Math.max(...endedAt),
+      });
+    }
+  });
+
   it("writes byte-identical logs for the same anchor", async () => {
     const first = await seedEnvironment({ dir: path.join(tmpDir, "first"), now: NOW });
     const second = await seedEnvironment({ dir: path.join(tmpDir, "second"), now: NOW });
@@ -352,6 +390,11 @@ function readTree(root: string, encoding: BufferEncoding = "utf8"): Record<strin
       return [path.relative(root, file), readFileSync(file, encoding)];
     }),
   );
+}
+
+/** `file`'s mtime, in whole epoch milliseconds. */
+function mtimeOf(file: string): number {
+  return Math.floor(statSync(file).mtimeMs);
 }
 
 /** What tells API requests apart by their request alone: path, model, `max_tokens`, the opening lines of the system prompt and of the last message. */

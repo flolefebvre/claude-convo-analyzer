@@ -32,7 +32,15 @@
 // the seed sends Turns streamed and Side requests not, as a simplification;
 // real Side requests may stream.
 
-import { openRecordingWriter, type RecordedApiRequest, type RecordedHeaders } from "@/core/recording";
+import { utimesSync } from "node:fs";
+
+import {
+  discoverRecordings,
+  openRecordingWriter,
+  readRecording,
+  type RecordedApiRequest,
+  type RecordedHeaders,
+} from "@/core/recording";
 
 import {
   CC_VERSION,
@@ -666,4 +674,12 @@ export async function writeFakeRecordings(opts: {
   ].sort((a, b) => a.timings.arrivedAt.localeCompare(b.timings.arrivedAt));
   const writer = openRecordingWriter(opts.recordingsRoot);
   await Promise.all(apiRequests.map((apiRequest) => writer.append(apiRequest)));
+  // Each file dated at its last API request's end, when the Recorder would
+  // have last appended to it: a file dated at the seed would read as just
+  // changed (GLOSSARY.md, Active now).
+  for (const recording of discoverRecordings(opts.recordingsRoot)) {
+    const endedAt = readRecording(recording.sourcePath).map((apiRequest) => Date.parse(apiRequest.timings.endedAt));
+    const writtenAt = new Date(Math.max(...endedAt));
+    utimesSync(recording.sourcePath, writtenAt, writtenAt);
+  }
 }

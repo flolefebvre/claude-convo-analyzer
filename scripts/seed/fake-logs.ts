@@ -7,7 +7,7 @@
 // PRNG, the id counter, the timeline anchor), so two calls with the same `now`
 // write byte-identical files, in one process or across runs.
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, utimesSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -1272,13 +1272,28 @@ function scratchConversations(g: Gen, startIndex: number): Conversation[] {
 
 /** The newest record timestamp, main threads and sub-agents alike, in epoch ms. */
 function latestTimestamp(conversations: readonly Conversation[]): number {
-  const lines = conversations.flatMap((c) => [...c.mainLines, ...c.subAgents.flatMap((s) => s.lines)]);
+  return latestLineTimestamp(conversations.flatMap((c) => [...c.mainLines, ...c.subAgents.flatMap((s) => s.lines)]));
+}
+
+/** The newest timestamp among `lines`' records, in epoch ms. */
+function latestLineTimestamp(lines: readonly string[]): number {
   return Math.max(
     ...lines.map((line) => {
       const { timestamp } = JSON.parse(line) as { timestamp?: string };
       return timestamp === undefined ? -Infinity : Date.parse(timestamp);
     }),
   );
+}
+
+/**
+ * Write `lines` as the log at `filePath`, dated at its newest record, as
+ * Claude Code would have left it: a file dated at the seed would read as just
+ * changed (GLOSSARY.md, Active now).
+ */
+function writeLog(filePath: string, lines: readonly string[]): void {
+  writeFileSync(filePath, lines.join("\n") + "\n");
+  const writtenAt = new Date(latestLineTimestamp(lines));
+  utimesSync(filePath, writtenAt, writtenAt);
 }
 
 /** What {@link generateFakeLogs} wrote. */
@@ -1318,13 +1333,13 @@ export function generateFakeLogs(opts: { logsRoot: string; now: Date }): {
   for (const convo of conversations) {
     const projectDir = path.join(opts.logsRoot, convo.logFolderName);
     mkdirSync(projectDir, { recursive: true });
-    writeFileSync(path.join(projectDir, `${convo.sessionId}.jsonl`), convo.mainLines.join("\n") + "\n");
+    writeLog(path.join(projectDir, `${convo.sessionId}.jsonl`), convo.mainLines);
 
     if (convo.subAgents.length > 0) {
       const subDir = path.join(projectDir, convo.sessionId, "subagents");
       mkdirSync(subDir, { recursive: true });
       for (const sub of convo.subAgents) {
-        writeFileSync(path.join(subDir, `agent-${sub.agentId}.jsonl`), sub.lines.join("\n") + "\n");
+        writeLog(path.join(subDir, `agent-${sub.agentId}.jsonl`), sub.lines);
         subAgents += 1;
       }
     }
