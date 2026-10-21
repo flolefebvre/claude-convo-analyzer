@@ -37,6 +37,8 @@ export type ParsedToolResult = {
   toolUseId: string;
   /** Raw result text (serialized `toolUseResult`, or the block `content`). */
   resultText: string | null;
+  /** The full length of `resultText`, kept when the text is cut; null without text. */
+  resultCharSize: number | null;
   isError: boolean;
 };
 
@@ -514,7 +516,7 @@ function extractToolResult(record: Record<string, unknown>, content: unknown): P
           : typeof raw === "string"
             ? raw
             : JSON.stringify(raw);
-      return { toolUseId, resultText, isError: b.is_error === true };
+      return { toolUseId, resultText, resultCharSize: resultText?.length ?? null, isError: b.is_error === true };
     }
   }
   return null;
