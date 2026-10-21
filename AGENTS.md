@@ -45,7 +45,6 @@ pnpm seed          Rebuild the fake-data seed environment in data/seed/ (seed.db
 pnpm gen           Regenerate the typed route builders in src/generated/routes/ (next-pipe gen); run after adding, moving or removing a route
 pnpm dev:seed      Seed, then run next dev on it; prints `Seeded app: http://localhost:<port>` (first free from 3001, or $PORT)
 pnpm e2e:server    Seed, then next build with the testing API exposed and next start on it ($PORT, as dev:seed) — what pnpm e2e serves
-pnpm recorder      Run the Recorder on 127.0.0.1:$CCA_RECORDER_PORT (default 4242) until Ctrl-C, or in the background with --detach (what the app's Start runs); prints the ANTHROPIC_BASE_URL line for Claude Code. Format: docs/recording-format.md
 pnpm bench:refresh Cold Refresh of $CCA_LOGS_ROOT (default ~/.claude/projects) into a scratch DB; prints phase split, peak heap, longest stall. Not in check/gate/CI
 pnpm check         Format check, lint, duplication, typecheck, then the tests affected since $CHECK_BASE (default origin/main) — the inner loop
 pnpm gate          Format check, lint, duplication, typecheck, then test and build, then e2e — the full check
