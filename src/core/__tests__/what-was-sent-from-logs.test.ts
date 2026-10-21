@@ -336,10 +336,10 @@ describe("the messages a logged API request sent", () => {
 });
 
 describe("a logged API request raw", () => {
-  it("is the body as the logs rebuild it: the parameters, the system prompt and the tools", async () => {
+  it("is the body as the logs rebuild it: the parameters, the system prompt, the tools and the messages as logged", async () => {
     const raw = await getLoggedRawApiRequest(await loggedApiRequestIdOfTurn(2), { dbPath: db.dbPath });
 
-    expect(raw).toMatchObject({
+    expect(raw).toEqual({
       requestBody: {
         ...STORED_PARAMETERS,
         system: [
@@ -361,9 +361,39 @@ describe("a logged API request raw", () => {
             input_schema: { type: "object", properties: { command: { type: "string" } } },
           },
         ],
+        // A string content stays a string; the breakpoint at ["messages", 1, "content", 0] is set there.
+        messages: [
+          { role: "user", content: "earlier question" },
+          {
+            role: "assistant",
+            content: [{ type: "text", text: "Earlier answer.", cache_control: { type: "ephemeral" } }],
+          },
+          {
+            role: "system",
+            content: "<system-reminder>\nCLAUDE.md: keep exports in one module.\n</system-reminder>",
+          },
+          { role: "user", content: "audit the exports" },
+        ],
       },
+      missingMessageCount: 0,
       responseBody: null,
       requestHeaders: null,
+    });
+  });
+
+  it("leaves out the messages the logs cannot rebuild, counted, its breakpoints still where they were sent", async () => {
+    const raw = await getLoggedRawApiRequest(await loggedApiRequestIdOfTurn(1, undefined, GAPS_SESSION_ID), {
+      dbPath: db.dbPath,
+    });
+
+    expect(raw?.missingMessageCount).toBe(3);
+    expect(raw?.requestBody).toMatchObject({
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "pick up where we left off", cache_control: { type: "ephemeral" } }],
+        },
+      ],
     });
   });
 });
