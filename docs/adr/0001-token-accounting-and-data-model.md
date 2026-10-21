@@ -61,13 +61,14 @@ Model the domain as eight tables:
   Conversation's session (ADR-0006): its ids, status and timings, FK to
   `conversation`, and to the matched Turn's `message` and `agent` (NULL when no
   Turn matches). Never what was sent: request bodies grow with the square of
-  the Conversation, and stay in the Recording.
+  the Conversation, and stay in the Recording. Superseded by ADR-0007: API
+  requests come from the logs, their pieces stored once in the database.
 
 Token accounting rules:
 
 - **Transcript files are the single source of truth.** The sub-agent
   aggregate in a parent's `toolUseResult` is used only as a cross-check, never
-  summed into totals.
+  summed into totals. (ADR-0006 narrowed this to Turns; ADR-0007 restores it.)
 - Conversation/project/agent totals are `SUM` queries over `message`, never
   stored aggregates.
 - Because each assistant turn carries both `usage` and an `attribution_skill`/
