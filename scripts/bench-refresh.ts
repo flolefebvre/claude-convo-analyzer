@@ -6,6 +6,13 @@
 // reports is the parse/write pipeline's own: the run is one synchronous task,
 // and that number lands close to the whole run. In the app a worker thread
 // runs the Refresh and the server stays responsive regardless (ADR-0004).
+//
+// Each heap sample follows a forced full GC (`--expose-gc`, passed by the
+// package.json script), so it measures live objects, not uncollected garbage.
+// Samples are the live heap at batch boundaries (<= 50 Conversations or <= 1 s),
+// the only hook a synchronous `refresh()` gives: a transient peak inside one
+// Conversation's parse is not seen.
+//
 // Not part of `check`, `gate` or CI: it reads the real logs and takes minutes.
 
 import { mkdtempSync, rmSync } from "node:fs";
@@ -15,26 +22,57 @@ import { performance } from "node:perf_hooks";
 import { parseArgs } from "node:util";
 
 import { defaultLogsRoot } from "@/core/discovery";
-import { refresh, type RefreshPhase } from "@/core/refresh";
+import { refresh, type RefreshPhase, type RefreshProgress } from "@/core/refresh";
 
 const USAGE = `Usage: pnpm bench:refresh
 
 Run a cold Refresh of CCA_LOGS_ROOT (default ~/.claude/projects) into a scratch
-database under the OS temp directory, then print the phase split, the peak heap
-and the longest main-thread stall. The scratch database is deleted afterwards.
+database under the OS temp directory, then print the phase split, the peak live
+heap (each sample taken after a forced GC) with where it was taken, and the
+longest main-thread stall. The scratch database is deleted afterwards.
 
   --help  Show this message.`;
 
 const BYTES_PER_MIB = 1024 * 1024;
 
-/** Peak memory over the samples taken so far, in bytes. */
-type PeakMemory = { heapUsedBytes: number; rssBytes: number };
+/** Where a heap sample was taken: before the Refresh, at a progress report, or after it. */
+type SamplePosition = "start" | RefreshProgress | "end";
 
-/** Fold the current `process.memoryUsage()` into `peak`. */
-function sampleMemory(peak: PeakMemory): void {
+/** Peak memory over the samples taken so far, and what taking them cost. */
+type HeapSampling = {
+  heapUsedBytes: number;
+  /** The sample that set `heapUsedBytes`. */
+  heapUsedPeakAt: SamplePosition;
+  rssBytes: number;
+  sampleCount: number;
+  forcedGcMs: number;
+};
+
+/** The `gc` that `--expose-gc` installs; exits with a one-line message when it is missing. */
+function requireExposedGc(): () => void {
+  const { gc } = globalThis as { gc?: () => void };
+  if (gc !== undefined) return gc;
+  console.error("bench:refresh needs node's --expose-gc flag: run it with `pnpm bench:refresh`.");
+  process.exit(1);
+}
+
+/** Force a full GC, then fold the current `process.memoryUsage()` into `sampling`. */
+function sampleMemory(sampling: HeapSampling, gc: () => void, position: SamplePosition): void {
+  const gcStartedAt = performance.now();
+  gc();
+  sampling.forcedGcMs += performance.now() - gcStartedAt;
+  sampling.sampleCount += 1;
   const { heapUsed, rss } = process.memoryUsage();
-  peak.heapUsedBytes = Math.max(peak.heapUsedBytes, heapUsed);
-  peak.rssBytes = Math.max(peak.rssBytes, rss);
+  if (heapUsed > sampling.heapUsedBytes) {
+    sampling.heapUsedBytes = heapUsed;
+    sampling.heapUsedPeakAt = position;
+  }
+  sampling.rssBytes = Math.max(sampling.rssBytes, rss);
+}
+
+/** `position` as `start`, `end`, or `done/total`, e.g. `2600/2647`. */
+function formatSamplePosition(position: SamplePosition): string {
+  return typeof position === "string" ? position : `${position.done}/${position.total}`;
 }
 
 /**
@@ -71,27 +109,33 @@ async function main(): Promise<void> {
     return;
   }
 
+  const gc = requireExposedGc();
   const logsRoot = defaultLogsRoot();
   const scratchDir = mkdtempSync(path.join(tmpdir(), "cca-bench-refresh-"));
   const dbPath = path.join(scratchDir, "bench.db");
   console.log(`Logs root:  ${logsRoot}`);
   console.log(`Scratch DB: ${dbPath}`);
 
-  const peakMemory: PeakMemory = { heapUsedBytes: 0, rssBytes: 0 };
-  let progressReportCount = 0;
+  const sampling: HeapSampling = {
+    heapUsedBytes: 0,
+    heapUsedPeakAt: "start",
+    rssBytes: 0,
+    sampleCount: 0,
+    forcedGcMs: 0,
+  };
   try {
-    sampleMemory(peakMemory);
+    sampleMemory(sampling, gc, "start");
     const stopWatchingStalls = watchLongestStall();
     const summary = await refresh({
       logsRoot,
       dbPath,
-      onProgress: () => {
-        progressReportCount += 1;
-        sampleMemory(peakMemory);
-      },
+      // At every report — each write batch, plus the end of discovery. On ~2,650
+      // Conversations, 83 forced GCs cost 1.0 s in all (median 11 ms), about 1 %
+      // of the run: a coarser cadence would only make the samples sparser.
+      onProgress: (progress) => sampleMemory(sampling, gc, progress),
     });
     const longestStallMs = stopWatchingStalls();
-    sampleMemory(peakMemory);
+    sampleMemory(sampling, gc, "end");
 
     console.log("");
     console.log(
@@ -105,9 +149,11 @@ async function main(): Promise<void> {
       console.log(`  ${phase.padEnd(10)} ${formatSeconds(durationMs).padStart(9)}  ${share.toFixed(1).padStart(5)} %`);
     }
     console.log(
-      `Peak heap:     ${(peakMemory.heapUsedBytes / BYTES_PER_MIB).toFixed(0)} MiB heapUsed, ` +
-        `${(peakMemory.rssBytes / BYTES_PER_MIB).toFixed(0)} MiB rss ` +
-        `(sampled at start, at each of ${progressReportCount} progress reports, and at the end)`,
+      `Peak heap:     ${(sampling.heapUsedBytes / BYTES_PER_MIB).toFixed(0)} MiB heapUsed ` +
+        `at ${formatSamplePosition(sampling.heapUsedPeakAt)}, ` +
+        `${(sampling.rssBytes / BYTES_PER_MIB).toFixed(0)} MiB rss ` +
+        `(live after a forced GC; ${sampling.sampleCount} samples; ` +
+        `forced GC ${formatSeconds(sampling.forcedGcMs)}, in Total, not in the phases)`,
     );
     console.log(`Longest stall: ${formatSeconds(longestStallMs)} (main thread, setImmediate gap)`);
   } finally {
