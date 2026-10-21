@@ -246,11 +246,13 @@ export function prepareRefreshStatements(db: Database.Database) {
        (SELECT "tail_hash"."value" FROM "api_request", json_each("tail_message_hashes_json") AS "tail_hash")`,
   );
   // A Turn's API request in its own file: of several with its `request_ref`,
-  // the latest in file order.
+  // the latest in file order. The unary `+` keeps the planner off the
+  // `(agent_id, position_in_file)` index, which walks the file back from its
+  // end for each Turn, and on `record_id`'s.
   const updateTurnApiRequestsInFile = db.prepare(
     `UPDATE "message" SET "api_request_id" =
        (SELECT "api_request"."id" FROM "api_request"
-         WHERE "api_request"."agent_id" = "message"."agent_id" AND "api_request"."record_id" = "message"."request_ref"
+         WHERE +"api_request"."agent_id" = "message"."agent_id" AND "api_request"."record_id" = "message"."request_ref"
          ORDER BY "api_request"."position_in_file" DESC
          LIMIT 1)
       WHERE "agent_id" = ? AND "request_ref" IS NOT NULL`,
