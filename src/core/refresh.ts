@@ -122,9 +122,10 @@ type RefreshOptions = {
  *     Project of a sibling in its log folder.
  * 5 — an Agent call's result is stored whole (before, it was truncated to ~10k
  *     chars like every other tool's, cutting off long hand-backs).
- * 6 — a failed attempt of a Turn joins that Turn (`api_request.is_failed_attempt`),
- *     and every API request keeps its response's error message.
- * 7 — every API request is classified by kind (`api_request.kind`, Side
+ * 6 — a failed attempt of a Turn joins that Turn (`is_failed_attempt` of the
+ *     Recording-fed `api_request` table, since dropped), and every API request
+ *     keeps its response's error message.
+ * 7 — every API request is classified by kind (`kind` of that same table, Side
  *     requests told apart), and keeps its response's usage and model.
  * 8 — the request records Claude Code 2.1.300+ logs are stored
  *     (`api_request`, with each system prompt and tool set once).
@@ -742,8 +743,8 @@ function failedAttemptOwners(
 
 /**
  * Replace one conversation, inside the caller's transaction: delete its prior
- * row (if any), then write it + root agent + messages + tool_calls + logged
- * API requests, then each sub-agent (its own agent row + messages + tool_calls
+ * row (if any), then write it + root agent + messages + tool_calls + API
+ * requests, then each sub-agent (its own agent row + messages + tool_calls
  * + API requests), then pr_links and turn_durations, and return the new
  * conversation's row id. The conversations that continued from the prior row are re-pointed at the new one. Sub-agent
  * `spawnedByMessageId` is linked via the spawning `Agent` tool_use that produced

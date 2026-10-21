@@ -143,7 +143,7 @@ export type ToolCallRow = InsertRow<keyof typeof TOOL_CALL_COLUMN_BY_FIELD>;
 export type PrLinkRow = InsertRow<keyof typeof PR_LINK_COLUMN_BY_FIELD>;
 /** A `turn_duration` row to insert. */
 export type TurnDurationRow = InsertRow<keyof typeof TURN_DURATION_COLUMN_BY_FIELD>;
-/** A `api_request` row to insert. */
+/** An `api_request` row to insert. */
 export type ApiRequestRow = InsertRow<keyof typeof API_REQUEST_COLUMN_BY_FIELD>;
 
 /** What the skip/changed/delete decision needs of a stored Conversation. */

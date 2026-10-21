@@ -324,7 +324,7 @@ export async function failedAttemptsByMessage(
   return failedAttemptsByMessageId;
 }
 
-/** The pieces a `api_request` row is read with. */
+/** The pieces an `api_request` row is read with. */
 const API_REQUEST_PIECES = {
   systemPrompt: { select: { blocksJson: true } },
   toolSet: { select: { toolsJson: true } },
@@ -350,7 +350,7 @@ function withApiRequestRow<Result>(
   });
 }
 
-/** What the walk of a base chain needs of a `api_request` row. */
+/** What the walk of a base chain needs of an `api_request` row. */
 type MessageChainRow = {
   recordId: string;
   baseRecordId: string | null;
@@ -427,7 +427,7 @@ function sharedMessageHashPrefixLength(messageHashes: MessageHash[], previousMes
   return length;
 }
 
-/** What {@link requestPiecesOf} needs of a `api_request` row. */
+/** What {@link requestPiecesOf} needs of an `api_request` row. */
 type ApiRequestRow = {
   parametersJson: string;
   cacheBreakpointsJson: string;

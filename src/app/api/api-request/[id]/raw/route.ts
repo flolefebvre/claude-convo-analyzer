@@ -15,9 +15,8 @@ import { apiRequestIdSchema } from "../api-request-id-schema";
  * The API request with row id `[id]` raw: `requestBody`, as the logs
  * rebuild it (parameters, system prompt, tools, messages; not exactly as sent
  * — the billing block, `metadata` and `stream` are missing, and so are the
- * `missingMessageCount` messages the logs could not rebuild), and a null
- * `responseBody` and `requestHeaders`, which the logs do not keep. 400 for a
- * malformed id, 404 for an unknown one.
+ * `missingMessageCount` messages the logs could not rebuild), and that count.
+ * 400 for a malformed id, 404 for an unknown one.
  *
  * @example const res = await callRoute(routes.api["api-request"](String(apiRequestId)).raw.GET());
  */

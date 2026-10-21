@@ -19,7 +19,7 @@ import { apiRequestIdSchema } from "./api-request-id-schema";
  * and tools diffs, the system prompt and tools): 400 for a malformed id, 404
  * for an unknown one.
  *
- * @example const res = await callRoute(routes.api["api-request"](String(source.apiRequestId)).GET());
+ * @example const res = await callRoute(routes.api["api-request"](String(message.apiRequestId)).GET());
  */
 export const GET = routePipe<RouteContext<"/api/api-request/[id]">>().handle(async ({ ctx }) => {
   const id = apiRequestIdSchema.safeParse((await ctx.params).id);
