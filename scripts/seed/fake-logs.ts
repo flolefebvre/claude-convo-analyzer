@@ -1329,6 +1329,231 @@ function untitledConversation(g: Gen, index: number): Conversation {
   return { ...convo, sessionId: UNTITLED_SESSION_ID };
 }
 
+/** The seeded Conversation whose log records each API request, as Claude Code 2.1.300+ does (issue #216). */
+export const LOGGED_REQUESTS_TITLE = "Trace the slow invoice query";
+
+/** The Claude Code version {@link LOGGED_REQUESTS_TITLE} states: one that logs its API requests. */
+const LOGGED_REQUESTS_CC_VERSION = "2.1.305";
+
+/** A system block of the seeded API requests: the opening line. */
+const SEED_SYSTEM_INTRO = {
+  type: "text",
+  text: "You are Claude Code, a coding agent working in the user's repository.",
+};
+
+/** The seeded API requests' environment block, on `date`, with `extraLines` after its last line. */
+function seedSystemEnvironment(cwd: string, date: string, extraLines: string[] = []) {
+  return {
+    type: "text",
+    text: [`Working directory: ${cwd}`, `Today's date: ${date}`, "Keep answers short.", ...extraLines].join("\n"),
+  };
+}
+
+/** A tool definition of the seeded API requests: a stub description and a one-field input schema. */
+function seedToolDefinition(name: string, description: string, field: string) {
+  return {
+    name,
+    description,
+    input_schema: { type: "object", properties: { [field]: { type: "string" } }, required: [field] },
+  };
+}
+
+/**
+ * The request records of one seeded log file (log-format §9): a shape is
+ * logged before the first request that sends it, and each request starts from
+ * the previous one, keeping all its messages.
+ */
+function requestRecorder(g: Gen, sessionId: string, model: string, querySource: string, agentId?: string) {
+  const loggedShapeHashes = new Set<string>();
+  let previous: { recordId: string; messageCount: number } | null = null;
+  const inFile = (record: Record<string, unknown>) =>
+    JSON.stringify(agentId === undefined ? record : { ...record, agentId });
+  return {
+    /** The lines that log one request sent at `ms` with `shape`, its tail `newMessageCount` messages long. */
+    send(ms: number, shape: { shapeHash: string; system: object[]; tools: object[] }, newMessageCount: number) {
+      const lines: string[] = [];
+      if (!loggedShapeHashes.has(shape.shapeHash)) {
+        loggedShapeHashes.add(shape.shapeHash);
+        lines.push(
+          inFile({
+            type: "api-request-shape",
+            sessionId,
+            shapeHash: shape.shapeHash,
+            shape: { system: shape.system, tools: shape.tools },
+          }),
+        );
+      }
+      const recordId = g.uid("apireq");
+      lines.push(
+        inFile({
+          type: "api-request",
+          sessionId,
+          id: recordId,
+          ...(previous === null ? {} : { base: previous.recordId }),
+          keep: previous?.messageCount ?? 0,
+          tail: Array.from({ length: newMessageCount }, () => g.uid("msghash")),
+          shapeHash: shape.shapeHash,
+          params: {
+            model,
+            betas: ["interleaved-thinking-2025-05-14", "context-management-2025-06-27"],
+            max_tokens: 32000,
+            thinking: { type: "adaptive", display: "updates" },
+            context_management: { edits: [{ type: "clear_thinking_20251015", keep: "all" }] },
+            output_config: { effort: "high" },
+          },
+          cacheControl: [
+            { path: ["system", 0], value: { type: "ephemeral", ttl: "1h", scope: "global" } },
+            { path: ["system", 1], value: { type: "ephemeral" } },
+          ],
+          querySource,
+          requestDigest: g.uid("digest"),
+          timestamp: iso(ms),
+        }),
+      );
+      previous = { recordId, messageCount: (previous?.messageCount ?? 0) + newMessageCount };
+      return { lines, recordId };
+    },
+  };
+}
+
+/** `line`, an assistant or user record, at {@link LOGGED_REQUESTS_CC_VERSION}, with `requestRef` when given. */
+function atLoggedRequestsVersion(line: string, requestRef?: string): string {
+  const record = JSON.parse(line) as Record<string, unknown>;
+  record.version = LOGGED_REQUESTS_CC_VERSION;
+  if (requestRef !== undefined) record.requestRef = requestRef;
+  return JSON.stringify(record);
+}
+
+/**
+ * An unrecorded Conversation whose log records every API request it sent, its
+ * Sub-agent's included (Claude Code 2.1.300+): after a first exchange that
+ * spawns an Explore sub-agent, a second prompt finds the system prompt
+ * changed — a new date and a new instruction — and a Grep tool loaded. It
+ * ends hours before the agent-messages one, so the anchor does not move.
+ *
+ * Drawn last, so every earlier Conversation keeps its draws.
+ */
+function loggedRequestsConversation(g: Gen, index: number): Conversation {
+  const cwd = PROJECTS[4].path;
+  const logFolderName = logFolderNameOf(cwd);
+  const sessionId = `seed-${logFolderName.slice(1)}-${index}`;
+  const model = MODELS[0];
+  let t = g.now - 30 * 3_600_000;
+  const bash = seedToolDefinition("Bash", "Run a shell command.", "command");
+  const read = seedToolDefinition("Read", "Read a file.", "file_path");
+  const firstShape = {
+    shapeHash: g.uid("shape"),
+    system: [SEED_SYSTEM_INTRO, seedSystemEnvironment(cwd, iso(t).slice(0, 10))],
+    tools: [bash, read],
+  };
+  // Picked up a day later: a new date, a new instruction, and Grep loaded.
+  const resumedAt = t + DAY;
+  const secondShape = {
+    shapeHash: g.uid("shape"),
+    system: [
+      SEED_SYSTEM_INTRO,
+      seedSystemEnvironment(cwd, iso(resumedAt).slice(0, 10), ["Run the query planner before changing an index."]),
+    ],
+    tools: [bash, read, seedToolDefinition("Grep", "Search file contents.", "pattern")],
+  };
+  const requests = requestRecorder(g, sessionId, model, "repl_main_thread");
+  const lines = [
+    JSON.stringify({ type: "ai-title", aiTitle: LOGGED_REQUESTS_TITLE }),
+    atLoggedRequestsVersion(userPrompt(g, t, cwd, "The invoice list takes eight seconds to load — find out why.")),
+  ];
+  /** Log a request sent with `shape` and `newMessageCount` new messages, then the Turn answering it. */
+  const turn = (shape: typeof firstShape, newMessageCount: number, toolUses?: object[]) => {
+    const sent = requests.send((t += 1_000), shape, newMessageCount);
+    lines.push(...sent.lines);
+    lines.push(atLoggedRequestsVersion(assistantTurn(g, (t += 9_000), cwd, model, { toolUses }), sent.recordId));
+  };
+
+  const { toolUse, ledgerResult, sub } = loggedRequestsSubAgent(g, t + 12_000, cwd, sessionId);
+  turn(firstShape, 1, [toolUse]);
+  t += 120_000; // after the sub-agent's last record
+  lines.push(atLoggedRequestsVersion(toolResult(g, t, cwd, (toolUse as { id: string }).id, ledgerResult)));
+  turn(firstShape, 2);
+  lines.push(
+    atLoggedRequestsVersion(userPrompt(g, (t = resumedAt), cwd, "Now check the date filter on the same query.")),
+  );
+  const grepUseId = g.uid("tu");
+  turn(secondShape, 2, [{ type: "tool_use", id: grepUseId, name: "Grep", input: { pattern: "invoice_date" } }]);
+  lines.push(atLoggedRequestsVersion(toolResult(g, (t += 4_000), cwd, grepUseId, "src/invoices/query.ts:42")));
+  turn(secondShape, 2);
+
+  return {
+    logFolderName,
+    projectPath: cwd,
+    sessionId,
+    mainLines: lines,
+    subAgents: [sub],
+    resumePoint: { uuid: lastAssistantUuid(lines), ms: t },
+  };
+}
+
+/** The Explore sub-agent {@link loggedRequestsConversation} spawns at `ms`, its log recording its two API requests. */
+function loggedRequestsSubAgent(
+  g: Gen,
+  ms: number,
+  cwd: string,
+  sessionId: string,
+): { toolUse: object; ledgerResult: object; sub: SubAgent } {
+  const agentId = g.uid("agent").replace("agent-", "");
+  const agent = { agentId };
+  const prompt = SUBAGENT_PROMPTS.Explore;
+  const shape = {
+    shapeHash: g.uid("shape"),
+    system: [
+      { type: "text", text: "You are a search agent: find the code the task names, then report where it lives." },
+      seedSystemEnvironment(cwd, iso(ms).slice(0, 10)),
+    ],
+    tools: [seedToolDefinition("Read", "Read a file.", "file_path")],
+  };
+  const requests = requestRecorder(g, sessionId, MODELS[3], "agent:builtin:Explore", agentId);
+  const subTurn = (turnMs: number, newMessageCount: number, toolUses?: object[]) => {
+    const sent = requests.send(turnMs, shape, newMessageCount);
+    const reply = JSON.parse(assistantTurn(g, turnMs + 5_000, cwd, MODELS[3], { toolUses, scale: 0.6 })) as Record<
+      string,
+      unknown
+    >;
+    return [
+      ...sent.lines,
+      atLoggedRequestsVersion(
+        JSON.stringify({ ...reply, isSidechain: true, agentId, attributionAgent: "Explore" }),
+        sent.recordId,
+      ),
+    ];
+  };
+  const readUseId = g.uid("tu");
+  const lines = [
+    atLoggedRequestsVersion(userPrompt(g, ms, cwd, prompt, undefined, agent)),
+    ...subTurn(ms + 2_000, 1, [
+      { type: "tool_use", id: readUseId, name: "Read", input: { file_path: "src/invoices/query.ts" } },
+    ]),
+    atLoggedRequestsVersion(toolResult(g, ms + 30_000, cwd, readUseId, RESULT_FILLER, false, agent)),
+    ...subTurn(ms + 32_000, 2),
+  ];
+  const toolUseId = g.uid("tu");
+  return {
+    toolUse: {
+      type: "tool_use",
+      id: toolUseId,
+      name: "Agent",
+      input: { subagent_type: "Explore", description: SUBAGENT_DESCRIPTIONS.Explore, prompt },
+    },
+    ledgerResult: {
+      agentId,
+      agentType: "Explore",
+      status: "completed",
+      content: [{ type: "text", text: SUBAGENT_REPORTS.Explore }],
+      resolvedModel: MODELS[3],
+      totalToolUseCount: 1,
+      totalDurationMs: 40_000,
+    },
+    sub: { agentId, lines },
+  };
+}
+
 /** Every seeded Conversation, its conversations starting up to three weeks before `anchor`. */
 function buildCorpus(anchor: number): Conversation[] {
   const g = createGen(anchor);
@@ -1348,6 +1573,7 @@ function buildCorpus(anchor: number): Conversation[] {
   conversations.push(...recordableConversations(g));
   conversations.push(planHandoffConversation(g, conversations.length));
   conversations.push(untitledConversation(g, conversations.length));
+  conversations.push(loggedRequestsConversation(g, conversations.length));
   return conversations;
 }
 
@@ -1407,8 +1633,8 @@ export type FakeLogsCounts = {
  * where agents message each other, one long enough to span three Transcript
  * pages, one that enters a worktree and one that states no cwd, three in
  * per-session scratch directories under `/tmp`, the two the Recordings cover,
- * one that hands a plan to another session, then one with no title — 71 in
- * all. The same `now` always writes the same bytes. Returns the counts, and
+ * one that hands a plan to another session, one with no title, then one
+ * whose log records its API requests — 72 in all. The same `now` always writes the same bytes. Returns the counts, and
  * the Conversations as written, for the Recordings to derive from.
  *
  * @example
