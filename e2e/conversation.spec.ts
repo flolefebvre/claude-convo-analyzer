@@ -112,6 +112,7 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     await expect(whatWasSent.getByText(/could not be rebuilt/)).toHaveCount(0);
     await expect(whatWasSent.getByRole("heading", { name: "System prompt changed" })).toBeVisible();
     await expect(whatWasSent.getByText(/^Added: Grep$/)).toBeVisible();
+    await expect(factOf(whatWasSent, "sent")).toHaveText(/^\d{2}:\d{2}$/);
     await expect(factOf(whatWasSent, "max_tokens")).toHaveText("32000");
     await expect(factOf(whatWasSent, "betas")).toHaveText(/^2 betas/);
     await expect(whatWasSent.getByRole("term").filter({ hasText: /^total$/ })).toHaveCount(0);

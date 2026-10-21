@@ -20,7 +20,7 @@ import { useState } from "react";
 
 import { CopyButton } from "@/app/_components/copy-button";
 import { JsonTree } from "@/app/_components/json-tree";
-import { formatLatency } from "@/app/_lib/format";
+import { formatClock, formatLatency } from "@/app/_lib/format";
 import type {
   DiffLine,
   FailedAttempt,
@@ -194,10 +194,11 @@ function WhatWasSentView({ whatWasSent, apiRequestId }: { whatWasSent: WhatWasSe
   );
 }
 
-/** The request parameters, as a key/value grid; the betas as a count that expands to their list. */
+/** When the request was sent (an em dash when the logs miss it) and its parameters, as a key/value grid; the betas as a count that expands to their list. */
 function Facts({ whatWasSent }: { whatWasSent: WhatWasSent }) {
-  const { parameters } = whatWasSent;
+  const { parameters, sentAt } = whatWasSent;
   const facts: [string, React.ReactNode][] = [
+    ["sent", formatClock(sentAt) || "—"],
     ["model", parameters.model],
     ["max_tokens", parameters.maxTokens],
     ["thinking", parameters.thinking],

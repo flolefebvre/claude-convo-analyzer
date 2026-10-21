@@ -25,6 +25,8 @@ export type RecordedRequest = {
   parameters?: Record<string, unknown>;
   /** `cacheControl`: where its `cache_control` markers go; none by default. */
   cacheBreakpoints?: { path: unknown[]; value: unknown }[];
+  /** Null for a record that logs no `timestamp`; by default, its Turn's. */
+  sentAt?: null;
 };
 
 /** The Project path of every log {@link writeRequestRecordsLog} writes. */
@@ -70,7 +72,7 @@ export function writeRequestRecordsLog(logsRoot: string, sessionId: string, requ
         cacheControl: request.cacheBreakpoints ?? [],
         querySource: "repl_main_thread",
         requestDigest: `digest-${index + 1}`,
-        timestamp,
+        ...(request.sentAt === null ? {} : { timestamp }),
       }),
     );
     lines.push(

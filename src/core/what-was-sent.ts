@@ -113,6 +113,8 @@ export type FailedAttempt = {
 /** Everything the "What was sent" panel of one Turn shows. Plain and serializable. */
 export type WhatWasSent = {
   parameters: SentParameters;
+  /** When the API request was sent (ISO 8601); null when the logs miss it. */
+  sentAt: string | null;
   /**
    * The Failed attempts that preceded this API request, oldest first; empty
    * when it succeeded at the first try.
@@ -230,6 +232,7 @@ export async function getWhatWasSent(
       row.messageId === null ? [] : ((await failedAttemptsByMessage(prisma, [row.messageId])).get(row.messageId) ?? []);
     return {
       parameters: sentParameters(body),
+      sentAt: row.sentAt === null ? null : new Date(Number(row.sentAt)).toISOString(),
       failedAttempts,
       previousApiRequestId: previousRow?.id ?? null,
       firstNewMessageIndex:

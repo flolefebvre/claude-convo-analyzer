@@ -107,6 +107,12 @@ describe("What was sent from the logs", () => {
     expect(sent?.toolsDiff).toBeNull();
   });
 
+  it("gives when the API request was sent", async () => {
+    const sent = await getWhatWasSent(await apiRequestIdOfTurn(4), { dbPath: db.dbPath });
+
+    expect(sent?.sentAt).toBe("2026-10-21T10:02:01.000Z");
+  });
+
   it("gives the parameters, the whole system prompt with its cache breakpoints, and the tools", async () => {
     const sent = await getWhatWasSent(await apiRequestIdOfTurn(4), { dbPath: db.dbPath });
 
@@ -453,6 +459,14 @@ describe("What was sent, request by request", () => {
 
       expect(enabled?.parameters.thinking).toBe("enabled · budget_tokens 31999");
       expect(other?.parameters.thinking).toBe('"adaptive-ish"');
+    });
+  });
+
+  describe("when it was sent", () => {
+    it("is unknown for a request whose record logs no time", async () => {
+      const [sent] = await whatWasSentOf([{ ...twoRequests()[0]!, sentAt: null }]);
+
+      expect(sent?.sentAt).toBeNull();
     });
   });
 
