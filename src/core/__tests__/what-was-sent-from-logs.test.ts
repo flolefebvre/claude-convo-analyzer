@@ -79,8 +79,8 @@ describe("a Turn's API request in the logs", () => {
     const turns = await turnsOf();
 
     // The first Turn is history copied from a resumed session: its request is in no file here.
-    expect(turns.map((turn) => turn.whatWasSentSource?.from ?? null)).toEqual([null, "logs", "logs", "logs"]);
-    expect(turns.map((turn) => turn.failedAttemptCount)).toEqual([0, 0, 0, 0]);
+    expect(turns.map((turn) => turn.whatWasSentSource?.from ?? null)).toEqual([null, "logs", "logs", "logs", "logs"]);
+    expect(turns.map((turn) => turn.failedAttemptCount)).toEqual([0, 0, 0, 0, 0]);
   });
 
   it("is the source on a Sub-agent's Turns too", async () => {
@@ -161,16 +161,10 @@ describe("What was sent from the logs", () => {
     expect(sent?.fullRequest.tools.map((tool) => tool.name)).toEqual(["Bash", "Grep"]);
   });
 
-  it("does not rebuild the messages yet, and has none of what only a Recording knows", async () => {
+  it("has none of what only a Recording knows", async () => {
     const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(4), { dbPath: db.dbPath });
 
-    expect(sent).toMatchObject({
-      isSideRequest: false,
-      timings: null,
-      failedAttempts: [],
-      firstNewMessageIndex: 0,
-      fullRequest: { messages: null },
-    });
+    expect(sent).toMatchObject({ isSideRequest: false, timings: null, failedAttempts: [] });
   });
 
   it("works the same for a Sub-agent's Turn, against that Sub-agent's previous API request", async () => {
@@ -191,11 +185,43 @@ describe("What was sent from the logs", () => {
   });
 });
 
+describe("the messages a logged API request sent", () => {
+  it("include the context Claude Code injected, from the blob that logs it, its string content kept", async () => {
+    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(2), { dbPath: db.dbPath });
+
+    expect(sent?.fullRequest.messages[2]).toEqual({
+      role: "system",
+      blocks: [
+        {
+          kind: "system-reminder",
+          shownAs: "text",
+          text: "<system-reminder>\nCLAUDE.md: keep exports in one module.\n</system-reminder>",
+        },
+      ],
+    });
+  });
+
+  it("include a blob logged after the request that sent it", async () => {
+    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(4), { dbPath: db.dbPath });
+
+    expect(sent?.fullRequest.messages[7]).toEqual({
+      role: "system",
+      blocks: [
+        {
+          kind: "system-reminder",
+          shownAs: "text",
+          text: "<system-reminder>\nThe date changed: it is now 2026-10-21.\n</system-reminder>",
+        },
+      ],
+    });
+  });
+});
+
 describe("a logged API request raw", () => {
-  it("is the body as the logs rebuild it so far: the parameters, the system prompt and the tools, no messages", async () => {
+  it("is the body as the logs rebuild it: the parameters, the system prompt and the tools", async () => {
     const raw = await getLoggedRawApiRequest(await loggedApiRequestIdOfTurn(2), { dbPath: db.dbPath });
 
-    expect(raw).toEqual({
+    expect(raw).toMatchObject({
       requestBody: {
         ...STORED_PARAMETERS,
         system: [

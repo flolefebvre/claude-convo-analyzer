@@ -36,7 +36,7 @@ refreshedDefaultDatabase({
 });
 
 describe("GET /api/logged-api-request/[id]", () => {
-  it("answers a logged Turn's API request with what was sent, its messages not rebuilt yet", async () => {
+  it("answers a logged Turn's API request with what was sent, its messages included", async () => {
     const res = await answerOf(getLoggedWhatWasSentRoute, await firstLoggedTurnId());
 
     expect(res.status).toBe(200);
@@ -45,22 +45,26 @@ describe("GET /api/logged-api-request/[id]", () => {
       timings: null,
       failedAttempts: [],
       previousApiRequestId: null,
-      fullRequest: { messages: null, tools: [{ name: "Bash" }] },
+      fullRequest: { messages: expect.any(Array), tools: [{ name: "Bash" }] },
     });
   });
 });
 
 describe("GET /api/logged-api-request/[id]/raw", () => {
-  it("answers the body the logs rebuild so far, with no response and no headers", async () => {
+  it("answers the body the logs rebuild, with no response and no headers", async () => {
     const res = await answerOf(getLoggedRawApiRequestRoute, await firstLoggedTurnId());
 
     expect(res.status).toBe(200);
     expect(res.json).toMatchObject({
-      requestBody: { model: "claude-opus-4-8", system: expect.any(Array), tools: expect.any(Array) },
+      requestBody: {
+        model: "claude-opus-4-8",
+        system: expect.any(Array),
+        tools: expect.any(Array),
+        messages: expect.any(Array),
+      },
       responseBody: null,
       requestHeaders: null,
     });
-    expect(res.json).not.toHaveProperty("requestBody.messages");
   });
 });
 

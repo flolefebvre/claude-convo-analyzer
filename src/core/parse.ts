@@ -380,6 +380,12 @@ export type ParsedSession = {
   systemPromptJsonByHash: Map<string, string>;
   /** Each distinct tool set of the file's shapes, as logged (JSON), by the sha256 of its canonical JSON. */
   toolSetJsonByHash: Map<string, string>;
+  /**
+   * Each message a `tail` of the file names that the file can rebuild — from
+   * a blob, else from its own records (log-format §9, step 2) — as logged
+   * (JSON), by that hash.
+   */
+  sentMessageJsonByHash: Map<string, string>;
   malformedLines: number;
 };
 
@@ -564,6 +570,7 @@ export function parseSessionLines(lines: Iterable<string>): ParsedSession {
   const deliveries = deliveryLedger();
   const loggedApiRequests: { request: ParsedLoggedApiRequest; shapeHash: string | null }[] = [];
   const requestShapes = requestShapeLedger();
+  const sentMessages = sentMessageLedger();
   let malformedLines = 0;
 
   let firstCwd: string | null = null;
@@ -621,12 +628,19 @@ export function parseSessionLines(lines: Iterable<string>): ParsedSession {
 
     if (type === "api-request") {
       const loggedApiRequest = parseLoggedApiRequest(record);
-      if (loggedApiRequest !== null) loggedApiRequests.push(loggedApiRequest);
+      if (loggedApiRequest !== null) {
+        loggedApiRequests.push(loggedApiRequest);
+        sentMessages.addTail(loggedApiRequest.request.tailMessageHashes);
+      }
       continue;
     }
     if (type === "api-request-shape") {
       requestShapes.add(record);
-      continue; // `api-request-blob` records (the messages) are not read yet.
+      continue;
+    }
+    if (type === "api-request-blob") {
+      sentMessages.addBlob(record);
+      continue;
     }
 
     if (type === "attachment") {
@@ -746,6 +760,7 @@ export function parseSessionLines(lines: Iterable<string>): ParsedSession {
     })),
     systemPromptJsonByHash: requestShapes.systemPromptJsonByHash,
     toolSetJsonByHash: requestShapes.toolSetJsonByHash,
+    sentMessageJsonByHash: sentMessages.namedJsonByHash(),
     malformedLines,
   };
 }
@@ -815,6 +830,39 @@ function requestShapeLedger() {
         systemPromptHash: null,
         toolSetHash: null,
       },
+  };
+}
+
+/**
+ * The messages of one file's request records (log-format §9): the hashes its
+ * tails name, and each message it can rebuild, kept until the whole file is
+ * read — a blob may follow the request that sent it — and then only those a
+ * tail names.
+ */
+function sentMessageLedger() {
+  const namedHashes = new Set<string>();
+  const blobJsonByHash = new Map<string, string>();
+  return {
+    addTail: (tailMessageHashes: string[]) => {
+      for (const hash of tailMessageHashes) namedHashes.add(hash);
+    },
+    /** A blob, under the hash it is logged with (the one a tail names): of two spellings, the smallest. */
+    addBlob: (record: Record<string, unknown>) => {
+      const hash = asString(record.hash);
+      if (hash === null || !isRecord(record.message)) return;
+      const json = JSON.stringify(record.message);
+      const keptJson = blobJsonByHash.get(hash);
+      if (keptJson === undefined || json < keptJson) blobJsonByHash.set(hash, json);
+    },
+    /** Each message a tail names that the file holds, by its hash. */
+    namedJsonByHash: (): Map<string, string> => {
+      const jsonByHash = new Map<string, string>();
+      for (const hash of namedHashes) {
+        const json = blobJsonByHash.get(hash);
+        if (json !== undefined) jsonByHash.set(hash, json);
+      }
+      return jsonByHash;
+    },
   };
 }
 

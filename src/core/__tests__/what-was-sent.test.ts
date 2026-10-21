@@ -186,17 +186,18 @@ async function whatWasSentForTurn(ordinal: number, agentId?: string) {
   return getWhatWasSent(recordedApiRequestIdOf(turn)!, { dbPath, recordingsRoot });
 }
 
-/** Messages as their role and the text (or JSON) of each block. */
-function summarized(messages: SentMessage[]): string[][] {
-  return messages.map((message) => [
-    message.role,
-    ...message.blocks.map((block) => (block.shownAs === "text" ? block.text : block.json)),
-  ]);
+/** Messages as their role and the text (or JSON) of each block; one not rebuilt as `["missing"]`. */
+function summarized(messages: (SentMessage | null)[]): string[][] {
+  return messages.map((message) =>
+    message === null
+      ? ["missing"]
+      : [message.role, ...message.blocks.map((block) => (block.shownAs === "text" ? block.text : block.json))],
+  );
 }
 
 /** The messages `sent` sent that the previous API request did not: those from its first new one on. */
-function newMessagesOf(sent: WhatWasSent | null): SentMessage[] {
-  return sent === null ? [] : (sent.fullRequest.messages ?? []).slice(sent.firstNewMessageIndex);
+function newMessagesOf(sent: WhatWasSent | null): (SentMessage | null)[] {
+  return sent === null ? [] : sent.fullRequest.messages.slice(sent.firstNewMessageIndex);
 }
 
 describe("a Turn's API request", () => {
@@ -279,7 +280,7 @@ describe("what was sent for a Turn", () => {
 
     const sent = await whatWasSentForTurn(3);
 
-    expect(sent?.fullRequest.messages?.map((message) => message.role)).toEqual([
+    expect(sent?.fullRequest.messages.map((message) => message?.role)).toEqual([
       "user",
       "assistant",
       "user",
@@ -301,7 +302,7 @@ describe("what was sent for a Turn", () => {
     const sent = await whatWasSentForTurn(2);
 
     expect(sent?.previousApiRequestId).toBeNull();
-    expect(newMessagesOf(sent).map((message) => message.role)).toEqual(["user", "assistant", "user"]);
+    expect(newMessagesOf(sent).map((message) => message?.role)).toEqual(["user", "assistant", "user"]);
     expect(sent?.systemPromptDiff).toBeNull();
     expect(sent?.toolsDiff).toBeNull();
   });
@@ -336,7 +337,7 @@ describe("what was sent for a Turn", () => {
 
     const sent = await whatWasSentForTurn(2);
 
-    expect(newMessagesOf(sent).map((message) => message.role)).toEqual(["assistant", "user"]);
+    expect(newMessagesOf(sent).map((message) => message?.role)).toEqual(["assistant", "user"]);
   });
 
   it("skips a Side request and a failed attempt between the two Turns", async () => {

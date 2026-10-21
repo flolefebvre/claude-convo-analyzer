@@ -242,6 +242,11 @@ export function prepareRefreshStatements(db: Database.Database) {
        ON CONFLICT ("hash") DO UPDATE SET "tools_json" = "excluded"."tools_json"
        WHERE "excluded"."tools_json" < "tool_set"."tools_json"`,
   );
+  const insertSentMessage = db.prepare(
+    `INSERT INTO "sent_message" ("hash", "message_json") VALUES (?, ?)
+       ON CONFLICT ("hash") DO UPDATE SET "message_json" = "excluded"."message_json"
+       WHERE "excluded"."message_json" < "sent_message"."message_json"`,
+  );
   const deleteUnreferencedSystemPrompts = db.prepare(
     `DELETE FROM "system_prompt" WHERE NOT EXISTS
        (SELECT 1 FROM "logged_api_request" WHERE "system_prompt_hash" = "system_prompt"."hash")`,
@@ -301,6 +306,8 @@ export function prepareRefreshStatements(db: Database.Database) {
     insertSystemPrompt: (hash: string, blocksJson: string) => void insertSystemPrompt.run(hash, blocksJson),
     /** Store a tool set under its hash, keeping the smaller spelling when one already is. */
     insertToolSet: (hash: string, toolsJson: string) => void insertToolSet.run(hash, toolsJson),
+    /** Store a sent message under its hash, keeping the smaller spelling when one already is. */
+    insertSentMessage: (hash: string, messageJson: string) => void insertSentMessage.run(hash, messageJson),
     /** Delete every system prompt and tool set no logged API request references any more. */
     deleteUnreferencedRequestPieces: () => {
       deleteUnreferencedSystemPrompts.run();
