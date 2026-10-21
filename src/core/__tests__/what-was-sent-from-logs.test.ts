@@ -18,6 +18,8 @@ import { seededTempDb } from "./helpers/temp-db";
 const LOGS_ROOT = path.join(import.meta.dirname, "fixtures", "logged-request-logs");
 const SESSION_ID = "sess-logged";
 const SUB_AGENT_ID = "lsub1";
+/** A session whose one API request's base is in no file, and whose tail names a message no record holds. */
+const GAPS_SESSION_ID = "sess-logged-gaps";
 
 /** The parameters every fixture request logs, `safeguards` left out. */
 const STORED_PARAMETERS = {
@@ -40,8 +42,8 @@ async function turnsOf(agentId?: string, sessionId = SESSION_ID): Promise<Transc
 }
 
 /** The logged API request id of the `ordinal`-th (1-based) assistant Turn of an Agent. */
-async function loggedApiRequestIdOfTurn(ordinal: number, agentId?: string): Promise<number> {
-  const source = (await turnsOf(agentId))[ordinal - 1]?.whatWasSentSource;
+async function loggedApiRequestIdOfTurn(ordinal: number, agentId?: string, sessionId = SESSION_ID): Promise<number> {
+  const source = (await turnsOf(agentId, sessionId))[ordinal - 1]?.whatWasSentSource;
   if (source?.from !== "logs") throw new Error(`Turn ${ordinal} has no logged API request`);
   return source.loggedApiRequestId;
 }
@@ -249,6 +251,71 @@ describe("the messages a logged API request sent", () => {
     expect(sent?.fullRequest.messages.map((message) => message?.role)).toEqual(["user", "assistant", "user"]);
     expect(sent?.fullRequest.messages[0]?.blocks).toEqual([
       { kind: "text", shownAs: "text", text: "Find the export code." },
+    ]);
+  });
+
+  it("follow the base chain back through every earlier request of the file", async () => {
+    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(5), { dbPath: db.dbPath });
+
+    // lreq-5 keeps lreq-4's, which kept lreq-3's, itself the retry of lreq-2, which kept lreq-1's.
+    expect(sent?.fullRequest.messages.map((message) => message?.blocks[0])).toMatchObject([
+      { text: "earlier question" },
+      { text: "Earlier answer." },
+      { kind: "system-reminder" },
+      { text: "audit the exports" },
+      { text: "Let me delegate the search." },
+      { kind: "tool_result" },
+      { text: "The exports live in one module." },
+      { kind: "system-reminder" },
+      { text: "now add a test" },
+      { text: "Added a test." },
+      { kind: "tool_result" },
+    ]);
+  });
+
+  it("are new from the first one the previous API request of the Agent did not send", async () => {
+    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(4), { dbPath: db.dbPath });
+
+    expect(sent?.firstNewMessageIndex).toBe(6);
+    expect(sent?.fullRequest.messages.slice(6).map((message) => message?.blocks[0])).toMatchObject([
+      { text: "The exports live in one module." },
+      { kind: "system-reminder", text: expect.stringContaining("The date changed") },
+      { text: "now add a test" },
+    ]);
+  });
+
+  it("are new since the previous answered API request, a retry's included", async () => {
+    // lreq-3 retries lreq-2, which no Turn answered: what lreq-2 added is new against lreq-1.
+    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(3), { dbPath: db.dbPath });
+
+    expect(sent?.firstNewMessageIndex).toBe(4);
+    expect(sent?.fullRequest.messages.slice(4).map((message) => message?.role)).toEqual(["assistant", "user"]);
+  });
+
+  it("are all new on the Agent's first API request", async () => {
+    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(2), { dbPath: db.dbPath });
+
+    expect(sent?.firstNewMessageIndex).toBe(0);
+  });
+
+  it("are new on a Sub-agent's Turn since that Sub-agent's previous API request", async () => {
+    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(2, SUB_AGENT_ID), { dbPath: db.dbPath });
+
+    expect(sent?.firstNewMessageIndex).toBe(1);
+  });
+
+  it("keep the place of each one the logs cannot rebuild, and count them", async () => {
+    // greq-1's base is in no file, and the last hash of its tail names nothing its file holds.
+    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(1, undefined, GAPS_SESSION_ID), {
+      dbPath: db.dbPath,
+    });
+
+    expect(sent?.missingMessageCount).toBe(3);
+    expect(sent?.fullRequest.messages).toEqual([
+      null,
+      null,
+      { role: "user", blocks: [{ kind: "text", shownAs: "text", text: "pick up where we left off" }] },
+      null,
     ]);
   });
 
