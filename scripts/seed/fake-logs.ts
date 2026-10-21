@@ -327,7 +327,7 @@ function apiErrorTurn(
   return JSON.stringify(rec);
 }
 
-/** A Turn's `thinking` block — its text, empty in most real ones — and its record's `thinkingDurationMs` (log-format §6). */
+/** A Turn's `thinking` block — its text, empty in most real ones — and its record's `thinkingDurationMs` (log-format §3, "Thinking"). */
 type SeedThinking = { text: string; durationMs: number };
 
 /** Build one main-thread assistant turn: optionally a thinking block, its text, then optionally tool_use blocks. */

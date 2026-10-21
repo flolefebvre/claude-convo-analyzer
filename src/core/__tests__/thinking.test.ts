@@ -8,7 +8,7 @@ import { seededTempDb } from "./helpers/temp-db";
 const FIXTURES_ROOT = path.join(import.meta.dirname, "fixtures", "thinking-logs");
 
 /**
- * A Turn's thinking (log-format §6): the text of its `thinking` blocks, empty
+ * A Turn's thinking (log-format §3, "Thinking"): the text of its `thinking` blocks, empty
  * in most of them, and the record's `thinkingDurationMs` (2.1.287+). The
  * `sess-thinking` fixture holds one Turn of each shape, and a Sub-agent whose
  * Turn thought too.

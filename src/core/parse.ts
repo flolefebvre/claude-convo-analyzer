@@ -315,7 +315,7 @@ export type ParsedMessage = {
   /**
    * The text of this assistant turn's `thinking` blocks, joined in order
    * across its lines; null when every block is empty, on user rows, and on
-   * turns without thinking (log-format §6).
+   * turns without thinking (log-format §3, "Thinking").
    */
   thinkingText: string | null;
   /** The sum of this assistant turn's lines' `thinkingDurationMs`; null when none carries it, and on user rows. */
@@ -436,7 +436,7 @@ export function extractText(content: unknown): string | null {
 /**
  * The non-empty `thinking` texts of a `message.content` array, joined with
  * newlines as {@link extractText} joins text; null when it has none — an
- * empty `thinking` block, the norm (log-format §6), contributes nothing.
+ * empty `thinking` block, the norm (log-format §3, "Thinking"), contributes nothing.
  */
 function extractThinkingText(content: unknown): string | null {
   if (!Array.isArray(content)) return null;

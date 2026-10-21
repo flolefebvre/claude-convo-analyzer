@@ -1,4 +1,4 @@
--- An assistant Turn's thinking (log-format §6): the text of its `thinking`
+-- An assistant Turn's thinking (log-format §3, "Thinking"): the text of its `thinking`
 -- blocks, joined in order across the lines of its message id, and the
 -- `thinkingDurationMs` of those lines, summed. The text is NULL when every
 -- block is empty — most are — and the duration on logs older than 2.1.287.

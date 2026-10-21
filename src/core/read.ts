@@ -126,7 +126,7 @@ export type TranscriptMessage = {
    * derives uniform-vs-mixed and the change markers from these values.
    */
   effort: string | null;
-  /** The summary the model's thinking left on this Turn, when not empty; null on user rows (log-format §6). */
+  /** The summary the model's thinking left on this Turn, when not empty; null on user rows (log-format §3, "Thinking"). */
   thinkingText: string | null;
   /** How long this Turn spent thinking; null when its log did not record it, and on user rows. */
   thinkingDurationMs: number | null;

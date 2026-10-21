@@ -64,8 +64,9 @@ call shows the Task prompt it gave its sub-agent and what that sub-agent handed
 back, rendered as Markdown, and the sub-agent's own transcript opens on that
 same Task prompt, rendered as Markdown too. A SendMessage call renders its
 message as Markdown under its recipient and summary, and an ExitPlanMode call
-renders its plan; "Raw" shows any call's stored JSON. Your own prompts stay
-plain text:
+renders its plan; "Raw" shows any call's stored JSON. A turn the model thought
+on opens with a "Thinking · 1.3s" line, which unfolds the summary of that
+thinking when Claude Code logged one. Your own prompts stay plain text:
 
 ![Transcript view](docs/images/transcript-view.png)
 
