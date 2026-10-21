@@ -147,6 +147,17 @@ model Message {
   /// change. Uniform-vs-mixed and change markers are derived at read time.
   effort String?
 
+  /// The text of this assistant turn's `thinking` blocks, joined in order
+  /// across its lines (log-format §6): a short summary, never the reasoning
+  /// itself. NULL when every block is empty — most are — on user rows, and on
+  /// turns without thinking.
+  thinkingText       String? @map("thinking_text")
+  /// Time this assistant turn spent thinking: the sum of its lines'
+  /// `thinkingDurationMs` (a turn with two thinking lines logs a duration on
+  /// each, the second a few ms). NULL on user rows, on turns without thinking,
+  /// and on logs older than 2.1.287.
+  thinkingDurationMs Int?    @map("thinking_duration_ms")
+
   /// Per-turn attribution — what drove this assistant message.
   attributionSkill     String? @map("attribution_skill")
   attributionAgent     String? @map("attribution_agent")

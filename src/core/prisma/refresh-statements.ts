@@ -75,6 +75,8 @@ const MESSAGE_COLUMN_BY_FIELD = {
   cacheReadTokens: "cache_read_tokens",
   model: "model",
   effort: "effort",
+  thinkingText: "thinking_text",
+  thinkingDurationMs: "thinking_duration_ms",
   attributionSkill: "attribution_skill",
   attributionAgent: "attribution_agent",
   attributionPlugin: "attribution_plugin",

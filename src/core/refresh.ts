@@ -132,8 +132,10 @@ type RefreshOptions = {
  * 9 — so are the messages they sent (`sent_message`, each once).
  * 10 — a request record the next one resent joins the Turn it was a Failed
  *     attempt of (`api_request.failed_attempt_of_message_id`).
+ * 11 — assistant turns carry their thinking text and duration
+ *     (`message.thinking_text`, `message.thinking_duration_ms`).
  */
-export const PARSER_VERSION = 10;
+export const PARSER_VERSION = 11;
 
 /**
  * The version a conversation carries while it is written but NOT YET COMPLETE:
@@ -575,6 +577,8 @@ function messageRow(m: ParsedSession["messages"][number], conversationId: number
     cacheReadTokens: m.cacheReadTokens,
     model: m.model,
     effort: m.effort,
+    thinkingText: m.thinkingText,
+    thinkingDurationMs: m.thinkingDurationMs,
     attributionSkill: m.attributionSkill,
     attributionAgent: m.attributionAgent,
     attributionPlugin: m.attributionPlugin,
