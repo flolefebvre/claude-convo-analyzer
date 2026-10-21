@@ -277,7 +277,8 @@ type DiscoveredWithKey = {
  * child's first-message `parentUuid` against the persisted `message` rows of ALL
  * conversations — so a skipped (unchanged) parent still resolves; (3) stamp the
  * current `parserVersion` on that set — the commit mark that lets a later run
- * skip them — and delete every Project left without a Conversation. Passes 2
+ * skip them — and delete every Project left without a Conversation, and every
+ * system prompt and tool set no logged API request references. Passes 2
  * and 3 share one final transaction. The sub-agent
  * transcript is the single source of truth for its tokens (GOTCHA 3) — the
  * parent aggregate is a cross-check only.
@@ -462,8 +463,11 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     // next run may skip them. An abort before this point leaves them unstamped
     // and therefore re-parseable (see `UNSTAMPED_PARSER_VERSION`).
     stampParserVersion(statements, writtenConversations);
-    // A re-parse or a vanished file can leave a Project with no Conversation.
+    // A re-parse or a vanished file can leave a Project with no Conversation,
+    // and a system prompt or tool set no logged API request references: gone,
+    // as a cold Refresh would never have stored them.
     statements.deleteProjectsWithoutConversations();
+    statements.deleteUnreferencedRequestPieces();
     statements.commitTransaction();
     endPhase("stamp");
   } finally {

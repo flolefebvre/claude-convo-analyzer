@@ -12,7 +12,7 @@
 // value the failing assertion reports.
 
 import { createHash } from "node:crypto";
-import { cpSync, mkdtempSync, readdirSync, rmSync, utimesSync } from "node:fs";
+import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
@@ -251,6 +251,68 @@ describe("stored data equivalence", () => {
     });
   });
 });
+
+describe("a re-parse", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(tmpdir(), "cca-reparse-equivalence-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("stores what a cold Refresh does, even when the change leaves a system prompt and a tool set unused", async () => {
+    const logsRoot = path.join(tmpDir, "logs");
+    const reparsedDbPath = path.join(tmpDir, "reparsed.db");
+    const coldDbPath = path.join(tmpDir, "cold.db");
+    copyWithPinnedMtimes(path.join(FIXTURES_DIR, "logged-request-logs"), logsRoot);
+    await refresh({ logsRoot, dbPath: reparsedDbPath });
+
+    // The last request now sends the first shape: the second one's system prompt and tool set are used by nothing.
+    const mainLogPath = path.join(logsRoot, "-Users-me-dev-logged", "sess-logged.jsonl");
+    const lines = readFileSync(mainLogPath, "utf8").split("\n");
+    writeFileSync(
+      mainLogPath,
+      lines
+        .filter((line) => !line.includes('"shapeHash":"shape-2","shape"'))
+        .map((line) => line.replace('"shapeHash":"shape-2"', '"shapeHash":"shape-1"'))
+        .join("\n"),
+    );
+    await refresh({ logsRoot, dbPath: reparsedDbPath });
+    await refresh({ logsRoot, dbPath: coldDbPath });
+
+    expect(loggedApiRequestContent(reparsedDbPath, logsRoot)).toEqual(loggedApiRequestContent(coldDbPath, logsRoot));
+    expect(loggedApiRequestContent(coldDbPath, logsRoot).system_prompt.rowCount).toBe(2);
+  });
+});
+
+/**
+ * The request-record tables of the database at `dbPath`, whatever row ids the
+ * Refreshes gave: the pieces whole, the requests without their row id and
+ * foreign keys, but whether a Turn answered them.
+ */
+function loggedApiRequestContent(dbPath: string, logsRoot: string) {
+  const db = new Database(dbPath, { readonly: true });
+  try {
+    const requests = db
+      .prepare(
+        `SELECT "record_id", "base_record_id", "kept_message_count", "tail_message_hashes_json", "parameters_json",
+                "cache_breakpoints_json", "query_source", "request_digest", "sent_at", "position_in_file",
+                "system_prompt_hash", "tool_set_hash", "message_id" IS NULL AS "isUnanswered"
+           FROM "logged_api_request" ORDER BY "record_id"`,
+      )
+      .all();
+    return {
+      requests,
+      system_prompt: fingerprintTable(db, "system_prompt", logsRoot),
+      tool_set: fingerprintTable(db, "tool_set", logsRoot),
+    };
+  } finally {
+    db.close();
+  }
+}
 
 /** One API request of the `sess-rec-main` session, with fixed timings and the given ids. */
 function recordedApiRequest(ids: {
