@@ -901,8 +901,8 @@ function requestShapeLedger() {
 function sentMessageLedger(isRebuildingFromRecords: boolean) {
   const namedHashes = new Set<string>();
   const blobJsonByHash = new Map<string, string>();
-  /** The text blocks of each blob not from the assistant, kept to find Injected context in once the file is read. */
-  const blobTextBlocksByHash = new Map<string, SentTextBlock[]>();
+  /** The role and text blocks of each blob not from the assistant, kept to find Injected context in once the file is read. */
+  const blobTextBlocksByHash = new Map<string, { role: string; textBlocks: SentTextBlock[] }>();
   const injectedContext = injectedContextDictionary();
   /** Each message the file's records rebuild, by its hash: the records of it, kept as their lines until a tail is known to name it. */
   const rebuiltSourceByHash = new Map<string, RebuiltMessageSource>();
@@ -950,7 +950,10 @@ function sentMessageLedger(isRebuildingFromRecords: boolean) {
       if (keptJson === undefined || json < keptJson) blobJsonByHash.set(hash, json);
       // Two spellings of one hash hold the same blocks.
       if (isRebuildingFromRecords && keptJson === undefined && record.message.role !== "assistant") {
-        blobTextBlocksByHash.set(hash, textBlocksOf(record.message.content));
+        blobTextBlocksByHash.set(hash, {
+          role: asString(record.message.role) ?? "unknown",
+          textBlocks: textBlocksOf(record.message.content),
+        });
       }
     },
     /** An `attachment` record: what its rendered text names. Ignored in a file without request records. */
@@ -970,13 +973,13 @@ function sentMessageLedger(isRebuildingFromRecords: boolean) {
         const messageJson = blobJson ?? rebuilt?.messageJson;
         if (messageJson === undefined) continue;
         // The assistant's own text is never Injected context.
-        const textBlocks =
+        const { role, textBlocks } =
           blobJson !== undefined
-            ? (blobTextBlocksByHash.get(hash) ?? [])
+            ? (blobTextBlocksByHash.get(hash) ?? { role: "assistant", textBlocks: [] })
             : source?.role === "user"
-              ? textBlocksOf(rebuilt?.content)
-              : [];
-        const pieces = injectedContext.piecesOf(textBlocks);
+              ? { role: "user", textBlocks: textBlocksOf(rebuilt?.content) }
+              : { role: "assistant", textBlocks: [] };
+        const pieces = injectedContext.piecesOf(textBlocks, role);
         sentMessageByHash.set(hash, {
           messageJson,
           injectedContextPiecesJson: pieces.length === 0 ? null : JSON.stringify(pieces),

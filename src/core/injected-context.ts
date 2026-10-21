@@ -67,7 +67,7 @@ function injectedContextSourceOf(record: Record<string, unknown>): InjectedConte
  * @example
  * const injectedContext = injectedContextDictionary();
  * injectedContext.add(attachmentRecord);
- * const pieces = injectedContext.piecesOf([{ blockIndex: 0, text: "Today's date is 2026-10-21." }]);
+ * const pieces = injectedContext.piecesOf([{ blockIndex: 0, text: "Today's date is 2026-10-21." }], "system");
  */
 export function injectedContextDictionary() {
   const sourceByRenderedText = new Map<string, InjectedContextSource>();
@@ -87,15 +87,19 @@ export function injectedContextDictionary() {
       }
     },
     /**
-     * The pieces of Injected context in `textBlocks`, in order: a block equal
-     * to a rendered text is one piece; any other holds each rendered text found
-     * in it, in order and not overlapping, the longest where two start alike.
+     * The pieces of Injected context in `textBlocks` of a message from
+     * `messageRole`, in order: a block equal to a rendered text is one piece,
+     * whatever the role; any other block of a system message holds each
+     * rendered text found in it, in order and not overlapping, the longest
+     * where two start alike. A user's block is never split: one quoting an
+     * injected text stays the person's own.
      */
-    piecesOf: (textBlocks: SentTextBlock[]): InjectedContextPiece[] => {
+    piecesOf: (textBlocks: SentTextBlock[], messageRole: string): InjectedContextPiece[] => {
       if (sourceByRenderedText.size === 0) return [];
       return textBlocks.flatMap(({ blockIndex, text }) => {
         const exactSource = sourceByRenderedText.get(text);
         if (exactSource !== undefined) return [{ blockIndex, start: 0, end: text.length, ...exactSource }];
+        if (messageRole !== "system") return [];
         return matchesIn(text, sourceByRenderedText).map((match) => ({ blockIndex, ...match }));
       });
     },

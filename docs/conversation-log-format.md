@@ -574,8 +574,12 @@ rendered text (207 of 207).
 an attachment with a `renderedRole` maps to its attachment type, under both
 its logged and its unwrapped form, so it matches whatever role it went out
 under. A sent text block (not the assistant's) equal to one is one piece of
-that kind; any other holds each rendered text found in it, in order and not
-overlapping. What a block holds around its matched pieces, and a block
+that kind; any other block of a **system** message holds each rendered text
+found in it, in order and not overlapping. A user's text block is never
+split, so a Prompt quoting an injected text stays a Prompt: no user block has
+needed it — of 187 `queued_command` texts in the 120 latest logs, 52 are a
+whole user block, 133 sit inside a fused system block, 2 nowhere and none
+inside a larger user block. What a block holds around its matched pieces, and a block
 matching nothing, keeps the generic label. The text alone identifies the
 kind: equal texts (the Bash output note, repeated token reminders) are of one
 kind, so no `parentUuid` chain needs walking, and an attachment logged after

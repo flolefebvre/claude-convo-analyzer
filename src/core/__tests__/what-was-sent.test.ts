@@ -868,6 +868,20 @@ describe("What was sent, request by request", () => {
       ]);
     });
 
+    it("stays one Prompt for a user's text that quotes an injected text word for word", async () => {
+      const prompt = `Why does it say "${DATE_TEXT}" when the deadline moved?`;
+      const [sent] = await whatWasSentOf([
+        {
+          system: SYSTEM,
+          tools: [],
+          messages: [{ role: "user", content: prompt }],
+          attachments: [{ attachmentType: "date", rendered: wrapped(DATE_TEXT), renderedRole: "system" }],
+        },
+      ]);
+
+      expect(sent?.fullRequest.messages[0]?.parts.map((part) => [part.kind, part.label])).toEqual([["text", "Prompt"]]);
+    });
+
     it("stays Injected context for a block no attachment of the file matches", async () => {
       expect(
         await labelledPartsOf(
