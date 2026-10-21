@@ -143,8 +143,9 @@ export type TranscriptMessage = {
   toolCalls: TranscriptToolCall[];
   /**
    * The `api_request` row id this Turn's What was sent is read by: its
-   * API request in the logs (of several, the latest). Null when its file
-   * holds none, and on user Messages.
+   * API request in its own file, else in another Conversation's file (a
+   * resumed or forked session's copied history). Null when no file holds it,
+   * and on user Messages.
    */
   apiRequestId: number | null;
   /** How many Failed attempts preceded this Turn's API request; 0 without any, and on user Messages. */
@@ -1245,6 +1246,7 @@ async function readAgentTranscript(
       isApiError: true,
       apiErrorMessage: true,
       timestamp: true,
+      apiRequestId: true,
     },
   });
 
@@ -1253,7 +1255,6 @@ async function readAgentTranscript(
     rows.map((r) => r.id),
   );
   const assistantMessageIds = rows.filter((r) => r.role === "assistant").map((r) => r.id);
-  const apiRequestIdByMessageId = await turnApiRequestsByMessage(prisma, assistantMessageIds);
   const failedAttemptsByMessageId = await failedAttemptsByMessage(prisma, assistantMessageIds);
 
   // A Sub-agent's agent id is its external id, so `senderTaskId`/`taskId`
@@ -1294,28 +1295,11 @@ async function readAgentTranscript(
       apiErrorMessage: r.apiErrorMessage,
       timestamp: r.timestamp === null ? null : new Date(Number(r.timestamp)).toISOString(),
       toolCalls: toolCallsByMsg.get(r.id) ?? [],
-      apiRequestId: apiRequestIdByMessageId.get(r.id) ?? null,
+      apiRequestId: r.apiRequestId,
       failedAttemptCount: failedAttempts.length,
       failedAttemptsLostMs: knownLostMs.length > 0 ? knownLostMs.reduce((total, lostMs) => total + lostMs, 0) : null,
     };
   });
-}
-
-/**
- * Of each Turn among `messageIds` whose log file holds its API request,
- * batched: the `api_request` row id — of several, the latest in file
- * order.
- */
-async function turnApiRequestsByMessage(prisma: PrismaClient, messageIds: number[]): Promise<Map<number, number>> {
-  const apiRequestIdByMessageId = new Map<number, number>();
-  if (messageIds.length === 0) return apiRequestIdByMessageId;
-  const rows = await prisma.apiRequest.findMany({
-    where: { messageId: { in: messageIds } },
-    orderBy: [{ positionInFile: "asc" }, { id: "asc" }],
-    select: { id: true, messageId: true },
-  });
-  for (const row of rows) apiRequestIdByMessageId.set(row.messageId!, row.id);
-  return apiRequestIdByMessageId;
 }
 
 /**

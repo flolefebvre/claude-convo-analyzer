@@ -85,6 +85,7 @@ const MESSAGE_COLUMN_BY_FIELD = {
   isApiError: "is_api_error",
   apiErrorMessage: "api_error_message",
   timestamp: "timestamp",
+  requestRef: "request_ref",
 } as const;
 
 const TOOL_CALL_COLUMN_BY_FIELD = {
@@ -115,7 +116,6 @@ const TURN_DURATION_COLUMN_BY_FIELD = {
 const API_REQUEST_COLUMN_BY_FIELD = {
   conversationId: "conversation_id",
   agentId: "agent_id",
-  messageId: "message_id",
   failedAttemptOfMessageId: "failed_attempt_of_message_id",
   recordId: "record_id",
   baseRecordId: "base_record_id",
@@ -245,6 +245,34 @@ export function prepareRefreshStatements(db: Database.Database) {
     `DELETE FROM "sent_message" WHERE "hash" NOT IN
        (SELECT "tail_hash"."value" FROM "api_request", json_each("tail_message_hashes_json") AS "tail_hash")`,
   );
+  // A Turn's API request in its own file: of several with its `request_ref`,
+  // the latest in file order. The unary `+` keeps the planner off the
+  // `(agent_id, position_in_file)` index, which walks the file back from its
+  // end for each Turn, and on `record_id`'s.
+  const updateTurnApiRequestsInFile = db.prepare(
+    `UPDATE "message" SET "api_request_id" =
+       (SELECT "api_request"."id" FROM "api_request"
+         WHERE +"api_request"."agent_id" = "message"."agent_id" AND "api_request"."record_id" = "message"."request_ref"
+         ORDER BY "api_request"."position_in_file" DESC
+         LIMIT 1)
+      WHERE "agent_id" = ? AND "request_ref" IS NOT NULL`,
+  );
+  // THE RULE for a request several files hold (log-format §9, "How they are
+  // stored"): the file of the smallest Conversation `source_path`, its Main
+  // thread before its Sub-agents, then by Sub-agent id; then the latest in
+  // file order. Row ids never decide: they differ between a cold Refresh and
+  // an incremental one.
+  const updateUnlinkedTurnApiRequests = db.prepare(
+    `UPDATE "message" SET "api_request_id" =
+       (SELECT "api_request"."id" FROM "api_request"
+          JOIN "conversation" ON "conversation"."id" = "api_request"."conversation_id"
+          JOIN "agent" ON "agent"."id" = "api_request"."agent_id"
+         WHERE "api_request"."record_id" = "message"."request_ref"
+         ORDER BY "conversation"."source_path", "agent"."external_agent_id" NULLS FIRST,
+                  "api_request"."position_in_file" DESC
+         LIMIT 1)
+      WHERE "api_request_id" IS NULL AND "request_ref" IS NOT NULL`,
+  );
   // `uuid` is not unique: the first message stored with it decides.
   const selectMessageOwner = db.prepare(
     `SELECT "id", "session_id" AS "sessionId" FROM "conversation"
@@ -291,6 +319,13 @@ export function prepareRefreshStatements(db: Database.Database) {
     insertPrLink: prepareInsert(db, "pr_link", PR_LINK_COLUMN_BY_FIELD),
     insertTurnDuration: prepareInsert(db, "turn_duration", TURN_DURATION_COLUMN_BY_FIELD),
     insertApiRequest: prepareInsert(db, "api_request", API_REQUEST_COLUMN_BY_FIELD),
+    /** Link each Turn of Agent `agentId` to the API request its `requestRef` names in the same file, if any. */
+    updateTurnApiRequestsInFile: (agentId: number) => void updateTurnApiRequestsInFile.run(agentId),
+    /**
+     * Link every Turn of the database that has a `requestRef` and no API
+     * request to the one of another file that `requestRef` names, if any.
+     */
+    updateUnlinkedTurnApiRequests: () => void updateUnlinkedTurnApiRequests.run(),
     /** Store a system prompt under its hash, keeping the smaller spelling when one already is. */
     insertSystemPrompt: (hash: string, blocksJson: string) => void insertSystemPrompt.run(hash, blocksJson),
     /** Store a tool set under its hash, keeping the smaller spelling when one already is. */

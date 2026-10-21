@@ -172,11 +172,20 @@ model Message {
   /// Record timestamp (epoch ms).
   timestamp BigInt?
 
+  /// The assistant record's `requestRef` (2.1.300+): the `record_id` of the
+  /// API request this Turn answered, in its own file or another's (log-format
+  /// §9). NULL on user rows and older records.
+  requestRef   String? @map("request_ref")
+  /// The API request `requestRef` names: the row of the Turn's own file, else
+  /// of another file (log-format §9, "How they are stored", for which); NULL
+  /// when no file holds it.
+  apiRequestId Int?    @map("api_request_id")
+
   conversation             Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   agent                    Agent        @relation("AgentMessages", fields: [agentId], references: [id], onDelete: Cascade)
+  apiRequest               ApiRequest?  @relation("ApiRequestTurn", fields: [apiRequestId], references: [id], onDelete: SetNull)
   spawnedAgents            Agent[]      @relation("AgentSpawn")
   toolCalls                ToolCall[]
-  apiRequests              ApiRequest[] @relation("ApiRequestTurn")
   /// The API requests that were this Turn's Failed attempts.
   failedAttemptApiRequests ApiRequest[] @relation("ApiRequestFailedAttempt")
 
@@ -184,6 +193,7 @@ model Message {
   @@index([agentId])
   @@index([messageId])
   @@index([uuid])
+  @@index([apiRequestId, requestRef])
   @@map("message")
 }
 
@@ -256,10 +266,6 @@ model ApiRequest {
   conversationId           Int  @map("conversation_id")
   /// The Agent of the log file holding the record.
   agentId                  Int  @map("agent_id")
-  /// The assistant Message of the Turn whose `requestRef` names this record,
-  /// among the Turns of the same file; NULL when none does (a request then
-  /// retried, or never answered).
-  messageId                Int? @map("message_id")
   /// The assistant Message of the Turn that owns this record as a Failed
   /// attempt (log-format §9, Retries): no Turn answered it, and the next
   /// request of its file resent it — the same `requestDigest`, its `base` this
@@ -296,13 +302,15 @@ model ApiRequest {
 
   conversation           Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   agent                  Agent         @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  message                Message?      @relation("ApiRequestTurn", fields: [messageId], references: [id], onDelete: SetNull)
+  /// The Turns that answered it: its own file's, and their copies in resumed
+  /// and forked sessions' files; none for a request then retried, or never answered.
+  turns                  Message[]     @relation("ApiRequestTurn")
   failedAttemptOfMessage Message?      @relation("ApiRequestFailedAttempt", fields: [failedAttemptOfMessageId], references: [id], onDelete: SetNull)
   systemPrompt           SystemPrompt? @relation(fields: [systemPromptHash], references: [hash], onDelete: Restrict)
   toolSet                ToolSet?      @relation(fields: [toolSetHash], references: [hash], onDelete: Restrict)
 
   @@index([conversationId])
-  @@index([messageId])
+  @@index([recordId])
   @@index([failedAttemptOfMessageId])
   @@index([agentId, positionInFile])
   @@index([systemPromptHash])

@@ -249,7 +249,7 @@ export async function getWhatWasSent(
 ): Promise<WhatWasSent | null> {
   return withApiRequestRow(apiRequestId, opts.dbPath, async (row, prisma) => {
     const previousRow = await prisma.apiRequest.findFirst({
-      where: { agentId: row.agentId, positionInFile: { lt: row.positionInFile }, messageId: { not: null } },
+      where: { agentId: row.agentId, positionInFile: { lt: row.positionInFile }, turns: { some: {} } },
       orderBy: { positionInFile: "desc" },
       include: SYSTEM_PROMPT_AND_TOOL_SET_INCLUDE,
     });
@@ -257,8 +257,7 @@ export async function getWhatWasSent(
     const messageHashes = messageHashesOf(row);
     const { body, injectedContextPiecesOfMessages } = await requestOf(prisma, row, messageHashes);
     const messages = sentMessagesOf(body.messages as (JsonValue | null)[], injectedContextPiecesOfMessages);
-    const failedAttempts =
-      row.messageId === null ? [] : ((await failedAttemptsByMessage(prisma, [row.messageId])).get(row.messageId) ?? []);
+    const failedAttempts = (await failedAttemptsByApiRequest(prisma, [row])).get(row.id) ?? [];
     return {
       parameters: sentParameters(body, JSON.parse(row.cacheBreakpointsJson) as JsonValue),
       sentAt: row.sentAt === null ? null : new Date(Number(row.sentAt)).toISOString(),
@@ -303,9 +302,10 @@ export async function getRawApiRequest(
 
 /**
  * Of each Turn among `messageIds` that Failed attempts preceded in the logs,
- * batched: those attempts, oldest first (log-format §9, Retries). Each lost
- * the time from its sending to the next request's of its chain, the Turn's
- * own request ending it. A Turn without any is absent.
+ * batched: those of its API request, oldest first (log-format §9, Retries) —
+ * so a Turn copied into a resumed session's file has its request's too. Each
+ * lost the time from its sending to the next request's of its chain, the
+ * request itself ending it. A Turn without any is absent.
  *
  * @example
  * const failedAttemptsByMessageId = await failedAttemptsByMessage(prisma, [message.id]);
@@ -316,29 +316,55 @@ export async function failedAttemptsByMessage(
 ): Promise<Map<number, FailedAttempt[]>> {
   const failedAttemptsByMessageId = new Map<number, FailedAttempt[]>();
   if (messageIds.length === 0) return failedAttemptsByMessageId;
-  const attemptRows = await prisma.apiRequest.findMany({
-    where: { failedAttemptOfMessageId: { in: messageIds } },
-    select: { id: true, failedAttemptOfMessageId: true, sentAt: true, positionInFile: true },
+  const turnRows = await prisma.message.findMany({
+    where: { id: { in: messageIds }, apiRequestId: { not: null } },
+    select: { id: true, apiRequest: { select: FAILED_ATTEMPT_CHAIN_SELECT } },
   });
-  if (attemptRows.length === 0) return failedAttemptsByMessageId;
-  const ownerMessageIds = [...new Set(attemptRows.map((row) => row.failedAttemptOfMessageId!))];
-  const turnRows = await prisma.apiRequest.findMany({
-    where: { messageId: { in: ownerMessageIds } },
-    select: { id: true, messageId: true, sentAt: true, positionInFile: true },
-  });
-  // A Turn's chain, in file order: its attempts, then its own request.
-  const chainByMessageId = new Map<number, { sentAt: bigint | null; positionInFile: number; isAttempt: boolean }[]>();
-  const rows = [
-    ...attemptRows.map((row) => ({ ...row, ownerMessageId: row.failedAttemptOfMessageId!, isAttempt: true })),
-    ...turnRows.map((row) => ({ ...row, ownerMessageId: row.messageId!, isAttempt: false })),
-  ];
-  rows.sort((a, b) => a.positionInFile - b.positionInFile || a.id - b.id);
-  for (const row of rows) {
-    const chain = chainByMessageId.get(row.ownerMessageId) ?? [];
-    chain.push(row);
-    chainByMessageId.set(row.ownerMessageId, chain);
+  const failedAttemptsByApiRequestId = await failedAttemptsByApiRequest(
+    prisma,
+    turnRows.flatMap((turn) => (turn.apiRequest === null ? [] : [turn.apiRequest])),
+  );
+  for (const turn of turnRows) {
+    const failedAttempts = turn.apiRequest === null ? undefined : failedAttemptsByApiRequestId.get(turn.apiRequest.id);
+    if (failedAttempts !== undefined) failedAttemptsByMessageId.set(turn.id, failedAttempts);
   }
-  for (const [messageId, chain] of chainByMessageId) {
+  return failedAttemptsByMessageId;
+}
+
+/** What the chain of Failed attempts ending in an `api_request` row is read with. */
+const FAILED_ATTEMPT_CHAIN_SELECT = { id: true, agentId: true, sentAt: true, positionInFile: true } as const;
+
+/** An `api_request` row as {@link FAILED_ATTEMPT_CHAIN_SELECT} reads it. */
+type FailedAttemptChainRow = { id: number; agentId: number; sentAt: bigint | null; positionInFile: number };
+
+/**
+ * Of each of `requests` that Failed attempts preceded, batched: those
+ * attempts, oldest first. They are owned by the request's Turn in its own
+ * file (`failed_attempt_of_message_id` never leaves a file), so the attempts
+ * owned by a Turn of another Agent are not its.
+ */
+async function failedAttemptsByApiRequest(
+  prisma: ReadPrisma,
+  requests: FailedAttemptChainRow[],
+): Promise<Map<number, FailedAttempt[]>> {
+  const failedAttemptsByApiRequestId = new Map<number, FailedAttempt[]>();
+  if (requests.length === 0) return failedAttemptsByApiRequestId;
+  const requestById = new Map(requests.map((request) => [request.id, request]));
+  const attemptRows = await prisma.apiRequest.findMany({
+    where: { failedAttemptOfMessage: { apiRequestId: { in: [...requestById.keys()] } } },
+    select: { ...FAILED_ATTEMPT_CHAIN_SELECT, failedAttemptOfMessage: { select: { apiRequestId: true } } },
+  });
+  // A request's chain, in file order: its attempts, then itself.
+  const chainByApiRequestId = new Map<number, (FailedAttemptChainRow & { isAttempt: boolean })[]>();
+  for (const attempt of attemptRows) {
+    const request = requestById.get(attempt.failedAttemptOfMessage!.apiRequestId!);
+    if (request === undefined || request.agentId !== attempt.agentId) continue;
+    const chain = chainByApiRequestId.get(request.id) ?? [{ ...request, isAttempt: false }];
+    chain.push({ ...attempt, isAttempt: true });
+    chainByApiRequestId.set(request.id, chain);
+  }
+  for (const [apiRequestId, chain] of chainByApiRequestId) {
+    chain.sort((a, b) => a.positionInFile - b.positionInFile || a.id - b.id);
     const failedAttempts: FailedAttempt[] = [];
     chain.forEach((row, index) => {
       if (!row.isAttempt) return;
@@ -348,9 +374,9 @@ export async function failedAttemptsByMessage(
         sentAt: row.sentAt === null ? null : new Date(Number(row.sentAt)).toISOString(),
       });
     });
-    failedAttemptsByMessageId.set(messageId, failedAttempts);
+    failedAttemptsByApiRequestId.set(apiRequestId, failedAttempts);
   }
-  return failedAttemptsByMessageId;
+  return failedAttemptsByApiRequestId;
 }
 
 /** The interned system prompt and tool set an `api_request` row is read with. */

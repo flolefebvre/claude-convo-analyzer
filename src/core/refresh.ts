@@ -86,8 +86,8 @@ export type RefreshSummary = {
 /**
  * A stretch of a Refresh, timed on its own: `discovery` (find the files, read
  * the stored rows, delete vanished Conversations, pick what to re-parse),
- * `parse` and `write` (summed over every Conversation), `links` (continued-from)
- * and `stamp` (the parser-version commit mark).
+ * `parse` and `write` (summed over every Conversation), `links` (continued-from,
+ * and the Turns whose API request is in another file) and `stamp` (the parser-version commit mark).
  */
 export type RefreshPhase = "discovery" | "parse" | "write" | "links" | "stamp";
 
@@ -136,8 +136,11 @@ type RefreshOptions = {
  *     (`message.thinking_text`, `message.thinking_duration_ms`).
  * 12 — a sent message keeps the pieces of Injected context its file's
  *     attachments name in it (`sent_message.injected_context_pieces_json`).
+ * 13 — a Turn names its API request (`message.api_request_id`, from its
+ *     `message.request_ref`), in its own file or another's; `api_request`
+ *     no longer names its Turn.
  */
-export const PARSER_VERSION = 12;
+export const PARSER_VERSION = 13;
 
 /**
  * The version a conversation carries while it is written but NOT YET COMPLETE:
@@ -232,7 +235,10 @@ type DiscoveredWithKey = {
  * siblings in their log folder (see `resolveProjectPath`); (2) resolve
  * `continued_from` by looking up each
  * child's first-message `parentUuid` against the persisted `message` rows of ALL
- * conversations — so a skipped (unchanged) parent still resolves; (3) stamp the
+ * conversations — so a skipped (unchanged) parent still resolves — and link
+ * every Turn of the database with a `requestRef` and no API request to the
+ * request of another file it names, if any, reading ids only (log-format §9,
+ * "How they are stored"); (3) stamp the
  * current `parserVersion` on that set — the commit mark that lets a later run
  * skip them — and delete every Project left without a Conversation, and every
  * system prompt and tool set no API request references, and every sent
@@ -407,8 +413,12 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     phaseStart = performance.now();
     statements.beginTransaction();
     // Pass 2 — resolve continued-from over the (re)written conversations,
-    // authoritatively against the persisted message uuids of ALL conversations.
+    // authoritatively against the persisted message uuids of ALL conversations;
+    // then link every Turn of the database whose API request is in another
+    // file — a skipped child's Turns included, whose links a rewritten
+    // parent's delete just nulled.
     resolveContinuedFrom(statements, writtenConversations);
+    statements.updateUnlinkedTurnApiRequests();
     endPhase("links");
 
     // Pass 3 — only NOW are these conversations complete: stamp them, so the
@@ -590,6 +600,7 @@ function messageRow(m: ParsedSession["messages"][number], conversationId: number
     isApiError: m.isApiError,
     apiErrorMessage: m.apiErrorMessage,
     timestamp: m.timestamp,
+    requestRef: m.requestRef,
   };
 }
 
@@ -692,10 +703,10 @@ function writeAgentMessages(
 /**
  * Write one agent's log file's request records (log-format §9): each distinct
  * system prompt, tool set and sent message under its hash, unless already
- * stored, then one
- * `api_request` row per `api-request` record, in file order, joined to
- * the Turn of that same file whose `requestRef` names it — a `requestRef`
- * naming a request of another file joins nothing.
+ * stored, then one `api_request` row per `api-request` record, in file
+ * order; then link each Turn of the file to the request of the file its
+ * `requestRef` names. A Turn whose `requestRef` names a request of another
+ * file is linked by the links pass (`refresh`).
  */
 function writeApiRequests(
   statements: RefreshStatements,
@@ -721,7 +732,6 @@ function writeApiRequests(
     statements.insertApiRequest({
       conversationId,
       agentId,
-      messageId: messageRowIdByRequestRef.get(request.recordId) ?? null,
       failedAttemptOfMessageId: failedAttemptOfMessageRowIds[positionInFile]!,
       recordId: request.recordId,
       baseRecordId: request.baseRecordId,
@@ -737,6 +747,7 @@ function writeApiRequests(
       toolSetHash: request.toolSetHash,
     });
   });
+  statements.updateTurnApiRequestsInFile(agentId);
 }
 
 /**
