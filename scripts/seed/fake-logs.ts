@@ -1326,6 +1326,10 @@ export const LOGGED_REQUESTS_TITLE = "Trace the slow invoice query";
 /** The Claude Code version {@link LOGGED_REQUESTS_TITLE} states: one that logs its API requests. */
 const LOGGED_REQUESTS_CC_VERSION = "2.1.305";
 
+/** The skill list Claude Code injects into the first request of each Agent of {@link LOGGED_REQUESTS_TITLE}. */
+const SEED_SKILL_LISTING_TEXT =
+  "The following skills are available for use with the Skill tool:\n\n- tdd: Test-driven development, one vertical slice at a time.\n- update-pricing: Refresh the Anthropic price table.";
+
 /** A system block of the seeded API requests: the opening line. */
 const SEED_SYSTEM_INTRO = {
   type: "text",
@@ -1364,6 +1368,20 @@ function seedSystemMessage(text: string): SeedSentMessage {
 }
 
 /**
+ * Several pieces of context Claude Code injects as one system message, their
+ * texts unwrapped and joined by a blank line in one text block (log-format §9),
+ * which the log holds as a blob.
+ */
+function seedFusedSystemMessage(texts: string[]): SeedSentMessage {
+  return { message: { role: "system", content: [{ type: "text", text: texts.join("\n\n") }] }, isLoggedAsBlob: true };
+}
+
+/** `text` in the system-reminder tags Claude Code logs injected context in, and sends user-role context in. */
+function inSystemReminder(text: string): string {
+  return `<system-reminder>\n${text}\n</system-reminder>`;
+}
+
+/**
  * The prompt of user record `promptLine` as sent: after a system-reminder
  * Claude Code injected into the same user message (CLAUDE.md goes out this
  * way), which the log holds as a blob.
@@ -1374,12 +1392,40 @@ function seedPromptWithSystemReminder(promptLine: string, reminderText: string):
     message: {
       role: "user",
       content: [
-        { type: "text", text: `<system-reminder>\n${reminderText}\n</system-reminder>` },
+        { type: "text", text: inSystemReminder(reminderText) },
         { type: "text", text: prompt },
       ],
     },
     isLoggedAsBlob: true,
   };
+}
+
+/**
+ * The `attachment` record of a piece of context Claude Code injected at `ms`
+ * (log-format §9, "Attachments with `rendered` text"): its `attachment`,
+ * whose `type` is its kind, and its `text` as the model saw it — logged in a
+ * system-reminder, sent under `renderedRole`. With `agent`, a Sub-agent's.
+ */
+function seedInjectedContextAttachment(
+  g: Gen,
+  ms: number,
+  cwd: string,
+  attachment: { type: string; [field: string]: unknown },
+  text: string,
+  renderedRole: "system" | "user",
+  agent?: { agentId: string },
+): string {
+  return JSON.stringify({
+    type: "attachment",
+    uuid: g.uid("att"),
+    timestamp: iso(ms),
+    cwd,
+    version: LOGGED_REQUESTS_CC_VERSION,
+    attachment,
+    rendered: [{ content: inSystemReminder(text) }],
+    renderedRole,
+    ...(agent === undefined ? {} : { isSidechain: true, agentId: agent.agentId }),
+  });
 }
 
 /** A tool result as the model got it, in full — its record keeps only a stub — which the log holds as a blob. */
@@ -1501,8 +1547,11 @@ function atLoggedRequestsVersion(line: string, requestRef?: string): string {
  * after one Failed attempt — a second prompt finds the system prompt
  * changed — a new date and a new instruction — and a Grep tool loaded. In
  * either agent, the first Turn thought and left a summary, and a later one
- * thought and left none. It ends hours before the agent-messages one, so the
- * anchor does not move.
+ * thought and left none. Its injected context is logged as attachments: the
+ * first request's environment, skill list and date fused into one system
+ * message, its CLAUDE.md and AGENTS.md, the later date change, and the
+ * Sub-agent's own skill list. It ends hours before the agent-messages one, so
+ * the anchor does not move.
  *
  * Drawn last, so every earlier Conversation keeps its draws.
  */
@@ -1557,13 +1606,33 @@ function loggedRequestsConversation(g: Gen, index: number): Conversation {
   };
 
   const { toolUse, ledgerResult, sub } = loggedRequestsSubAgent(g, t + 12_000, cwd, sessionId);
+  // The first request's context: the environment, the skill list and the date
+  // fused into one system message, then CLAUDE.md and AGENTS.md before the prompt.
+  const environmentText = `# Environment\nYou have been invoked in the following environment:\n - Primary working directory: ${cwd}\n - Is a git repository: true\n - Platform: linux`;
+  const dateText = `Today's date is ${iso(t).slice(0, 10)}.`;
+  const instructionsText =
+    "As you answer the user's questions, you can use the following context:\n# claudeMd\nRun `pnpm test` before every commit; keep queries in src/invoices/.";
+  lines.push(
+    seedInjectedContextAttachment(g, t, cwd, { type: "environment" }, environmentText, "system"),
+    seedInjectedContextAttachment(g, t, cwd, { type: "skill_listing" }, SEED_SKILL_LISTING_TEXT, "system"),
+    seedInjectedContextAttachment(g, t, cwd, { type: "date" }, dateText, "system"),
+    seedInjectedContextAttachment(
+      g,
+      t,
+      cwd,
+      {
+        type: "instructions",
+        files: ["CLAUDE.md", "AGENTS.md"].map((name) => ({ path: `${cwd}/${name}`, type: "Project", content: "…" })),
+      },
+      instructionsText,
+      "user",
+    ),
+  );
   turn(
     firstShape,
     [
-      seedPromptWithSystemReminder(
-        firstPrompt,
-        "As you answer the user's questions, you can use the following context:\n# claudeMd\nRun `pnpm test` before every commit; keep queries in src/invoices/.",
-      ),
+      seedFusedSystemMessage([environmentText, SEED_SKILL_LISTING_TEXT, dateText]),
+      seedPromptWithSystemReminder(firstPrompt, instructionsText),
     ],
     [toolUse],
     undefined,
@@ -1583,14 +1652,12 @@ function loggedRequestsConversation(g: Gen, index: number): Conversation {
     userPrompt(g, (t = resumedAt), cwd, "Now check the date filter on the same query."),
   );
   lines.push(secondPrompt);
+  const dateChangeText = `The date has changed. Today's date is now ${iso(resumedAt).slice(0, 10)}.`;
+  lines.push(seedInjectedContextAttachment(g, t, cwd, { type: "date" }, dateChangeText, "system"));
   const grepUseId = g.uid("tu");
   turn(
     secondShape,
-    [
-      sentMessageOf(lastTurnLine),
-      seedSystemMessage(`The date has changed. Today's date is now ${iso(resumedAt).slice(0, 10)}.`),
-      sentMessageOf(secondPrompt),
-    ],
+    [sentMessageOf(lastTurnLine), seedSystemMessage(dateChangeText), sentMessageOf(secondPrompt)],
     [{ type: "tool_use", id: grepUseId, name: "Grep", input: { pattern: "invoice_date" } }],
     undefined,
     // Thought without leaving a summary, as most Turns do.
@@ -1647,15 +1714,25 @@ function loggedRequestsSubAgent(
   };
   const readUseId = g.uid("tu");
   const subPrompt = atLoggedRequestsVersion(userPrompt(g, ms, cwd, prompt, undefined, agent));
+  const skillListing = seedInjectedContextAttachment(
+    g,
+    ms,
+    cwd,
+    { type: "skill_listing" },
+    SEED_SKILL_LISTING_TEXT,
+    "system",
+    agent,
+  );
   const firstTurnLines = subTurn(
     ms + 2_000,
-    [sentMessageOf(subPrompt)],
+    [seedSystemMessage(SEED_SKILL_LISTING_TEXT), sentMessageOf(subPrompt)],
     { text: LOGGED_REQUESTS_SUB_AGENT_THINKING_TEXT, durationMs: 2_400 },
     [{ type: "tool_use", id: readUseId, name: "Read", input: { file_path: "src/invoices/query.ts" } }],
   );
   const readResult = atLoggedRequestsVersion(toolResult(g, ms + 30_000, cwd, readUseId, RESULT_FILLER, false, agent));
   const lines = [
     subPrompt,
+    skillListing,
     ...firstTurnLines,
     readResult,
     // Rebuilt from the sub-agent's own records: its Turn, then the tool result.

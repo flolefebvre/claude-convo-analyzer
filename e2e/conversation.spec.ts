@@ -89,14 +89,17 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     ).toBeVisible();
     await expect(whatWasSent.getByText("First request of this Agent", { exact: true })).toBeVisible();
     await expect(whatWasSent.getByRole("heading", { name: "New for this Turn" })).toBeVisible();
-    // The one new message holds two blocks: the CLAUDE.md Claude Code injected, then the prompt.
-    const injectedContext = whatWasSent.getByRole("group").filter({ hasText: /^Injected context/ });
-    await expect(injectedContext).toContainText("As you answer the user's questions");
-    await expect(whatWasSent.getByRole("group").filter({ hasText: /^Prompt/ })).toContainText(
-      "The invoice list takes eight seconds to load",
-    );
-    await injectedContext.getByText("Injected context").click();
-    await expect(injectedContext.getByText(/# claudeMd/)).toBeVisible();
+    // The environment, the skill list and the date Claude Code fused into one system message, a row each;
+    // then the CLAUDE.md and AGENTS.md it injected before the prompt, named by their files.
+    const rowNamed = (label: RegExp) => whatWasSent.getByRole("group").filter({ hasText: label });
+    await expect(rowNamed(/^Environment/)).toContainText("# Environment");
+    await expect(rowNamed(/^Skill list/)).toContainText("The following skills are available");
+    await expect(rowNamed(/^Date/)).toContainText("Today's date is");
+    const instructions = rowNamed(/^CLAUDE\.md · AGENTS\.md/);
+    await expect(instructions).toContainText("As you answer the user's questions");
+    await expect(rowNamed(/^Prompt/)).toContainText("The invoice list takes eight seconds to load");
+    await instructions.getByText("CLAUDE.md · AGENTS.md").click();
+    await expect(instructions.getByText(/# claudeMd/)).toBeVisible();
     await expect(whatWasSent.getByRole("tab")).toHaveCount(0);
     await expect(whatWasSent.getByText(/Changes/)).toHaveCount(0);
 
@@ -137,11 +140,11 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     await tools.getByText("Grep", { exact: true }).click();
     await expect(tools.getByText(/"description": "Search file contents\."/)).toBeVisible();
 
-    // The previous request sent three messages; this one adds the previous Turn, the date change and the prompt.
+    // The previous request sent four messages; this one adds the previous Turn, the date change and the prompt.
     await expect(
-      whatWasSent.getByText("3 earlier messages · already sent with the previous request", { exact: true }),
+      whatWasSent.getByText("4 earlier messages · already sent with the previous request", { exact: true }),
     ).toBeVisible();
-    await expect(whatWasSent.getByRole("group").filter({ hasText: /^Injected context/ })).toContainText(
+    await expect(whatWasSent.getByRole("group").filter({ hasText: /^Date/ })).toContainText(
       /The date has changed\. Today's date is now/,
     );
     await expect(whatWasSent.getByRole("group").filter({ hasText: /^Prompt/ })).toContainText(
