@@ -270,15 +270,6 @@ A Conversation is **active now** while Live is on and its newest source change
 Live-only notion: with Live off the stored data is only as fresh as the last
 Refresh, so no Conversation is active now.
 
-### Recorder
-
-A local proxy that sits between Claude Code and the Anthropic API, forwarding
-every API request unchanged and keeping a Recording of it. Claude Code only goes
-through it when told to; a Claude Code session pointed at a Recorder that is not
-running cannot reach the API. The Recorder runs on its own, independently of
-the app, which shows whether it is running and can start it.
-_Avoid_: proxy (in the UI), capture tool.
-
 ### API request
 
 One request Claude Code sent to the Anthropic API for an Agent's Turn, as the

@@ -1,9 +1,9 @@
-// How much disk a path takes: what the Recorder popover shows for the
-// Recordings, the database and the logs. The walk is async `fs` only, so the
-// stats run on libuv's threadpool and a multi-GB logs root never holds the
-// event loop. Symlinks inside the walk are skipped, not followed (a Dirent of a
-// symlink is neither a file nor a folder); a file or
-// folder deleted between its listing and its stat counts as absent.
+// How much disk a path takes: what the app bar's Disk usage item shows for the
+// database and the logs. The walk is async `fs` only, so the stats run on
+// libuv's threadpool and a multi-GB logs root never holds the event loop.
+// Symlinks inside the walk are skipped, not followed (a Dirent of a symlink is
+// neither a file nor a folder); a file or folder deleted between its listing
+// and its stat counts as absent.
 
 import type { Dirent } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
@@ -16,7 +16,7 @@ export type SizeInBytes = number;
  * The total size of `targetPath`: every file under it when it is a folder, its
  * own size when it is a file, and 0 when it does not exist.
  *
- * @example const recordingsBytes = await diskUsageInBytes(defaultRecordingsRoot());
+ * @example const logsBytes = await diskUsageInBytes(defaultLogsRoot());
  */
 export async function diskUsageInBytes(targetPath: string): Promise<SizeInBytes> {
   const stats = await unlessVanished(() => stat(targetPath));

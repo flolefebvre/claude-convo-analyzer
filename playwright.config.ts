@@ -1,12 +1,11 @@
 import { defineConfig, devices } from "@playwright/test";
 
-import { E2E_PORT, E2E_RECORDER_PORT } from "./e2e/ports";
+import { E2E_PORT } from "./e2e/ports";
 
 const baseURL = `http://localhost:${E2E_PORT}`;
 
-// The specs with side effects on state every open page shares, by their exact paths: Live switched on,
-// and a fake Recorder answering on the e2e server's Recorder port.
-const SHARED_STATE_SPECS = [/[\\/]e2e[\\/]active-now\.spec\.ts$/, /[\\/]e2e[\\/]recorder\.spec\.ts$/];
+// The specs with side effects on state every open page shares, by their exact paths: Live switched on.
+const SHARED_STATE_SPECS = [/[\\/]e2e[\\/]active-now\.spec\.ts$/];
 
 export default defineConfig({
   testDir: "e2e",
@@ -17,9 +16,9 @@ export default defineConfig({
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
   use: { baseURL, trace: "retain-on-failure" },
   // A Live Refresh publishes `finished` to every open page, whose `router.refresh()` lands inside another
-  // worker's `instant()` lock, and a fake Recorder turns every page's Recorder item on: a spec with such a
-  // side effect runs in `shared-state`, after every other spec, one file at a time, and never holds an
-  // `instant()` check itself. A failure in `chromium` skips `shared-state`.
+  // worker's `instant()` lock: a spec with such a side effect runs in `shared-state`, after every other
+  // spec, one file at a time, and never holds an `instant()` check itself. A failure in `chromium` skips
+  // `shared-state`.
   projects: [
     { name: "chromium", use: devices["Desktop Chrome"], testIgnore: SHARED_STATE_SPECS },
     {
@@ -32,7 +31,7 @@ export default defineConfig({
   ],
   webServer: {
     command: "pnpm e2e:server",
-    env: { PORT: String(E2E_PORT), CCA_RECORDER_PORT: String(E2E_RECORDER_PORT) },
+    env: { PORT: String(E2E_PORT) },
     url: baseURL,
     // Never test whatever else holds the port, or a build of older code: a taken port fails the run.
     reuseExistingServer: false,

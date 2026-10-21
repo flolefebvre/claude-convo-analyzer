@@ -129,13 +129,19 @@ changed in the last 2 minutes. The choice is saved in
 `~/.claude-convo-analyzer/settings.json`, so a server restarted with Live on
 starts watching again and catches up on what it missed.
 
+The **Disk usage** item, next to Live, shows each time you open it how much
+space the database and the Claude Code logs take, each with its path to copy.
+The app never deletes the Claude Code logs. Recordings under
+`~/.claude-convo-analyzer/recordings`, from an earlier version, are no longer
+used; delete them by hand if you like.
+
 For live development instead of a production build:
 
 ```bash
 pnpm dev
 ```
 
-Four environment variables move what the app reads and writes; a relative
+Three environment variables move what the app reads and writes; a relative
 value resolves against the process working directory (the repo root under
 `pnpm`):
 
@@ -143,8 +149,6 @@ value resolves against the process working directory (the repo root under
   migrated on first use.
 - `CCA_LOGS_ROOT` — the logs root that **Refresh** scans (default
   `~/.claude/projects`).
-- `CCA_RECORDINGS_ROOT` — where the Recorder writes its Recordings (default
-  `~/.claude-convo-analyzer/recordings`).
 - `CCA_SETTINGS_PATH` — the settings file that keeps whether **Live** is on
   and your **Favorites** (default `~/.claude-convo-analyzer/settings.json`).
   It sits outside the database, so a Refresh or a deleted database never loses
@@ -170,51 +174,6 @@ this.
 
 Claude Code's own background requests (naming the session, suggestions, web
 summaries) never appear in the logs, so no cost counts them.
-
-## The Recorder
-
-The **Recorder** is an optional local proxy that forwards every request to the
-Anthropic API unchanged and keeps a copy on disk, a Recording. The app no
-longer reads Recordings: what was sent comes from the logs.
-
-The **Recorder** item in the app bar, beside Live and Refresh, says whether it
-runs ("Recorder: on" or "Recorder: off"; hover it for the port). Its **Start**
-launches the Recorder in the background, where it keeps running after the app stops, and logs
-to `~/.claude-convo-analyzer/recorder.log`; if the port is taken, it says so. Or
-start it in its own terminal and leave it running:
-
-```bash
-pnpm recorder
-```
-
-(`pnpm recorder --detach` starts it in the background instead, as **Start**
-does.) Either way, start Claude Code through it, with the line the item's popover
-copies for you (along with a shell alias) and `pnpm recorder` prints:
-
-```bash
-ANTHROPIC_BASE_URL=http://127.0.0.1:4242 claude
-```
-
-Only sessions started that way are recorded.
-
-Stop the Recorder with **Stop** in its popover, or with Ctrl-C in its terminal;
-it lets requests in flight finish first (press Ctrl-C twice to quit at once).
-Don't stop it while a session started through it is still running: that session
-can't reach the API without it. Stop asks first when sessions sent requests
-through it in the last 15 minutes. `CCA_RECORDER_PORT`
-(default 4242) and `CCA_RECORDER_UPSTREAM` (default `https://api.anthropic.com`)
-change where it listens and where it forwards; `pnpm recorder --help` lists
-them.
-
-Recordings are compressed and append-only, one file per session, and never
-store auth headers. Unlike the database they can't be rebuilt from anything
-else, so they live outside the repo. Their format is documented in
-[`docs/recording-format.md`](docs/recording-format.md).
-
-They grow as long as the Recorder runs, so the popover's **Disk usage** section
-shows, each time it opens, how much space the Recordings, the database and the
-Claude Code logs take, each with its path to copy. The app never deletes the
-Claude Code logs.
 
 ## How it works
 
@@ -279,8 +238,8 @@ pnpm dev:seed
 
 It prints `Seeded app: http://localhost:<port>` — the first free port from
 3001, or `PORT` when set — so several checkouts can each run their own. Refresh
-in that app re-reads only the seeded logs, `CCA_RECORDINGS_ROOT` points inside
-`data/seed/`, and `CCA_SETTINGS_PATH` at `data/seed/settings.json`, so
+in that app re-reads only the seeded logs, and `CCA_SETTINGS_PATH` points at
+`data/seed/settings.json`, so
 Live starts off with three seeded favorites, and your own settings are never
 touched.
 

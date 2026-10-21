@@ -126,8 +126,7 @@ API exposed (`EXPOSE_TESTING_API=1`), then runs `next start` on `$E2E_PORT`
 build overwrites `.next/`, the same directory `pnpm build` writes to.
 
 It never reuses a running server: if the port is taken, the run fails. To run
-two worktrees at once, give one of them a different `E2E_PORT`. The e2e server
-reads its Recorder on `E2E_PORT` + 1000 (`e2e/ports.ts`), never on the host's 4242.
+two worktrees at once, give one of them a different `E2E_PORT`.
 
 - Install the browser once per machine with
   `pnpm exec playwright install chromium`. This is `@playwright/test`'s

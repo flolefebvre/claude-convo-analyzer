@@ -1,5 +1,5 @@
-// The disk usage the Recorder popover shows: the total size of a Recordings
-// root, a logs root or the database file, measured on a temporary tree.
+// The disk usage the app bar's Disk usage item shows: the total size of a logs
+// root or the database file, measured on a temporary tree.
 
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -35,13 +35,13 @@ describe("diskUsageInBytes", () => {
   });
 
   it("counts an empty folder as 0", async () => {
-    mkdirSync(path.join(tmpDir, "recordings"));
+    mkdirSync(path.join(tmpDir, "empty"));
 
-    expect(await diskUsageInBytes(path.join(tmpDir, "recordings"))).toBe(0);
+    expect(await diskUsageInBytes(path.join(tmpDir, "empty"))).toBe(0);
   });
 
   it("counts a missing path as 0", async () => {
-    expect(await diskUsageInBytes(path.join(tmpDir, "never-recorded"))).toBe(0);
+    expect(await diskUsageInBytes(path.join(tmpDir, "never-created"))).toBe(0);
   });
 
   it("measures a single file as its own size", async () => {

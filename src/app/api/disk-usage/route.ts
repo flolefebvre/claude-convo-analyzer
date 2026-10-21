@@ -1,6 +1,6 @@
-// `GET /api/disk-usage` — the size on disk of the Recordings, the database and
-// the Claude Code logs, read by the Recorder popover each time it opens. Never
-// on first paint: a multi-GB logs root takes a while to walk.
+// `GET /api/disk-usage` — the size on disk of the database and the Claude Code
+// logs, read by the app bar's Disk usage item each time it opens. Never on
+// first paint: a multi-GB logs root takes a while to walk.
 
 import { routePipe } from "@flefebvre/next-pipe/pipes";
 import { json } from "@flefebvre/next-pipe/server";
@@ -9,7 +9,7 @@ import { connection } from "next/server";
 import { measureDiskUsage } from "@/app/_lib/disk-usage";
 
 /**
- * The three sizes, each `{ path, bytes }`, keyed `recordings`, `database` and `logs`.
+ * The two sizes, each `{ path, bytes }`, keyed `database` and `logs`.
  *
  * @example const res = await callRoute(routes.api["disk-usage"].GET());
  */

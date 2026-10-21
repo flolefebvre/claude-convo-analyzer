@@ -1,5 +1,5 @@
-// Shared setup of the route tests: a route handler reads the DEFAULT database
-// and Recordings root, so each test file stubs both ONCE to a temp directory —
+// Shared setup of the route tests: a route handler reads the DEFAULT database,
+// so each test file stubs it ONCE to a temp directory —
 // the process-wide client binds to `CCA_DB_PATH` on first use (see
 // `default-db-singleton.test.ts`) — and Refreshes its fixture logs into it.
 
@@ -28,28 +28,22 @@ export function coreFixtureLogsRoot(fixtureName: string): string {
   return path.join(process.cwd(), "src", "core", "__tests__", "fixtures", fixtureName);
 }
 
-/** The Recordings root of the running test file's default database. */
-export type DefaultDatabase = { readonly recordingsRoot: string };
-
 /**
- * Register, at file scope, a temp default database and Recordings root:
- * `logsRoot` is Refreshed into the database; both are removed after the file.
+ * Register, at file scope, a temp default database: `logsRoot` is Refreshed
+ * into it, and it is removed after the file.
  *
- * @example const db = refreshedDefaultDatabase({ prefix: "cca-route-", logsRoot });
+ * @example refreshedDefaultDatabase({ prefix: "cca-route-", logsRoot });
  */
 export function refreshedDefaultDatabase(opts: {
   /** `mkdtemp` prefix, so a leaked directory names its owner. */
   prefix: string;
   logsRoot: string;
-}): DefaultDatabase {
+}): void {
   let scratchDir = "";
-  let recordingsRoot = "";
 
   beforeAll(async () => {
     scratchDir = mkdtempSync(path.join(tmpdir(), opts.prefix));
-    recordingsRoot = path.join(scratchDir, "recordings");
     vi.stubEnv("CCA_DB_PATH", path.join(scratchDir, "analyzer.db"));
-    vi.stubEnv("CCA_RECORDINGS_ROOT", recordingsRoot);
     await refresh({ logsRoot: opts.logsRoot });
   });
 
@@ -58,10 +52,4 @@ export function refreshedDefaultDatabase(opts: {
     vi.unstubAllEnvs();
     rmSync(scratchDir, { recursive: true, force: true });
   });
-
-  return {
-    get recordingsRoot() {
-      return recordingsRoot;
-    },
-  };
 }
