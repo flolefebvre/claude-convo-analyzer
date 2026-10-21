@@ -217,7 +217,9 @@ function RequestInReadingOrder({ whatWasSent }: { whatWasSent: WhatWasSent }) {
       <p className="sent-row-static">
         {previousApiRequestId === null
           ? "First request of this Agent"
-          : `${countLabel(firstNewMessageIndex, "earlier message")} · already sent with the previous request`}
+          : firstNewMessageIndex === 0
+            ? "No earlier message shared with the previous request"
+            : `${countLabel(firstNewMessageIndex, "earlier message")} · already sent with the previous request`}
       </p>
       <h4 className="sent-divider">New for this Turn</h4>
       {fullRequest.messages.slice(firstNewMessageIndex).map((message, index) => (

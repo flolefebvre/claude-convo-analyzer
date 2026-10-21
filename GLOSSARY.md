@@ -295,7 +295,11 @@ cannot rebuild is shown missing, at its place, and counted.
 
 ### Injected context
 
-Text Claude Code adds to an API request on its own, neither typed by the user nor returned by a tool: the CLAUDE.md and AGENTS.md files, the skill and agent lists, MCP server instructions, the date, the environment, reminders. Some of it also appears in the Transcript as Meta Messages; most of it appears only in What was sent.
+Text Claude Code adds to an API request on its own, neither typed by the user
+nor returned by a tool: the CLAUDE.md and AGENTS.md files, the skill and agent
+lists, MCP server instructions, the date, the environment, reminders. Some of
+it also appears in the Transcript as Meta Messages; most of it appears only in
+What was sent.
 _Avoid_: system reminder (the wrapper it is sent in, not what it is), attachment.
 
 ### Failed attempt
