@@ -17,12 +17,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { openRecordingWriter, type RecordedApiRequest } from "@/core/recording";
 import { refresh } from "@/core/refresh";
 
 const FIXTURES_DIR = path.join(import.meta.dirname, "fixtures");
 
-/** The twelve tables of ADR-0001, each pinned by its row count and checksum. */
+/** The eleven tables of ADR-0001, each pinned by its row count and checksum. */
 const STORED_TABLES = [
   "project",
   "conversation",
@@ -32,7 +31,6 @@ const STORED_TABLES = [
   "pr_link",
   "turn_duration",
   "api_request",
-  "logged_api_request",
   "system_prompt",
   "tool_set",
   "sent_message",
@@ -51,7 +49,7 @@ const EMPTY_TABLE_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495
 
 /** The request-record tables of logs written before Claude Code 2.1.300: all empty. */
 const NO_LOGGED_API_REQUESTS = {
-  logged_api_request: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+  api_request: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
   system_prompt: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
   tool_set: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
   sent_message: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
@@ -135,7 +133,6 @@ describe("stored data equivalence", () => {
       tool_call: { rowCount: 34, sha256: "58586fdaa0ea9e906fd5037c8a3c7809fd2fd1d4602ec6280e34db111716b5f4" },
       pr_link: { rowCount: 1, sha256: "efff4b0f419e7b55d6dc8602b3503e06e81829e6fd868d216679845fa0970d16" },
       turn_duration: { rowCount: 1, sha256: "11a23dd83764e1de631b25b7b2fb8a6b5af397fe1503b2086f0404a57cb943c4" },
-      api_request: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       ...NO_LOGGED_API_REQUESTS,
     });
   });
@@ -152,7 +149,6 @@ describe("stored data equivalence", () => {
       tool_call: { rowCount: 1, sha256: "a7fdb225fda2bff0ca75f88a22789a86cd79a97f5ea4e2f952e1d4559aa8efd9" },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
-      api_request: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       ...NO_LOGGED_API_REQUESTS,
     });
   });
@@ -169,7 +165,6 @@ describe("stored data equivalence", () => {
       tool_call: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
-      api_request: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       ...NO_LOGGED_API_REQUESTS,
     });
   });
@@ -186,7 +181,6 @@ describe("stored data equivalence", () => {
       tool_call: { rowCount: 1, sha256: "e331ea30643c19a0602a2759f557187aacaf1729c796a955560799b9c4dbd73f" },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
-      api_request: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       ...NO_LOGGED_API_REQUESTS,
     });
   });
@@ -203,55 +197,12 @@ describe("stored data equivalence", () => {
       tool_call: { rowCount: 3, sha256: "e5f615b5d6290bc0dab75ea171da282d5e176e04be16438fc4d834c227f91b9d" },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
-      api_request: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
-      logged_api_request: { rowCount: 8, sha256: "dc61f1c84636a85d51fa06c9ec0eedb89cfd56d6301377dbb38257656eb8d3f9" },
+      api_request: { rowCount: 8, sha256: "dc61f1c84636a85d51fa06c9ec0eedb89cfd56d6301377dbb38257656eb8d3f9" },
       // Four system prompts and three tool sets: the Sub-agent shares the Main thread's first one.
       system_prompt: { rowCount: 4, sha256: "179129a51d494cdd6ea7fb72cf50d62900d9163160ed521f850dc233dae050bf" },
       tool_set: { rowCount: 3, sha256: "6b550b32e7738d046dd3c9f444e69eeba02357a973be985eac064674d0326323" },
       // Fifteen messages: two blobs, the others rebuilt from records; the tail hash no file holds is not stored.
       sent_message: { rowCount: 15, sha256: "126441cb097702d6b8e42db9bb724fa43d330ebe1e26322cde0285a9ddc48b67" },
-    });
-  });
-
-  it("stores the pinned rows for the recorded logs and their Recording (Turns matched, one failed attempt, one API request unmatched)", async () => {
-    copyWithPinnedMtimes(path.join(FIXTURES_DIR, "recorded-logs"), logsRoot);
-    const recordingsRoot = path.join(tmpDir, "recordings");
-    const writer = openRecordingWriter(recordingsRoot);
-    // A failed attempt of the first Turn, which its API request retried.
-    const firstTurn = recordedApiRequest({ requestId: "rreq-1", messageId: "rmsg-1", agentId: null });
-    await writer.append({
-      ...firstTurn,
-      response: {
-        status: 529,
-        requestId: "req-overloaded",
-        headers: {},
-        body: { type: "error", error: { type: "overloaded_error", message: "Overloaded" } },
-        isStreamed: false,
-      },
-    });
-    for (const [requestId, messageId, agentId] of [
-      ["rreq-1", "rmsg-1", null],
-      ["rreq-3", "rmsg-3", "rsub1"],
-      [null, "rmsg-2", null],
-      ["req-side", "msg-side", null],
-    ] as const) {
-      await writer.append(recordedApiRequest({ requestId, messageId, agentId }));
-    }
-    await refresh({ logsRoot, dbPath, recordingsRoot });
-
-    // The conversation row is left out: its change key folds in the Recording's
-    // gzip size, which depends on the zlib build, not on what was recorded.
-    const fingerprints: Partial<Record<StoredTable, TableFingerprint>> = fingerprintStoredData(dbPath, logsRoot);
-    delete fingerprints.conversation;
-    expect(fingerprints).toEqual({
-      project: { rowCount: 1, sha256: "ab725077615dfb646309a5ae5611824cd04ea21931ce42ca0228396a8ab86608" },
-      agent: { rowCount: 3, sha256: "9572f6c76b690944c11155fcfebcaa3cfb2f7eb6f4011be028e50a3b182a89e2" },
-      message: { rowCount: 10, sha256: "f9774d86e70fa26c6aa28df6bb3da601ebf705c6be1046db8e00370b2ce54268" },
-      tool_call: { rowCount: 1, sha256: "d3b0ea811a8bceeb37e913ba469534319cacbbcea904a4342deb1fd5cb2cfe73" },
-      pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
-      turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
-      api_request: { rowCount: 5, sha256: "55de2719545c9d6a2d3231955dd70a0b34e63a19f44c4a7efd8066ed27d879f7" },
-      ...NO_LOGGED_API_REQUESTS,
     });
   });
 });
@@ -278,15 +229,15 @@ describe("a re-parse", () => {
     const coldDbPath = path.join(tmpDir, "cold.db");
     copyWithPinnedMtimes(path.join(FIXTURES_DIR, "logged-request-logs"), logsRoot);
     await refresh({ logsRoot, dbPath: reparsedDbPath });
-    const beforeContent = loggedApiRequestContent(reparsedDbPath, logsRoot);
+    const beforeContent = apiRequestContent(reparsedDbPath, logsRoot);
     const mainLogPath = path.join(logsRoot, "-Users-me-dev-logged", "sess-logged.jsonl");
     writeFileSync(mainLogPath, rewrite(readFileSync(mainLogPath, "utf8").split("\n")).join("\n"));
     await refresh({ logsRoot, dbPath: reparsedDbPath });
     await refresh({ logsRoot, dbPath: coldDbPath });
     return {
       beforeContent,
-      reparsedContent: loggedApiRequestContent(reparsedDbPath, logsRoot),
-      coldContent: loggedApiRequestContent(coldDbPath, logsRoot),
+      reparsedContent: apiRequestContent(reparsedDbPath, logsRoot),
+      coldContent: apiRequestContent(coldDbPath, logsRoot),
     };
   }
 
@@ -431,17 +382,17 @@ describe("a piece two logs spell in two key orders", () => {
  * foreign keys, but whether a Turn answered them, and the `uuid` of the Turn's
  * Message owning one as a Failed attempt.
  */
-function loggedApiRequestContent(dbPath: string, logsRoot: string) {
+function apiRequestContent(dbPath: string, logsRoot: string) {
   const db = new Database(dbPath, { readonly: true });
   try {
     const requests = db
       .prepare(
         `SELECT "record_id", "base_record_id", "kept_message_count", "tail_message_hashes_json", "parameters_json",
                 "cache_breakpoints_json", "query_source", "request_digest", "sent_at", "position_in_file",
-                "system_prompt_hash", "tool_set_hash", "logged_api_request"."message_id" IS NULL AS "isUnanswered",
+                "system_prompt_hash", "tool_set_hash", "api_request"."message_id" IS NULL AS "isUnanswered",
                 "owner"."uuid" AS "failedAttemptOfMessageUuid"
-           FROM "logged_api_request"
-           LEFT JOIN "message" AS "owner" ON "owner"."id" = "logged_api_request"."failed_attempt_of_message_id"
+           FROM "api_request"
+           LEFT JOIN "message" AS "owner" ON "owner"."id" = "api_request"."failed_attempt_of_message_id"
           ORDER BY "record_id"`,
       )
       .all();
@@ -454,33 +405,4 @@ function loggedApiRequestContent(dbPath: string, logsRoot: string) {
   } finally {
     db.close();
   }
-}
-
-/** One API request of the `sess-rec-main` session, with fixed timings and the given ids. */
-function recordedApiRequest(ids: {
-  requestId: string | null;
-  messageId: string;
-  agentId: string | null;
-}): RecordedApiRequest {
-  return {
-    sessionId: "sess-rec-main",
-    agentId: ids.agentId,
-    method: "POST",
-    path: "/v1/messages",
-    query: "",
-    headers: {},
-    body: { model: "claude-opus-4-8", messages: [] },
-    response: {
-      status: 200,
-      requestId: ids.requestId,
-      headers: {},
-      body: { id: ids.messageId, type: "message", content: [] },
-      isStreamed: true,
-    },
-    timings: {
-      arrivedAt: "2026-10-18T10:00:00.000Z",
-      firstByteAt: "2026-10-18T10:00:01.000Z",
-      endedAt: "2026-10-18T10:00:02.000Z",
-    },
-  };
 }

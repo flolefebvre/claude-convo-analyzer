@@ -166,7 +166,7 @@ function PromptRow({
 /** An assistant turn: markdown body (or the API error when the turn failed),
  *  a quiet header (model only when it differs from the agent's, effort only on
  *  a change, the cost as plain figures), its nested tool calls, and, when it
- *  was recorded, what its API request sent. */
+ *  the logs hold its API request, what that request sent. */
 function AssistantTurn({
   message,
   time,
@@ -240,10 +240,10 @@ function AssistantTurn({
         </div>
       )}
 
-      {message.whatWasSentSource !== null && (
+      {message.apiRequestId !== null && (
         <div className="calls">
           <WhatWasSentDisclosure
-            source={message.whatWasSentSource}
+            apiRequestId={message.apiRequestId}
             failedAttemptCount={message.failedAttemptCount}
             failedAttemptsLostMs={message.failedAttemptsLostMs}
           />

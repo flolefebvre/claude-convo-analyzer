@@ -65,7 +65,7 @@ Counts are from the snapshot (across main + sub-agent files combined).
 | `agent-setting`         | 23     | `agentSetting` (e.g. `claude`).                                                                                                                                                                                                                         | **No**                                     |
 | `worktree-state`        | 15     | `worktreeSession` dict — git worktree association.                                                                                                                                                                                                      | **No**                                     |
 | `custom-title`          | 15     | `customTitle` — user-set conversation title.                                                                                                                                                                                                            | **Consider** (overrides `ai-title`)        |
-| `api-request`           | §9     | One API request an Agent sent, since 2.1.300: its parameters, and pointers to its system prompt, tools and messages.                                                                                                                                    | **Yes** → `logged_api_request` (§9)        |
+| `api-request`           | §9     | One API request an Agent sent, since 2.1.300: its parameters, and pointers to its system prompt, tools and messages.                                                                                                                                    | **Yes** → `api_request` (§9)               |
 | `api-request-shape`     | §9     | The system prompt and tools of `api-request`s, stored once under `shapeHash`.                                                                                                                                                                           | **Yes** → `system_prompt`, `tool_set` (§9) |
 | `api-request-blob`      | §9     | One message of `api-request`s, stored once under its hash.                                                                                                                                                                                              | **Yes** → `sent_message` (§9)              |
 | `cost-state`            | §9     | Claude Code's own per-process cost and usage totals.                                                                                                                                                                                                    | **No** (§9)                                |
@@ -436,7 +436,7 @@ Refresh reads the `api-request`, `api-request-shape` and `api-request-blob`
 records of every file of a Conversation, main thread and sub-agents
 (`parseSessionLines`, `src/core/parse.ts`).
 
-- **`logged_api_request`**: one row per `api-request` record, whether or not a
+- **`api_request`**: one row per `api-request` record, whether or not a
   Turn answered it, with its file's Agent and its place in that file. Its
   Turn is the assistant record of the same file whose `requestRef` names it;
   a `requestRef` into another file joins nothing, so such a Turn has no What

@@ -24,9 +24,6 @@
 // The pane shows one Transcript page (`?page=`, page 1 the bare URL). A
 // deep link carries no page: core opens the page holding its anchor.
 //
-// A Side request picked in the tree (`?sideRequest=<api_request id>`) takes
-// the pane instead: what it sent, in the same panel as a recorded Turn's.
-//
 // The transcript read goes through the cached/`connection()`-gated
 // `loadTranscript` seam (ADR-0002 — the component never touches core/DB
 // directly).
@@ -36,20 +33,13 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
 import { LoadingRegion } from "@/app/_components/loading-region";
-import { SideRequestPane } from "@/app/_components/transcript/side-request-pane";
 import { TranscriptPane } from "@/app/_components/transcript/transcript-pane";
 import { BackLink, TranscriptTree } from "@/app/_components/transcript/transcript-tree";
 import { loadConversations, loadFamily, loadTranscript } from "@/app/_lib/conversations";
 import { activeNowUntil } from "@/app/_lib/live";
 import { resolvePage } from "@/app/_lib/search-params";
 import { agentLabels } from "@/app/_lib/transcript";
-import {
-  resolveAgent,
-  resolveCall,
-  resolveListReturn,
-  resolveMessage,
-  resolveSideRequest,
-} from "@/app/_lib/transcript-url";
+import { resolveAgent, resolveCall, resolveListReturn, resolveMessage } from "@/app/_lib/transcript-url";
 import { Skeleton } from "@/components/ui/skeleton";
 
 /** The route's URL view-state: which agent, which Transcript page, which
@@ -60,7 +50,6 @@ type TranscriptSearchParams = {
   call?: string | string[];
   msg?: string | string[];
   from?: string | string[];
-  sideRequest?: string | string[];
 };
 
 /** The route inputs, as Next hands them over. */
@@ -106,7 +95,7 @@ export default function ConversationPage({ params, searchParams }: RouteProps) {
  */
 async function readRoute({ params, searchParams }: RouteProps) {
   const { sessionId } = await params;
-  const { agent, page, call, msg, from, sideRequest } = await searchParams;
+  const { agent, page, call, msg, from } = await searchParams;
   const anchoredCall = resolveCall(call);
   const anchoredMessage = resolveMessage(msg);
   // With no `?page=`, core opens the Transcript page holding the anchor.
@@ -114,13 +103,9 @@ async function readRoute({ params, searchParams }: RouteProps) {
   if (view === null) notFound();
   // Both panes name agents the same way ("Plan #2" when siblings share a type).
   const labels = agentLabels(view.tree);
-  // `?sideRequest=` picks a Side request of this Conversation for the pane; an
-  // id it no longer has (re-parsed since) leaves the agent's transcript there.
-  const sideRequestId = resolveSideRequest(sideRequest);
-  const selectedSideRequest = view.sideRequests.find((s) => s.apiRequestId === sideRequestId);
   // A transcript opened from the list carries that list view (`?from=`): every
   // link to another transcript passes it on.
-  return { view, labels, anchoredCall, anchoredMessage, selectedSideRequest, listReturn: resolveListReturn(from).from };
+  return { view, labels, anchoredCall, anchoredMessage, listReturn: resolveListReturn(from).from };
 }
 
 /** The back link restores the list view the transcript was opened from (`?from=`). */
@@ -130,24 +115,20 @@ async function TranscriptBackLink({ searchParams }: Pick<RouteProps, "searchPara
 }
 
 async function TreeRegion(props: RouteProps) {
-  const { view, labels, selectedSideRequest, listReturn } = await readRoute(props);
+  const { view, labels, listReturn } = await readRoute(props);
   return (
     <TranscriptTree
       view={view}
       labels={labels}
       lowerBound={view.hasUnpriced}
       listReturn={listReturn}
-      selectedSideRequestId={selectedSideRequest?.apiRequestId}
       activeUntil={activeNowUntil(view.sourceChangedAt, new Date())}
     />
   );
 }
 
 async function PaneRegion(props: RouteProps) {
-  const { view, labels, anchoredCall, anchoredMessage, selectedSideRequest, listReturn } = await readRoute(props);
-  if (selectedSideRequest !== undefined) {
-    return <SideRequestPane view={view} sideRequest={selectedSideRequest} listReturn={listReturn} />;
-  }
+  const { view, labels, anchoredCall, anchoredMessage, listReturn } = await readRoute(props);
   // The continuation lineage of this session (issue #46): the pane shows its
   // DIRECT parent/continuations as a banner. Standalone sessions get `size === 1`
   // and no banner at all.

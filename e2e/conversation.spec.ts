@@ -10,9 +10,7 @@ const AGENT_MESSAGES_TITLE = "Coordinate the search rewrite across agents";
 // The seeded conversation spanning three Transcript pages, and a prompt on its second (issue #82).
 const LONG_TITLE = "Port every report to the new rendering engine";
 const PAGE_TWO_TEXT = "Now port the quarterly heatmap export the same way.";
-// The seeded Conversation every Turn of which is recorded, with one Side request of each kind.
-const RECORDED_TITLE = "Add an audit trail to the billing exports";
-// The seeded unrecorded Conversation whose log records its API requests (issue #216).
+// The seeded Conversation whose log records its API requests (issue #216).
 const LOGGED_REQUESTS_TITLE = "Trace the slow invoice query";
 // The seeded Conversation with an ExitPlanMode call, then a SendMessage call (issue #149).
 const PLAN_HANDOFF_TITLE = "Hand the search plan to the docs team";
@@ -79,66 +77,25 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
       .toBe(`${appBarHeight}px`);
   });
 
-  test("lists the recorded Conversation's Side requests beside its Agents, each opening what it sent", async ({
-    page,
-  }) => {
-    await openConversation(page, RECORDED_TITLE);
-
-    const sideRequests = page.getByRole("navigation", { name: "Side requests" });
-    await expect(page.getByTitle(/^Requests Claude Code makes on its own/).first()).toBeVisible();
-    await expect(sideRequests.getByRole("link")).toHaveCount(6);
-
-    await sideRequests.getByRole("link", { name: /^Session naming/ }).click();
-    await page.waitForURL((url) => url.searchParams.has("sideRequest"));
-    await expect(sideRequests.getByRole("link", { name: /^Session naming/ })).toHaveAttribute("aria-current", "page");
-    // The "What was sent" panel opens on its own and reads what the Side request sent.
-    const whatWasSent = page.getByRole("main").getByRole("group").filter({ hasText: "What was sent" });
-    await expect(whatWasSent).toHaveAttribute("open", "");
-    await expect(whatWasSent.getByRole("tab", { name: "Changes" })).toHaveAttribute("aria-selected", "true");
-    await expect(whatWasSent.getByText(/^Everything it sent \(\d+ messages?\)$/)).toBeVisible();
-    await expect(factOf(whatWasSent, "max_tokens")).toHaveText("512");
-
-    // Another Side request reads its own: the safety monitor sends `max_tokens: 256`.
-    await sideRequests.getByRole("link", { name: /^Safety monitor/ }).click();
-    await expect(sideRequests.getByRole("link", { name: /^Safety monitor/ })).toHaveAttribute("aria-current", "page");
-    await expect(whatWasSent).toHaveAttribute("open", "");
-    await expect(factOf(whatWasSent, "max_tokens")).toHaveText("256");
-  });
-
-  test("switches what was sent to Request, then by keyboard to Raw, its body, response and headers each copyable", async ({
-    page,
-  }) => {
-    await openConversation(page, RECORDED_TITLE);
-    await page
-      .getByRole("navigation", { name: "Side requests" })
-      .getByRole("link", { name: /^Session naming/ })
-      .click();
-    await page.waitForURL((url) => url.searchParams.has("sideRequest"));
-    const whatWasSent = page.getByRole("main").getByRole("group").filter({ hasText: "What was sent" });
+  test("switches what was sent to Request, then by keyboard to Raw, its body copyable", async ({ page }) => {
+    await openConversation(page, LOGGED_REQUESTS_TITLE);
+    const whatWasSent = page.getByRole("main").getByRole("group").filter({ hasText: "What was sent" }).first();
+    await whatWasSent.getByText("What was sent").click();
 
     await whatWasSent.getByRole("tab", { name: "Request" }).click();
     const requestView = whatWasSent.getByRole("tabpanel", { name: "Request" });
-    await expect(requestView.getByRole("heading", { name: /^System prompt \(1 block\)$/ })).toBeVisible();
+    await expect(requestView.getByRole("heading", { name: /^System prompt \(\d+ blocks?\)$/ })).toBeVisible();
     await expect(requestView.getByRole("heading", { name: /^Messages \(\d+ messages?\)$/ })).toBeVisible();
 
     // The switch is a tab list: the arrow keys move between its views.
     await whatWasSent.getByRole("tab", { name: "Request" }).press("ArrowRight");
     await expect(whatWasSent.getByRole("tab", { name: "Raw" })).toHaveAttribute("aria-selected", "true");
     const rawView = whatWasSent.getByRole("tabpanel", { name: "Raw" });
-    await expect(
-      rawView.getByRole("tabpanel", { name: "Request body" }).getByText("model:", { exact: true }),
-    ).toBeVisible();
+    await expect(rawView.getByText("model:", { exact: true })).toBeVisible();
     await expect(rawView.getByRole("button", { name: "Copy JSON" })).toBeVisible();
-    for (const part of ["Response body", "Request headers"]) {
-      await rawView.getByRole("tab", { name: part }).click();
-      await expect(
-        rawView.getByRole("tabpanel", { name: part }).getByRole("button", { name: "Copy JSON" }),
-      ).toBeVisible();
-    }
-    await expect(rawView.getByText("anthropic-version:", { exact: true })).toBeVisible();
   });
 
-  test("shows what an unrecorded Turn sent, from its log: the new messages and changes, the whole request, and the rebuilt body", async ({
+  test("shows what a Turn sent, from its log: the new messages and changes, the whole request, and the rebuilt body", async ({
     page,
   }) => {
     await openConversation(page, LOGGED_REQUESTS_TITLE);
@@ -155,6 +112,7 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     await expect(whatWasSent.getByText(/could not be rebuilt/)).toHaveCount(0);
     await expect(whatWasSent.getByRole("heading", { name: "System prompt changed" })).toBeVisible();
     await expect(whatWasSent.getByText(/^Added: Grep$/)).toBeVisible();
+    await expect(factOf(whatWasSent, "sent")).toHaveText(/^\d{2}:\d{2}$/);
     await expect(factOf(whatWasSent, "max_tokens")).toHaveText("32000");
     await expect(factOf(whatWasSent, "betas")).toHaveText(/^2 betas/);
     await expect(whatWasSent.getByRole("term").filter({ hasText: /^total$/ })).toHaveCount(0);
@@ -169,14 +127,14 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
 
     await whatWasSent.getByRole("tab", { name: "Raw" }).click();
     const rawView = whatWasSent.getByRole("tabpanel", { name: "Raw" });
-    await expect(rawView.getByRole("tab")).toHaveText(["Request body"]);
+    await expect(rawView.getByRole("tab")).toHaveCount(0);
     await expect(rawView.getByText("tools", { exact: true })).toBeVisible();
     await expect(rawView.getByText("messages", { exact: true })).toBeVisible();
     await expect(rawView.getByText(/^Rebuilt from the conversation log/)).toBeVisible();
     await expect(rawView.getByRole("button", { name: "Copy JSON" })).toBeVisible();
   });
 
-  test("shows the Failed attempts an unrecorded Turn's log records: how many, and the time they lost, with no status", async ({
+  test("shows the Failed attempts a Turn's log records: how many, and the time they lost, with no status", async ({
     page,
   }) => {
     await openConversation(page, LOGGED_REQUESTS_TITLE);
@@ -190,13 +148,6 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     await expect(whatWasSent.getByRole("heading", { name: "1 failed attempt before this request" })).toBeVisible();
     await expect(whatWasSent.getByText("lost 300ms", { exact: true })).toBeVisible();
     await expect(whatWasSent.getByText(/no error message/)).toHaveCount(0);
-  });
-
-  test("shows no Side requests for an unrecorded Conversation", async ({ page }) => {
-    await openConversation(page, TITLE);
-
-    await expect(page.getByRole("navigation", { name: "Agents" })).toBeVisible();
-    await expect(page.getByRole("navigation", { name: "Side requests" })).toHaveCount(0);
   });
 
   test("renders the messages agents send each other, and their task notifications", async ({ page }) => {

@@ -8,8 +8,6 @@
 import type { CostByType, Tokens } from "@/core/cost";
 import type { ConversationDetail } from "@/core/read";
 
-import { sideRequestKindLabel } from "@/app/_lib/side-requests";
-
 /**
  * Display label for a sub-agent row. The root/main thread carries an empty
  * `agentType` (see `subAgentBreakdown` in core), so an empty — or whitespace-only
@@ -151,14 +149,12 @@ function groupSubAgents(subAgents: LabeledSubAgent[]): SubAgentSection {
  * Shape a `ConversationDetail` into render-ready breakdowns. Per-model and
  * per-skill rows are ranked by cost (desc) with a `totalCost` for share-of-total
  * bars; sub-agents are labeled (root → "main") then grouped by type into ranked,
- * expandable {@link SubAgentGroup}s; Side requests are labeled by kind and
- * ranked. Empty flags let the renderer show a note.
+ * expandable {@link SubAgentGroup}s. Empty flags let the renderer show a note.
  */
 export function detailSections(detail: ConversationDetail): {
   perModel: RankedSection<ConversationDetail["perModel"][number]>;
   subAgents: SubAgentSection;
   perSkill: RankedSection<ConversationDetail["perSkill"][number]>;
-  sideRequests: RankedSection<LabeledSideRequestKind>;
 } {
   const labeled = detail.subAgents.map((sub) => ({
     ...sub,
@@ -168,11 +164,5 @@ export function detailSections(detail: ConversationDetail): {
     perModel: rank(detail.perModel),
     subAgents: groupSubAgents(labeled),
     perSkill: rank(detail.perSkill),
-    sideRequests: rank(
-      detail.sideRequests.byKind.map((group) => ({ ...group, label: sideRequestKindLabel(group.kind) })),
-    ),
   };
 }
-
-/** The Side requests of one kind, with the kind's display label. */
-export type LabeledSideRequestKind = ConversationDetail["sideRequests"]["byKind"][number] & { label: string };

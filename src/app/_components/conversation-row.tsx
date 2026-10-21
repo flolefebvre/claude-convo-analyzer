@@ -10,7 +10,7 @@
 // the panel is `SubAgentBreakdown` (ephemeral per-group open/closed state),
 // which receives plain serializable props.
 
-import { AlertTriangle, CircleDot, GitBranch } from "lucide-react";
+import { AlertTriangle, GitBranch } from "lucide-react";
 import Link from "next/link";
 
 import { ActiveNowMarker } from "@/app/_components/active-now-marker";
@@ -23,12 +23,11 @@ import type { ErrorViewRow } from "@/app/_lib/errors-view";
 import type { FamilyView } from "@/app/_lib/family-view";
 import { PendingLink } from "@/app/_components/pending-link";
 import { formatCompactTokens, formatCost, formatDuration, formatModelName, formatTokens } from "@/app/_lib/format";
-import { SIDE_REQUESTS_TOOLTIP, sideRequestCountLabel } from "@/app/_lib/side-requests";
 import { modelLabel } from "@/app/_lib/sort";
 import { agentHref, withListReturn } from "@/app/_lib/transcript-url";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import type { ConversationDetail, ConversationSummary, RecordedState } from "@/core/read";
+import type { ConversationDetail, ConversationSummary } from "@/core/read";
 
 /**
  * Width and visibility of each conversation-table column, shared by the page's
@@ -180,9 +179,6 @@ export function ConversationRow({
                 <span className="sr-only"> conversations in this continuation family</span>
               </span>
             )}
-            {/* Recorded: its Turns have their API requests in a Recording. An
-                unrecorded Conversation shows nothing, exactly as before. */}
-            {row.recordedState !== "unrecorded" && <RecordedMarker recordedState={row.recordedState} />}
             {activeUntil !== null && <ActiveNowMarker activeUntil={activeUntil} />}
           </div>
           {/* What the hidden columns would say, under the title: the date below
@@ -242,27 +238,6 @@ export function ConversationRow({
         </TableRow>
       )}
     </>
-  );
-}
-
-/**
- * The small "Recorded" badge beside a title, in the glossary's words, its
- * tooltip saying whether every Turn or only some have their API request.
- */
-function RecordedMarker({ recordedState }: { recordedState: Exclude<RecordedState, "unrecorded"> }) {
-  const isPartial = recordedState === "partially-recorded";
-  return (
-    <span
-      className="inline-flex shrink-0 items-center rounded bg-muted px-1 py-0.5 text-muted-foreground"
-      title={
-        isPartial
-          ? "Partially recorded — only some Turns have their API request in a Recording."
-          : "Recorded — every Turn has its API request in a Recording."
-      }
-    >
-      <CircleDot className={`size-3 ${isPartial ? "opacity-60" : ""}`} aria-hidden />
-      <span className="sr-only">{isPartial ? "Partially recorded" : "Recorded"}</span>
-    </span>
   );
 }
 
@@ -564,7 +539,7 @@ function ErrorList({ errors, listReturn }: { errors: ErrorViewRow[]; listReturn:
   );
 }
 
-/** The cost breakdowns from the server-fetched detail: Model / Skill / Sub-agent, then the Side requests when there are any. */
+/** The cost breakdowns from the server-fetched detail: Model / Skill / Sub-agent. */
 function Breakdowns({
   detail,
   sessionId,
@@ -615,45 +590,15 @@ function Breakdowns({
           <SubAgentBreakdown section={sections.subAgents} sessionId={sessionId} listReturn={listReturn} />
         )}
       </Section>
-
-      {/* Only a Recorded Conversation has Side requests: an unrecorded one
-          shows nothing more than before. */}
-      {!sections.sideRequests.isEmpty && (
-        <Section title="Side requests" hint={SIDE_REQUESTS_TOOLTIP}>
-          <p className="mb-2 text-sm text-muted-foreground">
-            {sideRequestCountLabel(detail.sideRequests.count)} · {detail.sideRequests.unpriced ? "~" : ""}
-            {formatCost(detail.sideRequests.costUsd)}
-          </p>
-          <CostList>
-            {sections.sideRequests.rows.map((group) => (
-              <CostRow
-                key={group.kind}
-                label={group.count > 1 ? `${group.label} ×${group.count}` : group.label}
-                costUsd={group.costUsd}
-                max={sections.sideRequests.totalCost}
-                unpriced={group.unpriced}
-              />
-            ))}
-          </CostList>
-        </Section>
-      )}
     </>
   );
 }
 
-/** A section of the detail panel: a sentence-case heading over its content; `hint` explains the heading's term on hover. */
-function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+/** A section of the detail panel: a sentence-case heading over its content. */
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h3 className="mb-3 text-sm font-medium text-foreground">
-        {hint === undefined ? (
-          title
-        ) : (
-          <span className="cursor-help underline decoration-dotted underline-offset-4" title={hint}>
-            {title}
-          </span>
-        )}
-      </h3>
+      <h3 className="mb-3 text-sm font-medium text-foreground">{title}</h3>
       {children}
     </div>
   );

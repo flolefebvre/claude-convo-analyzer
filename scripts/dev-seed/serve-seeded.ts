@@ -2,8 +2,9 @@
 // in `data/seed/` (timeline ending now), pick the port, then run their Next
 // commands one after another against the seed, with `CCA_DB_PATH`,
 // `CCA_LOGS_ROOT`, `CCA_RECORDINGS_ROOT` and `CCA_SETTINGS_PATH` pointing at it
-// so the app reads only the fake logs and Recordings, and never reads or writes
-// the user's settings.
+// so the app reads only the fake logs, a Recorder started from it never writes
+// under the user's Recordings root, and the user's settings are never read or
+// written.
 //
 // The port is `PORT` when set, else the first free one from 3001, so several
 // worktrees can each serve their own seeded app at once. The URL is printed as
@@ -60,7 +61,8 @@ export function serveSeeded(opts: {
 async function main({ commands, env = {} }: Parameters<typeof serveSeeded>[0]): Promise<void> {
   const requested = explicitPort();
 
-  const seed = await seedEnvironment({ dir: path.resolve("data", "seed"), now: new Date() });
+  const seedDir = path.resolve("data", "seed");
+  const seed = await seedEnvironment({ dir: seedDir, now: new Date() });
   const { conversations, subAgents, projects } = seed.generated;
   console.log(`Seeded ${conversations} conversations (${subAgents} sub-agents) across ${projects} projects.`);
 
@@ -69,7 +71,8 @@ async function main({ commands, env = {} }: Parameters<typeof serveSeeded>[0]): 
     ...env,
     CCA_DB_PATH: seed.dbPath,
     CCA_LOGS_ROOT: seed.logsRoot,
-    CCA_RECORDINGS_ROOT: seed.recordingsRoot,
+    // Created only if a Recorder is started from the seeded app.
+    CCA_RECORDINGS_ROOT: path.join(seedDir, "recordings"),
     CCA_SETTINGS_PATH: seed.settingsPath,
   };
 

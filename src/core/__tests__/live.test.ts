@@ -1,4 +1,4 @@
-// Live: watching the logs and Recordings, it runs a Refresh when they change,
+// Live: watching the logs, it runs a Refresh when they change,
 // through the shared refresh runner. Driven here by a fake watcher the test
 // fires by hand and a job the test settles by hand, under fake timers.
 

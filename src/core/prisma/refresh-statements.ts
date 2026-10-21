@@ -112,32 +112,6 @@ const TURN_DURATION_COLUMN_BY_FIELD = {
 
 const API_REQUEST_COLUMN_BY_FIELD = {
   conversationId: "conversation_id",
-  messageId: "message_id",
-  agentId: "agent_id",
-  kind: "kind",
-  otherKindLabel: "other_kind_label",
-  requestId: "request_id",
-  responseMessageId: "response_message_id",
-  externalAgentId: "external_agent_id",
-  method: "method",
-  path: "path",
-  status: "status",
-  arrivedAt: "arrived_at",
-  firstByteAt: "first_byte_at",
-  endedAt: "ended_at",
-  proxyError: "proxy_error",
-  isClientAborted: "is_client_aborted",
-  errorMessage: "error_message",
-  inputTokens: "input_tokens",
-  outputTokens: "output_tokens",
-  cacheCreation5mTokens: "cache_creation_5m_tokens",
-  cacheCreation1hTokens: "cache_creation_1h_tokens",
-  cacheReadTokens: "cache_read_tokens",
-  model: "model",
-} as const;
-
-const LOGGED_API_REQUEST_COLUMN_BY_FIELD = {
-  conversationId: "conversation_id",
   agentId: "agent_id",
   messageId: "message_id",
   failedAttemptOfMessageId: "failed_attempt_of_message_id",
@@ -171,8 +145,6 @@ export type PrLinkRow = InsertRow<keyof typeof PR_LINK_COLUMN_BY_FIELD>;
 export type TurnDurationRow = InsertRow<keyof typeof TURN_DURATION_COLUMN_BY_FIELD>;
 /** An `api_request` row to insert. */
 export type ApiRequestRow = InsertRow<keyof typeof API_REQUEST_COLUMN_BY_FIELD>;
-/** A `logged_api_request` row to insert. */
-export type LoggedApiRequestRow = InsertRow<keyof typeof LOGGED_API_REQUEST_COLUMN_BY_FIELD>;
 
 /** What the skip/changed/delete decision needs of a stored Conversation. */
 export type StoredConversation = {
@@ -250,15 +222,15 @@ export function prepareRefreshStatements(db: Database.Database) {
   );
   const deleteUnreferencedSystemPrompts = db.prepare(
     `DELETE FROM "system_prompt" WHERE NOT EXISTS
-       (SELECT 1 FROM "logged_api_request" WHERE "system_prompt_hash" = "system_prompt"."hash")`,
+       (SELECT 1 FROM "api_request" WHERE "system_prompt_hash" = "system_prompt"."hash")`,
   );
   const deleteUnreferencedToolSets = db.prepare(
     `DELETE FROM "tool_set" WHERE NOT EXISTS
-       (SELECT 1 FROM "logged_api_request" WHERE "tool_set_hash" = "tool_set"."hash")`,
+       (SELECT 1 FROM "api_request" WHERE "tool_set_hash" = "tool_set"."hash")`,
   );
   const deleteUnnamedSentMessages = db.prepare(
     `DELETE FROM "sent_message" WHERE "hash" NOT IN
-       (SELECT "tail_hash"."value" FROM "logged_api_request", json_each("tail_message_hashes_json") AS "tail_hash")`,
+       (SELECT "tail_hash"."value" FROM "api_request", json_each("tail_message_hashes_json") AS "tail_hash")`,
   );
   // `uuid` is not unique: the first message stored with it decides.
   const selectMessageOwner = db.prepare(
@@ -306,14 +278,13 @@ export function prepareRefreshStatements(db: Database.Database) {
     insertPrLink: prepareInsert(db, "pr_link", PR_LINK_COLUMN_BY_FIELD),
     insertTurnDuration: prepareInsert(db, "turn_duration", TURN_DURATION_COLUMN_BY_FIELD),
     insertApiRequest: prepareInsert(db, "api_request", API_REQUEST_COLUMN_BY_FIELD),
-    insertLoggedApiRequest: prepareInsert(db, "logged_api_request", LOGGED_API_REQUEST_COLUMN_BY_FIELD),
     /** Store a system prompt under its hash, keeping the smaller spelling when one already is. */
     insertSystemPrompt: (hash: string, blocksJson: string) => void insertSystemPrompt.run(hash, blocksJson),
     /** Store a tool set under its hash, keeping the smaller spelling when one already is. */
     insertToolSet: (hash: string, toolsJson: string) => void insertToolSet.run(hash, toolsJson),
     /** Store a sent message under its hash, keeping the smaller spelling when one already is. */
     insertSentMessage: (hash: string, messageJson: string) => void insertSentMessage.run(hash, messageJson),
-    /** Delete every system prompt and tool set no logged API request references any more, and every sent message no tail names. */
+    /** Delete every system prompt and tool set no API request references any more, and every sent message no tail names. */
     deleteUnreferencedRequestPieces: () => {
       deleteUnreferencedSystemPrompts.run();
       deleteUnreferencedToolSets.run();

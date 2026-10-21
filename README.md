@@ -6,9 +6,8 @@ per-conversation token usage and cost — broken down by project, model, skill,
 and sub-agent.
 
 **Everything stays on your machine.** The app only reads `~/.claude/projects`
-(and, if you use the optional [Recorder](#recording-what-claude-code-sent),
-its Recordings) and writes a local SQLite file (`./data/analyzer.db`); every
-path is configurable. Nothing is ever sent anywhere.
+and writes a local SQLite file (`./data/analyzer.db`); every path is
+configurable. Nothing is ever sent anywhere.
 
 > **About the cost figure:** the cost shown is always _"what these tokens would
 > cost through the public API"_. If you're on a Pro or Max subscription you
@@ -122,11 +121,11 @@ can keep browsing while it runs. When an update changes how logs are parsed,
 the app says so and asks for a Refresh.
 
 To skip the clicking, switch on **Live**, the toggle next to Refresh (off by
-default). While it is on, the app watches your logs and Recordings and refreshes
-a couple of seconds after they change, so open pages follow your conversations
-as they happen. A pulsing dot shows while it is on, and the same dot marks a
+default). While it is on, the app watches your logs and refreshes a couple of
+seconds after they change, so open pages follow your conversations as they
+happen. A pulsing dot shows while it is on, and the same dot marks a
 conversation as **active now**, in the list and on its transcript, while its log
-or Recording changed in the last 2 minutes. The choice is saved in
+changed in the last 2 minutes. The choice is saved in
 `~/.claude-convo-analyzer/settings.json`, so a server restarted with Live on
 starts watching again and catches up on what it missed.
 
@@ -144,8 +143,8 @@ value resolves against the process working directory (the repo root under
   migrated on first use.
 - `CCA_LOGS_ROOT` — the logs root that **Refresh** scans (default
   `~/.claude/projects`).
-- `CCA_RECORDINGS_ROOT` — the Recordings that **Refresh** also reads and the
-  Recorder writes (default `~/.claude-convo-analyzer/recordings`).
+- `CCA_RECORDINGS_ROOT` — where the Recorder writes its Recordings (default
+  `~/.claude-convo-analyzer/recordings`).
 - `CCA_SETTINGS_PATH` — the settings file that keeps whether **Live** is on
   and your **Favorites** (default `~/.claude-convo-analyzer/settings.json`).
   It sits outside the database, so a Refresh or a deleted database never loses
@@ -155,26 +154,28 @@ value resolves against the process working directory (the repo root under
 CCA_DB_PATH=data/demo.db CCA_LOGS_ROOT=/tmp/demo-logs pnpm dev
 ```
 
-## Recording what Claude Code sent
+## What was sent
 
 Since Claude Code 2.1.300 the logs record each request Claude Code sends, and
 every turn of such a conversation, sub-agents included, shows **What was
-sent** without the Recorder: the messages new since the previous request, the
-system-reminders Claude Code injected included, how the system prompt and
-tools changed since it, the whole request with every message, and the request
-body as the logs rebuild it. A message the logs cannot rebuild is shown
-missing and counted. A turn Claude Code had to retry shows how many failed
-attempts preceded it and the time they lost, though not why they failed.
-Where a turn was also recorded, what the logs hold wins.
+sent**, in three views: **Changes**, the messages new since the previous
+request (the system-reminders Claude Code injected included) and how the
+system prompt and tools changed since it; **Request**, the whole request by
+part; and **Raw**, the request body as the logs rebuild it, as copyable JSON.
+The request parameters sit above all three. A message the logs cannot rebuild
+is shown missing and counted. A turn Claude Code had to retry shows how many
+failed attempts preceded it and the time they lost, though not why they
+failed. Conversations logged by earlier versions of Claude Code show none of
+this.
 
-Before 2.1.300 the logs show the conversation, but not what Claude Code
-actually sent the API: the system prompt, the tool definitions, the
-system-reminders it injects. And they never show why a request failed before
-Claude Code retried it, nor its own background requests (naming the session,
-probing your quota, the safety monitor, suggestions), whose tokens are missing
-from every cost the logs alone give. The **Recorder** fills that gap: an
-optional local proxy that forwards every request to the Anthropic API unchanged
-and keeps a copy on disk.
+Claude Code's own background requests (naming the session, suggestions, web
+summaries) never appear in the logs, so no cost counts them.
+
+## The Recorder
+
+The **Recorder** is an optional local proxy that forwards every request to the
+Anthropic API unchanged and keeps a copy on disk, a Recording. The app no
+longer reads Recordings: what was sent comes from the logs.
 
 The **Recorder** item in the app bar, beside Live and Refresh, says whether it
 runs ("Recorder: on" or "Recorder: off"; hover it for the port). Its **Start**
@@ -194,19 +195,7 @@ copies for you (along with a shell alias) and `pnpm recorder` prints:
 ANTHROPIC_BASE_URL=http://127.0.0.1:4242 claude
 ```
 
-Only sessions started that way are recorded. Click **Refresh** in the app and a
-recorded conversation gains:
-
-- **What was sent** on each turn, in three views: **Changes**, the messages new
-  since the previous request (injected context included) and how the system
-  prompt and tools changed; **Request**, the whole request by part; and
-  **Raw**, its request body, response body and headers as JSON, each copyable.
-  The request parameters and timings sit above all three.
-- **Failed attempts** with their status and error: the overloaded,
-  rate-limited or dropped requests Claude Code retried before the turn
-  succeeded, why each failed, and the time each one lost.
-- **Side requests**: Claude Code's background requests, in the Transcript and
-  in the conversation's cost.
+Only sessions started that way are recorded.
 
 Stop the Recorder with **Stop** in its popover, or with Ctrl-C in its terminal;
 it lets requests in flight finish first (press Ctrl-C twice to quit at once).
@@ -231,8 +220,7 @@ Claude Code logs.
 
 The app discovers each **project** (a directory where you ran Claude Code) under
 `~/.claude/projects`, parses every session's `.jsonl` transcript, and stores a
-deterministic, deduplicated token ledger. Recordings, when present, only add to
-it: a turn's usage always comes from the logs. Cost is computed in application code
+deterministic, deduplicated token ledger. Cost is computed in application code
 from a per-model, per-token-type price list — it's a hypothetical "what these
 tokens would list for on the public API today" figure, not your actual billing.
 
@@ -281,10 +269,9 @@ approach and fixtures.
 
 For demo data, `pnpm seed` builds a self-contained seed environment in
 `data/seed/`: invented logs in `data/seed/projects/`, ingested into
-`data/seed/seed.db`, and invented Recordings of some of them in
-`data/seed/recordings/`. Each run wipes and rebuilds that directory; your real
-database, logs and Recordings are never read or written. To seed and serve the
-app on it in one step:
+`data/seed/seed.db`. Each run wipes and rebuilds that directory; your real
+database and logs are never read or written. To seed and serve the app on it in
+one step:
 
 ```bash
 pnpm dev:seed
@@ -292,19 +279,18 @@ pnpm dev:seed
 
 It prints `Seeded app: http://localhost:<port>` — the first free port from
 3001, or `PORT` when set — so several checkouts can each run their own. Refresh
-in that app re-reads only the seeded logs, `CCA_RECORDINGS_ROOT` points at
-the seeded Recordings, and `CCA_SETTINGS_PATH` at `data/seed/settings.json`, so
+in that app re-reads only the seeded logs, `CCA_RECORDINGS_ROOT` points inside
+`data/seed/`, and `CCA_SETTINGS_PATH` at `data/seed/settings.json`, so
 Live starts off with three seeded favorites, and your own settings are never
 touched.
 
 The seeded activity ends now. `pnpm seed` also takes `--now=<ISO>`, and the same
 `--now` always yields the same data, which is what screenshots want; point the
-app at that seed with the two variables above, and `CCA_RECORDINGS_ROOT` at its
-Recordings:
+app at that seed with the two variables above:
 
 ```bash
 pnpm seed --now=2026-06-22T17:00:00Z
-CCA_DB_PATH=data/seed/seed.db CCA_LOGS_ROOT=data/seed/projects CCA_RECORDINGS_ROOT=data/seed/recordings pnpm dev
+CCA_DB_PATH=data/seed/seed.db CCA_LOGS_ROOT=data/seed/projects pnpm dev
 ```
 
 ## Was this made with AI?

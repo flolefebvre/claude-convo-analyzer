@@ -103,4 +103,43 @@ describe("migration idempotency", () => {
       db.close();
     }
   });
+
+  it("drops the API requests Recordings fed, and keeps the logs' under the plain name, from a database that still holds both", async () => {
+    const targets = committedMigrations().filter(
+      (m) => m.endsWith("_drop_recorded_api_request") || m.endsWith("_api_request_from_logged_api_request"),
+    );
+    expect(targets).toHaveLength(2);
+    createPrismaClient(dbPath);
+
+    // A database from before both: the logs' table under its old name, with a
+    // row, beside the table Recordings fed, with a row too.
+    let db = new Database(dbPath);
+    for (const target of targets) db.prepare("DELETE FROM _cca_migrations WHERE migration_name = ?").run(target);
+    db.exec(`ALTER TABLE "api_request" RENAME TO "logged_api_request"`);
+    db.pragma("foreign_keys = OFF");
+    db.exec(
+      `INSERT INTO "logged_api_request" ("conversation_id", "agent_id", "record_id", "kept_message_count",
+         "tail_message_hashes_json", "parameters_json", "cache_breakpoints_json", "position_in_file")
+       VALUES (1, 1, 'req-1', 0, '[]', '{}', '[]', 0)`,
+    );
+    db.exec(`CREATE TABLE "api_request" ("id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "kind" TEXT NOT NULL)`);
+    db.exec(`INSERT INTO "api_request" ("kind") VALUES ('session-naming')`);
+    db.close();
+
+    const prisma = createPrismaClient(dbPath);
+    await prisma.$disconnect();
+
+    db = new Database(dbPath);
+    try {
+      const tables = db
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('api_request', 'logged_api_request')",
+        )
+        .all();
+      expect(tables).toEqual([{ name: "api_request" }]);
+      expect(db.prepare(`SELECT "record_id" FROM "api_request"`).all()).toEqual([{ record_id: "req-1" }]);
+    } finally {
+      db.close();
+    }
+  });
 });

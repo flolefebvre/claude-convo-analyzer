@@ -1,10 +1,10 @@
-// `GET /api/api-request/<id>` — what a recorded Turn's API request sent, fetched
-// by the transcript's "What was sent" leaf the first time the reader opens it.
-// The page ships only the `api_request` row id; this is the read no server
+// `GET /api/api-request/<id>` — what a Turn's API request sent, as the
+// conversation logs record it (Claude Code 2.1.300+), fetched by the
+// transcript's "What was sent" leaf the first time the reader opens it. The
+// page ships only the `api_request` row id; this is the read no server
 // component can do, because the reader has not asked for it yet
-// (`docs/codebase/app-router.md`). The row id is stable until the next re-parse
-// of that Conversation — after one, or once the Recording no longer holds the
-// API request, a stale page's open gets a 404.
+// (`docs/codebase/app-router.md`). The row id is stable until the next
+// re-parse of that Conversation — after one, a stale page's open gets a 404.
 
 import { routePipe } from "@flefebvre/next-pipe/pipes";
 import { json } from "@flefebvre/next-pipe/server";
@@ -14,10 +14,10 @@ import { loadWhatWasSent } from "@/app/_lib/conversations";
 import { apiRequestIdSchema } from "./api-request-id-schema";
 
 /**
- * What the API request with row id `[id]` sent (parameters, timings, where
- * its new messages start, the system-prompt and tools diffs, the full
- * request): 400 for a
- * malformed id, 404 for an unknown one or one its Recording no longer holds.
+ * What the API request with row id `[id]` sent (parameters, the
+ * messages — the new ones, and those not rebuilt counted — the system-prompt
+ * and tools diffs, the system prompt and tools): 400 for a malformed id, 404
+ * for an unknown one.
  *
  * @example const res = await callRoute(routes.api["api-request"](String(message.apiRequestId)).GET());
  */

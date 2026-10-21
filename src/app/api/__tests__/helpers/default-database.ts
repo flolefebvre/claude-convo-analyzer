@@ -33,8 +33,7 @@ export type DefaultDatabase = { readonly recordingsRoot: string };
 
 /**
  * Register, at file scope, a temp default database and Recordings root:
- * `record` writes the Recordings first, then `logsRoot` is Refreshed into the
- * database; both are removed after the file.
+ * `logsRoot` is Refreshed into the database; both are removed after the file.
  *
  * @example const db = refreshedDefaultDatabase({ prefix: "cca-route-", logsRoot });
  */
@@ -42,7 +41,6 @@ export function refreshedDefaultDatabase(opts: {
   /** `mkdtemp` prefix, so a leaked directory names its owner. */
   prefix: string;
   logsRoot: string;
-  record?: (recordingsRoot: string) => Promise<void>;
 }): DefaultDatabase {
   let scratchDir = "";
   let recordingsRoot = "";
@@ -52,7 +50,6 @@ export function refreshedDefaultDatabase(opts: {
     recordingsRoot = path.join(scratchDir, "recordings");
     vi.stubEnv("CCA_DB_PATH", path.join(scratchDir, "analyzer.db"));
     vi.stubEnv("CCA_RECORDINGS_ROOT", recordingsRoot);
-    await opts.record?.(recordingsRoot);
     await refresh({ logsRoot: opts.logsRoot });
   });
 

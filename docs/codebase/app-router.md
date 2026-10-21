@@ -14,7 +14,7 @@ In order of preference — reach for the next one only when the previous doesn't
    reads after the initial render. Add one only for a read no server component can do: one the reader asks
    for after the page has rendered. There are four such routes. Two are read the first time the reader
    opens a disclosure: `GET /api/tool-call/[id]` serves a Tool call's body, and `GET /api/api-request/[id]`
-   what a recorded Turn's API request sent; the page ships only the summary and the row id, because a server
+   what a Turn's API request sent; the page ships only the summary and the row id, because a server
    component cannot render what nobody has opened yet. The third, `GET /api/recorder`, is polled: the app
    bar's Recorder item re-reads the Recorder's status through it while the page stays open, after its
    server part read it once for the first paint. The fourth, `GET /api/disk-usage`, is read each time the

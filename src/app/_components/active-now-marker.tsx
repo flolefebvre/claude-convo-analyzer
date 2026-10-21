@@ -29,7 +29,7 @@ export function ActiveNowMarker({ activeUntil }: { activeUntil: number }) {
       className="inline-flex shrink-0 items-center rounded bg-muted px-1 py-0.5"
       title="Active now — changed in the last 2 minutes while Live is on."
     >
-      {/* The Live toggle's pulsing dot, in the Recorded badge's icon box. */}
+      {/* The Live toggle's pulsing dot, in a muted badge's icon box. */}
       <span aria-hidden className="relative flex size-3 items-center justify-center">
         <span className="absolute inline-flex size-2 animate-ping rounded-full bg-cost opacity-75" />
         <span className="relative inline-flex size-2 rounded-full bg-cost" />
