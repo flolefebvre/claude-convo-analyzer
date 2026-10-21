@@ -176,6 +176,22 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     await expect(rawView.getByRole("button", { name: "Copy JSON" })).toBeVisible();
   });
 
+  test("shows the Failed attempts an unrecorded Turn's log records: how many, and the time they lost, with no status", async ({
+    page,
+  }) => {
+    await openConversation(page, LOGGED_REQUESTS_TITLE);
+
+    // The second Turn went through on a retry, 300 ms after its one Failed attempt.
+    const whatWasSent = page.getByRole("main").getByRole("group").filter({ hasText: "What was sent" }).nth(1);
+    await expect(whatWasSent.getByText("1 failed attempt · lost 300ms", { exact: true })).toBeVisible();
+    await expect(page.getByRole("main").getByText(/failed attempt/)).toHaveCount(1);
+
+    await whatWasSent.getByText("What was sent").click();
+    await expect(whatWasSent.getByRole("heading", { name: "1 failed attempt before this request" })).toBeVisible();
+    await expect(whatWasSent.getByText("lost 300ms", { exact: true })).toBeVisible();
+    await expect(whatWasSent.getByText(/no error message/)).toHaveCount(0);
+  });
+
   test("shows no Side requests for an unrecorded Conversation", async ({ page }) => {
     await openConversation(page, TITLE);
 

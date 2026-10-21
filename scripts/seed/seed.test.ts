@@ -144,6 +144,15 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     const subAgentView = await getTranscript(logged!.id, { dbPath: seed.dbPath, agentId: subAgent?.id });
     const turns = [...(view?.messages ?? []), ...(subAgentView?.messages ?? [])].filter((m) => m.role === "assistant");
     expect(turns.map((turn) => turn.whatWasSentSource?.from)).toEqual(Array(6).fill("logs"));
+    // The second Main-thread Turn went through on a retry, after one Failed attempt.
+    expect(turns.map((turn) => [turn.failedAttemptCount, turn.failedAttemptsLostMs])).toEqual([
+      [0, null],
+      [1, 300],
+      [0, null],
+      [0, null],
+      [0, null],
+      [0, null],
+    ]);
 
     // The third Main-thread Turn: the system prompt and the tools changed since the second.
     const third = view!.messages.filter((m) => m.role === "assistant")[2]!.whatWasSentSource!;

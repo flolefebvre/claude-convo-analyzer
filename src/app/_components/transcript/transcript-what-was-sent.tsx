@@ -3,15 +3,15 @@
 // The "What was sent" disclosure of one Turn, or of one Side request. The page
 // ships only where to read it — a `logged_api_request` row id for an API
 // request the logs hold, else an `api_request` row id for one a Recording
-// holds — and the Turn's failed-attempt count; what the API request sent is
+// holds — and the Turn's failed-attempt count and lost time; what it sent is
 // fetched from `GET /api/logged-api-request/<id>` or `GET /api/api-request/<id>`
 // the first time the reader opens it, and kept for every later open. Native
 // `<details>` stays the disclosure, as for tool calls. Under the request's
 // facts, a switch picks the view: Changes (what this request added), Request
 // (all of it, by part) or Raw (its JSON, fetched from the route's `/raw`
 // sibling the first time Raw opens). What the logs do not keep — timings,
-// failed attempts, headers, the response — is left out; a message they could
-// not rebuild is shown missing at its place, and counted.
+// a failed attempt's status and error, headers, the response — is left out; a
+// message they could not rebuild is shown missing at its place, and counted.
 //
 // ADR-0002: no core import — the payload comes over the route, its types from
 // the core-free `_lib/transcript`.
@@ -51,20 +51,28 @@ const BLOCK_CLAMP_CHARS = 2_000;
 /**
  * A Turn's "What was sent" `<details>`, fetched on the first open from its
  * `source` — its API request in the logs, else in a Recording; its summary
- * counts the Turn's failed attempts, which the page ships.
+ * counts the Turn's failed attempts and the time they lost, which the page
+ * ships.
  *
  * @example
  * {message.whatWasSentSource !== null && (
- *   <WhatWasSentDisclosure source={message.whatWasSentSource} failedAttemptCount={message.failedAttemptCount} />
+ *   <WhatWasSentDisclosure
+ *     source={message.whatWasSentSource}
+ *     failedAttemptCount={message.failedAttemptCount}
+ *     failedAttemptsLostMs={message.failedAttemptsLostMs}
+ *   />
  * )}
  */
 export function WhatWasSentDisclosure({
   source,
   failedAttemptCount,
+  failedAttemptsLostMs,
   isOpenInitially = false,
 }: {
   source: WhatWasSentSource;
   failedAttemptCount: number;
+  /** The time the failed attempts lost in all; null when unknown (a Recording's, or none). */
+  failedAttemptsLostMs: number | null;
   /** Rendered open, reading what was sent at once: a Side request's pane, which shows nothing else. */
   isOpenInitially?: boolean;
 }) {
@@ -79,7 +87,12 @@ export function WhatWasSentDisclosure({
       <summary>
         <ChevronRight aria-hidden className="chev" />
         <span className="call-name">What was sent</span>
-        {failedAttemptCount > 0 && <span className="call-meta">{failedAttemptCountLabel(failedAttemptCount)}</span>}
+        {failedAttemptCount > 0 && (
+          <span className="call-meta">
+            {failedAttemptCountLabel(failedAttemptCount)}
+            {failedAttemptsLostMs !== null && ` · lost ${formatLatency(failedAttemptsLostMs)}`}
+          </span>
+        )}
       </summary>
       <div className="call-body sent-body">
         <ReadBody state={state} subject="what was sent">
