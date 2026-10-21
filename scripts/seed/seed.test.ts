@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { PAGE_SIZE } from "@/app/_lib/list-view";
 import { DEFAULT_SORT, sortConversations } from "@/app/_lib/sort";
-import { getToolCallBody, getTranscript, listConversations } from "@/core/read";
+import { type TranscriptMessage, getToolCallBody, getTranscript, listConversations } from "@/core/read";
 import { readSettings, writeSettings } from "@/core/settings";
 import { getWhatWasSent } from "@/core/what-was-sent";
 
@@ -24,6 +24,8 @@ import {
   CWD_LESS_TITLE,
   FAMILY_WORKTREE_PROJECT_PATH,
   LONG_PAGE_TWO_TEXT,
+  LOGGED_REQUESTS_SUB_AGENT_THINKING_TEXT,
+  LOGGED_REQUESTS_THINKING_TEXT,
   LOGGED_REQUESTS_TITLE,
   LONG_TITLE,
   PLAN_HANDOFF_TITLE,
@@ -154,6 +156,27 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
       const turnSent = await getWhatWasSent(turn.apiRequestId!, { dbPath: seed.dbPath });
       expect(turnSent?.missingMessageCount).toBe(0);
     }
+  });
+
+  it("seeds Turns that thought, with a summary and without, on the Main thread and in a Sub-agent", async () => {
+    const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
+
+    const logged = (await listConversations({ dbPath: seed.dbPath })).find((c) => c.title === LOGGED_REQUESTS_TITLE);
+    const mainThread = await getTranscript(logged!.id, { dbPath: seed.dbPath });
+    const explore = mainThread?.tree.children.find((node) => node.agentType === "Explore");
+    const subAgent = await getTranscript(logged!.id, { dbPath: seed.dbPath, agentId: explore?.id });
+    const thinkingOf = (messages: TranscriptMessage[] = []) =>
+      messages.filter((m) => m.role === "assistant").map((m) => [m.thinkingText, m.thinkingDurationMs]);
+    expect(thinkingOf(mainThread?.messages)).toEqual([
+      [LOGGED_REQUESTS_THINKING_TEXT, 1_300],
+      [null, null],
+      [null, 600],
+      [null, null],
+    ]);
+    expect(thinkingOf(subAgent?.messages)).toEqual([
+      [LOGGED_REQUESTS_SUB_AGENT_THINKING_TEXT, 2_400],
+      [null, 450],
+    ]);
   });
 
   it("seeds a repo with two worktree Projects, and a /tmp parent with per-session sub-Folders", async () => {

@@ -130,7 +130,8 @@ One model request/response within the Main thread. Usage is reported
 **per turn**, so a Conversation's Main-thread usage is the sum across turns.
 Multiple Records can describe the same turn (one per content block) and repeat
 the same usage — turns are therefore deduplicated by their message id before
-summing.
+summing. A Turn may carry its **thinking**: how long the model thought and,
+sometimes, a short summary of it.
 
 ### Message
 

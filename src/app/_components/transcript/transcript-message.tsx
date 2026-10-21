@@ -1,4 +1,6 @@
-import { formatClock, formatModelName } from "@/app/_lib/format";
+import { ChevronRight } from "lucide-react";
+
+import { formatClock, formatLatency, formatModelName } from "@/app/_lib/format";
 import { type AgentLabel, parseSlashCommand } from "@/app/_lib/transcript";
 import { messageAnchorId } from "@/app/_lib/transcript-url";
 import type { TranscriptMessage, TranscriptView } from "@/core/read";
@@ -163,7 +165,7 @@ function PromptRow({
   );
 }
 
-/** An assistant turn: markdown body (or the API error when the turn failed),
+/** An assistant turn: its thinking, then its markdown body (or the API error when the turn failed),
  *  a quiet header (model only when it differs from the agent's, effort only on
  *  a change, the cost as plain figures), its nested tool calls, and, when it
  *  the logs hold its API request, what that request sent. */
@@ -217,6 +219,7 @@ function AssistantTurn({
       </RowHead>
 
       <div className="turn-body">
+        <ThinkingLine text={message.thinkingText} durationMs={message.thinkingDurationMs} />
         {errorOnly ? (
           <p className="api-error-note">Turn failed{message.apiErrorMessage ? `: ${message.apiErrorMessage}` : "."}</p>
         ) : (
@@ -250,6 +253,24 @@ function AssistantTurn({
         </div>
       )}
     </article>
+  );
+}
+
+/** A Turn's thinking, before its text: "Thinking · 1.3s", folding the summary
+ *  the model left when there is one, a plain line when there is none; nothing
+ *  on a Turn without thinking. */
+function ThinkingLine({ text, durationMs }: { text: string | null; durationMs: number | null }) {
+  if (text === null && durationMs === null) return null;
+  const label = durationMs === null ? "Thinking" : `Thinking · ${formatLatency(durationMs)}`;
+  if (text === null) return <p className="thinking">{label}</p>;
+  return (
+    <details className="thinking">
+      <summary>
+        <ChevronRight aria-hidden className="chev" />
+        {label}
+      </summary>
+      <p className="thinking-text">{text}</p>
+    </details>
   );
 }
 

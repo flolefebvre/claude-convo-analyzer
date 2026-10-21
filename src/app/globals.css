@@ -1519,6 +1519,35 @@ html:has(.tview) {
   margin-top: 6px;
 }
 
+/* ---- Thinking ---- */
+/* A Turn's thinking, one quiet line above its text: a disclosure like the
+   hand-back's when the model left a summary, else plain text that offers
+   nothing to click. */
+.tview .turn-body .thinking {
+  margin: 0 0 8px;
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
+}
+.tview details.thinking > summary {
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.tview details.thinking > summary::-webkit-details-marker {
+  display: none;
+}
+.tview details.thinking > summary:hover {
+  color: var(--foreground);
+}
+.tview .turn-body .thinking-text {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  white-space: pre-wrap;
+}
+
 /* ---- Task notification ---- */
 /* Machinery, not speech: one muted line, its result folded at its end and
    taking the full width once opened. */

@@ -126,6 +126,10 @@ export type TranscriptMessage = {
    * derives uniform-vs-mixed and the change markers from these values.
    */
   effort: string | null;
+  /** The summary the model's thinking left on this Turn, when not empty; null on user rows (log-format §3, "Thinking"). */
+  thinkingText: string | null;
+  /** How long this Turn spent thinking; null when its log did not record it, and on user rows. */
+  thinkingDurationMs: number | null;
   /** Merged per-turn token split; null on user prompts (they have no usage). */
   tokens: Tokens | null;
   /** Exact per-tier cost of this turn ($0 on user prompts and unpriced models). */
@@ -1231,6 +1235,8 @@ async function readAgentTranscript(
       origin: true,
       model: true,
       effort: true,
+      thinkingText: true,
+      thinkingDurationMs: true,
       inputTokens: true,
       outputTokens: true,
       cacheCreation5mTokens: true,
@@ -1279,6 +1285,8 @@ async function readAgentTranscript(
       origin: origin === null ? null : resolve(origin),
       model: r.model,
       effort: r.effort,
+      thinkingText: r.thinkingText,
+      thinkingDurationMs: r.thinkingDurationMs,
       tokens: turn.tokens,
       costUsd: turn.costUsd,
       unpriced: turn.unpriced,

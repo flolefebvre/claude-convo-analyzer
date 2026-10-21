@@ -95,6 +95,36 @@ Attribution fields on the record (present and populated — see §5):
 Error fields: `isApiErrorMessage`, `apiErrorStatus`, `error` (rare: ~3 in
 snapshot).
 
+### Thinking — rarely any text, and only a summary
+
+`thinking` blocks store a `signature` (opaque, ~1KB) and a `thinking` text
+field that is usually empty. When it is not, it is short (median 224
+characters, never over 500 in the scan), a summary rather than the full
+reasoning. By version (Oct 2026 scan, 102,700 blocks):
+
+| Claude Code       | `thinkingDisplay` on the record | Non-empty `thinking`   |
+| ----------------- | ------------------------------- | ---------------------- |
+| before 2.1.241    | absent                          | never (0 of 40,324)    |
+| 2.1.241 – 2.1.295 | absent                          | 2.5% (881 of 34,789)   |
+| 2.1.296 and later | `updates`                       | 6.0% (1,648 of 27,524) |
+| 2.1.296 and later | `omitted`                       | never (0 of 63)        |
+
+From 2.1.296 every record with a thinking block carries `thinkingDisplay`
+(the request's `params.thinking.display`, §9). So: text can be non-empty from
+2.1.241 on, except when `thinkingDisplay` is `omitted`; an empty one is the
+norm, never a sign of a broken record. Do not promise the reasoning itself.
+
+From 2.1.287 a record holding a thinking block also carries
+`thinkingDurationMs`. The thinking block is the first line of its turn. A
+turn with two thinking lines carries a duration on each, the second a few ms
+(1–7 ms in an Oct 2026 scan of 362 such turns).
+
+Each turn's thinking is stored on its `message` row: `thinking_text`, the
+non-empty `thinking` texts of all its lines joined in order (NULL when every
+block is empty), and `thinking_duration_ms`, the sum of its lines'
+`thinkingDurationMs` (NULL when none carries it). `thinkingDisplay` is not
+stored.
+
 ### GOTCHA 1 — deduplicate by message id before summing usage
 
 A single assistant turn can be written as **multiple `assistant` records** (one
@@ -177,24 +207,6 @@ invoking turn.)
 If a future feature needs these, they are re-derivable from the same `.jsonl`
 files without schema-breaking surprises — this section is the pointer.
 
-- **Thinking / reasoning text — rarely available, and only a summary.**
-  `thinking` blocks store a `signature` (opaque, ~1KB) and a `thinking` text
-  field that is usually empty. When it is not, it is short (median 224
-  characters, never over 500 in the scan), a summary rather than the full
-  reasoning. By version (Oct 2026 scan, 102,700 blocks):
-
-  | Claude Code       | `thinkingDisplay` on the record | Non-empty `thinking`   |
-  | ----------------- | ------------------------------- | ---------------------- |
-  | before 2.1.241    | absent                          | never (0 of 40,324)    |
-  | 2.1.241 – 2.1.295 | absent                          | 2.5% (881 of 34,789)   |
-  | 2.1.296 and later | `updates`                       | 6.0% (1,648 of 27,524) |
-  | 2.1.296 and later | `omitted`                       | never (0 of 63)        |
-
-  From 2.1.296 every record with a thinking block carries `thinkingDisplay`
-  (the request's `params.thinking.display`, §9). So: text can be non-empty from
-  2.1.241 on, except when `thinkingDisplay` is `omitted`; an empty one is the
-  norm, never a sign of a broken record. Do not promise the reasoning itself.
-
 - **File-history snapshots** (`file-history-snapshot.snapshot`): full file
   contents per checkpoint, keyed by `messageId`. This is how you'd reconstruct
   _which files changed and their diffs_. Skipped for size/complexity.
@@ -215,7 +227,8 @@ files without schema-breaking surprises — this section is the pointer.
 Tokens/cost (per turn, deduped, per resolved model), tool calls (name + input +
 truncated result + size), sub-agent lineage, conversation title, project,
 per-turn attribution & timestamps, git branch, CC version, permission mode,
-api-error flag, PR links, turn durations, each user Message's kind and
+api-error flag, PR links, turn durations, each turn's thinking text and
+duration (§3, "Thinking"), each user Message's kind and
 `origin` extras (§8), and each API request's parameters, system prompt, tools
 and messages (§9).
 
@@ -565,8 +578,8 @@ On `assistant` records (first version seen):
 | `requestRef`         | 2.1.300 | The `api-request` `id` (above). On every 2.1.300+ assistant record but two `<synthetic>` ones.                                                                     |
 | `requestedModel`     | 2.1.295 | The model asked for. Equal to `message.model` on all 92,052 records but 51, whose `message.model` is the placeholder `fake`.                                       |
 | `perTurnEffort`      | 2.1.267 | `high`, `medium` or `null`. Usually equal to the older `effort` field (138k of 148k records).                                                                      |
-| `thinkingDisplay`    | 2.1.296 | `updates` or `omitted`; see §6.                                                                                                                                    |
-| `thinkingDurationMs` | 2.1.287 | Time spent thinking.                                                                                                                                               |
+| `thinkingDisplay`    | 2.1.296 | `updates` or `omitted`; see §3, "Thinking".                                                                                                                        |
+| `thinkingDurationMs` | 2.1.287 | Time spent thinking; see §3, "Thinking".                                                                                                                           |
 | `apiBlockIndex`      | 2.1.258 | Index of this record's one content block within the API response; a message's records almost always count 0, 1, 2…                                                 |
 | `wireToolInputs`     | 2.1.272 | `{<tool_use id>: input}` for this record's tool calls: the input as sent. On every tool-call record since, not only when it differs (it differs on about a third). |
 

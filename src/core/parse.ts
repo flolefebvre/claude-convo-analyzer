@@ -312,6 +312,14 @@ export type ParsedMessage = {
    * without a code change; classification happens at read time.
    */
   effort: string | null;
+  /**
+   * The text of this assistant turn's `thinking` blocks, joined in order
+   * across its lines; null when every block is empty, on user rows, and on
+   * turns without thinking (log-format §3, "Thinking").
+   */
+  thinkingText: string | null;
+  /** The sum of this assistant turn's lines' `thinkingDurationMs`; null when none carries it, and on user rows. */
+  thinkingDurationMs: number | null;
   /** Record timestamp in epoch ms (null when absent/unparseable). */
   timestamp: number | null;
 };
@@ -392,7 +400,7 @@ type ContentBlock =
   | { type: string; [k: string]: unknown };
 
 /** A `usage` object as the API reports it, every bucket optional. */
-export type RawUsage = {
+type RawUsage = {
   input_tokens?: number;
   output_tokens?: number;
   cache_creation_input_tokens?: number;
@@ -406,8 +414,8 @@ export type RawUsage = {
 /**
  * Extract human-readable text from a `message.content` union (finding #2): a
  * plain string, or an array of blocks. Only `text` blocks contribute; `thinking`
- * text is unavailable (finding #8) and `tool_use` is not text. Multiple text
- * blocks are joined with newlines.
+ * text is the Turn's thinking (see {@link extractThinkingText}) and `tool_use`
+ * is not text. Multiple text blocks are joined with newlines.
  */
 export function extractText(content: unknown): string | null {
   if (typeof content === "string") {
@@ -423,6 +431,34 @@ export function extractText(content: unknown): string | null {
     return parts.length > 0 ? parts.join("\n") : null;
   }
   return null;
+}
+
+/**
+ * The non-empty `thinking` texts of a `message.content` array, joined with
+ * newlines as {@link extractText} joins text; null when it has none — an
+ * empty `thinking` block, the norm (log-format §3, "Thinking"), contributes nothing.
+ */
+function extractThinkingText(content: unknown): string | null {
+  if (!Array.isArray(content)) return null;
+  const parts: string[] = [];
+  for (const block of content as ContentBlock[]) {
+    if (block && block.type === "thinking" && typeof block.thinking === "string" && block.thinking.length > 0) {
+      parts.push(block.thinking);
+    }
+  }
+  return parts.length > 0 ? parts.join("\n") : null;
+}
+
+/** Join two optional texts of one Turn with a newline, in order: null only when both are. */
+function joinTurnTexts(earlier: string | null, later: string | null): string | null {
+  if (earlier === null) return later;
+  return later === null ? earlier : `${earlier}\n${later}`;
+}
+
+/** Add two optional durations of one Turn: null only when both are. */
+function sumTurnDurations(earlierMs: number | null, laterMs: number | null): number | null {
+  if (earlierMs === null) return laterMs;
+  return laterMs === null ? earlierMs : earlierMs + laterMs;
 }
 
 /**
@@ -506,9 +542,9 @@ function sumUsageTokens(usage: RawUsage): number {
  * per-tier split the `message` and `api_request` columns store (finding #3
  * cache math); every absent bucket is 0.
  *
- * @example const { inputTokens, cacheCreation1hTokens } = parseUsage(responseBody.usage);
+ * @example const { inputTokens, cacheCreation1hTokens } = parseUsage(message.usage as RawUsage | undefined);
  */
-export function parseUsage(usage: RawUsage | undefined): {
+function parseUsage(usage: RawUsage | undefined): {
   inputTokens: number;
   outputTokens: number;
   cacheCreation5mTokens: number;
@@ -700,15 +736,19 @@ export function parseSessionLines(lines: readonly string[]): ParsedSession {
     // already built, and take usage/model/timestamp from the first line only
     // (never summed). Keeping just the first line would drop the body and tool
     // calls of a thinking-first turn, surfacing as empty assistant rows.
+    // Thinking merges like text, its duration summed: a turn with two thinking
+    // lines logs a `thinkingDurationMs` on each, the second a few ms.
     const messageId = asString(message.id) ?? asString(record.requestId);
     const blockToolUses = extractToolUseBlocks(message.content);
+    const thinkingText = extractThinkingText(message.content);
+    const thinkingDurationMs = asInteger(record.thinkingDurationMs);
 
     if (messageId !== null) {
       const existing = assistantById.get(messageId);
       if (existing !== undefined) {
-        if (text !== null) {
-          existing.text = existing.text === null ? text : `${existing.text}\n${text}`;
-        }
+        existing.text = joinTurnTexts(existing.text, text);
+        existing.thinkingText = joinTurnTexts(existing.thinkingText, thinkingText);
+        existing.thinkingDurationMs = sumTurnDurations(existing.thinkingDurationMs, thinkingDurationMs);
         existing.toolUses.push(...blockToolUses);
         continue;
       }
@@ -737,6 +777,8 @@ export function parseSessionLines(lines: readonly string[]): ParsedSession {
       // Top-level field, NOT inside `message`. Later lines of the same turn are
       // merged above, so the first line's effort wins — as it does for usage.
       effort: asString(record.effort),
+      thinkingText,
+      thinkingDurationMs,
       timestamp: toEpochMs(record.timestamp),
     };
     messages.push(parsed);
@@ -1043,6 +1085,8 @@ function userMessage(
     isApiError: false,
     apiErrorMessage: null,
     effort: null, // a user record has no reasoning effort of its own.
+    thinkingText: null,
+    thinkingDurationMs: null,
     timestamp,
   };
 }

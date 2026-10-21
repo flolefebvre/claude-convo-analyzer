@@ -12,6 +12,11 @@ const LONG_TITLE = "Port every report to the new rendering engine";
 const PAGE_TWO_TEXT = "Now port the quarterly heatmap export the same way.";
 // The seeded Conversation whose log records its API requests (issue #216).
 const LOGGED_REQUESTS_TITLE = "Trace the slow invoice query";
+// What the thinking of its first Main-thread and first Sub-agent Turns left (issue #215).
+const LOGGED_REQUESTS_THINKING_TEXT =
+  "Eight seconds on a list suggests a missing index or an N+1. Checking the query plan before reading the code.";
+const LOGGED_REQUESTS_SUB_AGENT_THINKING_TEXT =
+  "The invoice queries live under src/invoices/. Reading the list query first.";
 // The seeded Conversation with an ExitPlanMode call, then a SendMessage call (issue #149).
 const PLAN_HANDOFF_TITLE = "Hand the search plan to the docs team";
 
@@ -159,6 +164,28 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     await expect(whatWasSent.getByRole("heading", { name: "1 failed attempt before this request" })).toBeVisible();
     await expect(whatWasSent.getByText("lost 300ms", { exact: true })).toBeVisible();
     await expect(whatWasSent.getByText(/no error message/)).toHaveCount(0);
+  });
+
+  test("shows a Turn's thinking before its text: opening to its summary, or a plain line without one, in every Agent", async ({
+    page,
+  }) => {
+    /** In the open transcript, the line `openable` opens to `summary`, and the line `plain` offers nothing to open. */
+    const expectThinkingLines = async (openable: string, summary: string, plain: string) => {
+      const transcript = page.getByRole("main");
+      const thinking = transcript.getByRole("group").filter({ hasText: new RegExp(`^${openable}`) });
+      await expect(thinking.getByText(summary)).toBeHidden();
+      await thinking.getByText(openable, { exact: true }).click();
+      await expect(thinking.getByText(summary, { exact: true })).toBeVisible();
+      await expect(transcript.getByText(plain, { exact: true })).toBeVisible();
+      await expect(transcript.getByRole("group").filter({ hasText: new RegExp(`^${plain}`) })).toHaveCount(0);
+    };
+
+    await openConversation(page, LOGGED_REQUESTS_TITLE);
+    await expectThinkingLines("Thinking · 1.3s", LOGGED_REQUESTS_THINKING_TEXT, "Thinking · 600ms");
+
+    await page.getByRole("navigation", { name: "Agents" }).getByRole("link").filter({ hasText: "Explore" }).click();
+    await page.waitForURL((url) => url.searchParams.has("agent"));
+    await expectThinkingLines("Thinking · 2.4s", LOGGED_REQUESTS_SUB_AGENT_THINKING_TEXT, "Thinking · 450ms");
   });
 
   test("renders the messages agents send each other, and their task notifications", async ({ page }) => {

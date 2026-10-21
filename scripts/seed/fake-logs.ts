@@ -327,15 +327,19 @@ function apiErrorTurn(
   return JSON.stringify(rec);
 }
 
-/** Build one main-thread assistant turn (optionally with tool_use blocks). */
+/** A Turn's `thinking` block — its text, empty in most real ones — and its record's `thinkingDurationMs` (log-format §3, "Thinking"). */
+type SeedThinking = { text: string; durationMs: number };
+
+/** Build one main-thread assistant turn: optionally a thinking block, its text, then optionally tool_use blocks. */
 function assistantTurn(
   g: Gen,
   ms: number,
   cwd: string,
   model: string,
-  opts: { skill?: string; toolUses?: object[]; scale?: number } = {},
+  opts: { skill?: string; toolUses?: object[]; scale?: number; thinking?: SeedThinking } = {},
 ): string {
   const content: object[] = [{ type: "text", text: g.pick(ASSISTANT_REPLIES) }];
+  if (opts.thinking) content.unshift({ type: "thinking", thinking: opts.thinking.text, signature: "c2VlZA==" });
   if (opts.toolUses) content.push(...opts.toolUses);
   const rec: Record<string, unknown> = {
     ...assistantEnvelope(g, ms, cwd),
@@ -348,6 +352,7 @@ function assistantTurn(
     },
   };
   if (opts.skill) rec.attributionSkill = opts.skill;
+  if (opts.thinking) Object.assign(rec, { thinkingDisplay: "updates", thinkingDurationMs: opts.thinking.durationMs });
   return JSON.stringify(rec);
 }
 
@@ -1473,6 +1478,14 @@ function requestRecordWriter(g: Gen, sessionId: string, model: string, querySour
   };
 }
 
+/** The summary the thinking of the first Main-thread Turn of {@link LOGGED_REQUESTS_TITLE} left, 1.3 s long. */
+export const LOGGED_REQUESTS_THINKING_TEXT =
+  "Eight seconds on a list suggests a missing index or an N+1. Checking the query plan before reading the code.";
+
+/** The summary the thinking of the first Sub-agent Turn of {@link LOGGED_REQUESTS_TITLE} left, 2.4 s long. */
+export const LOGGED_REQUESTS_SUB_AGENT_THINKING_TEXT =
+  "The invoice queries live under src/invoices/. Reading the list query first.";
+
 /** `line`, an assistant or user record, at {@link LOGGED_REQUESTS_CC_VERSION}, with `requestRef` when given. */
 function atLoggedRequestsVersion(line: string, requestRef?: string): string {
   const record = JSON.parse(line) as Record<string, unknown>;
@@ -1486,8 +1499,10 @@ function atLoggedRequestsVersion(line: string, requestRef?: string): string {
  * Sub-agent's included (Claude Code 2.1.300+): after a first exchange that
  * spawns an Explore sub-agent — whose report's Turn went through on a retry,
  * after one Failed attempt — a second prompt finds the system prompt
- * changed — a new date and a new instruction — and a Grep tool loaded. It
- * ends hours before the agent-messages one, so the anchor does not move.
+ * changed — a new date and a new instruction — and a Grep tool loaded. In
+ * either agent, the first Turn thought and left a summary, and a later one
+ * thought and left none. It ends hours before the agent-messages one, so the
+ * anchor does not move.
  *
  * Drawn last, so every earlier Conversation keeps its draws.
  */
@@ -1522,17 +1537,22 @@ function loggedRequestsConversation(g: Gen, index: number): Conversation {
   let lastTurnLine = "";
   /**
    * Log a request sent with `shape` and the messages of `tail`, after the
-   * failed attempts that lost `failedAttemptsLostMs`, then the Turn answering it.
+   * failed attempts that lost `failedAttemptsLostMs`, then the Turn answering
+   * it, after its `thinking` when given.
    */
   const turn = (
     shape: typeof firstShape,
     tail: SeedSentMessage[],
     toolUses?: object[],
     failedAttemptsLostMs?: number[],
+    thinking?: SeedThinking,
   ) => {
     const sent = requests.send((t += 1_000), shape, tail, failedAttemptsLostMs);
     lines.push(...sent.lines);
-    lastTurnLine = atLoggedRequestsVersion(assistantTurn(g, (t += 9_000), cwd, model, { toolUses }), sent.recordId);
+    lastTurnLine = atLoggedRequestsVersion(
+      assistantTurn(g, (t += 9_000), cwd, model, { toolUses, thinking }),
+      sent.recordId,
+    );
     lines.push(lastTurnLine);
   };
 
@@ -1546,6 +1566,8 @@ function loggedRequestsConversation(g: Gen, index: number): Conversation {
       ),
     ],
     [toolUse],
+    undefined,
+    { text: LOGGED_REQUESTS_THINKING_TEXT, durationMs: 1_300 },
   );
   t += 120_000; // after the sub-agent's last record
   const agentUseId = (toolUse as { id: string }).id;
@@ -1570,6 +1592,9 @@ function loggedRequestsConversation(g: Gen, index: number): Conversation {
       sentMessageOf(secondPrompt),
     ],
     [{ type: "tool_use", id: grepUseId, name: "Grep", input: { pattern: "invoice_date" } }],
+    undefined,
+    // Thought without leaving a summary, as most Turns do.
+    { text: "", durationMs: 600 },
   );
   lines.push(atLoggedRequestsVersion(toolResult(g, (t += 4_000), cwd, grepUseId, "src/invoices/query.ts:42")));
   turn(secondShape, [
@@ -1606,13 +1631,12 @@ function loggedRequestsSubAgent(
     tools: [seedToolDefinition("Read", "Read a file.", "file_path")],
   };
   const requests = requestRecordWriter(g, sessionId, MODELS[3], "agent:builtin:Explore", agentId);
-  /** The lines of a request sent at `turnMs` with the messages of `tail`, then the Turn answering it. */
-  const subTurn = (turnMs: number, tail: SeedSentMessage[], toolUses?: object[]) => {
+  /** The lines of a request sent at `turnMs` with the messages of `tail`, then the Turn answering it, after its `thinking`. */
+  const subTurn = (turnMs: number, tail: SeedSentMessage[], thinking: SeedThinking, toolUses?: object[]) => {
     const sent = requests.send(turnMs, shape, tail);
-    const reply = JSON.parse(assistantTurn(g, turnMs + 5_000, cwd, MODELS[3], { toolUses, scale: 0.6 })) as Record<
-      string,
-      unknown
-    >;
+    const reply = JSON.parse(
+      assistantTurn(g, turnMs + 5_000, cwd, MODELS[3], { toolUses, scale: 0.6, thinking }),
+    ) as Record<string, unknown>;
     return [
       ...sent.lines,
       atLoggedRequestsVersion(
@@ -1626,6 +1650,7 @@ function loggedRequestsSubAgent(
   const firstTurnLines = subTurn(
     ms + 2_000,
     [sentMessageOf(subPrompt)],
+    { text: LOGGED_REQUESTS_SUB_AGENT_THINKING_TEXT, durationMs: 2_400 },
     [{ type: "tool_use", id: readUseId, name: "Read", input: { file_path: "src/invoices/query.ts" } }],
   );
   const readResult = atLoggedRequestsVersion(toolResult(g, ms + 30_000, cwd, readUseId, RESULT_FILLER, false, agent));
@@ -1634,7 +1659,10 @@ function loggedRequestsSubAgent(
     ...firstTurnLines,
     readResult,
     // Rebuilt from the sub-agent's own records: its Turn, then the tool result.
-    ...subTurn(ms + 32_000, [sentMessageOf(firstTurnLines.at(-1)!), sentMessageOf(readResult)]),
+    ...subTurn(ms + 32_000, [sentMessageOf(firstTurnLines.at(-1)!), sentMessageOf(readResult)], {
+      text: "",
+      durationMs: 450,
+    }),
   ];
   const toolUseId = g.uid("tu");
   return {
