@@ -13,6 +13,10 @@
 // the only hook a synchronous `refresh()` gives: a transient peak inside one
 // Conversation's parse is not seen.
 //
+// The peak is one Conversation's parsed form, held until its write: it is
+// bounded by the largest Conversation, mostly its sent messages, which are
+// stored whole — its tool results are already cut to their storage cap.
+//
 // Not part of `check`, `gate` or CI: it reads the real logs and takes minutes.
 
 import { mkdtempSync, rmSync } from "node:fs";
