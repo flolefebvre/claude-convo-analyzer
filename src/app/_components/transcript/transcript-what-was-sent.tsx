@@ -1,13 +1,17 @@
 "use client";
 
-// The "What was sent" disclosure of one recorded Turn, or of one Side request.
-// The page ships only the `api_request` row id and the Turn's failed-attempt
-// count; what the API request sent, its failed attempts included, is fetched from
-// `GET /api/api-request/<id>` the first time the reader opens it, and kept for
-// every later open. Native `<details>` stays the disclosure, as for tool calls.
-// Under the request's facts, a switch picks the view: Changes (what this
-// request added), Request (all of it, by part) or Raw (its JSON, fetched from
-// `GET /api/api-request/<id>/raw` the first time Raw opens).
+// The "What was sent" disclosure of one Turn, or of one Side request. The page
+// ships only where to read it — a `logged_api_request` row id for an API
+// request the logs hold, else an `api_request` row id for one a Recording
+// holds — and the Turn's failed-attempt count; what the API request sent is
+// fetched from `GET /api/logged-api-request/<id>` or `GET /api/api-request/<id>`
+// the first time the reader opens it, and kept for every later open. Native
+// `<details>` stays the disclosure, as for tool calls. Under the request's
+// facts, a switch picks the view: Changes (what this request added), Request
+// (all of it, by part) or Raw (its JSON, fetched from the route's `/raw`
+// sibling the first time Raw opens). What the logs do not keep — timings,
+// failed attempts, headers, the response, and for now the messages — is left
+// out, the messages said so.
 //
 // ADR-0002: no core import — the payload comes over the route, its types from
 // the core-free `_lib/transcript`.
@@ -28,6 +32,7 @@ import type {
   SentMessage,
   SentTool,
   WhatWasSent,
+  WhatWasSentSource,
 } from "@/app/_lib/transcript";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -44,27 +49,29 @@ const BLOCK_CLAMP_LINES = 15;
 const BLOCK_CLAMP_CHARS = 2_000;
 
 /**
- * A recorded Turn's "What was sent" `<details>`, fetched by `api_request` row
- * `apiRequestId` on the first open; its summary counts the Turn's failed
- * attempts, which the page ships.
+ * A Turn's "What was sent" `<details>`, fetched on the first open from its
+ * `source` — its API request in the logs, else in a Recording; its summary
+ * counts the Turn's failed attempts, which the page ships.
  *
  * @example
- * {message.apiRequestId !== null && (
- *   <WhatWasSentDisclosure apiRequestId={message.apiRequestId} failedAttemptCount={message.failedAttemptCount} />
+ * {message.whatWasSentSource !== null && (
+ *   <WhatWasSentDisclosure source={message.whatWasSentSource} failedAttemptCount={message.failedAttemptCount} />
  * )}
  */
 export function WhatWasSentDisclosure({
-  apiRequestId,
+  source,
   failedAttemptCount,
   isOpenInitially = false,
 }: {
-  apiRequestId: number;
+  source: WhatWasSentSource;
   failedAttemptCount: number;
   /** Rendered open, reading what was sent at once: a Side request's pane, which shows nothing else. */
   isOpenInitially?: boolean;
 }) {
   const { state, onToggle, detailsRef } = useReadOnFirstOpen<WhatWasSent>(() =>
-    callRoute(routes.api["api-request"](String(apiRequestId)).GET()),
+    source.from === "logs"
+      ? callRoute(routes.api["logged-api-request"](String(source.loggedApiRequestId)).GET())
+      : callRoute(routes.api["api-request"](String(source.apiRequestId)).GET()),
   );
 
   return (
@@ -76,7 +83,7 @@ export function WhatWasSentDisclosure({
       </summary>
       <div className="call-body sent-body">
         <ReadBody state={state} subject="what was sent">
-          {(whatWasSent) => <WhatWasSentView whatWasSent={whatWasSent} apiRequestId={apiRequestId} />}
+          {(whatWasSent) => <WhatWasSentView whatWasSent={whatWasSent} source={source} />}
         </ReadBody>
       </div>
     </details>
@@ -124,10 +131,12 @@ function countLabel(count: number, noun: string): string {
 }
 
 /** The request's facts and failed attempts, then the switch between its three views. */
-function WhatWasSentView({ whatWasSent, apiRequestId }: { whatWasSent: WhatWasSent; apiRequestId: number }) {
+function WhatWasSentView({ whatWasSent, source }: { whatWasSent: WhatWasSent; source: WhatWasSentSource }) {
   // Held here, not in the Raw view, which unmounts with its tab: switching away and back reads nothing again.
   const raw = useReadOnFirstOpen<RawApiRequest>(() =>
-    callRoute(routes.api["api-request"](String(apiRequestId)).raw.GET()),
+    source.from === "logs"
+      ? callRoute(routes.api["logged-api-request"](String(source.loggedApiRequestId)).raw.GET())
+      : callRoute(routes.api["api-request"](String(source.apiRequestId)).raw.GET()),
   );
   const { failedAttempts } = whatWasSent;
   return (

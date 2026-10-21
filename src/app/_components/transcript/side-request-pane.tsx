@@ -63,7 +63,7 @@ export function SideRequestPane({
             `?sideRequest=`, which keeps state, so a fresh mount reads anew. */}
         <WhatWasSentDisclosure
           key={sideRequest.apiRequestId}
-          apiRequestId={sideRequest.apiRequestId}
+          source={{ from: "recording", apiRequestId: sideRequest.apiRequestId }}
           failedAttemptCount={0}
           isOpenInitially
         />

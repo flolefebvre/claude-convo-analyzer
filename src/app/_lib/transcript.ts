@@ -14,7 +14,7 @@ export type { ToolCallBody } from "@/core/read";
 /** One display part of a Tool call's body block, as core shapes it — re-exported for the client leaf, like {@link ToolCallBody}. */
 export type { ToolCallFact, ToolCallPart } from "@/core/tool-call-views";
 
-/** What a recorded Turn sent, and its API request raw, as core reads them — re-exported for the client leaf, like {@link ToolCallBody}. */
+/** What a Turn sent, where it is read from, and its API request raw, as core reads them — re-exported for the client leaf, like {@link ToolCallBody}. */
 export type {
   DiffLine,
   FailedAttempt,
@@ -24,6 +24,7 @@ export type {
   SentMessage,
   SentTool,
   WhatWasSent,
+  WhatWasSentSource,
 } from "@/core/what-was-sent";
 
 import { subAgentLabel } from "@/app/_lib/detail";
