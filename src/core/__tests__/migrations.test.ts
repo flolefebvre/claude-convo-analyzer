@@ -116,6 +116,8 @@ describe("migration idempotency", () => {
     let db = new Database(dbPath);
     for (const target of targets) db.prepare("DELETE FROM _cca_migrations WHERE migration_name = ?").run(target);
     db.exec(`ALTER TABLE "api_request" RENAME TO "logged_api_request"`);
+    // Its Turn link of then, which a later migration moved onto `message`.
+    db.exec(`ALTER TABLE "logged_api_request" ADD COLUMN "message_id" INTEGER`);
     db.pragma("foreign_keys = OFF");
     db.exec(
       `INSERT INTO "logged_api_request" ("conversation_id", "agent_id", "record_id", "kept_message_count",

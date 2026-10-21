@@ -128,9 +128,9 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 15, sha256: "d79302a905b975c08cfd6c217e6ae3eaa17e44ca45bb318cdfeefa1ae7b0e329" },
-      conversation: { rowCount: 21, sha256: "05ac3bd9c2da712c32d04b6aa6bfb8e6921ad2261cbce38bbdb2a60753bdc544" },
+      conversation: { rowCount: 21, sha256: "83eb886b878e417310b354d5274a93f5dd222a693ad18cc6ef9bcebb0195faf3" },
       agent: { rowCount: 35, sha256: "bcf922290517994e489068e748364ff9de40929e4a8ddfbcb68c6f6014836468" },
-      message: { rowCount: 125, sha256: "a6c4493eb7d8954b3a993d59f57a4f00076d965adda9302418492d6c6a262250" },
+      message: { rowCount: 125, sha256: "01907f4c09c77893e69757baeeff97f6f19f6c3e4c6b7ae4fc0307176478d63d" },
       tool_call: { rowCount: 34, sha256: "58586fdaa0ea9e906fd5037c8a3c7809fd2fd1d4602ec6280e34db111716b5f4" },
       pr_link: { rowCount: 1, sha256: "efff4b0f419e7b55d6dc8602b3503e06e81829e6fd868d216679845fa0970d16" },
       turn_duration: { rowCount: 1, sha256: "11a23dd83764e1de631b25b7b2fb8a6b5af397fe1503b2086f0404a57cb943c4" },
@@ -144,9 +144,9 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "5d55ed2d1c37a5a354777b7e27dfce7bb9f299e0e7237d17a32956fee0357675" },
-      conversation: { rowCount: 1, sha256: "2184b54356c66377c802adff9d8d0d942937f0d038e9e0c0bc1d864f929574b9" },
+      conversation: { rowCount: 1, sha256: "a0965b4b475b4b81ff4efc8984719c1eca96c955cfce773f5f8584a40d1d0720" },
       agent: { rowCount: 2, sha256: "9cddce4d56d246718241b05d406551e917f8d9c1d9a116799eb257bc48089a61" },
-      message: { rowCount: 28, sha256: "466d200445a86bff2133b1b984bb84e2275c7daafd0d394be1959e45dd9e1e73" },
+      message: { rowCount: 28, sha256: "2fa9c58ff794ef88ecd7b625ab2bf49d6a2f6b6b00410ea69c5778bf03dd6d02" },
       tool_call: { rowCount: 1, sha256: "a7fdb225fda2bff0ca75f88a22789a86cd79a97f5ea4e2f952e1d4559aa8efd9" },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
@@ -160,9 +160,9 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 9, sha256: "e740c951fb2b58e8b13902eea830681396ac5eea03a445a31d6fb998c250a3e1" },
-      conversation: { rowCount: 13, sha256: "11269e63ac27253ea2515c69bd3effecfb9eaa41aaea3be96c82ae13f97fdfcb" },
+      conversation: { rowCount: 13, sha256: "96ed7fb3b099cbd9b801642a59ae057b4343685991f2ce46d1d538a84ddc5fe5" },
       agent: { rowCount: 13, sha256: "47aa156cd547f0ad4f24ca8d2f27122dfa765f0de80b37a46a3507b22ade253f" },
-      message: { rowCount: 22, sha256: "dcd26004fc7ee5f70d37088e8b7cead05a24a88ffca18899ea854cfec7514311" },
+      message: { rowCount: 22, sha256: "ae5d720b605fa95bc37d682fe0ae41fd22eb60c7eb9137668412ee1cc3d97d03" },
       tool_call: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
@@ -176,9 +176,9 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "c39a0134a2be51dcdd6348bf0657691be4b1d4092d6e1616117c4d0f4f58a771" },
-      conversation: { rowCount: 4, sha256: "946356d48af6c9ccb4170489c4fcd6ee9d00c4ea16e2ea094551ce5862524905" },
+      conversation: { rowCount: 4, sha256: "01286ddd7dab39ed8c0b23ea34bed2cab11d3c1b7a01529c9eae9b363a2a217a" },
       agent: { rowCount: 5, sha256: "c0938e2f66085f42e8e7e5ee608867bb0974528d74f6dd4ead50afad13e0e8a1" },
-      message: { rowCount: 17, sha256: "57dd0ac441733ef3b55dd0bb598ece1c0204c1c55f28cbf23747937e96a049fb" },
+      message: { rowCount: 17, sha256: "2bd8e8641bea29cd9fe4ece4d7f76bdd359ed9d6fe865cc645e9f012757fc0c5" },
       tool_call: { rowCount: 1, sha256: "e331ea30643c19a0602a2759f557187aacaf1729c796a955560799b9c4dbd73f" },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
@@ -192,13 +192,13 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "8b9da1ddb86766f02f4a1ac8d582400f0f6c9e5071156b7b726e7b6d9bf11d31" },
-      conversation: { rowCount: 3, sha256: "fccb6355decc88e1fbb0e147bf40e059f8130becf32116864288aec285721021" },
+      conversation: { rowCount: 3, sha256: "521c070c13db034901877f5c88a93923f889def80db6238d5802ed084468c0a8" },
       agent: { rowCount: 4, sha256: "5183823b6f5d49ed8cedbdc07b0046a87c72ec8ce45a90423a939cc6fe42d620" },
-      message: { rowCount: 19, sha256: "f15867490847ded5e9c25fa1c23212303c2828b2e7b3c82c03f0d34dd972a592" },
+      message: { rowCount: 19, sha256: "b174c3e84652b0d5f86b9d7ff36afda78c40c46bcd2adf4d9fd48942432493d0" },
       tool_call: { rowCount: 3, sha256: "e5f615b5d6290bc0dab75ea171da282d5e176e04be16438fc4d834c227f91b9d" },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
-      api_request: { rowCount: 8, sha256: "dc61f1c84636a85d51fa06c9ec0eedb89cfd56d6301377dbb38257656eb8d3f9" },
+      api_request: { rowCount: 8, sha256: "f2b2765cde9997e6021bd73f168b81bb41f9a044b5b187d967506cc37c8c722c" },
       // Four system prompts and three tool sets: the Sub-agent shares the Main thread's first one.
       system_prompt: { rowCount: 4, sha256: "179129a51d494cdd6ea7fb72cf50d62900d9163160ed521f850dc233dae050bf" },
       tool_set: { rowCount: 3, sha256: "6b550b32e7738d046dd3c9f444e69eeba02357a973be985eac064674d0326323" },
@@ -465,7 +465,8 @@ function apiRequestContent(dbPath: string, logsRoot: string) {
       .prepare(
         `SELECT "record_id", "base_record_id", "kept_message_count", "tail_message_hashes_json", "parameters_json",
                 "cache_breakpoints_json", "query_source", "request_digest", "sent_at", "position_in_file",
-                "system_prompt_hash", "tool_set_hash", "api_request"."message_id" IS NULL AS "isUnanswered",
+                "system_prompt_hash", "tool_set_hash",
+                NOT EXISTS (SELECT 1 FROM "message" WHERE "api_request_id" = "api_request"."id") AS "isUnanswered",
                 "owner"."uuid" AS "failedAttemptOfMessageUuid"
            FROM "api_request"
            LEFT JOIN "message" AS "owner" ON "owner"."id" = "api_request"."failed_attempt_of_message_id"

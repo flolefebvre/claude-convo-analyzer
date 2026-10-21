@@ -136,8 +136,11 @@ type RefreshOptions = {
  *     (`message.thinking_text`, `message.thinking_duration_ms`).
  * 12 — a sent message keeps the pieces of Injected context its file's
  *     attachments name in it (`sent_message.injected_context_pieces_json`).
+ * 13 — a Turn names its API request (`message.api_request_id`, from its
+ *     `message.request_ref`), in its own file or another's; `api_request`
+ *     no longer names its Turn.
  */
-export const PARSER_VERSION = 12;
+export const PARSER_VERSION = 13;
 
 /**
  * The version a conversation carries while it is written but NOT YET COMPLETE:
@@ -590,6 +593,7 @@ function messageRow(m: ParsedSession["messages"][number], conversationId: number
     isApiError: m.isApiError,
     apiErrorMessage: m.apiErrorMessage,
     timestamp: m.timestamp,
+    requestRef: m.requestRef,
   };
 }
 
@@ -692,10 +696,10 @@ function writeAgentMessages(
 /**
  * Write one agent's log file's request records (log-format §9): each distinct
  * system prompt, tool set and sent message under its hash, unless already
- * stored, then one
- * `api_request` row per `api-request` record, in file order, joined to
- * the Turn of that same file whose `requestRef` names it — a `requestRef`
- * naming a request of another file joins nothing.
+ * stored, then one `api_request` row per `api-request` record, in file
+ * order; then link each Turn of the file to the request of the file its
+ * `requestRef` names. A Turn whose `requestRef` names a request of another
+ * file is linked by the links pass (`refresh`).
  */
 function writeApiRequests(
   statements: RefreshStatements,
@@ -721,7 +725,6 @@ function writeApiRequests(
     statements.insertApiRequest({
       conversationId,
       agentId,
-      messageId: messageRowIdByRequestRef.get(request.recordId) ?? null,
       failedAttemptOfMessageId: failedAttemptOfMessageRowIds[positionInFile]!,
       recordId: request.recordId,
       baseRecordId: request.baseRecordId,
@@ -737,6 +740,7 @@ function writeApiRequests(
       toolSetHash: request.toolSetHash,
     });
   });
+  statements.updateTurnApiRequestsInFile(agentId);
 }
 
 /**
