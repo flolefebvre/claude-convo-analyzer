@@ -114,16 +114,27 @@ export type SentTimings = {
   durationMs: number;
 };
 
-/** One failed attempt of the Turn (GLOSSARY.md, Failed attempt): how the API answered it, and the time it lost. */
+/**
+ * One failed attempt of the Turn (GLOSSARY.md, Failed attempt): how the API
+ * answered it, when a Recording knows, and the time it lost.
+ */
 export type FailedAttempt = {
-  /** The response's HTTP status. */
-  status: number;
-  /** The response body's `error.message`, else the proxy error; null when neither said why. */
+  /** The response's HTTP status; null from the logs, which do not record it. */
+  status: number | null;
+  /** The response body's `error.message`, else the proxy error; null when neither said why, and from the logs. */
   errorMessage: string | null;
-  /** From its arrival at the Recorder to its failure. */
-  lostMs: number;
-  /** When it reached the Recorder (ISO 8601). */
-  arrivedAt: string;
+  /**
+   * From a Recording, from its arrival to its failure; from the logs, from its
+   * sending to the next request's (the failure plus the backoff), null when
+   * the logs miss either time.
+   */
+  lostMs: number | null;
+  /**
+   * When it was sent (ISO 8601): from the logs, its send time; from a
+   * Recording, when it reached the Recorder, a few ms later. Null when the
+   * logs miss it.
+   */
+  sentAt: string | null;
 };
 
 /** Everything the "What was sent" panel of one Turn or Side request shows. Plain and serializable. */
@@ -271,7 +282,7 @@ export async function getWhatWasSent(apiRequestId: number, opts: WhatWasSentOpti
         status: attempt.status,
         errorMessage: attempt.errorMessage,
         lostMs: Number(attempt.endedAt - attempt.arrivedAt),
-        arrivedAt: new Date(Number(attempt.arrivedAt)).toISOString(),
+        sentAt: new Date(Number(attempt.arrivedAt)).toISOString(),
       })),
       previousApiRequestId: previousBody === null ? null : previousRow!.id,
       firstNewMessageIndex: sharedPrefixLength(messages, previousBody === null ? [] : messagesOf(previousBody)),
@@ -441,6 +452,60 @@ export async function getLoggedRawApiRequest(
       requestHeaders: null,
     };
   });
+}
+
+/**
+ * Of each Turn among `messageIds` that Failed attempts preceded in the logs,
+ * batched: those attempts, oldest first (log-format §9, Retries). Each lost
+ * the time from its sending to the next request's of its chain, the Turn's
+ * own request ending it. A Turn without any is absent.
+ *
+ * @example
+ * const failedAttemptsByMessageId = await loggedFailedAttemptsByMessage(prisma, [message.id]);
+ */
+export async function loggedFailedAttemptsByMessage(
+  prisma: ReadPrisma,
+  messageIds: number[],
+): Promise<Map<number, FailedAttempt[]>> {
+  const failedAttemptsByMessageId = new Map<number, FailedAttempt[]>();
+  if (messageIds.length === 0) return failedAttemptsByMessageId;
+  const attemptRows = await prisma.loggedApiRequest.findMany({
+    where: { failedAttemptOfMessageId: { in: messageIds } },
+    select: { id: true, failedAttemptOfMessageId: true, sentAt: true, positionInFile: true },
+  });
+  if (attemptRows.length === 0) return failedAttemptsByMessageId;
+  const ownerMessageIds = [...new Set(attemptRows.map((row) => row.failedAttemptOfMessageId!))];
+  const turnRows = await prisma.loggedApiRequest.findMany({
+    where: { messageId: { in: ownerMessageIds } },
+    select: { id: true, messageId: true, sentAt: true, positionInFile: true },
+  });
+  // A Turn's chain, in file order: its attempts, then its own request.
+  const chainByMessageId = new Map<number, { sentAt: bigint | null; positionInFile: number; isAttempt: boolean }[]>();
+  const rows = [
+    ...attemptRows.map((row) => ({ ...row, ownerMessageId: row.failedAttemptOfMessageId!, isAttempt: true })),
+    ...turnRows.map((row) => ({ ...row, ownerMessageId: row.messageId!, isAttempt: false })),
+  ];
+  rows.sort((a, b) => a.positionInFile - b.positionInFile || a.id - b.id);
+  for (const row of rows) {
+    const chain = chainByMessageId.get(row.ownerMessageId) ?? [];
+    chain.push(row);
+    chainByMessageId.set(row.ownerMessageId, chain);
+  }
+  for (const [messageId, chain] of chainByMessageId) {
+    const failedAttempts: FailedAttempt[] = [];
+    chain.forEach((row, index) => {
+      if (!row.isAttempt) return;
+      const nextSentAt = chain[index + 1]?.sentAt ?? null;
+      failedAttempts.push({
+        status: null,
+        errorMessage: null,
+        lostMs: row.sentAt === null || nextSentAt === null ? null : Number(nextSentAt - row.sentAt),
+        sentAt: row.sentAt === null ? null : new Date(Number(row.sentAt)).toISOString(),
+      });
+    });
+    failedAttemptsByMessageId.set(messageId, failedAttempts);
+  }
+  return failedAttemptsByMessageId;
 }
 
 /** The pieces a `logged_api_request` row is read with. */

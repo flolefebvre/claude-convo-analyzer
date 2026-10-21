@@ -236,12 +236,18 @@ function Facts({ whatWasSent }: { whatWasSent: WhatWasSent }) {
   );
 }
 
-/** One failed attempt, as one line: its status, its error message and the time it lost. */
+/**
+ * One failed attempt, as one line: its status and its error message when a
+ * Recording knows them, then the time it lost when known — an em dash when
+ * neither is, so the line still counts it.
+ */
 function FailedAttemptLine({ attempt }: { attempt: FailedAttempt }) {
+  const lostTime = attempt.lostMs === null ? null : `lost ${formatLatency(attempt.lostMs)}`;
+  if (attempt.status === null) return <p className="sent-line">{lostTime ?? "—"}</p>;
   return (
     <p className="sent-line">
-      <code>{attempt.status}</code> · {attempt.errorMessage ?? "no error message"} · lost{" "}
-      {formatLatency(attempt.lostMs)}
+      <code>{attempt.status}</code> · {attempt.errorMessage ?? "no error message"}
+      {lostTime !== null && ` · ${lostTime}`}
     </p>
   );
 }

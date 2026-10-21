@@ -28,10 +28,10 @@ model Project {
 
 /// One per top-level `<sessionId>.jsonl`; the user-facing row.
 model Conversation {
-  id        Int    @id @default(autoincrement())
+  id                     Int     @id @default(autoincrement())
   /// The session id (file stem of `<sessionId>.jsonl`).
-  sessionId String @unique @map("session_id")
-  projectId Int    @map("project_id")
+  sessionId              String  @unique @map("session_id")
+  projectId              Int     @map("project_id")
   /// The Conversation's own records stated its Project path; false when it
   /// was borrowed from a sibling in its log folder or decoded from the folder name.
   projectPathFromRecords Boolean @default(false) @map("project_path_from_records")
@@ -43,21 +43,21 @@ model Conversation {
   ccVersion String? @map("cc_version")
 
   /// Source file path on disk.
-  sourcePath  String  @map("source_path")
+  sourcePath    String @map("source_path")
   /// Source file mtime (epoch ms) — incremental-refresh change key.
-  sourceMtime BigInt  @map("source_mtime")
+  sourceMtime   BigInt @map("source_mtime")
   /// Source file size in bytes — incremental-refresh change key.
-  sourceSize  BigInt  @map("source_size")
+  sourceSize    BigInt @map("source_size")
   /// Parser version these rows were produced by; a mismatch with the current
   /// `PARSER_VERSION` (refresh.ts) forces a one-time re-parse after an upgrade.
-  parserVersion Int   @default(0) @map("parser_version")
+  parserVersion Int    @default(0) @map("parser_version")
 
   /// Set when the first message's parentUuid resolves into a prior session (--resume/fork).
   continuedFromConversationId Int? @map("continued_from_conversation_id")
 
-  project           Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  continuedFrom     Conversation?  @relation("ConversationContinuation", fields: [continuedFromConversationId], references: [id], onDelete: SetNull)
-  continuations     Conversation[] @relation("ConversationContinuation")
+  project           Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  continuedFrom     Conversation?      @relation("ConversationContinuation", fields: [continuedFromConversationId], references: [id], onDelete: SetNull)
+  continuations     Conversation[]     @relation("ConversationContinuation")
   agents            Agent[]
   messages          Message[]
   prLinks           PrLink[]
@@ -71,16 +71,16 @@ model Conversation {
 
 /// One per transcript (main thread AND sub-agent). Self-referential lineage.
 model Agent {
-  id             Int  @id @default(autoincrement())
-  conversationId Int  @map("conversation_id")
+  id             Int @id @default(autoincrement())
+  conversationId Int @map("conversation_id")
 
   /// NULL ⇒ root/main agent.
   parentAgentId Int? @map("parent_agent_id")
 
   /// On-disk agent id from `agent-<id>.jsonl` (sub-agents only; NULL for root).
-  externalAgentId String? @map("external_agent_id")
+  externalAgentId    String? @map("external_agent_id")
   /// For sub-agents: the main-thread message (Agent tool call) that launched it.
-  spawnedByMessageId Int? @map("spawned_by_message_id")
+  spawnedByMessageId Int?    @map("spawned_by_message_id")
 
   /// e.g. `Explore`, `Plan`; NULL for the main thread.
   agentType     String? @map("agent_type")
@@ -94,8 +94,8 @@ model Agent {
   childAgents  Agent[]      @relation("AgentLineage")
 
   /// The Agent-tool message that spawned this sub-agent.
-  spawnedBy        Message?  @relation("AgentSpawn", fields: [spawnedByMessageId], references: [id], onDelete: SetNull)
-  messages         Message[] @relation("AgentMessages")
+  spawnedBy         Message?           @relation("AgentSpawn", fields: [spawnedByMessageId], references: [id], onDelete: SetNull)
+  messages          Message[]          @relation("AgentMessages")
   toolCalls         ToolCall[]
   apiRequests       ApiRequest[]
   loggedApiRequests LoggedApiRequest[]
@@ -107,9 +107,9 @@ model Agent {
 
 /// One row per user or assistant message (assistant turns deduplicated by message.id).
 model Message {
-  id             Int    @id @default(autoincrement())
-  conversationId Int    @map("conversation_id")
-  agentId        Int    @map("agent_id")
+  id             Int @id @default(autoincrement())
+  conversationId Int @map("conversation_id")
+  agentId        Int @map("agent_id")
 
   /// Source message id (Anthropic `message.id`); the dedup key for assistant turns.
   messageId String? @map("message_id")
@@ -133,8 +133,8 @@ model Message {
   origin    String?
 
   /// Token split — NULL for user messages (no usage of their own).
-  inputTokens          Int? @map("input_tokens")
-  outputTokens         Int? @map("output_tokens")
+  inputTokens           Int? @map("input_tokens")
+  outputTokens          Int? @map("output_tokens")
   cacheCreation5mTokens Int? @map("cache_creation_5m_tokens")
   cacheCreation1hTokens Int? @map("cache_creation_1h_tokens")
   cacheReadTokens       Int? @map("cache_read_tokens")
@@ -155,20 +155,22 @@ model Message {
   attributionPlugin    String? @map("attribution_plugin")
   attributionMcpServer String? @map("attribution_mcp_server")
 
-  permissionMode String? @map("permission_mode")
+  permissionMode  String? @map("permission_mode")
   /// True when the turn recorded an API error.
-  isApiError     Boolean @default(false) @map("is_api_error")
+  isApiError      Boolean @default(false) @map("is_api_error")
   apiErrorMessage String? @map("api_error_message")
 
   /// Record timestamp (epoch ms).
   timestamp BigInt?
 
-  conversation  Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  agent         Agent        @relation("AgentMessages", fields: [agentId], references: [id], onDelete: Cascade)
-  spawnedAgents Agent[]      @relation("AgentSpawn")
-  toolCalls         ToolCall[]
-  apiRequests       ApiRequest[]
-  loggedApiRequests LoggedApiRequest[]
+  conversation                   Conversation       @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  agent                          Agent              @relation("AgentMessages", fields: [agentId], references: [id], onDelete: Cascade)
+  spawnedAgents                  Agent[]            @relation("AgentSpawn")
+  toolCalls                      ToolCall[]
+  apiRequests                    ApiRequest[]
+  loggedApiRequests              LoggedApiRequest[] @relation("LoggedApiRequestTurn")
+  /// The logged API requests that were this Turn's Failed attempts.
+  failedAttemptLoggedApiRequests LoggedApiRequest[] @relation("LoggedApiRequestFailedAttempt")
 
   @@index([conversationId])
   @@index([agentId])
@@ -179,9 +181,9 @@ model Message {
 
 /// One per `tool_use` block.
 model ToolCall {
-  id        Int    @id @default(autoincrement())
-  messageId Int    @map("message_id")
-  agentId   Int    @map("agent_id")
+  id        Int @id @default(autoincrement())
+  messageId Int @map("message_id")
+  agentId   Int @map("agent_id")
 
   /// `tool_use` block id.
   toolUseId String? @map("tool_use_id")
@@ -209,8 +211,8 @@ model ToolCall {
 
 /// PRs surfaced in a conversation (`pr-link` records).
 model PrLink {
-  id             Int    @id @default(autoincrement())
-  conversationId Int    @map("conversation_id")
+  id             Int @id @default(autoincrement())
+  conversationId Int @map("conversation_id")
 
   prNumber     Int?    @map("pr_number")
   prUrl        String  @map("pr_url")
@@ -224,8 +226,8 @@ model PrLink {
 
 /// Wall-clock turn timings (`system/turn_duration` records).
 model TurnDuration {
-  id             Int    @id @default(autoincrement())
-  conversationId Int    @map("conversation_id")
+  id             Int @id @default(autoincrement())
+  conversationId Int @map("conversation_id")
 
   durationMs   BigInt @map("duration_ms")
   messageCount Int    @map("message_count")
@@ -240,15 +242,15 @@ model TurnDuration {
 /// (ADR-0006), joined to its Turn when one matches, with its kind and its
 /// response's usage. Nothing of what was sent.
 model ApiRequest {
-  id             Int  @id @default(autoincrement())
-  conversationId Int  @map("conversation_id")
+  id             Int     @id @default(autoincrement())
+  conversationId Int     @map("conversation_id")
   /// The assistant Message of the Turn this API request belongs to: the one
   /// with the same `requestId`, else the same `message.id`; for a failed
   /// attempt, the Turn whose API request retried it. NULL for a Side request,
   /// and for a failed attempt no retry of which joined a Turn.
-  messageId      Int? @map("message_id")
+  messageId      Int?    @map("message_id")
   /// The Agent of that Turn; NULL when `messageId` is.
-  agentId        Int? @map("agent_id")
+  agentId        Int?    @map("agent_id")
   /// What the API request is (GLOSSARY.md, API request), as the Refresh
   /// classified it (`classifyApiRequest`, `api-request-kind.ts`): `turn` |
   /// `failed-attempt` | a Side request's kind — `session-naming` |
@@ -286,11 +288,11 @@ model ApiRequest {
   /// The response's token split, as `message` stores a Turn's; all NULL when
   /// the response carries no `usage` (an error, a token count). Only an API
   /// request that is not a Turn's adds it to Cost (GLOSSARY.md, Unlogged usage).
-  inputTokens           Int? @map("input_tokens")
-  outputTokens          Int? @map("output_tokens")
-  cacheCreation5mTokens Int? @map("cache_creation_5m_tokens")
-  cacheCreation1hTokens Int? @map("cache_creation_1h_tokens")
-  cacheReadTokens       Int? @map("cache_read_tokens")
+  inputTokens           Int?    @map("input_tokens")
+  outputTokens          Int?    @map("output_tokens")
+  cacheCreation5mTokens Int?    @map("cache_creation_5m_tokens")
+  cacheCreation1hTokens Int?    @map("cache_creation_1h_tokens")
+  cacheReadTokens       Int?    @map("cache_read_tokens")
   /// The response body's `model`, else the requested one; NULL with neither.
   model                 String?
 
@@ -309,14 +311,20 @@ model ApiRequest {
 /// each stored once, under their hash, in `system_prompt`, `tool_set` and
 /// `sent_message`.
 model LoggedApiRequest {
-  id             Int  @id @default(autoincrement())
-  conversationId Int  @map("conversation_id")
+  id                       Int  @id @default(autoincrement())
+  conversationId           Int  @map("conversation_id")
   /// The Agent of the log file holding the record.
-  agentId        Int  @map("agent_id")
+  agentId                  Int  @map("agent_id")
   /// The assistant Message of the Turn whose `requestRef` names this record,
   /// among the Turns of the same file; NULL when none does (a request then
   /// retried, or never answered).
-  messageId      Int? @map("message_id")
+  messageId                Int? @map("message_id")
+  /// The assistant Message of the Turn that owns this record as a Failed
+  /// attempt (log-format §9, Retries): no Turn answered it, and the next
+  /// request of its file resent it — the same `requestDigest`, its `base` this
+  /// record — that request's Turn, or the owner of that request in turn. NULL
+  /// otherwise.
+  failedAttemptOfMessageId Int? @map("failed_attempt_of_message_id")
 
   /// The record's own `id`: what an assistant record's `requestRef` names.
   recordId              String  @map("record_id")
@@ -345,14 +353,16 @@ model LoggedApiRequest {
   /// NULL when its file holds no `api-request-shape` under its `shapeHash`.
   toolSetHash           String? @map("tool_set_hash")
 
-  conversation Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  agent        Agent         @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  message      Message?      @relation(fields: [messageId], references: [id], onDelete: SetNull)
-  systemPrompt SystemPrompt? @relation(fields: [systemPromptHash], references: [hash], onDelete: Restrict)
-  toolSet      ToolSet?      @relation(fields: [toolSetHash], references: [hash], onDelete: Restrict)
+  conversation           Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  agent                  Agent         @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  message                Message?      @relation("LoggedApiRequestTurn", fields: [messageId], references: [id], onDelete: SetNull)
+  failedAttemptOfMessage Message?      @relation("LoggedApiRequestFailedAttempt", fields: [failedAttemptOfMessageId], references: [id], onDelete: SetNull)
+  systemPrompt           SystemPrompt? @relation(fields: [systemPromptHash], references: [hash], onDelete: Restrict)
+  toolSet                ToolSet?      @relation(fields: [toolSetHash], references: [hash], onDelete: Restrict)
 
   @@index([conversationId])
   @@index([messageId])
+  @@index([failedAttemptOfMessageId])
   @@index([agentId, positionInFile])
   @@index([systemPromptHash])
   @@index([toolSetHash])

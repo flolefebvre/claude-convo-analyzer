@@ -129,7 +129,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 15, sha256: "d79302a905b975c08cfd6c217e6ae3eaa17e44ca45bb318cdfeefa1ae7b0e329" },
-      conversation: { rowCount: 21, sha256: "2e9e497305bc297f55d3fe43596a66d8b0ef0449b9a0fb8d8a3eeca53c79b490" },
+      conversation: { rowCount: 21, sha256: "582815d7453e44c3a97834d31ef0fa67b4d68e490930805ee4c347af3f3458a1" },
       agent: { rowCount: 35, sha256: "bcf922290517994e489068e748364ff9de40929e4a8ddfbcb68c6f6014836468" },
       message: { rowCount: 125, sha256: "efde03aefa67065d8cc0e7f5c061c6d75b5d6a3211263c175dee68f0862b48c5" },
       tool_call: { rowCount: 34, sha256: "58586fdaa0ea9e906fd5037c8a3c7809fd2fd1d4602ec6280e34db111716b5f4" },
@@ -146,7 +146,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "5d55ed2d1c37a5a354777b7e27dfce7bb9f299e0e7237d17a32956fee0357675" },
-      conversation: { rowCount: 1, sha256: "e73f97295b501e25791eab72c09a8c3113c704d5264a2908bcbc8b7cfba19788" },
+      conversation: { rowCount: 1, sha256: "47554306f0ee258cebce7017353f3b0cc8034f56e99cdc1301ff7978c19a6dcf" },
       agent: { rowCount: 2, sha256: "9cddce4d56d246718241b05d406551e917f8d9c1d9a116799eb257bc48089a61" },
       message: { rowCount: 28, sha256: "cfdb0c9218cd0184517845f99b348d217ec655bd135e7c723999498fba0260dd" },
       tool_call: { rowCount: 1, sha256: "a7fdb225fda2bff0ca75f88a22789a86cd79a97f5ea4e2f952e1d4559aa8efd9" },
@@ -163,7 +163,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 9, sha256: "e740c951fb2b58e8b13902eea830681396ac5eea03a445a31d6fb998c250a3e1" },
-      conversation: { rowCount: 13, sha256: "92ea025af30d1223c78f34ea5e63b5b399861ccb1656408a5c2b451006cb199b" },
+      conversation: { rowCount: 13, sha256: "25623edcce040d4d0e89e829cff7e3f244f4592b9e23e26ce9058998becabae4" },
       agent: { rowCount: 13, sha256: "47aa156cd547f0ad4f24ca8d2f27122dfa765f0de80b37a46a3507b22ade253f" },
       message: { rowCount: 22, sha256: "c939415a25c68bca466283e335cd5a19447d35732c36f53ab3b32e8376a93c77" },
       tool_call: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
@@ -180,7 +180,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "c39a0134a2be51dcdd6348bf0657691be4b1d4092d6e1616117c4d0f4f58a771" },
-      conversation: { rowCount: 4, sha256: "cfa80d5a91d397b5057db318d464108efbc388cd685c7b2fc2082cdadc920a13" },
+      conversation: { rowCount: 4, sha256: "15aa00f42074b6b8d2634f7a1cde31e013723f42cc823d789282e1ce2eba2100" },
       agent: { rowCount: 5, sha256: "c0938e2f66085f42e8e7e5ee608867bb0974528d74f6dd4ead50afad13e0e8a1" },
       message: { rowCount: 17, sha256: "897eb312a4eb322388b382eeb8fefdf153a78cd7ef9b579df7438c4b530d01d1" },
       tool_call: { rowCount: 1, sha256: "e331ea30643c19a0602a2759f557187aacaf1729c796a955560799b9c4dbd73f" },
@@ -197,14 +197,14 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "8b9da1ddb86766f02f4a1ac8d582400f0f6c9e5071156b7b726e7b6d9bf11d31" },
-      conversation: { rowCount: 3, sha256: "d3f4bfb680e5b5949e674ca6ad0a0ecf4d288d8e28edbadac07494c13e5174fd" },
+      conversation: { rowCount: 3, sha256: "848e8c8b6cd09d8da03652afbd7ca7826a2e1d36ea7d38e0bfec1e4558615f6f" },
       agent: { rowCount: 4, sha256: "5183823b6f5d49ed8cedbdc07b0046a87c72ec8ce45a90423a939cc6fe42d620" },
       message: { rowCount: 19, sha256: "9c3703378cc1178a480d2e9789f47e756190b245966d558c35c4e1a29e535978" },
       tool_call: { rowCount: 3, sha256: "e5f615b5d6290bc0dab75ea171da282d5e176e04be16438fc4d834c227f91b9d" },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       api_request: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
-      logged_api_request: { rowCount: 8, sha256: "dd7f5374386680f00fa29f087b1bf8b100c9d08e6bc9afb053ea9b5308adcf09" },
+      logged_api_request: { rowCount: 8, sha256: "dc61f1c84636a85d51fa06c9ec0eedb89cfd56d6301377dbb38257656eb8d3f9" },
       // Four system prompts and three tool sets: the Sub-agent shares the Main thread's first one.
       system_prompt: { rowCount: 4, sha256: "179129a51d494cdd6ea7fb72cf50d62900d9163160ed521f850dc233dae050bf" },
       tool_set: { rowCount: 3, sha256: "6b550b32e7738d046dd3c9f444e69eeba02357a973be985eac064674d0326323" },
@@ -315,6 +315,21 @@ describe("a re-parse", () => {
     expect(reparsedContent).toEqual(coldContent);
     expect(coldContent.sent_message.rowCount).toBe(beforeContent.sent_message.rowCount - 1);
   });
+
+  it("stores what a cold Refresh does, even when the change makes an unanswered request a Failed attempt", async () => {
+    // lreq-3 now resends lreq-2's very body: lreq-2 becomes a Failed attempt of lreq-3's Turn.
+    const { beforeContent, reparsedContent, coldContent } = await reparsedAndCold((lines) =>
+      lines.map((line) => line.replace('"requestDigest":"digest-lreq-3"', '"requestDigest":"digest-lreq-2"')),
+    );
+
+    expect(reparsedContent).toEqual(coldContent);
+    const ownerUuidOf = (content: typeof coldContent, recordId: string) =>
+      (content.requests as { record_id: string; failedAttemptOfMessageUuid: string | null }[]).find(
+        (request) => request.record_id === recordId,
+      )?.failedAttemptOfMessageUuid;
+    expect(ownerUuidOf(beforeContent, "lreq-2")).toBeNull();
+    expect(ownerUuidOf(coldContent, "lreq-2")).toEqual(expect.any(String));
+  });
 });
 
 describe("a piece two logs spell in two key orders", () => {
@@ -413,7 +428,8 @@ describe("a piece two logs spell in two key orders", () => {
 /**
  * The request-record tables of the database at `dbPath`, whatever row ids the
  * Refreshes gave: the pieces whole, the requests without their row id and
- * foreign keys, but whether a Turn answered them.
+ * foreign keys, but whether a Turn answered them, and the `uuid` of the Turn's
+ * Message owning one as a Failed attempt.
  */
 function loggedApiRequestContent(dbPath: string, logsRoot: string) {
   const db = new Database(dbPath, { readonly: true });
@@ -422,8 +438,11 @@ function loggedApiRequestContent(dbPath: string, logsRoot: string) {
       .prepare(
         `SELECT "record_id", "base_record_id", "kept_message_count", "tail_message_hashes_json", "parameters_json",
                 "cache_breakpoints_json", "query_source", "request_digest", "sent_at", "position_in_file",
-                "system_prompt_hash", "tool_set_hash", "message_id" IS NULL AS "isUnanswered"
-           FROM "logged_api_request" ORDER BY "record_id"`,
+                "system_prompt_hash", "tool_set_hash", "logged_api_request"."message_id" IS NULL AS "isUnanswered",
+                "owner"."uuid" AS "failedAttemptOfMessageUuid"
+           FROM "logged_api_request"
+           LEFT JOIN "message" AS "owner" ON "owner"."id" = "logged_api_request"."failed_attempt_of_message_id"
+          ORDER BY "record_id"`,
       )
       .all();
     return {
