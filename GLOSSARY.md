@@ -282,14 +282,21 @@ _Avoid_: exchange, call (clashes with Tool call).
 
 ### What was sent
 
-What a Turn's API request gave the model, shown on that Turn: how the system
-prompt and the tool definitions changed since the previous API request of the
-same Agent, the messages new since it, the request parameters and when it was
-sent, and the whole request. It also gives the API request **raw**: its body as
-rebuilt from the logs, as JSON. A system-prompt change is **volatile** when
-only lines that move on their own changed — the date, the git status, the
-working directory — and **real** otherwise. A message the logs cannot rebuild
-is shown missing, at its place, and counted.
+What a Turn's API request gave the model, shown on that Turn in the order the
+model read it: the request parameters and when it was sent; the system prompt
+and the tool definitions, each with how it changed since the previous API
+request of the same Agent; how many earlier messages it repeated from that
+request; and the messages new for this Turn, each block labelled by what it is
+(a Prompt, a tool result, Injected context, …). It also gives the API request
+**raw**: its body as rebuilt from the logs, as JSON. A system-prompt change is
+**volatile** when only lines that move on their own changed — the date, the
+git status, the working directory — and **real** otherwise. A message the logs
+cannot rebuild is shown missing, at its place, and counted.
+
+### Injected context
+
+Text Claude Code adds to an API request on its own, neither typed by the user nor returned by a tool: the CLAUDE.md and AGENTS.md files, the skill and agent lists, MCP server instructions, the date, the environment, reminders. Some of it also appears in the Transcript as Meta Messages; most of it appears only in What was sent.
+_Avoid_: system reminder (the wrapper it is sent in, not what it is), attachment.
 
 ### Failed attempt
 

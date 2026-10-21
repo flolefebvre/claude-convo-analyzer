@@ -162,15 +162,19 @@ CCA_DB_PATH=data/demo.db CCA_LOGS_ROOT=/tmp/demo-logs pnpm dev
 
 Since Claude Code 2.1.300 the logs record each request Claude Code sends, and
 every turn of such a conversation, sub-agents included, shows **What was
-sent**, in three views: **Changes**, the messages new since the previous
-request (the system-reminders Claude Code injected included) and how the
-system prompt and tools changed since it; **Request**, the whole request by
-part; and **Raw**, the request body as the logs rebuild it, as copyable JSON.
-The request parameters sit above all three. A message the logs cannot rebuild
-is shown missing and counted. A turn Claude Code had to retry shows how many
-failed attempts preceded it and the time they lost, though not why they
-failed. Conversations logged by earlier versions of Claude Code show none of
-this.
+sent**, in the order the model read it. One line gives the request
+parameters and when it was sent. Below it, each part collapses to one line
+and opens for detail: the system prompt, flagged when it changed since the
+previous request (a change of only the date, git status or working directory
+reads as volatile) with its diff one toggle away; the tools, with those added,
+removed or changed; how many earlier messages it repeated; and, under **New
+for this Turn**, each block the request added, labelled — the prompt, a tool
+result, the context Claude Code injected. **Raw JSON** swaps the view for the
+request body as the logs rebuild it, as copyable JSON. A message the logs
+cannot rebuild is shown missing and counted. A turn Claude Code had to retry
+shows how many failed attempts preceded it and the time they lost, though not
+why they failed. Conversations logged by earlier versions of Claude Code show
+none of this.
 
 Claude Code's own background requests (naming the session, suggestions, web
 summaries) never appear in the logs, so no cost counts them.
