@@ -208,8 +208,8 @@ describe("stored data equivalence", () => {
       // Four system prompts and three tool sets: the Sub-agent shares the Main thread's first one.
       system_prompt: { rowCount: 4, sha256: "179129a51d494cdd6ea7fb72cf50d62900d9163160ed521f850dc233dae050bf" },
       tool_set: { rowCount: 3, sha256: "6b550b32e7738d046dd3c9f444e69eeba02357a973be985eac064674d0326323" },
-      // The two blobs.
-      sent_message: { rowCount: 2, sha256: "2454ef5f9352b2d6774572d0d887ffb40b299e3d289a73b0bb7503516e605605" },
+      // Fifteen messages: two blobs, the others rebuilt from records; the tail hash no file holds is not stored.
+      sent_message: { rowCount: 15, sha256: "057de7a1e2d743f48181ea1f7908867e5c72eac6d52166a141932d5c643bccf7" },
     });
   });
 

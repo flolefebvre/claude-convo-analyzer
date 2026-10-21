@@ -201,6 +201,57 @@ describe("the messages a logged API request sent", () => {
     });
   });
 
+  it("are every message, rebuilt from the file's records where no blob holds one", async () => {
+    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(4), { dbPath: db.dbPath });
+
+    expect(sent?.missingMessageCount).toBe(0);
+    expect(sent?.fullRequest.messages.map((message) => [message?.role, message?.blocks[0]?.kind])).toEqual([
+      ["user", "text"],
+      ["assistant", "text"],
+      ["system", "system-reminder"],
+      ["user", "text"],
+      ["assistant", "text"],
+      ["user", "tool_result"],
+      ["assistant", "text"],
+      ["system", "system-reminder"],
+      ["user", "text"],
+    ]);
+  });
+
+  it("rebuild a Turn written as several records sharing its message id as one message, their blocks in order", async () => {
+    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(3), { dbPath: db.dbPath });
+
+    expect(sent?.fullRequest.messages[4]?.role).toBe("assistant");
+    expect(sent?.fullRequest.messages[4]?.blocks.map((block) => block.kind)).toEqual(["text", "tool_use"]);
+    expect(sent?.fullRequest.messages[4]?.blocks[0]).toMatchObject({ text: "Let me delegate the search." });
+  });
+
+  it("rebuild the leading part of a run of user records a request sent before the run grew", async () => {
+    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(5), { dbPath: db.dbPath });
+
+    expect(sent?.missingMessageCount).toBe(0);
+    expect(sent?.fullRequest.messages).toHaveLength(11);
+    expect(sent?.fullRequest.messages[10]).toEqual({
+      role: "user",
+      blocks: [
+        {
+          kind: "tool_result",
+          shownAs: "json",
+          json: JSON.stringify({ type: "tool_result", tool_use_id: "ltu-3", content: "1 passed" }, null, 2),
+        },
+      ],
+    });
+  });
+
+  it("are a Sub-agent's own, rebuilt from its transcript", async () => {
+    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(2, SUB_AGENT_ID), { dbPath: db.dbPath });
+
+    expect(sent?.fullRequest.messages.map((message) => message?.role)).toEqual(["user", "assistant", "user"]);
+    expect(sent?.fullRequest.messages[0]?.blocks).toEqual([
+      { kind: "text", shownAs: "text", text: "Find the export code." },
+    ]);
+  });
+
   it("include a blob logged after the request that sent it", async () => {
     const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(4), { dbPath: db.dbPath });
 

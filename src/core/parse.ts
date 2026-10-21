@@ -552,13 +552,20 @@ function asInteger(v: unknown): number | null {
 }
 
 /**
+ * What every line of a request record holds (`api-request`, `-shape`, `-blob`),
+ * as Claude Code writes it: a file without it has none. A record that merely
+ * quotes it only costs that file the hashing of its records.
+ */
+const REQUEST_RECORD_TYPE_MARK = '"type":"api-request';
+
+/**
  * Parse the lines of one session file into a `ParsedSession`. Assistant turns are
  * split by Claude Code across several JSONL lines sharing one `message.id` — one
  * per content block (finding #4) — so records with a repeated id are MERGED into
  * a single message (text concatenated, all tool_use blocks collected) with the
  * usage, repeated identically across those records, counted once.
  */
-export function parseSessionLines(lines: Iterable<string>): ParsedSession {
+export function parseSessionLines(lines: readonly string[]): ParsedSession {
   const messages: ParsedMessage[] = [];
   const toolResults = new Map<string, ParsedToolResult>();
   const prLinks: ParsedPrLink[] = [];
@@ -570,7 +577,9 @@ export function parseSessionLines(lines: Iterable<string>): ParsedSession {
   const deliveries = deliveryLedger();
   const loggedApiRequests: { request: ParsedLoggedApiRequest; shapeHash: string | null }[] = [];
   const requestShapes = requestShapeLedger();
-  const sentMessages = sentMessageLedger();
+  // Only a file with request records (2.1.300+) has messages to rebuild:
+  // the others, most files, skip hashing their records.
+  const sentMessages = sentMessageLedger(lines.some((line) => line.includes(REQUEST_RECORD_TYPE_MARK)));
   let malformedLines = 0;
 
   let firstCwd: string | null = null;
@@ -685,8 +694,10 @@ export function parseSessionLines(lines: Iterable<string>): ParsedSession {
       if (classified.kind === "prompt") firstUserText ??= classified.text;
       deliveries.add(deliveryKeys(record.origin, null));
       messages.push(userMessage(record, classified, toEpochMs(record.timestamp)));
+      sentMessages.addRecord("user", record, trimmed);
       continue;
     }
+    sentMessages.addRecord("assistant", record, trimmed);
 
     // assistant — records sharing a message.id are ONE turn that Claude Code
     // split across content-block lines (a `thinking` line, a `text` line, then
@@ -839,10 +850,43 @@ function requestShapeLedger() {
  * read — a blob may follow the request that sent it — and then only those a
  * tail names.
  */
-function sentMessageLedger() {
+function sentMessageLedger(isRebuildingFromRecords: boolean) {
   const namedHashes = new Set<string>();
   const blobJsonByHash = new Map<string, string>();
+  /** Each message the file's records rebuild, by its hash: the records of it, kept as their lines until a tail is known to name it. */
+  const rebuiltSourceByHash = new Map<string, RebuiltMessageSource>();
+  let userRun: RebuiltMessageDraft | null = null;
+  const assistantDraftByMessageId = new Map<string, RebuiltMessageDraft>();
+  const assistantDrafts: RebuiltMessageDraft[] = [];
+  const keepFirst = (hash: string, source: RebuiltMessageSource) => {
+    if (!rebuiltSourceByHash.has(hash)) rebuiltSourceByHash.set(hash, source);
+  };
   return {
+    /**
+     * A `user` or `assistant` record, from `line`: a user record joins the run
+     * of user records since the last assistant one, each leading part of the
+     * run a message; an assistant record joins the other records of its
+     * `message.id`. Ignored in a file without request records.
+     */
+    addRecord: (role: "user" | "assistant", record: Record<string, unknown>, line: string) => {
+      if (!isRebuildingFromRecords) return;
+      const content = isRecord(record.message) ? record.message.content : undefined;
+      if (role === "user") {
+        userRun ??= rebuiltMessageDraft("user");
+        userRun.add(content, line);
+        keepFirst(userRun.hash(), { role, lines: userRun.lines, recordCount: userRun.lines.length });
+        return;
+      }
+      userRun = null;
+      const messageId = isRecord(record.message) ? asString(record.message.id) : null;
+      let draft = messageId === null ? undefined : assistantDraftByMessageId.get(messageId);
+      if (draft === undefined) {
+        draft = rebuiltMessageDraft("assistant");
+        assistantDrafts.push(draft);
+        if (messageId !== null) assistantDraftByMessageId.set(messageId, draft);
+      }
+      draft.add(content, line);
+    },
     addTail: (tailMessageHashes: string[]) => {
       for (const hash of tailMessageHashes) namedHashes.add(hash);
     },
@@ -854,16 +898,76 @@ function sentMessageLedger() {
       const keptJson = blobJsonByHash.get(hash);
       if (keptJson === undefined || json < keptJson) blobJsonByHash.set(hash, json);
     },
-    /** Each message a tail names that the file holds, by its hash. */
+    /** Each message a tail names that the file holds, by its hash: from a blob, else rebuilt from its records. */
     namedJsonByHash: (): Map<string, string> => {
+      for (const draft of assistantDrafts) {
+        keepFirst(draft.hash(), { role: "assistant", lines: draft.lines, recordCount: draft.lines.length });
+      }
       const jsonByHash = new Map<string, string>();
       for (const hash of namedHashes) {
-        const json = blobJsonByHash.get(hash);
+        const blobJson = blobJsonByHash.get(hash);
+        const source = blobJson === undefined ? rebuiltSourceByHash.get(hash) : undefined;
+        const json = blobJson ?? (source === undefined ? undefined : rebuiltMessageJson(source));
         if (json !== undefined) jsonByHash.set(hash, json);
       }
       return jsonByHash;
     },
   };
+}
+
+/** The records a message is rebuilt from: the first `recordCount` of `lines`. */
+type RebuiltMessageSource = { role: "user" | "assistant"; lines: string[]; recordCount: number };
+
+/** How a rebuilt message's canonical JSON starts: `content`, its blocks, sorts before `role`. */
+const REBUILT_MESSAGE_JSON_START = '{"content":[';
+
+/**
+ * A message being rebuilt from consecutive records (log-format §9, step 2):
+ * their lines, and the sha256 of its canonical JSON fed block by block, so
+ * the hash of the message as it stands costs one copy, whatever its size.
+ */
+type RebuiltMessageDraft = {
+  lines: string[];
+  add: (content: unknown, line: string) => void;
+  /** The hash of the message made of every record added so far. */
+  hash: () => string;
+};
+
+function rebuiltMessageDraft(role: "user" | "assistant"): RebuiltMessageDraft {
+  const contentHash = createHash("sha256").update(REBUILT_MESSAGE_JSON_START);
+  const lines: string[] = [];
+  let blockCount = 0;
+  const end = `],"role":${JSON.stringify(role)}}`;
+  return {
+    lines,
+    add: (content, line) => {
+      lines.push(line);
+      for (const block of contentBlocksOf(content)) {
+        contentHash.update(blockCount === 0 ? canonicalJson(block) : `,${canonicalJson(block)}`);
+        blockCount += 1;
+      }
+    },
+    hash: () => contentHash.copy().update(end).digest("hex"),
+  };
+}
+
+/** A message's `content` as blocks: a string is one text block, a missing content none. */
+function contentBlocksOf(content: unknown): unknown[] {
+  if (typeof content === "string") return [{ type: "text", text: content }];
+  return Array.isArray(content) ? content : [];
+}
+
+/**
+ * The message `source` rebuilds, as logged: one record's `content` as it is
+ * (a string kept), several records' blocks concatenated in order.
+ */
+function rebuiltMessageJson(source: RebuiltMessageSource): string {
+  const contents = source.lines.slice(0, source.recordCount).map((line) => {
+    const record = JSON.parse(line) as Record<string, unknown>;
+    return isRecord(record.message) ? record.message.content : undefined;
+  });
+  const content = contents.length === 1 ? (contents[0] ?? []) : contents.flatMap(contentBlocksOf);
+  return JSON.stringify({ role: source.role, content });
 }
 
 /**
