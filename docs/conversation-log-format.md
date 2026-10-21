@@ -2,9 +2,9 @@
 
 Empirically reverse-engineered from the logs on this machine (Claude Code
 versions ~2.1.143–2.1.306, June–October 2026: §1–§7 were mapped on
-2.1.145–2.1.185, §8 and §9 on later versions). This is a **reference map** so future
-work does not have to re-derive the format by re-parsing. It records what the
-files contain, the non-obvious gotchas, and — importantly — **what we
+2.1.145–2.1.185, §8 and §9 on later versions). This is a **reference map** so
+future work does not have to re-derive the format by re-parsing. It records
+what the files contain, the non-obvious gotchas, and — importantly — **what we
 deliberately did not model** (and where to find it if we ever want it).
 
 > Numbers below (counts, sizes) are from one snapshot of one machine and are
@@ -324,8 +324,9 @@ records each API request its Agent sent: the system prompt, the tools, every
 message and the parameters, enough to rebuild the request body. Since
 **2.1.266** the injected-context attachments carry the text the model saw. The
 numbers below come from an October 2026 scan of this machine: 4,942 files, 750
-of them with 2.1.300+ records (330 main Conversations), about 27,000
-`api-request` records (9,200 main-thread, 17,700 sub-agent).
+of them with 2.1.300+ records (330 main Conversations), about 27,500
+`api-request` records (9,400 main-thread, 18,000 sub-agent). The logs grow as
+they are scanned, so counts from different probes differ slightly.
 
 ### Request records (2.1.300+)
 
@@ -369,8 +370,9 @@ nearly all are user messages carrying full tool results.
 2. **Resolving a tail hash.** It names either a blob, or a message rebuilt
    from the file's own records: the `assistant` records sharing one
    `message.id`, their `content` concatenated in order
-   (`{role: "assistant", content}`); or a run of consecutive `user` records (no
-   `assistant` record between them), concatenated the same way
+   (`{role: "assistant", content}`); or **a leading part of a run of
+   consecutive `user` records** (no `assistant` record between them) — the
+   whole run, or its first _n_ records — concatenated the same way
    (`{role: "user", content}`), a string `content` counting as one text block.
    **The hash** is the sha256 hex of the message's canonical JSON — keys
    sorted, no whitespace, non-ASCII kept as is — **with a string `content`
@@ -379,22 +381,21 @@ nearly all are user messages carrying full tool results.
    as does the wire (seen on the 20 string `system` messages Recordings
    hold), so a string-content message never matches its hash as stored:
    rewrite it to hash, keep the string to show what was sent. The same rule
-   holds for `requestDigest` (step 4), which only reproduces with it.
-3. **Resolution can fail.** In the scan, 10 requests (2.1.300–2.1.302, 7
-   main-thread and 3 sub-agent, one per file) each have one tail hash that no
-   file resolves. All 10 are requests no Turn answers; the missing message
-   always sits right after an assistant message and before a `system` one,
-   where the user message carrying tool results goes, and no later request
-   reuses it. Treat such a request as unbuildable, not the file as broken.
+   holds for `requestDigest` (step 5), which only reproduces with it.
+3. **Why a leading part: the interrupted Turn.** A request sent with the
+   tool-result message, then never answered (the user typed, interrupted or
+   exited), leaves a run of user records that grew after it was sent; its
+   tail names only the run's first records. Hashing whole runs only leaves
+   those unresolved (10 requests in the scan, 2.1.300–2.1.302, one per file);
+   with leading parts, every tail hash in the scan resolves within its own
+   file.
 4. **The body** is
    `{...params, system: shape.system, tools: shape.tools, messages}`, with
    each `cacheControl` value set as `cache_control` on the object at its
    `path`.
 5. **`requestDigest`** is the hash of that body, `safeguards` included where
    `params` has it, string content rewritten as in step 2. It reproduces the
-   digest of every request whose messages all resolve: 9,254 of 9,261
-   main-thread and 17,865 of 17,868 sub-agent requests (the rest are the 10 of
-   step 3).
+   digest of every request in the scan: 9,434 main-thread and 18,020 sub-agent.
 
 #### What the logs drop compared with the wire
 
@@ -405,9 +406,9 @@ rebuilt body equals the body sent except:
   in the shape;
 - `metadata` and `stream` are not recorded;
 - `safeguards` (the safety classifier's context per the 2.1.304 changelog, not
-  part of what the model saw) is sent but, from 2.1.304, not recorded. On 2.1.300 it is on 2,644 of
-  2,689 requests, on 2.1.301–2.1.303 on all of them, on 2.1.304+ on none. It
-  is 17.8% of all 2.1.300+ log bytes on its own;
+  part of what the model saw) is sent but, from 2.1.304, not recorded. On
+  2.1.300 it is on 2,644 of 2,689 requests, on 2.1.301–2.1.303 on all of them,
+  on 2.1.304+ on none. It is 17.8% of all 2.1.300+ log bytes on its own;
 - `params.betas` is not a body field (no recorded body has one): betas travel
   in the `anthropic-beta` header.
 
@@ -416,8 +417,14 @@ rebuilt body equals the body sent except:
 A resumed or forked session's assistant records can point at an `api-request`
 that only exists in the file it came from. Of the distinct `requestRef`s per
 file, 610 of 9,490 on the main thread (6.4%) and 20 of 17,801 in sub-agents
-point only to another file; 15 point to no file at all. 111 request `id`s
-appear in more than one file. Index requests across files, not per file.
+point only to another file. 111 request `id`s appear in more than one file.
+Index requests across files, not per file.
+
+**A `requestRef` can point to no file at all**, so a Turn's request is not
+always buildable: 15 in the scan (2.1.300–2.1.304; 9 main-thread, 6
+sub-agent). The 9 main-thread ones all sit before their file's first
+`api-request`, where a resumed session's copied history goes; the request
+they name is on disk nowhere. Show such a Turn without What was sent.
 
 #### Retries
 
@@ -470,9 +477,9 @@ kinds never do (`deferred_tools_record`, `batching_reminder_sent`,
 
 **Role and wrapping.** From 2.1.285 the role is fixed per kind: `user` for
 `instructions`, `session_context` and `remote_session_change`, `system` for
-every other kind. The logged text is wrapped in `<system-reminder>…</system-reminder>`
-(except some `queued_command` text, already in its §8 wrapper), whatever the
-role:
+every other kind. The logged text is wrapped in
+`<system-reminder>…</system-reminder>` (except some `queued_command` text,
+already in its §8 wrapper), whatever the role:
 
 - **`system`** text is sent **unwrapped**, in a `role: "system"` message
   (a blob), sometimes sharing it with other attachments' text;
