@@ -1,9 +1,9 @@
 "use client";
 
 // The lazy read behind a transcript disclosure (a Tool call's body, what a
-// Turn sent, its Raw view): nothing is fetched until the reader first
-// opens the `<details>` or the tab, and what came back is kept for every later
-// open.
+// Turn sent, its raw JSON): nothing is fetched until the reader first
+// opens the `<details>` or presses the toggle, and what came back is kept for
+// every later open.
 
 import { useState } from "react";
 
@@ -21,7 +21,7 @@ export type ReadOnFirstOpenState<Value> =
  * The state of `read` and what starts it on the first open: `onToggle` and
  * `detailsRef` for a `<details>` (the ref catches one opened before
  * hydration, its one `toggle` fired with no listener attached), or
- * `startReading` for any other opening, such as a tab's first activation.
+ * `startReading` for any other opening, such as a toggle's first press.
  * `preloaded` starts it loaded, never fetching.
  *
  * @example const { state, onToggle, detailsRef } = useReadOnFirstOpen(() => callRoute(routes.api["tool-call"](id).GET()));

@@ -78,6 +78,7 @@ describe("What was sent from the logs", () => {
 
     expect(sent?.previousApiRequestId).toBe(await apiRequestIdOfTurn(3));
     expect(sent?.systemPromptDiff?.isVolatileOnly).toBe(false);
+    expect(sent?.systemPromptDiff?.volatileChangeNames).toEqual(["date"]);
     const changedLines = sent?.systemPromptDiff?.hunks
       .flatMap((hunk) => hunk.lines)
       .filter((line) => line.change !== "unchanged");
@@ -122,8 +123,9 @@ describe("What was sent from the logs", () => {
       thinking: "adaptive · display updates",
       effort: "high",
       betas: ["beta-one", "beta-two"],
+      // Two on the system blocks, one on the last message.
+      cacheBreakpointCount: 3,
     });
-    expect(sent?.fullRequest.parameterByName).toEqual(STORED_PARAMETERS);
     expect(sent?.fullRequest.systemBlocks.map((block) => block.cacheControl)).toEqual(["ephemeral 1h", "ephemeral"]);
     expect(sent?.fullRequest.systemBlocks[0]).toMatchObject({ shownAs: "text", text: "You are a coding agent." });
     expect(sent?.fullRequest.tools.map((tool) => tool.name)).toEqual(["Bash", "Grep"]);
@@ -158,6 +160,8 @@ describe("the messages an API request sent", () => {
           kind: "system-reminder",
           shownAs: "text",
           text: "<system-reminder>\nCLAUDE.md: keep exports in one module.\n</system-reminder>",
+          label: "Injected context",
+          preview: "CLAUDE.md: keep exports in one module.",
         },
       ],
     });
@@ -200,6 +204,9 @@ describe("the messages an API request sent", () => {
           kind: "tool_result",
           shownAs: "json",
           json: JSON.stringify({ type: "tool_result", tool_use_id: "ltu-3", content: "1 passed" }, null, 2),
+          // Its call is in the Turn before: "Added a test." then a Bash call.
+          label: "Tool result · Bash",
+          preview: "1 passed",
         },
       ],
     });
@@ -210,7 +217,13 @@ describe("the messages an API request sent", () => {
 
     expect(sent?.fullRequest.messages.map((message) => message?.role)).toEqual(["user", "assistant", "user"]);
     expect(sent?.fullRequest.messages[0]?.blocks).toEqual([
-      { kind: "text", shownAs: "text", text: "Find the export code." },
+      {
+        kind: "text",
+        shownAs: "text",
+        text: "Find the export code.",
+        label: "Prompt",
+        preview: "Find the export code.",
+      },
     ]);
   });
 
@@ -274,7 +287,18 @@ describe("the messages an API request sent", () => {
     expect(sent?.fullRequest.messages).toEqual([
       null,
       null,
-      { role: "user", blocks: [{ kind: "text", shownAs: "text", text: "pick up where we left off" }] },
+      {
+        role: "user",
+        blocks: [
+          {
+            kind: "text",
+            shownAs: "text",
+            text: "pick up where we left off",
+            label: "Prompt",
+            preview: "pick up where we left off",
+          },
+        ],
+      },
       null,
     ]);
   });
@@ -285,7 +309,15 @@ describe("the messages an API request sent", () => {
 
     expect(sent?.fullRequest.messages[7]).toEqual({
       role: "system",
-      blocks: [{ kind: "text", shownAs: "text", text: "The date changed: it is now 2026-10-21." }],
+      blocks: [
+        {
+          kind: "text",
+          shownAs: "text",
+          text: "The date changed: it is now 2026-10-21.",
+          label: "Injected context",
+          preview: "The date changed: it is now 2026-10-21.",
+        },
+      ],
     });
     expect((raw?.requestBody as { messages: unknown[] }).messages[7]).toEqual({
       role: "system",
@@ -460,6 +492,25 @@ describe("What was sent, request by request", () => {
       expect(enabled?.parameters.thinking).toBe("enabled · budget_tokens 31999");
       expect(other?.parameters.thinking).toBe('"adaptive-ish"');
     });
+
+    it("count the cache breakpoints on the system prompt, the tools and the messages, and none other", async () => {
+      const breakpoint = { type: "ephemeral" };
+      const [none, some] = await whatWasSentOf([
+        twoRequests()[0]!,
+        {
+          ...twoRequests()[1]!,
+          cacheBreakpoints: [
+            { path: ["system", 1], value: breakpoint },
+            { path: ["tools", 0], value: breakpoint },
+            { path: ["messages", 2, "content", 0], value: breakpoint },
+            { path: ["metadata"], value: breakpoint },
+          ],
+        },
+      ]);
+
+      expect(none?.parameters.cacheBreakpointCount).toBe(0);
+      expect(some?.parameters.cacheBreakpointCount).toBe(3);
+    });
   });
 
   describe("when it was sent", () => {
@@ -498,6 +549,41 @@ describe("What was sent, request by request", () => {
 
       expect(sent?.systemPromptDiff?.isVolatileOnly).toBe(true);
       expect(changedLinesOf(sent?.systemPromptDiff?.hunks)).toEqual(["-(clean) ~", "+ M src/core/read.ts ~"]);
+      expect(sent?.systemPromptDiff?.volatileChangeNames).toEqual(["git status"]);
+    });
+
+    it("names each volatile thing that moved once, in the order the diff meets them", async () => {
+      const environment = (cwd: string, date: string) => [
+        { type: "text", text: `Working directory: ${cwd}\nToday's date: ${date}\nGit status: clean` },
+      ];
+      const [first, second] = twoRequests();
+      const [, sent] = await whatWasSentOf([
+        { ...first!, system: environment("/Users/me/dev/sent", "2026-10-20") },
+        { ...second!, system: environment("/Users/me/dev/other", "2026-10-21") },
+      ]);
+
+      expect(sent?.systemPromptDiff?.isVolatileOnly).toBe(true);
+      expect(sent?.systemPromptDiff?.volatileChangeNames).toEqual(["working directory", "date"]);
+    });
+
+    it("names blank lines when only those moved", async () => {
+      const [, sent] = await whatWasSentOf(
+        twoRequests({ system: [SYSTEM[0], { type: "text", text: `\n${SYSTEM[1]!.text}` }] }),
+      );
+
+      expect(sent?.systemPromptDiff?.isVolatileOnly).toBe(true);
+      expect(sent?.systemPromptDiff?.volatileChangeNames).toEqual(["blank lines"]);
+    });
+
+    it("names the volatile things that moved beside a real change too", async () => {
+      const [, sent] = await whatWasSentOf(
+        twoRequests({
+          system: [SYSTEM[0], { type: "text", text: "Working directory: /Users/me/dev/other\nAlways run the tests." }],
+        }),
+      );
+
+      expect(sent?.systemPromptDiff?.isVolatileOnly).toBe(false);
+      expect(sent?.systemPromptDiff?.volatileChangeNames).toEqual(["working directory", "git status"]);
     });
 
     it("reads a system prompt sent as one string as one block", async () => {
@@ -620,29 +706,155 @@ describe("What was sent, request by request", () => {
       expect(sent?.fullRequest.messages).toEqual([{ role: "user", blocks: [] }]);
     });
   });
+
+  describe("the label of a sent block", () => {
+    /** The labels of each message's blocks, of the one request sending `messages`. */
+    async function labelsOf(messages: RequestRecordMessage[]): Promise<string[][]> {
+      const [sent] = await whatWasSentOf([{ system: SYSTEM, tools: [], messages }]);
+      return (sent?.fullRequest.messages ?? []).map((message) => (message?.blocks ?? []).map((block) => block.label));
+    }
+
+    it("tells the context Claude Code injected from the prompt in one user message", async () => {
+      expect(
+        await labelsOf([
+          {
+            role: "user",
+            content: [
+              { type: "text", text: SYSTEM_REMINDER },
+              { type: "text", text: "audit the exports" },
+            ],
+          },
+        ]),
+      ).toEqual([["Injected context", "Prompt"]]);
+    });
+
+    it("is Injected context for a system message", async () => {
+      expect(await labelsOf([PROMPT, { role: "system", content: "The date changed." }])).toEqual([
+        ["Prompt"],
+        ["Injected context"],
+      ]);
+    });
+
+    it("names the tool of a call, and of its result from the call an earlier message made", async () => {
+      expect(await labelsOf([PROMPT, REPLY, RESULT])).toEqual([
+        ["Prompt"],
+        ["Tool call · Bash"],
+        ["Tool result · Bash"],
+      ]);
+    });
+
+    it("is a bare Tool result when no earlier message made its call", async () => {
+      expect(await labelsOf([RESULT])).toEqual([["Tool result"]]);
+    });
+
+    it("tells the assistant's text, its thinking, an image, and any other block by its kind", async () => {
+      expect(
+        await labelsOf([
+          PROMPT,
+          {
+            role: "assistant",
+            content: [
+              { type: "thinking", thinking: "Look at billing first.", signature: "sig" },
+              { type: "text", text: "The exports live in billing." },
+            ],
+          },
+          {
+            role: "user",
+            content: [
+              { type: "image", source: { type: "base64", media_type: "image/png", data: "iVBORw0KGgo=" } },
+              { type: "document", source: { type: "text", media_type: "text/plain", data: "notes" } },
+            ],
+          },
+        ]),
+      ).toEqual([["Prompt"], ["Thinking", "Assistant text"], ["Image", "document"]]);
+    });
+  });
+
+  describe("the preview of a sent block", () => {
+    /** The previews of the blocks of the one message sent as `message`. */
+    async function previewsOf(...messages: RequestRecordMessage[]): Promise<string[]> {
+      const [sent] = await whatWasSentOf([{ system: SYSTEM, tools: [], messages }]);
+      return (sent?.fullRequest.messages.at(-1)?.blocks ?? []).map((block) => block.preview);
+    }
+
+    it("is a text's first non-blank line, the system-reminder tag left out", async () => {
+      expect(
+        await previewsOf({
+          role: "user",
+          content: [
+            { type: "text", text: "<system-reminder>\n\nCLAUDE.md: keep exports in one module.\n</system-reminder>" },
+            { type: "text", text: "\n  audit the exports\nthen the imports" },
+          ],
+        }),
+      ).toEqual(["CLAUDE.md: keep exports in one module.", "audit the exports"]);
+    });
+
+    it("is the first line of a tool result's text", async () => {
+      expect(
+        await previewsOf({
+          role: "user",
+          content: [
+            { type: "tool_result", tool_use_id: "tu-1", content: "export.ts\nimport.ts" },
+            { type: "tool_result", tool_use_id: "tu-2", content: [{ type: "text", text: "\nread.ts" }] },
+          ],
+        }),
+      ).toEqual(["export.ts", "read.ts"]);
+    });
+
+    it("is a tool call's input as compact JSON", async () => {
+      expect(await previewsOf(PROMPT, REPLY)).toEqual(['{"command":"ls billing"}']);
+    });
+
+    it("is empty for a block with no text to show", async () => {
+      expect(
+        await previewsOf({
+          role: "user",
+          content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: "iVBORw0KGgo=" } }],
+        }),
+      ).toEqual([""]);
+    });
+
+    it("stops at 120 characters, then an ellipsis", async () => {
+      expect(await previewsOf({ role: "user", content: "x".repeat(200) })).toEqual([`${"x".repeat(120)}…`]);
+    });
+
+    it("stops a tool call's input at 120 characters too", async () => {
+      const [preview] = await previewsOf(PROMPT, {
+        role: "assistant",
+        content: [{ type: "tool_use", id: "tu-1", name: "Bash", input: { command: "y".repeat(200) } }],
+      });
+
+      expect(preview).toHaveLength(121);
+      expect(preview).toMatch(/^\{"command":"y+…$/);
+    });
+  });
 });
 
 describe("a volatile system-prompt line", () => {
+  /** The name of the first volatile pattern `line` matches; undefined when it matches none. */
+  const volatileNameOf = (line: string) =>
+    VOLATILE_SYSTEM_LINE_PATTERNS.find(({ pattern }) => pattern.test(line))?.name;
+
   it.each([
-    "Today's date is 2026-10-19.",
-    "Today's date: 2026-10-19",
-    "Current date: 2026-10-19",
-    "Working directory: /Users/me/dev/sent",
-    "Primary working directory: /Users/me/dev/sent",
-    "gitStatus: This is the git status at the start of the conversation.",
-    "Git status: clean",
-    "Current branch: main",
-    "Status:",
-    "Recent commits:",
-    "(clean)",
-    "M src/core/read.ts",
-    " M src/core/read.ts",
-    "?? docs/notes.md",
-    "7ece6e8 Add the export audit trail (#161)",
-    "",
-    "   ",
-  ])("matches %j", (line) => {
-    expect(VOLATILE_SYSTEM_LINE_PATTERNS.some((pattern) => pattern.test(line))).toBe(true);
+    ["Today's date is 2026-10-19.", "date"],
+    ["Today's date: 2026-10-19", "date"],
+    ["Current date: 2026-10-19", "date"],
+    ["Working directory: /Users/me/dev/sent", "working directory"],
+    ["Primary working directory: /Users/me/dev/sent", "working directory"],
+    ["gitStatus: This is the git status at the start of the conversation.", "git status"],
+    ["Git status: clean", "git status"],
+    ["Current branch: main", "git status"],
+    ["Status:", "git status"],
+    ["Recent commits:", "git status"],
+    ["(clean)", "git status"],
+    ["M src/core/read.ts", "git status"],
+    [" M src/core/read.ts", "git status"],
+    ["?? docs/notes.md", "git status"],
+    ["7ece6e8 Add the export audit trail (#161)", "git status"],
+    ["", "blank lines"],
+    ["   ", "blank lines"],
+  ])("matches %j, as the %s", (line, name) => {
+    expect(volatileNameOf(line)).toBe(name);
   });
 
   it.each([
@@ -651,6 +863,6 @@ describe("a volatile system-prompt line", () => {
     "M is for model.",
     "Keep changes small, run the tests before you report.",
   ])("does not match the prose line %j", (line) => {
-    expect(VOLATILE_SYSTEM_LINE_PATTERNS.some((pattern) => pattern.test(line))).toBe(false);
+    expect(volatileNameOf(line)).toBeUndefined();
   });
 });

@@ -3,7 +3,7 @@
 // 2.1.300+, ADR-0007). The database holds it all: the `api_request`
 // rows of the Agent, whose base chain gives the request's message hashes, and
 // its system prompt, tool set and messages, each stored under its hash. The
-// Raw view reads one API request the same way. Framework-free (ADR-0002).
+// raw JSON reads one API request the same way. Framework-free (ADR-0002).
 
 import { structuredPatch } from "diff";
 
@@ -25,8 +25,25 @@ export type SentBlock = { kind: SentBlockKind } & (
   { shownAs: "text"; text: string } | { shownAs: "json"; json: string }
 );
 
+/** One content block of a sent message, with what it is to a reader and its first line. */
+export type SentMessageBlock = SentBlock & {
+  /**
+   * What the block is: "Injected context" (a system-reminder, or a system
+   * message's text), "Prompt" (a user's text), "Assistant text", "Thinking",
+   * "Image", "Tool call · <name>", "Tool result · <name>" (the call an earlier
+   * message of the request made; "Tool result" without one), else its kind.
+   */
+  label: string;
+  /**
+   * Its first non-blank line — a text's (system-reminder tags left out), a tool
+   * result's text, a tool call's input as compact JSON — cut at
+   * {@link SENT_BLOCK_PREVIEW_MAX_CHARS} characters, then "…"; empty for any other block.
+   */
+  preview: string;
+};
+
 /** One message of an API request: its role, then each content block (a string content is one text block, a missing one none). */
-export type SentMessage = { role: string; blocks: SentBlock[] };
+export type SentMessage = { role: string; blocks: SentMessageBlock[] };
 
 /** One system block as sent, with the cache breakpoint it carries (`cache_control.type`, plus its `ttl`), if any. */
 export type SentSystemBlock = SentBlock & { cacheControl: string | null };
@@ -44,6 +61,8 @@ export type SentParameters = {
   effort: string | null;
   /** The beta features: the body's `betas`, deduplicated. */
   betas: string[];
+  /** How many cache breakpoints the request set, on its system prompt, tools and messages. */
+  cacheBreakpointCount: number;
 };
 
 /** One line of a line diff: added, removed, or unchanged context around a change. */
@@ -60,6 +79,8 @@ export type SystemPromptDiff = {
   hunks: { lines: SystemPromptDiffLine[] }[];
   /** True when every changed line is volatile (dates, git status, the working directory). */
   isVolatileOnly: boolean;
+  /** What the volatile changed lines belong to, each once, in the order the diff meets them; empty without any. */
+  volatileChangeNames: VolatileChangeName[];
 };
 
 /** A tool definition whose description or input schema changed, as a line diff of its pretty-printed definition. */
@@ -75,25 +96,29 @@ export type ToolsDiff = { added: SentTool[]; removed: SentTool[]; changed: Chang
 /** How many unchanged lines a diff hunk keeps around its changed lines. */
 const DIFF_CONTEXT_LINE_COUNT = 2;
 
+/** What a volatile system-prompt line belongs to: the thing that moved when it changed. */
+export type VolatileChangeName = "date" | "working directory" | "git status" | "blank lines";
+
 /**
  * The system-prompt lines that change between Turns without anything real
- * changing: today's date, the working directory, the git status section
- * (status, branch, its file entries and recent commits), and blank lines.
+ * changing, each with what it belongs to: today's date, the working
+ * directory, the git status section (status, branch, its file entries and
+ * recent commits), and blank lines. A line belongs to the first it matches.
  */
-export const VOLATILE_SYSTEM_LINE_PATTERNS: readonly RegExp[] = [
-  /^\s*(?:Today's date|Current date)\b/i,
-  /^\s*(?:Primary )?working directory:/i,
-  /^\s*(?:gitStatus|Git status):/i,
-  /^\s*Current branch:/i,
-  /^\s*Status:/i,
-  /^\s*Recent commits:/i,
+export const VOLATILE_SYSTEM_LINE_PATTERNS: readonly { name: VolatileChangeName; pattern: RegExp }[] = [
+  { name: "date", pattern: /^\s*(?:Today's date|Current date)\b/i },
+  { name: "working directory", pattern: /^\s*(?:Primary )?working directory:/i },
+  { name: "git status", pattern: /^\s*(?:gitStatus|Git status):/i },
+  { name: "git status", pattern: /^\s*Current branch:/i },
+  { name: "git status", pattern: /^\s*Status:/i },
+  { name: "git status", pattern: /^\s*Recent commits:/i },
   // The git status of a clean tree, alone under `Status:`.
-  /^\s*\(clean\)\s*$/,
+  { name: "git status", pattern: /^\s*\(clean\)\s*$/ },
   // A git status entry: its status code, then one path-like token and nothing after it.
-  /^\s*[MADRCU?!]{1,2}\s+\S*[/.]\S*$/,
+  { name: "git status", pattern: /^\s*[MADRCU?!]{1,2}\s+\S*[/.]\S*$/ },
   // A recent commit: its abbreviated hash, then its subject.
-  /^[0-9a-f]{7,40}\s/,
-  /^\s*$/,
+  { name: "git status", pattern: /^[0-9a-f]{7,40}\s/ },
+  { name: "blank lines", pattern: /^\s*$/ },
 ];
 
 /**
@@ -137,27 +162,22 @@ export type WhatWasSent = {
   systemPromptDiff: SystemPromptDiff | null;
   /** How the tool definitions changed since the previous API request; null when none did, or without one. */
   toolsDiff: ToolsDiff | null;
-  /** The whole request: every system block with its cache breakpoints, every tool definition and message, every other body field. */
+  /** The whole request but its parameters: every system block with its cache breakpoints, every tool definition and message. */
   fullRequest: {
     systemBlocks: SentSystemBlock[];
     tools: SentTool[];
     /** Every message, in order: null for one the logs could not rebuild, kept at its place. */
     messages: (SentMessage | null)[];
-    /** Every body field but `system`, `tools` and `messages`, as sent. */
-    parameterByName: Record<string, JsonValue>;
   };
 };
 
-/** An API request raw (GLOSSARY.md, What was sent), as JSON: what the panel's Raw view shows. Plain and serializable. */
+/** An API request raw (GLOSSARY.md, What was sent), as JSON: what the panel's Raw JSON toggle shows. Plain and serializable. */
 export type RawApiRequest = {
   /** The request body as the logs rebuild it, every message they could not rebuild left out. */
   requestBody: JsonValue;
   /** How many messages the logs could not rebuild, left out of `requestBody`. */
   missingMessageCount: number;
 };
-
-/** The body fields stored as pieces of their own; every other field is a parameter. */
-const PIECE_FIELDS = new Set(["system", "tools", "messages"]);
 
 /** A request body that is a JSON object: what a Messages request is. */
 type RequestBody = Record<string, JsonValue>;
@@ -173,13 +193,12 @@ function pieceChanges(
   };
 }
 
-/** The whole of `body`, by part, with `messages` as its messages. */
+/** The system blocks and tools of `body`, with `messages` as its messages. */
 function fullRequestOf(body: RequestBody, messages: (SentMessage | null)[]): WhatWasSent["fullRequest"] {
   return {
     systemBlocks: systemBlocksOf(body).map(sentSystemBlock),
     tools: toolsOf(body).map(sentTool),
     messages,
-    parameterByName: Object.fromEntries(Object.entries(body).filter(([field]) => !PIECE_FIELDS.has(field))),
   };
 }
 
@@ -225,13 +244,11 @@ export async function getWhatWasSent(
     const messageHashesOf = await messageHashesOfAgentRequests(prisma, row);
     const messageHashes = messageHashesOf(row);
     const body = await requestBodyOf(prisma, row, messageHashes);
-    const messages = (body.messages as (JsonValue | null)[]).map((message) =>
-      message === null ? null : sentMessage(message),
-    );
+    const messages = sentMessagesOf(body.messages as (JsonValue | null)[]);
     const failedAttempts =
       row.messageId === null ? [] : ((await failedAttemptsByMessage(prisma, [row.messageId])).get(row.messageId) ?? []);
     return {
-      parameters: sentParameters(body),
+      parameters: sentParameters(body, JSON.parse(row.cacheBreakpointsJson) as JsonValue),
       sentAt: row.sentAt === null ? null : new Date(Number(row.sentAt)).toISOString(),
       failedAttempts,
       previousApiRequestId: previousRow?.id ?? null,
@@ -526,7 +543,11 @@ function withMessageCacheBreakpoints(
   return breakpointMessages;
 }
 
-function sentParameters(body: RequestBody): SentParameters {
+/** The body parts a cache breakpoint can be set on. */
+const CACHE_BREAKPOINT_PARTS = new Set<JsonValue>(["system", "tools", "messages"]);
+
+/** The parameters of `body`, sent with `cacheBreakpoints`. */
+function sentParameters(body: RequestBody, cacheBreakpoints: JsonValue): SentParameters {
   const outputConfig = body.output_config;
   const effort = isPlainObject(outputConfig) && typeof outputConfig.effort === "string" ? outputConfig.effort : null;
   const bodyBetas = Array.isArray(body.betas) ? body.betas.filter((beta) => typeof beta === "string") : [];
@@ -537,6 +558,9 @@ function sentParameters(body: RequestBody): SentParameters {
     thinking: body.thinking === undefined ? null : thinkingText(body.thinking),
     effort,
     betas,
+    cacheBreakpointCount: cacheBreakpointsOf(cacheBreakpoints).filter(({ path }) =>
+      CACHE_BREAKPOINT_PARTS.has(path[0] ?? null),
+    ).length,
   };
 }
 
@@ -554,16 +578,24 @@ function thinkingText(thinking: unknown): string {
 
 /** The system-prompt diff from `previousBody` to `body`; null when the system text is the same. */
 function systemPromptDiff(previousBody: RequestBody, body: RequestBody): SystemPromptDiff | null {
+  const volatileChangeNames = new Set<VolatileChangeName>();
   const hunks = lineDiffHunks(systemTextOf(previousBody), systemTextOf(body)).map((hunk) => ({
-    lines: hunk.lines.map((line) => ({
-      ...line,
-      isVolatile:
-        line.change !== "unchanged" && VOLATILE_SYSTEM_LINE_PATTERNS.some((pattern) => pattern.test(line.text)),
-    })),
+    lines: hunk.lines.map((line) => {
+      const volatileChangeName =
+        line.change === "unchanged"
+          ? undefined
+          : VOLATILE_SYSTEM_LINE_PATTERNS.find(({ pattern }) => pattern.test(line.text))?.name;
+      if (volatileChangeName !== undefined) volatileChangeNames.add(volatileChangeName);
+      return { ...line, isVolatile: volatileChangeName !== undefined };
+    }),
   }));
   if (hunks.length === 0) return null;
   const changedLines = hunks.flatMap((hunk) => hunk.lines).filter((line) => line.change !== "unchanged");
-  return { hunks, isVolatileOnly: changedLines.every((line) => line.isVolatile) };
+  return {
+    hunks,
+    isVolatileOnly: changedLines.every((line) => line.isVolatile),
+    volatileChangeNames: [...volatileChangeNames],
+  };
 }
 
 /** The system text of `body`: each block's text (any other block as JSON), joined by newlines. */
@@ -626,17 +658,107 @@ function lineDiffHunks(previousText: string, text: string): DiffHunk[] {
   }));
 }
 
-function sentMessage(message: unknown): SentMessage {
-  if (!isPlainObject(message)) return { role: "unknown", blocks: [sentBlock(message)] };
+/**
+ * `messages` as sent, in order, each block labelled: a tool result by the
+ * tool of the call an earlier message made; null kept for one the logs could
+ * not rebuild.
+ */
+function sentMessagesOf(messages: (JsonValue | null)[]): (SentMessage | null)[] {
+  const toolNameByUseId = new Map<string, string>();
+  return messages.map((message) => {
+    if (message === null) return null;
+    const role = isPlainObject(message) && typeof message.role === "string" ? message.role : "unknown";
+    const blocks = contentBlocksOf(message);
+    const sent = { role, blocks: blocks.map((block) => sentMessageBlock(block, role, toolNameByUseId)) };
+    for (const block of blocks) {
+      if (isPlainObject(block) && block.type === "tool_use" && typeof block.id === "string") {
+        toolNameByUseId.set(block.id, typeof block.name === "string" ? block.name : "unnamed");
+      }
+    }
+    return sent;
+  });
+}
+
+/** The content blocks of `message`: a string content is one block, a missing one none, a message that is no object one. */
+function contentBlocksOf(message: unknown): unknown[] {
+  if (!isPlainObject(message)) return [message];
   const content = message.content;
+  return Array.isArray(content) ? content : content === undefined ? [] : [content];
+}
+
+/** How long a sent block's preview gets before it is cut. */
+const SENT_BLOCK_PREVIEW_MAX_CHARS = 120;
+
+/** `block` of a message from `role`, labelled, the tool of a result found in `toolNameByUseId`. */
+function sentMessageBlock(block: unknown, role: string, toolNameByUseId: Map<string, string>): SentMessageBlock {
+  const sent = sentBlock(block);
+  const fields = isPlainObject(block) ? block : {};
   return {
-    role: typeof message.role === "string" ? message.role : "unknown",
-    blocks: Array.isArray(content) ? content.map(sentBlock) : content === undefined ? [] : [sentBlock(content)],
+    ...sent,
+    label: sentBlockLabel(sent, fields, role, toolNameByUseId),
+    preview: sentBlockPreview(sent, fields),
   };
+}
+
+/** See {@link SentMessageBlock.label}. */
+function sentBlockLabel(
+  sent: SentBlock,
+  fields: Record<string, unknown>,
+  role: string,
+  toolNameByUseId: Map<string, string>,
+): string {
+  switch (sent.kind) {
+    case "system-reminder":
+      return "Injected context";
+    case "text":
+      if (role === "user") return "Prompt";
+      if (role === "assistant") return "Assistant text";
+      return role === "system" ? "Injected context" : sent.kind;
+    case "tool_use":
+      return typeof fields.name === "string" ? `Tool call · ${fields.name}` : "Tool call";
+    case "tool_result": {
+      const toolName = typeof fields.tool_use_id === "string" ? toolNameByUseId.get(fields.tool_use_id) : undefined;
+      return toolName === undefined ? "Tool result" : `Tool result · ${toolName}`;
+    }
+    case "thinking":
+      return "Thinking";
+    case "image":
+      return "Image";
+    default:
+      return sent.kind;
+  }
+}
+
+/** See {@link SentMessageBlock.preview}. */
+function sentBlockPreview(sent: SentBlock, fields: Record<string, unknown>): string {
+  if (sent.shownAs === "text") return previewLineOf(sent.text.replace(SYSTEM_REMINDER_TAG_PATTERN, ""));
+  if (sent.kind === "tool_use") return previewLineOf(JSON.stringify(fields.input ?? {}));
+  if (sent.kind !== "tool_result") return "";
+  const content = fields.content;
+  if (typeof content === "string") return previewLineOf(content);
+  if (!Array.isArray(content)) return "";
+  return previewLineOf(
+    content
+      .filter((part) => isPlainObject(part) && typeof part.text === "string")
+      .map((part) => (part as { text: string }).text)
+      .join("\n"),
+  );
+}
+
+/** The first non-blank line of `text`, trimmed, cut at {@link SENT_BLOCK_PREVIEW_MAX_CHARS} characters then "…"; empty without one. */
+function previewLineOf(text: string): string {
+  const line = text
+    .split("\n")
+    .map((candidate) => candidate.trim())
+    .find((candidate) => candidate !== "");
+  if (line === undefined) return "";
+  return line.length > SENT_BLOCK_PREVIEW_MAX_CHARS ? `${line.slice(0, SENT_BLOCK_PREVIEW_MAX_CHARS)}…` : line;
 }
 
 /** The tag opening a system-reminder: context Claude Code injects into a text block. */
 const SYSTEM_REMINDER_TAG = "<system-reminder>";
+/** A system-reminder's opening or closing tag, anywhere in a text. */
+const SYSTEM_REMINDER_TAG_PATTERN = /<\/?system-reminder>/g;
 
 /** A string, or a `text` block, as its text; anything else as pretty-printed JSON. */
 function sentBlock(block: unknown): SentBlock {

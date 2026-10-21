@@ -1,6 +1,6 @@
 // `GET /api/api-request/<id>/raw` — an API request raw: its body
 // as the conversation logs rebuild it, as JSON. Fetched by the "What
-// was sent" panel only when the reader first opens its Raw view, apart from
+// was sent" panel only when the reader first presses its Raw JSON toggle, apart from
 // its sibling `GET /api/api-request/<id>`. Same row id, same
 // staleness: after a re-parse, a stale page's read gets a 404.
 

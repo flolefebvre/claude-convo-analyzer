@@ -1,5 +1,5 @@
 import { instant } from "@next/playwright";
-import { expect, type Locator, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import { type RouteShell, expectData, expectInstantLoad, expectShell } from "./route-shell";
 
@@ -16,13 +16,6 @@ const LOGGED_REQUESTS_TITLE = "Trace the slow invoice query";
 const PLAN_HANDOFF_TITLE = "Hand the search plan to the docs team";
 
 const titleLink = (page: Page) => page.getByRole("link", { name: TITLE, exact: true });
-
-/** The value of the fact named `name` in a "What was sent" panel's facts grid. */
-const factOf = (whatWasSent: Locator, name: string) =>
-  whatWasSent
-    .getByRole("term")
-    .filter({ hasText: new RegExp(`^${name}$`) })
-    .locator("xpath=following-sibling::dd[1]");
 
 /** Open the seeded Conversation titled `title` from the Conversations list. */
 async function openConversation(page: Page, title: string): Promise<void> {
@@ -77,25 +70,44 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
       .toBe(`${appBarHeight}px`);
   });
 
-  test("switches what was sent to Request, then by keyboard to Raw, its body copyable", async ({ page }) => {
+  test("shows an Agent's first request in reading order, with no tabs, and swaps it for its raw JSON", async ({
+    page,
+  }) => {
     await openConversation(page, LOGGED_REQUESTS_TITLE);
     const whatWasSent = page.getByRole("main").getByRole("group").filter({ hasText: "What was sent" }).first();
     await whatWasSent.getByText("What was sent").click();
 
-    await whatWasSent.getByRole("tab", { name: "Request" }).click();
-    const requestView = whatWasSent.getByRole("tabpanel", { name: "Request" });
-    await expect(requestView.getByRole("heading", { name: /^System prompt \(\d+ blocks?\)$/ })).toBeVisible();
-    await expect(requestView.getByRole("heading", { name: /^Messages \(\d+ messages?\)$/ })).toBeVisible();
+    await expect(
+      whatWasSent.getByText(
+        /^claude-\S+ · effort high · max 32K tokens · thinking \(adaptive · display updates\) · 3 cache breakpoints · 2 betas · sent \d{2}:\d{2}$/,
+      ),
+    ).toBeVisible();
+    await expect(whatWasSent.getByText("First request of this Agent", { exact: true })).toBeVisible();
+    await expect(whatWasSent.getByRole("heading", { name: "New for this Turn" })).toBeVisible();
+    // The one new message holds two blocks: the CLAUDE.md Claude Code injected, then the prompt.
+    const injectedContext = whatWasSent.getByRole("group").filter({ hasText: /^Injected context/ });
+    await expect(injectedContext).toContainText("As you answer the user's questions");
+    await expect(whatWasSent.getByRole("group").filter({ hasText: /^Prompt/ })).toContainText(
+      "The invoice list takes eight seconds to load",
+    );
+    await injectedContext.getByText("Injected context").click();
+    await expect(injectedContext.getByText(/# claudeMd/)).toBeVisible();
+    await expect(whatWasSent.getByRole("tab")).toHaveCount(0);
+    await expect(whatWasSent.getByText(/Changes/)).toHaveCount(0);
 
-    // The switch is a tab list: the arrow keys move between its views.
-    await whatWasSent.getByRole("tab", { name: "Request" }).press("ArrowRight");
-    await expect(whatWasSent.getByRole("tab", { name: "Raw" })).toHaveAttribute("aria-selected", "true");
-    const rawView = whatWasSent.getByRole("tabpanel", { name: "Raw" });
-    await expect(rawView.getByText("model:", { exact: true })).toBeVisible();
-    await expect(rawView.getByRole("button", { name: "Copy JSON" })).toBeVisible();
+    const rawToggle = whatWasSent.getByRole("button", { name: "Raw JSON" });
+    await rawToggle.click();
+    await expect(rawToggle).toHaveAttribute("aria-pressed", "true");
+    await expect(whatWasSent.getByText(/^Rebuilt from the conversation log/)).toBeVisible();
+    await expect(whatWasSent.getByText("model:", { exact: true })).toBeVisible();
+    await expect(whatWasSent.getByRole("button", { name: "Copy JSON" })).toBeVisible();
+    await expect(whatWasSent.getByRole("heading", { name: "New for this Turn" })).toHaveCount(0);
+
+    await rawToggle.click();
+    await expect(whatWasSent.getByRole("heading", { name: "New for this Turn" })).toBeVisible();
   });
 
-  test("shows what a Turn sent, from its log: the new messages and changes, the whole request, and the rebuilt body", async ({
+  test("shows what a later Turn sent: the system prompt's real change and its diff, the tools added, and the new messages", async ({
     page,
   }) => {
     await openConversation(page, LOGGED_REQUESTS_TITLE);
@@ -103,35 +115,34 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     // The third Turn: the day after, its system prompt changed and Grep was loaded.
     const whatWasSent = page.getByRole("main").getByRole("group").filter({ hasText: "What was sent" }).nth(2);
     await whatWasSent.getByText("What was sent").click();
-    // Its new messages: the previous Turn, the date change Claude Code injected, and the prompt.
+
+    const systemPrompt = whatWasSent.getByRole("group").filter({ hasText: /^System prompt/ });
+    await expect(systemPrompt.getByText(/^2 blocks · [\d.]+ (?:B|KB)$/)).toBeVisible();
+    await expect(systemPrompt.getByText("changed since previous request", { exact: true })).toBeVisible();
+    await expect(systemPrompt.getByText(/volatile only/)).toHaveCount(0);
+    await systemPrompt.getByText("System prompt").click();
+    await expect(systemPrompt.getByText(/^Run the query planner before changing an index\./m)).toBeVisible();
+    await expect(systemPrompt.getByText("Cache breakpoint: ephemeral 1h")).toBeVisible();
+    await systemPrompt.getByRole("button", { name: "Diff" }).click();
+    await expect(systemPrompt.getByText("+ Run the query planner before changing an index.")).toBeVisible();
+
+    const tools = whatWasSent.getByRole("group").filter({ hasText: /^Tools/ });
+    await expect(tools.getByText("+1 since previous: Grep", { exact: true })).toBeVisible();
+    await tools.getByText("Tools", { exact: true }).click();
+    await tools.getByText("Grep", { exact: true }).click();
+    await expect(tools.getByText(/"description": "Search file contents\."/)).toBeVisible();
+
+    // The previous request sent three messages; this one adds the previous Turn, the date change and the prompt.
     await expect(
-      whatWasSent.getByRole("heading", { name: "New since the previous API request (3 messages)" }),
+      whatWasSent.getByText("3 earlier messages · already sent with the previous request", { exact: true }),
     ).toBeVisible();
-    await expect(whatWasSent.getByText(/The date has changed\. Today's date is now/)).toBeVisible();
-    await expect(whatWasSent.getByText("Now check the date filter on the same query.")).toBeVisible();
+    await expect(whatWasSent.getByRole("group").filter({ hasText: /^Injected context/ })).toContainText(
+      /The date has changed\. Today's date is now/,
+    );
+    await expect(whatWasSent.getByRole("group").filter({ hasText: /^Prompt/ })).toContainText(
+      "Now check the date filter on the same query.",
+    );
     await expect(whatWasSent.getByText(/could not be rebuilt/)).toHaveCount(0);
-    await expect(whatWasSent.getByRole("heading", { name: "System prompt changed" })).toBeVisible();
-    await expect(whatWasSent.getByText(/^Added: Grep$/)).toBeVisible();
-    await expect(factOf(whatWasSent, "sent")).toHaveText(/^\d{2}:\d{2}$/);
-    await expect(factOf(whatWasSent, "max_tokens")).toHaveText("32000");
-    await expect(factOf(whatWasSent, "betas")).toHaveText(/^2 betas/);
-    await expect(whatWasSent.getByRole("term").filter({ hasText: /^total$/ })).toHaveCount(0);
-
-    await whatWasSent.getByRole("tab", { name: "Request" }).click();
-    const requestView = whatWasSent.getByRole("tabpanel", { name: "Request" });
-    await expect(requestView.getByRole("heading", { name: "System prompt (2 blocks)" })).toBeVisible();
-    await expect(requestView.getByRole("heading", { name: "Tools (3 tools)" })).toBeVisible();
-    await expect(requestView.getByText("Cache breakpoint: ephemeral 1h")).toBeVisible();
-    await expect(requestView.getByRole("heading", { name: "Messages (6 messages)" })).toBeVisible();
-    await expect(requestView.getByText(/# claudeMd/)).toBeVisible();
-
-    await whatWasSent.getByRole("tab", { name: "Raw" }).click();
-    const rawView = whatWasSent.getByRole("tabpanel", { name: "Raw" });
-    await expect(rawView.getByRole("tab")).toHaveCount(0);
-    await expect(rawView.getByText("tools", { exact: true })).toBeVisible();
-    await expect(rawView.getByText("messages", { exact: true })).toBeVisible();
-    await expect(rawView.getByText(/^Rebuilt from the conversation log/)).toBeVisible();
-    await expect(rawView.getByRole("button", { name: "Copy JSON" })).toBeVisible();
   });
 
   test("shows the Failed attempts a Turn's log records: how many, and the time they lost, with no status", async ({
