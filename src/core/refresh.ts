@@ -54,7 +54,14 @@ import {
   discoverSubAgents,
 } from "@/core/discovery";
 import { classifyApiRequest } from "@/core/api-request-kind";
-import { type ParsedAgentSpawn, parseSessionLines, type ParsedSession, parseUsage, type RawUsage } from "@/core/parse";
+import {
+  type ParsedAgentSpawn,
+  type ParsedLoggedApiRequest,
+  parseSessionLines,
+  type ParsedSession,
+  parseUsage,
+  type RawUsage,
+} from "@/core/parse";
 import { type MessageRow, prepareRefreshStatements, type RefreshStatements } from "@/core/prisma/refresh-statements";
 import {
   type ApiRequestWithStoredBodyHash,
@@ -143,8 +150,10 @@ type RefreshOptions = {
  * 8 — the request records Claude Code 2.1.300+ logs are stored
  *     (`logged_api_request`, with each system prompt and tool set once).
  * 9 — so are the messages they sent (`sent_message`, each once).
+ * 10 — a request record the next one resent joins the Turn it was a Failed
+ *     attempt of (`logged_api_request.failed_attempt_of_message_id`).
  */
-export const PARSER_VERSION = 9;
+export const PARSER_VERSION = 10;
 
 /**
  * The version a conversation carries while it is written but NOT YET COMPLETE:
@@ -843,11 +852,13 @@ function writeLoggedApiRequests(
   for (const [hash, blocksJson] of parsed.systemPromptJsonByHash) statements.insertSystemPrompt(hash, blocksJson);
   for (const [hash, toolsJson] of parsed.toolSetJsonByHash) statements.insertToolSet(hash, toolsJson);
   for (const [hash, messageJson] of parsed.sentMessageJsonByHash) statements.insertSentMessage(hash, messageJson);
+  const failedAttemptOfMessageRowIds = failedAttemptOwners(parsed.loggedApiRequests, messageRowIdByRequestRef);
   parsed.loggedApiRequests.forEach((request, positionInFile) => {
     statements.insertLoggedApiRequest({
       conversationId,
       agentId,
       messageId: messageRowIdByRequestRef.get(request.recordId) ?? null,
+      failedAttemptOfMessageId: failedAttemptOfMessageRowIds[positionInFile]!,
       recordId: request.recordId,
       baseRecordId: request.baseRecordId,
       keptMessageCount: request.keptMessageCount,
@@ -862,6 +873,42 @@ function writeLoggedApiRequests(
       toolSetHash: request.toolSetHash,
     });
   });
+}
+
+/**
+ * Of each request of one file's `requests`, in file order, the assistant
+ * Message row of the Turn owning it as a Failed attempt (log-format §9,
+ * Retries), else null. A request no Turn answered (none in
+ * `messageRowIdByRequestRef`) is one when the file's next request resent it —
+ * the same known `requestDigest`, its `base` this request — and then belongs
+ * to that request's owner: its Turn, or the Turn owning it as a Failed attempt
+ * in turn. A chain ending in a request nothing answers belongs to no Turn.
+ */
+function failedAttemptOwners(
+  requests: ParsedLoggedApiRequest[],
+  messageRowIdByRequestRef: Map<string, number>,
+): (number | null)[] {
+  const failedAttemptOfMessageRowIds: (number | null)[] = requests.map(() => null);
+  // From the file's end back: the next request's owner is known before its own.
+  let nextOwnerMessageRowId: number | null = null;
+  for (let position = requests.length - 1; position >= 0; position--) {
+    const request = requests[position]!;
+    const next = requests[position + 1];
+    const answeringMessageRowId = messageRowIdByRequestRef.get(request.recordId);
+    const isResentByNext =
+      next !== undefined &&
+      request.requestDigest !== null &&
+      next.requestDigest === request.requestDigest &&
+      next.baseRecordId === request.recordId;
+    if (answeringMessageRowId !== undefined) {
+      nextOwnerMessageRowId = answeringMessageRowId;
+    } else if (isResentByNext && nextOwnerMessageRowId !== null) {
+      failedAttemptOfMessageRowIds[position] = nextOwnerMessageRowId;
+    } else {
+      nextOwnerMessageRowId = null;
+    }
+  }
+  return failedAttemptOfMessageRowIds;
 }
 
 /** The written row of one Turn: its assistant Message and its Agent. */

@@ -242,7 +242,11 @@ function AssistantTurn({
 
       {message.whatWasSentSource !== null && (
         <div className="calls">
-          <WhatWasSentDisclosure source={message.whatWasSentSource} failedAttemptCount={message.failedAttemptCount} />
+          <WhatWasSentDisclosure
+            source={message.whatWasSentSource}
+            failedAttemptCount={message.failedAttemptCount}
+            failedAttemptsLostMs={message.failedAttemptsLostMs}
+          />
         </div>
       )}
     </article>

@@ -140,6 +140,7 @@ const LOGGED_API_REQUEST_COLUMN_BY_FIELD = {
   conversationId: "conversation_id",
   agentId: "agent_id",
   messageId: "message_id",
+  failedAttemptOfMessageId: "failed_attempt_of_message_id",
   recordId: "record_id",
   baseRecordId: "base_record_id",
   keptMessageCount: "kept_message_count",

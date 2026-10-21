@@ -166,7 +166,7 @@ describe("What was sent from the logs", () => {
   it("has none of what only a Recording knows", async () => {
     const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(4), { dbPath: db.dbPath });
 
-    expect(sent).toMatchObject({ isSideRequest: false, timings: null, failedAttempts: [] });
+    expect(sent).toMatchObject({ isSideRequest: false, timings: null });
   });
 
   it("works the same for a Sub-agent's Turn, against that Sub-agent's previous API request", async () => {

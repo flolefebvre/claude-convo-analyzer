@@ -324,7 +324,10 @@ of the same Agent, sent again later. It belongs to the Turn whose API request
 was the retry that succeeded, which shows how many failed attempts preceded it
 and, for each, its status, its error message and the time it lost, from its
 arrival to its failure. A failed attempt counts toward Cost only if the API
-reported usage for it, which normally it does not.
+reported usage for it, which normally it does not. The conversation logs know
+failed attempts too, with neither status nor error message: an API request no
+Turn answered that the next request of the same Agent resent, which lost the
+time from its sending to that next request's; they never count toward Cost.
 _Avoid_: retry (that is the request after it), failed request.
 
 ### Side request

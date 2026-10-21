@@ -1405,7 +1405,8 @@ function seedToolResultSent(toolUseId: string, result: string): SeedSentMessage 
  * The request records of one seeded log file (log-format §9): a shape is
  * logged before the first request that sends it, each blob message before the
  * request, and each request starts from the previous one, keeping all its
- * messages.
+ * messages. A request that failed is resent as its retry does: the same
+ * digest, from it, keeping all its messages and adding none.
  */
 function requestRecorder(g: Gen, sessionId: string, model: string, querySource: string, agentId?: string) {
   const loggedShapeHashes = new Set<string>();
@@ -1413,8 +1414,18 @@ function requestRecorder(g: Gen, sessionId: string, model: string, querySource: 
   const inFile = (record: Record<string, unknown>) =>
     JSON.stringify(agentId === undefined ? record : { ...record, agentId });
   return {
-    /** The lines that log one request sent at `ms` with `shape`, its tail `tail`. */
-    send(ms: number, shape: { shapeHash: string; system: object[]; tools: object[] }, tail: SeedSentMessage[]) {
+    /**
+     * The lines that log one request sent at `ms` with `shape`, its tail
+     * `tail`; with `failedAttemptsLostMs`, it failed that many times first,
+     * each attempt resent after the time it lost. `recordId` is the request
+     * that went through.
+     */
+    send(
+      ms: number,
+      shape: { shapeHash: string; system: object[]; tools: object[] },
+      tail: SeedSentMessage[],
+      failedAttemptsLostMs: number[] = [],
+    ) {
       const lines: string[] = [];
       if (!loggedShapeHashes.has(shape.shapeHash)) {
         loggedShapeHashes.add(shape.shapeHash);
@@ -1431,36 +1442,48 @@ function requestRecorder(g: Gen, sessionId: string, model: string, querySource: 
         if (isLoggedAsBlob)
           lines.push(inFile({ type: "api-request-blob", sessionId, hash: sentMessageHash(message), message }));
       }
-      const recordId = g.uid("apireq");
-      const keptMessageCount = previous?.messageCount ?? 0;
-      lines.push(
-        inFile({
-          type: "api-request",
-          sessionId,
-          id: recordId,
-          ...(previous === null ? {} : { base: previous.recordId }),
-          keep: keptMessageCount,
-          tail: tail.map(({ message }) => sentMessageHash(message)),
-          shapeHash: shape.shapeHash,
-          params: {
-            model,
-            betas: ["interleaved-thinking-2025-05-14", "context-management-2025-06-27"],
-            max_tokens: 32000,
-            thinking: { type: "adaptive", display: "updates" },
-            context_management: { edits: [{ type: "clear_thinking_20251015", keep: "all" }] },
-            output_config: { effort: "high" },
-          },
-          cacheControl: [
-            { path: ["system", 0], value: { type: "ephemeral", ttl: "1h", scope: "global" } },
-            { path: ["system", 1], value: { type: "ephemeral" } },
-            { path: ["messages", keptMessageCount + tail.length - 1, "content", 0], value: { type: "ephemeral" } },
-          ],
-          querySource,
-          requestDigest: g.uid("digest"),
-          timestamp: iso(ms),
-        }),
+      const requestDigest = g.uid("digest");
+      /** Log one sending at `sentMs` of the request, its tail `tailHashes`. */
+      const logRequest = (sentMs: number, tailHashes: string[]) => {
+        const recordId = g.uid("apireq");
+        const keptMessageCount = previous?.messageCount ?? 0;
+        const messageCount = keptMessageCount + tailHashes.length;
+        lines.push(
+          inFile({
+            type: "api-request",
+            sessionId,
+            id: recordId,
+            ...(previous === null ? {} : { base: previous.recordId }),
+            keep: keptMessageCount,
+            tail: tailHashes,
+            shapeHash: shape.shapeHash,
+            params: {
+              model,
+              betas: ["interleaved-thinking-2025-05-14", "context-management-2025-06-27"],
+              max_tokens: 32000,
+              thinking: { type: "adaptive", display: "updates" },
+              context_management: { edits: [{ type: "clear_thinking_20251015", keep: "all" }] },
+              output_config: { effort: "high" },
+            },
+            cacheControl: [
+              { path: ["system", 0], value: { type: "ephemeral", ttl: "1h", scope: "global" } },
+              { path: ["system", 1], value: { type: "ephemeral" } },
+              { path: ["messages", messageCount - 1, "content", 0], value: { type: "ephemeral" } },
+            ],
+            querySource,
+            requestDigest,
+            timestamp: iso(sentMs),
+          }),
+        );
+        previous = { recordId, messageCount };
+        return recordId;
+      };
+      let recordId = logRequest(
+        ms,
+        tail.map(({ message }) => sentMessageHash(message)),
       );
-      previous = { recordId, messageCount: keptMessageCount + tail.length };
+      let sentMs = ms;
+      for (const lostMs of failedAttemptsLostMs) recordId = logRequest((sentMs += lostMs), []);
       return { lines, recordId };
     },
   };
@@ -1477,7 +1500,8 @@ function atLoggedRequestsVersion(line: string, requestRef?: string): string {
 /**
  * An unrecorded Conversation whose log records every API request it sent, its
  * Sub-agent's included (Claude Code 2.1.300+): after a first exchange that
- * spawns an Explore sub-agent, a second prompt finds the system prompt
+ * spawns an Explore sub-agent — whose report's Turn went through on a retry,
+ * after one Failed attempt — a second prompt finds the system prompt
  * changed — a new date and a new instruction — and a Grep tool loaded. It
  * ends hours before the agent-messages one, so the anchor does not move.
  *
@@ -1512,9 +1536,17 @@ function loggedRequestsConversation(g: Gen, index: number): Conversation {
   );
   const lines = [JSON.stringify({ type: "ai-title", aiTitle: LOGGED_REQUESTS_TITLE }), firstPrompt];
   let lastTurnLine = "";
-  /** Log a request sent with `shape` and the messages of `tail`, then the Turn answering it. */
-  const turn = (shape: typeof firstShape, tail: SeedSentMessage[], toolUses?: object[]) => {
-    const sent = requests.send((t += 1_000), shape, tail);
+  /**
+   * Log a request sent with `shape` and the messages of `tail`, after the
+   * failed attempts that lost `failedAttemptsLostMs`, then the Turn answering it.
+   */
+  const turn = (
+    shape: typeof firstShape,
+    tail: SeedSentMessage[],
+    toolUses?: object[],
+    failedAttemptsLostMs?: number[],
+  ) => {
+    const sent = requests.send((t += 1_000), shape, tail, failedAttemptsLostMs);
     lines.push(...sent.lines);
     lastTurnLine = atLoggedRequestsVersion(assistantTurn(g, (t += 9_000), cwd, model, { toolUses }), sent.recordId);
     lines.push(lastTurnLine);
@@ -1534,7 +1566,13 @@ function loggedRequestsConversation(g: Gen, index: number): Conversation {
   t += 120_000; // after the sub-agent's last record
   const agentUseId = (toolUse as { id: string }).id;
   lines.push(atLoggedRequestsVersion(toolResult(g, t, cwd, agentUseId, ledgerResult)));
-  turn(firstShape, [sentMessageOf(lastTurnLine), seedToolResultSent(agentUseId, SUBAGENT_REPORTS.Explore)]);
+  // The API was overloaded: the request went through on its retry, 300 ms later.
+  turn(
+    firstShape,
+    [sentMessageOf(lastTurnLine), seedToolResultSent(agentUseId, SUBAGENT_REPORTS.Explore)],
+    undefined,
+    [300],
+  );
   const secondPrompt = atLoggedRequestsVersion(
     userPrompt(g, (t = resumedAt), cwd, "Now check the date filter on the same query."),
   );

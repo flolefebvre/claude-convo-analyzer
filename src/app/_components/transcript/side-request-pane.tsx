@@ -65,6 +65,7 @@ export function SideRequestPane({
           key={sideRequest.apiRequestId}
           source={{ from: "recording", apiRequestId: sideRequest.apiRequestId }}
           failedAttemptCount={0}
+          failedAttemptsLostMs={null}
           isOpenInitially
         />
       </div>

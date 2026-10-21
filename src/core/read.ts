@@ -16,7 +16,7 @@ import { type MessageOrigin, messageOriginSchema } from "@/core/parse";
 import type { Prisma, PrismaClient } from "@/core/prisma/generated/client";
 import { PARSER_VERSION } from "@/core/refresh";
 import { toolCallBodyParts, type ToolCallBodyParts } from "@/core/tool-call-views";
-import type { WhatWasSentSource } from "@/core/what-was-sent";
+import { loggedFailedAttemptsByMessage, type WhatWasSentSource } from "@/core/what-was-sent";
 import {
   type DailyUsageRow,
   type ModelSumRow,
@@ -217,10 +217,17 @@ export type TranscriptMessage = {
    */
   whatWasSentSource: WhatWasSentSource | null;
   /**
-   * How many failed attempts preceded this Turn's API request in a Recording;
-   * 0 when its source is the logs or none, and on user Messages.
+   * How many failed attempts preceded this Turn's API request, in the source
+   * of its What was sent: the logs, else a Recording; 0 without a source, and
+   * on user Messages.
    */
   failedAttemptCount: number;
+  /**
+   * The time its failed attempts lost in all, from the logs: those whose lost
+   * time the logs know, summed. Null without any, without a known lost time,
+   * and when the source is a Recording.
+   */
+  failedAttemptsLostMs: number | null;
 };
 
 /** One node of the agent tree — an agent plus its own-transcript cost and lineage. */
@@ -1414,6 +1421,7 @@ async function readAgentTranscript(
     assistantMessageIds,
   );
   const loggedApiRequestIdByMessageId = await turnLoggedApiRequestsByMessage(prisma, assistantMessageIds);
+  const loggedFailedAttemptsByMessageId = await loggedFailedAttemptsByMessage(prisma, assistantMessageIds);
 
   // A Sub-agent's agent id is its external id, so `senderTaskId`/`taskId`
   // resolve against it; a coordinator is the agent that spawned this one.
@@ -1442,6 +1450,8 @@ async function readAgentTranscript(
         : apiRequestId !== undefined
           ? { from: "recording", apiRequestId }
           : null;
+    const loggedFailedAttempts = loggedFailedAttemptsByMessageId.get(r.id) ?? [];
+    const knownLostMs = loggedFailedAttempts.flatMap((attempt) => (attempt.lostMs === null ? [] : [attempt.lostMs]));
     return {
       id: r.id,
       uuid: r.uuid,
@@ -1459,7 +1469,16 @@ async function readAgentTranscript(
       timestamp: r.timestamp === null ? null : new Date(Number(r.timestamp)).toISOString(),
       toolCalls: toolCallsByMsg.get(r.id) ?? [],
       whatWasSentSource,
-      failedAttemptCount: whatWasSentSource?.from === "recording" ? (failedAttemptCountByMessageId.get(r.id) ?? 0) : 0,
+      failedAttemptCount:
+        whatWasSentSource?.from === "logs"
+          ? loggedFailedAttempts.length
+          : whatWasSentSource?.from === "recording"
+            ? (failedAttemptCountByMessageId.get(r.id) ?? 0)
+            : 0,
+      failedAttemptsLostMs:
+        whatWasSentSource?.from === "logs" && knownLostMs.length > 0
+          ? knownLostMs.reduce((total, lostMs) => total + lostMs, 0)
+          : null,
     };
   });
 }

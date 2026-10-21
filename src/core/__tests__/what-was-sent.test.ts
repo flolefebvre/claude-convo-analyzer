@@ -547,8 +547,8 @@ describe("the failed attempts of a Turn", () => {
 
     expect((await turnsOf()).map((turn) => turn.failedAttemptCount)).toEqual([0, 0, 2]);
     expect(sent?.failedAttempts).toEqual([
-      { status: 529, errorMessage: "Overloaded", lostMs: 2400, arrivedAt: overloaded.timings.arrivedAt },
-      { status: 502, errorMessage: "connect ECONNREFUSED", lostMs: 150, arrivedAt: unreachable.timings.arrivedAt },
+      { status: 529, errorMessage: "Overloaded", lostMs: 2400, sentAt: overloaded.timings.arrivedAt },
+      { status: 502, errorMessage: "connect ECONNREFUSED", lostMs: 150, sentAt: unreachable.timings.arrivedAt },
     ]);
   });
 
