@@ -285,6 +285,51 @@ describe("Turns whose API request is in another file", () => {
     );
     expect(crossFileContent(path.join(tmpDir, "parent-first.db"), parentFirstRoot)).toEqual(childFirst);
   });
+
+  /**
+   * Refresh the resumed request logs, apply `change` to the parent's log file,
+   * then Refresh again — and cold, into a second database: the cross-file
+   * content of each.
+   */
+  async function changedAndCold(change: (parentLogPath: string) => void) {
+    const logsRoot = resumedRequestLogs("logs");
+    const changedDbPath = path.join(tmpDir, "changed.db");
+    const coldDbPath = path.join(tmpDir, "cold.db");
+    await refresh({ logsRoot, dbPath: changedDbPath });
+    change(path.join(logsRoot, RESUMED_LOG_FOLDER, "sess-resumed-parent.jsonl"));
+    await refresh({ logsRoot, dbPath: changedDbPath });
+    await refresh({ logsRoot, dbPath: coldDbPath });
+    return {
+      changedContent: crossFileContent(changedDbPath, logsRoot),
+      coldContent: crossFileContent(coldDbPath, logsRoot),
+    };
+  }
+
+  /** Where the Turn `uuid` of the resumed child reads its API request from, in `content`. */
+  const childTurnRequestSessionId = (content: ReturnType<typeof crossFileContent>, uuid: string) =>
+    (content.turnApiRequests as { session_id: string; uuid: string; requestSessionId: string | null }[]).find(
+      (turn) => turn.session_id === "sess-resumed-child" && turn.uuid === uuid,
+    )?.requestSessionId;
+
+  it("stay linked when the parent alone is re-parsed, as a cold Refresh links them", async () => {
+    const { changedContent, coldContent } = await changedAndCold((parentLogPath) =>
+      writeFileSync(
+        parentLogPath,
+        readFileSync(parentLogPath, "utf8").replace("The parent session", "The parent session, renamed"),
+      ),
+    );
+
+    expect(changedContent).toEqual(coldContent);
+    expect(childTurnRequestSessionId(coldContent, "ra2")).toBe("sess-resumed-parent");
+  });
+
+  it("lose their API request with the parent's file, as a cold Refresh without it does", async () => {
+    const { changedContent, coldContent } = await changedAndCold((parentLogPath) => rmSync(parentLogPath));
+
+    expect(changedContent).toEqual(coldContent);
+    expect(childTurnRequestSessionId(coldContent, "ra2")).toBeNull();
+    expect(childTurnRequestSessionId(coldContent, "ra1")).toBe("sess-resumed-copy");
+  });
 });
 
 describe("a re-parse", () => {
