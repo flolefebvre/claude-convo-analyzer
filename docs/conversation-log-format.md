@@ -433,9 +433,9 @@ they name is on disk nowhere. Show such a Turn without What was sent.
 
 #### How they are stored
 
-Refresh reads the `api-request` and `api-request-shape` records of every file
-of a Conversation, main thread and sub-agents (`parseSessionLines`,
-`src/core/parse.ts`); blobs are not read yet, so the messages are not rebuilt.
+Refresh reads the `api-request`, `api-request-shape` and `api-request-blob`
+records of every file of a Conversation, main thread and sub-agents
+(`parseSessionLines`, `src/core/parse.ts`).
 
 - **`logged_api_request`**: one row per `api-request` record, whether or not a
   Turn answered it, with its file's Agent and its place in that file. Its
@@ -450,11 +450,29 @@ of a Conversation, main thread and sub-agents (`parseSessionLines`,
   names a pair. Two logs spelling one piece in two key orders store its
   smallest spelling, so the stored text never depends on parse order. A
   Refresh deletes those no request references any more.
+- **`sent_message`**: each message a tail of the file names that the file can
+  rebuild (step 2), under that hash, as logged (key order and a string
+  `content` kept), the smallest spelling winning as above. A blob is stored
+  under the `hash` it is logged with; a message rebuilt from the records,
+  under the hash computed as step 2 says. Only a file with request records
+  hashes its records, and only the messages some tail of the file names are
+  kept, whether the blob comes before or after its request. A tail hash the
+  file cannot resolve is not stored; a request naming another file's message
+  finds it only if that file stored it. A Refresh deletes the messages no tail
+  names any more.
+
+A request's message list is never stored whole: it is rebuilt when read, by
+walking the `base` chain over the requests of its file (step 1), and a
+message the database does not hold, or a position a base outside the file
+leaves unknown, is shown missing at its place and counted.
 
 What was sent for a Turn compares its request with the latest earlier request
 of the same file that a Turn answered, so an unanswered request retried since
-is never the baseline. `cache_control` is set on the system blocks from the
-`["system", i]` paths; the message paths wait for the messages.
+is never the baseline. Its new messages start after the longest prefix of
+message hashes the two share; a position whose hash is unknown never matches.
+`cache_control` is set at every path, `["system", i]` and
+`["messages", i, "content", j]`, before the missing messages are left out of
+the raw body.
 
 #### Retries
 

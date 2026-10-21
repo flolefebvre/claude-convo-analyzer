@@ -310,9 +310,11 @@ is **volatile** when only lines that move on their own changed — the date, the
 git status, the working directory — and **real** otherwise. On a Side request
 the panel shows everything it sent, there being no previous request to compare
 against. A Turn whose API request the conversation logs record (Claude Code
-2.1.300 and later) gets What was sent from them, with no Recording — so far its
-system prompt, tool definitions and parameters, not its messages — and the
-logs win when a Recording has the same request.
+2.1.300 and later) gets What was sent from them, with no Recording — its
+messages, system prompt, tool definitions and parameters, without timings, and
+raw as its body rebuilt from the log — and the logs win when a Recording has
+the same request. A message the logs cannot rebuild is shown missing, at its
+place, and counted.
 
 ### Failed attempt
 
