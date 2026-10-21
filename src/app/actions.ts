@@ -1,9 +1,9 @@
 "use server";
 
-// Server Actions for the app: the Refresh, the Live switch, the Recorder's
-// Start and Stop, the Favorite star and the favorites' order, its mutations — reads (the list, the
-// expanded row's detail) are served by the server components via the `_lib`
-// seams, driven by the URL, and the Recorder's status by `GET /api/recorder`.
+// Server Actions for the app: the Refresh, the Live switch, the Favorite star
+// and the favorites' order, its mutations — reads (the list, the expanded row's
+// detail) are served by the server components via the `_lib` seams, driven by
+// the URL.
 // A mutation with nothing to compose calls the core directly (this is a server
 // module); one composed over app state goes through its `_lib` seam. A
 // "use server" module's exports may be imported and called from a "use client"
@@ -15,7 +15,6 @@ import { z } from "zod";
 
 import { favoriteFolder, moveFavoriteFolder, unfavoriteFolder } from "@/core/favorites";
 import { getLive, switchLive } from "@/app/_lib/live";
-import { readConfiguredRecorderStatus, requestStopOfRecorder, startConfiguredRecorder } from "@/app/_lib/recorder";
 import { getPublishedRefreshRunner, startOrJoinRefresh } from "@/app/_lib/refresh-events";
 
 /**
@@ -53,54 +52,6 @@ export const setLive = actionPipe(liveSwitchSchema).handle(async ({ input }) => 
     return error("liveNotSwitched", { message: messageOf(cause), isLiveOn: getLive().isOn() });
   }
   return success({ isLiveOn: getLive().isOn() });
-});
-
-/**
- * Start the Recorder detached on the configured port, unless one already
- * answers there, and return once it answers: `"started"` or
- * `"alreadyRunning"`. A failure (the port taken, the Recorder exiting at once)
- * comes back as an error whose message names the port.
- *
- * @example
- * const result = await startRecorder();
- * if (result.status === "success") show(result.data.outcome); // "started"
- */
-export const startRecorder = actionPipe().handle(async () => {
-  let outcome;
-  try {
-    outcome = await startConfiguredRecorder();
-  } catch (cause) {
-    return error("recorderNotStarted", { message: messageOf(cause) });
-  }
-  if (outcome.outcome === "failed") return error("recorderNotStarted", { message: outcome.message });
-  return success({ outcome: outcome.outcome, port: outcome.port });
-});
-
-/** What `stopRecorder` reads: whether to stop even though sessions sent requests recently. */
-const recorderStopSchema = z.object({ force: z.boolean() });
-
-/**
- * Ask the Recorder on the configured port to stop cleanly, and return at once
- * with `"stopping"`, or `"notRunning"` when none answers. Unless `force`, a
- * Recorder that sessions sent API requests through in the last 15 minutes is
- * left running, and the error says how many.
- *
- * @example
- * const result = await stopRecorder({ force: false });
- * if (result.status === "error" && result.error.type === "sessionsActive") confirm(result.error.data.count);
- */
-export const stopRecorder = actionPipe(recorderStopSchema).handle(async ({ input }) => {
-  try {
-    const recorderStatus = await readConfiguredRecorderStatus();
-    if (recorderStatus.status !== "running") return success("notRunning" as const);
-    if (recorderStatus.recentSessions.length > 0 && !input.force) {
-      return error("sessionsActive", { count: recorderStatus.recentSessions.length });
-    }
-    await requestStopOfRecorder(recorderStatus.port);
-  } catch (cause) {
-    return error("recorderNotStopped", { message: messageOf(cause) });
-  }
-  return success("stopping" as const);
 });
 
 /** What `setFolderFavorite` reads: the Folder's absolute path, and whether it is to be a favorite. */

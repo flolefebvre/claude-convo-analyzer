@@ -1,16 +1,16 @@
 // The app bar: the one header on every route — the list, Trends, Tools, search
-// results, a transcript, the 404 page. Brand, section tabs, search, theme, the
-// Recorder, Live and Refresh always sit in the same places, so moving between
+// results, a transcript, the 404 page. Brand, section tabs, search, theme, Disk
+// usage, Live and Refresh always sit in the same places, so moving between
 // surfaces never rearranges the chrome. Rendered once, by the root layout.
 //
 // Responsive by reordering one flex row rather than rendering twice:
-//   phone    brand ···· theme recorder live refresh   (the brand's name from 640px, the mark alone below)
+//   phone    brand ···· theme disk live refresh   (the brand's name from 640px, the mark alone below)
 //            search ─────────────────────────
 //            tabs
-//   tablet   brand ···· search theme recorder live refresh
+//   tablet   brand ···· search theme disk live refresh
 //            tabs
-//   desktop  brand  tabs ···· search theme recorder live refresh      (one 56px row)
-// The search keeps its 240px from tablet up. The Recorder, Live and Refresh are
+//   desktop  brand  tabs ···· search theme disk live refresh      (one 56px row)
+// The search keeps its 240px from tablet up. Disk usage, Live and Refresh are
 // icons below 1280px, and show their labels from it, the only width with room.
 // The row's gap is 16px at every width from 640px:
 //   tablet    at 768px the brand with its name, the search and the icon controls
@@ -18,30 +18,27 @@
 //   desktop   at 1024px, brand 223 + tabs 230 + search 240 + icon controls 216 +
 //             three gaps take 957 of 976.
 //   from xl   the bar caps at 1232px of content: the labelled controls get 491,
-//             476 beside a classic 15px scrollbar, and take 461 at five-digit
-//             counts ("Recorder: off" and a running Refresh's "12,450 / 12,450"),
-//             about 478 at six. So the labels say only what the state is: the
-//             Recorder's port and how to enable it sit in its title and popover,
-//             the Refresh's noun in its screen-reader label. Only six-digit
-//             counts beside a classic scrollbar overflow, by about 2px.
+//             476 beside a classic 15px scrollbar, and take 449 at five-digit
+//             counts (a running Refresh's "12,450 / 12,450"), about 466 at six.
+//             So a running Refresh's label says only how far it is, its noun in
+//             its screen-reader label.
 // The tabs always end flush on the bar's bottom border, where the active tab's
 // clay underline sits.
 //
 // A server component: the URL-dependent pieces (active tab, the search box's
 // query) are client leaves inside their own <Suspense>, so the bar prerenders.
-// So are the current Recorder, Live and Refresh controls, which read the
-// Recorder's port, Live and the running Refresh per request; their fallbacks are
-// the neutral Recorder item, the off toggle and the idle button, so the shell
-// always has all three controls.
+// So are the current Live and Refresh controls, which read Live and the running
+// Refresh per request; their fallbacks are the off toggle and the idle button,
+// so the shell always has both. The Disk usage item reads nothing per request:
+// the shell draws it as it is.
 
 import Link from "next/link";
 import { Suspense } from "react";
 
 import { CurrentLiveToggle } from "@/app/_components/current-live-toggle";
-import { CurrentRecorderControl } from "@/app/_components/current-recorder-control";
 import { CurrentRefreshButton } from "@/app/_components/current-refresh-button";
+import { DiskUsageItem } from "@/app/_components/disk-usage-item";
 import { InertLiveToggle } from "@/app/_components/live-toggle";
-import { InertRecorderControl } from "@/app/_components/recorder-control";
 import { IdleRefreshButton } from "@/app/_components/refresh-button";
 import { SearchBox } from "@/app/_components/search-box";
 import { SectionNav, SectionTabs } from "@/app/_components/section-nav";
@@ -64,9 +61,7 @@ export function AppBar() {
         <SearchBox className="order-4 w-full md:order-2 md:w-60 lg:order-3 lg:ml-auto lg:shrink-0" />
         <div className="order-2 flex items-center gap-1.5 sm:gap-2 md:order-3 lg:order-4">
           <ThemeToggle />
-          <Suspense fallback={<InertRecorderControl />}>
-            <CurrentRecorderControl />
-          </Suspense>
+          <DiskUsageItem />
           <Suspense fallback={<InertLiveToggle />}>
             <CurrentLiveToggle />
           </Suspense>

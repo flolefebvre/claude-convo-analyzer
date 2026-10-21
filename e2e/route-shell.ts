@@ -13,13 +13,12 @@ export type RouteShell = {
 
 /**
  * Asserts the shell and its fallbacks are visible and the streamed data is not; call inside `instant()`.
- * Every route's shell also has the app bar's neutral Recorder item and its Live and Refresh controls.
+ * Every route's shell also has the app bar's Disk usage item and its Live and Refresh controls.
  *
  * @example await expectShell(page, tools);
  */
 export async function expectShell(page: Page, route: RouteShell) {
-  // The neutral item on an initial load; on a client navigation, the item as the persisting app bar shows it.
-  await expect(page.getByRole("banner").getByRole("button", { name: /^Recorder/ })).toBeVisible();
+  await expect(page.getByRole("banner").getByRole("button", { name: "Disk usage" })).toBeVisible();
   await expect(page.getByRole("banner").getByRole("button", { name: "Live", pressed: false })).toBeVisible();
   await expect(page.getByRole("banner").getByRole("button", { name: "Refresh" })).toBeVisible();
   for (const content of route.shell(page)) await expect(content).toBeVisible();
