@@ -89,18 +89,18 @@ describe("a Turn's Failed attempts from the logs", () => {
 describe("What was sent from the logs, for a Turn Failed attempts preceded", () => {
   /** What was sent for the `ordinal`-th (1-based) assistant Turn of an Agent. */
   async function whatWasSentForTurn(ordinal: number, agentId?: string) {
-    const source = (await turnsOf(agentId))[ordinal - 1]?.whatWasSentSource;
-    if (source?.from !== "logs") throw new Error(`Turn ${ordinal} has no logged API request`);
-    return getLoggedWhatWasSent(source.loggedApiRequestId, { dbPath: db.dbPath });
+    const loggedApiRequestId = (await turnsOf(agentId))[ordinal - 1]?.loggedApiRequestId;
+    if (loggedApiRequestId == null) throw new Error(`Turn ${ordinal} has no logged API request`);
+    return getLoggedWhatWasSent(loggedApiRequestId, { dbPath: db.dbPath });
   }
 
   it("lists them oldest first, each with when it was sent and the time it lost, and no status or error", async () => {
     const sent = await whatWasSentForTurn(2);
 
     expect(sent?.failedAttempts).toEqual([
-      { status: null, errorMessage: null, lostMs: 500, sentAt: "2026-10-21T10:01:01.000Z" },
-      { status: null, errorMessage: null, lostMs: 1_500, sentAt: "2026-10-21T10:01:01.500Z" },
-      { status: null, errorMessage: null, lostMs: 4_000, sentAt: "2026-10-21T10:01:03.000Z" },
+      { lostMs: 500, sentAt: "2026-10-21T10:01:01.000Z" },
+      { lostMs: 1_500, sentAt: "2026-10-21T10:01:01.500Z" },
+      { lostMs: 4_000, sentAt: "2026-10-21T10:01:03.000Z" },
     ]);
   });
 
@@ -113,8 +113,6 @@ describe("What was sent from the logs, for a Turn Failed attempts preceded", () 
   it("lists a Sub-agent's own", async () => {
     const sent = await whatWasSentForTurn(1, SUB_AGENT_ID);
 
-    expect(sent?.failedAttempts).toEqual([
-      { status: null, errorMessage: null, lostMs: 250, sentAt: "2026-10-21T10:00:11.000Z" },
-    ]);
+    expect(sent?.failedAttempts).toEqual([{ lostMs: 250, sentAt: "2026-10-21T10:00:11.000Z" }]);
   });
 });

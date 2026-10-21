@@ -1,7 +1,7 @@
 "use client";
 
 // The lazy read behind a transcript disclosure (a Tool call's body, what a
-// recorded Turn sent, its Raw view): nothing is fetched until the reader first
+// Turn sent, its Raw view): nothing is fetched until the reader first
 // opens the `<details>` or the tab, and what came back is kept for every later
 // open.
 

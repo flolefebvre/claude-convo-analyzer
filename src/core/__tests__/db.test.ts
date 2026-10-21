@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createPrismaClient } from "@/core/db";
 import type { PrismaClient } from "@/core/prisma/generated/client";
 
-/** The eight domain tables defined by ADR-0001. */
+/** The seven domain tables defined by ADR-0001. */
 const EXPECTED_TABLES = [
   "project",
   "conversation",
@@ -14,7 +14,6 @@ const EXPECTED_TABLES = [
   "tool_call",
   "pr_link",
   "turn_duration",
-  "api_request",
 ] as const;
 
 describe("core persistence foundation", () => {
@@ -33,7 +32,7 @@ describe("core persistence foundation", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("creates a fresh database with the eight ADR-0001 tables", async () => {
+  it("creates a fresh database with the seven ADR-0001 tables", async () => {
     const rows = await prisma.$queryRawUnsafe<{ name: string }[]>(
       "SELECT name FROM sqlite_master WHERE type = 'table'",
     );

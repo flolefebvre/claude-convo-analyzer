@@ -6,7 +6,7 @@
 // boot tries again.
 
 import { getPublishedRefreshRunner } from "@/app/_lib/refresh-events";
-import { ACTIVE_WINDOW_MS, createLive, isActiveNow, type Live, watchLogsAndRecordings } from "@/core/live";
+import { ACTIVE_WINDOW_MS, createLive, isActiveNow, type Live, watchLogs } from "@/core/live";
 import { readSettings, updateSettings } from "@/core/settings";
 
 /** How long Live gathers changes before it runs a Refresh. */
@@ -26,7 +26,7 @@ const globalForLive = globalThis as unknown as { [liveSlot]?: Live };
 export function getLive(): Live {
   globalForLive[liveSlot] ??= createLive({
     runner: getPublishedRefreshRunner(),
-    watch: watchLogsAndRecordings(),
+    watch: watchLogs(),
     debounceMs: LIVE_DEBOUNCE_MS,
   });
   return globalForLive[liveSlot];

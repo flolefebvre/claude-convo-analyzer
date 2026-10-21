@@ -15,8 +15,8 @@ function plural(n: number, noun: string): string {
 /**
  * The Refresh result in plain words, for the status line under the button:
  * "Everything is up to date", or "3 conversations updated, 1 removed".
- * Unreadable log lines, ignored duplicate log files, vanished log files and
- * undecodable Recordings are appended only when there are some.
+ * Unreadable log lines, ignored duplicate log files and vanished log files are
+ * appended only when there are some.
  *
  * @example formatRefreshSummary(result.data) // "2 conversations updated, 1 log line could not be read"
  */
@@ -37,8 +37,6 @@ export function formatRefreshSummary(summary: RefreshSummary): string {
   if (duplicates > 0) segments.push(`${plural(duplicates, "duplicate log file")} ignored`);
   const vanished = summary.vanishedLogFilesSkipped;
   if (vanished > 0) segments.push(`${plural(vanished, "log file")} vanished during the refresh`);
-  const undecodable = summary.undecodableRecordingsSkipped;
-  if (undecodable > 0) segments.push(`${plural(undecodable, "Recording")} could not be decoded`);
   return segments.join(", ");
 }
 

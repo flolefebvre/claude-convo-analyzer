@@ -110,32 +110,6 @@ const TURN_DURATION_COLUMN_BY_FIELD = {
   messageCount: "message_count",
 } as const;
 
-const API_REQUEST_COLUMN_BY_FIELD = {
-  conversationId: "conversation_id",
-  messageId: "message_id",
-  agentId: "agent_id",
-  kind: "kind",
-  otherKindLabel: "other_kind_label",
-  requestId: "request_id",
-  responseMessageId: "response_message_id",
-  externalAgentId: "external_agent_id",
-  method: "method",
-  path: "path",
-  status: "status",
-  arrivedAt: "arrived_at",
-  firstByteAt: "first_byte_at",
-  endedAt: "ended_at",
-  proxyError: "proxy_error",
-  isClientAborted: "is_client_aborted",
-  errorMessage: "error_message",
-  inputTokens: "input_tokens",
-  outputTokens: "output_tokens",
-  cacheCreation5mTokens: "cache_creation_5m_tokens",
-  cacheCreation1hTokens: "cache_creation_1h_tokens",
-  cacheReadTokens: "cache_read_tokens",
-  model: "model",
-} as const;
-
 const LOGGED_API_REQUEST_COLUMN_BY_FIELD = {
   conversationId: "conversation_id",
   agentId: "agent_id",
@@ -169,8 +143,6 @@ export type ToolCallRow = InsertRow<keyof typeof TOOL_CALL_COLUMN_BY_FIELD>;
 export type PrLinkRow = InsertRow<keyof typeof PR_LINK_COLUMN_BY_FIELD>;
 /** A `turn_duration` row to insert. */
 export type TurnDurationRow = InsertRow<keyof typeof TURN_DURATION_COLUMN_BY_FIELD>;
-/** An `api_request` row to insert. */
-export type ApiRequestRow = InsertRow<keyof typeof API_REQUEST_COLUMN_BY_FIELD>;
 /** A `logged_api_request` row to insert. */
 export type LoggedApiRequestRow = InsertRow<keyof typeof LOGGED_API_REQUEST_COLUMN_BY_FIELD>;
 
@@ -305,7 +277,6 @@ export function prepareRefreshStatements(db: Database.Database) {
     insertToolCall: prepareInsert(db, "tool_call", TOOL_CALL_COLUMN_BY_FIELD),
     insertPrLink: prepareInsert(db, "pr_link", PR_LINK_COLUMN_BY_FIELD),
     insertTurnDuration: prepareInsert(db, "turn_duration", TURN_DURATION_COLUMN_BY_FIELD),
-    insertApiRequest: prepareInsert(db, "api_request", API_REQUEST_COLUMN_BY_FIELD),
     insertLoggedApiRequest: prepareInsert(db, "logged_api_request", LOGGED_API_REQUEST_COLUMN_BY_FIELD),
     /** Store a system prompt under its hash, keeping the smaller spelling when one already is. */
     insertSystemPrompt: (hash: string, blocksJson: string) => void insertSystemPrompt.run(hash, blocksJson),

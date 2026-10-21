@@ -1,25 +1,14 @@
 // What was sent (GLOSSARY.md): what a Turn's API request actually sent the
-// model, read on demand when the reader opens it, from one of two sources.
-// From the logs (Claude Code 2.1.300+, ADR-0007), the database holds it all:
-// the `logged_api_request` rows of the Agent, whose base chain gives the
-// request's message hashes, and its system prompt, tool set and messages,
-// each stored under its hash. From a Recording, the database locates the
-// API request and the previous one of the same Agent, and the Recording file
-// provides their bodies, the only two restored (ADR-0006). The Raw view reads
-// one API request the same way. Framework-free (ADR-0002).
+// model, read on demand when the reader opens it, from the logs (Claude Code
+// 2.1.300+, ADR-0007). The database holds it all: the `logged_api_request`
+// rows of the Agent, whose base chain gives the request's message hashes, and
+// its system prompt, tool set and messages, each stored under its hash. The
+// Raw view reads one API request the same way. Framework-free (ADR-0002).
 
 import { structuredPatch } from "diff";
 
-import { isSideRequestKind } from "@/core/api-request-kind";
 import { canonicalJson } from "@/core/canonical-json";
 import { readClient } from "@/core/db";
-import {
-  defaultRecordingsRoot,
-  readSelectedApiRequests,
-  type RecordedApiRequest,
-  type RecordedHeaders,
-  recordingFilePath,
-} from "@/core/recording";
 
 /** A value as parsed from JSON: what a body, or any part of one, is. */
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
@@ -53,7 +42,7 @@ export type SentParameters = {
   thinking: string | null;
   /** `output_config.effort`; null when absent. */
   effort: string | null;
-  /** The beta features: the `anthropic-beta` header's, then the body's `betas`, deduplicated. */
+  /** The beta features: the body's `betas`, deduplicated. */
   betas: string[];
 };
 
@@ -107,63 +96,40 @@ export const VOLATILE_SYSTEM_LINE_PATTERNS: readonly RegExp[] = [
   /^\s*$/,
 ];
 
-/** How long the API request took, in ms from its arrival at the Recorder. */
-export type SentTimings = {
-  /** Null when no response byte ever came back. */
-  timeToFirstByteMs: number | null;
-  durationMs: number;
-};
-
 /**
- * One failed attempt of the Turn (GLOSSARY.md, Failed attempt): how the API
- * answered it, when a Recording knows, and the time it lost.
+ * One Failed attempt of the Turn (GLOSSARY.md, Failed attempt): when it was
+ * sent and the time it lost. The logs record neither its status nor its error.
  */
 export type FailedAttempt = {
-  /** The response's HTTP status; null from the logs, which do not record it. */
-  status: number | null;
-  /** The response body's `error.message`, else the proxy error; null when neither said why, and from the logs. */
-  errorMessage: string | null;
   /**
-   * From a Recording, from its arrival to its failure; from the logs, from its
-   * sending to the next request's (the failure plus the backoff), null when
-   * the logs miss either time.
+   * From its sending to the next request's (the failure plus the backoff);
+   * null when the logs miss either time.
    */
   lostMs: number | null;
-  /**
-   * When it was sent (ISO 8601): from the logs, its send time; from a
-   * Recording, when it reached the Recorder, a few ms later. Null when the
-   * logs miss it.
-   */
+  /** When it was sent (ISO 8601); null when the logs miss it. */
   sentAt: string | null;
 };
 
-/** Everything the "What was sent" panel of one Turn or Side request shows. Plain and serializable. */
+/** Everything the "What was sent" panel of one Turn shows. Plain and serializable. */
 export type WhatWasSent = {
-  /** True when the API request is a Side request (GLOSSARY.md), which belongs to no Agent. */
-  isSideRequest: boolean;
   parameters: SentParameters;
-  /** Null for an API request from the logs, which time only its sending. */
-  timings: SentTimings | null;
   /**
-   * The failed attempts that preceded this API request, oldest first; empty
+   * The Failed attempts that preceded this API request, oldest first; empty
    * when it succeeded at the first try.
    */
   failedAttempts: FailedAttempt[];
   /**
-   * Row id of the previous API request of the same Agent, from the same
-   * source (an `api_request` row, or a `logged_api_request` one); null when
-   * there is none (the Agent's first Turn, or the first recorded one) or on a
-   * Side request, which has no Agent, and then every message is new.
+   * Row id of the previous API request of the same Agent; null when there is
+   * none (the Agent's first Turn), and then every message is new.
    */
   previousApiRequestId: number | null;
   /**
    * Index in `fullRequest.messages` of the first message the previous API
    * request did not send — the messages before it are those the two share, in
-   * order (cache breakpoints ignored; from the logs, by hash); 0 without a
-   * previous one.
+   * order, by hash; 0 without a previous one.
    */
   firstNewMessageIndex: number;
-  /** How many of `fullRequest.messages` the logs could not rebuild (its null entries); 0 from a Recording. */
+  /** How many of `fullRequest.messages` the logs could not rebuild (its null entries). */
   missingMessageCount: number;
   /** How the system prompt changed since the previous API request; null when it did not, or without one. */
   systemPromptDiff: SystemPromptDiff | null;
@@ -182,116 +148,17 @@ export type WhatWasSent = {
 
 /** An API request raw (GLOSSARY.md, What was sent), as JSON: what the panel's Raw view shows. Plain and serializable. */
 export type RawApiRequest = {
-  /**
-   * From a Recording, the request body exactly as sent, rebuilt from its
-   * pieces (`metadata.user_id` redacted); from the logs, the body as they
-   * rebuild it, every message they could not rebuild left out.
-   */
+  /** The request body as the logs rebuild it, every message they could not rebuild left out. */
   requestBody: JsonValue;
-  /** How many messages the logs could not rebuild, left out of `requestBody`; 0 from a Recording. */
+  /** How many messages the logs could not rebuild, left out of `requestBody`. */
   missingMessageCount: number;
-  /** The response body as the Recording reassembled it (a stream's events folded into one message); null without one, and from the logs. */
-  responseBody: JsonValue;
-  /** The request headers, credentials redacted; null from the logs, which do not keep them. */
-  requestHeaders: RecordedHeaders | null;
 };
 
-/**
- * Where a Turn's What was sent is read from: its API request in the logs
- * (a `logged_api_request` row), else in a Recording (an `api_request` row).
- */
-export type WhatWasSentSource =
-  { from: "logs"; loggedApiRequestId: number } | { from: "recording"; apiRequestId: number };
-
-type WhatWasSentOptions = {
-  dbPath?: string;
-  /** Where the Recordings are read from; `defaultRecordingsRoot()` when absent. */
-  recordingsRoot?: string;
-};
-
-/** What the `api_request` row holds that finds its API request in the Recording file. */
-type ApiRequestKey = {
-  requestId: string | null;
-  arrivedAt: bigint;
-  method: string;
-  path: string;
-  externalAgentId: string | null;
-};
-
-/** The body fields a Recording stores as pieces; every other field is a parameter. */
+/** The body fields stored as pieces of their own; every other field is a parameter. */
 const PIECE_FIELDS = new Set(["system", "tools", "messages"]);
 
 /** A request body that is a JSON object: what a Messages request is. */
 type RequestBody = Record<string, JsonValue>;
-
-/**
- * What the API request of `api_request` row `apiRequestId` sent, against the
- * previous API request of the same Agent: the latest of its Conversation and
- * Agent to arrive earlier that is a Turn's request other than this one (so
- * Side requests and failed attempts are skipped), with the failed attempts
- * that preceded it. A Side request has no Agent, so no previous API request:
- * everything it sent is new. Null for an unknown row, or when the Recording no
- * longer holds the API request.
- *
- * @example
- * const whatWasSent = await getWhatWasSent(message.apiRequestId);
- */
-export async function getWhatWasSent(apiRequestId: number, opts: WhatWasSentOptions = {}): Promise<WhatWasSent | null> {
-  return withApiRequestRow(apiRequestId, opts.dbPath, async (row, prisma) => {
-    const previousRow =
-      row.agentId === null
-        ? null
-        : await prisma.apiRequest.findFirst({
-            where: {
-              conversationId: row.conversationId,
-              agentId: row.agentId,
-              arrivedAt: { lt: row.arrivedAt },
-              kind: "turn",
-              messageId: { not: row.messageId },
-            },
-            orderBy: [{ arrivedAt: "desc" }, { id: "desc" }],
-          });
-    const failedAttemptRows =
-      row.kind !== "turn"
-        ? []
-        : await prisma.apiRequest.findMany({
-            where: { messageId: row.messageId, kind: "failed-attempt" },
-            orderBy: [{ arrivedAt: "asc" }, { id: "asc" }],
-            select: { status: true, errorMessage: true, arrivedAt: true, endedAt: true },
-          });
-
-    const [apiRequest, previousApiRequest = null] = recordedApiRequestsOf(
-      row.conversation.sessionId,
-      previousRow === null ? [row] : [row, previousRow],
-      opts,
-    );
-    if (apiRequest === null || !isRequestBody(apiRequest.body)) return null;
-    const previousBody =
-      previousApiRequest !== null && isRequestBody(previousApiRequest.body) ? previousApiRequest.body : null;
-
-    const body = apiRequest.body;
-    const messages = messagesOf(body);
-    return {
-      isSideRequest: isSideRequestKind(row.kind),
-      parameters: sentParameters(body, apiRequest.headers),
-      timings: {
-        timeToFirstByteMs: row.firstByteAt === null ? null : Number(row.firstByteAt - row.arrivedAt),
-        durationMs: Number(row.endedAt - row.arrivedAt),
-      },
-      failedAttempts: failedAttemptRows.map((attempt) => ({
-        status: attempt.status,
-        errorMessage: attempt.errorMessage,
-        lostMs: Number(attempt.endedAt - attempt.arrivedAt),
-        sentAt: new Date(Number(attempt.arrivedAt)).toISOString(),
-      })),
-      previousApiRequestId: previousBody === null ? null : previousRow!.id,
-      firstNewMessageIndex: sharedPrefixLength(messages, previousBody === null ? [] : messagesOf(previousBody)),
-      missingMessageCount: 0,
-      ...pieceChanges(previousBody, body),
-      fullRequest: fullRequestOf(body, messages.map(sentMessage)),
-    };
-  });
-}
 
 /** How the system prompt and the tool definitions changed from `previousBody` to `body`; neither without a previous body. */
 function pieceChanges(
@@ -314,57 +181,8 @@ function fullRequestOf(body: RequestBody, messages: (SentMessage | null)[]): Wha
   };
 }
 
-/**
- * The API request of `api_request` row `apiRequestId` raw, as its Recording
- * holds it: the request body rebuilt from its pieces, exactly as sent but for
- * the Recording's redaction; the response body as the Recording reassembled
- * it; the request headers, credentials redacted. Null for an unknown row, or
- * when the Recording no longer holds the API request.
- *
- * @example
- * const rawApiRequest = await getRawApiRequest(message.apiRequestId);
- */
-export async function getRawApiRequest(
-  apiRequestId: number,
-  opts: WhatWasSentOptions = {},
-): Promise<RawApiRequest | null> {
-  return withApiRequestRow(apiRequestId, opts.dbPath, async (row) => {
-    const [apiRequest] = recordedApiRequestsOf(row.conversation.sessionId, [row], opts);
-    if (apiRequest === null) return null;
-    return {
-      // Both bodies were parsed from JSON when the Recording was read.
-      requestBody: (apiRequest.body ?? null) as JsonValue,
-      missingMessageCount: 0,
-      responseBody: (apiRequest.response.body ?? null) as JsonValue,
-      requestHeaders: apiRequest.headers,
-    };
-  });
-}
-
 /** The client {@link readClient} hands out. */
 type ReadPrisma = ReturnType<typeof readClient>["prisma"];
-
-/** The `api_request` row `apiRequestId`, with its Conversation's session id; null for an unknown one. */
-function findApiRequestRow(prisma: ReadPrisma, apiRequestId: number) {
-  return prisma.apiRequest.findUnique({
-    where: { id: apiRequestId },
-    include: { conversation: { select: { sessionId: true } } },
-  });
-}
-
-type ApiRequestRow = NonNullable<Awaited<ReturnType<typeof findApiRequestRow>>>;
-
-/** What `read` makes of `api_request` row `apiRequestId`, read from the database at `dbPath`; null for an unknown row. */
-function withApiRequestRow<Result>(
-  apiRequestId: number,
-  dbPath: string | undefined,
-  read: (row: ApiRequestRow, prisma: ReadPrisma) => Promise<Result | null>,
-): Promise<Result | null> {
-  return withReadClient(dbPath, async (prisma) => {
-    const row = await findApiRequestRow(prisma, apiRequestId);
-    return row === null ? null : await read(row, prisma);
-  });
-}
 
 /** What `read` makes of the database at `dbPath`. */
 async function withReadClient<Result>(
@@ -387,12 +205,10 @@ async function withReadClient<Result>(
  * API request of the same Agent: the latest earlier one of its file a Turn
  * answered, so an unanswered request, retried since, is skipped. Its messages
  * are rebuilt from the database, a message it could not rebuild kept as null
- * at its place and counted; its failed attempts come with neither status nor
- * error message, and what only a Recording knows — timings — is left out.
- * Null for an unknown row.
+ * at its place and counted. Null for an unknown row.
  *
  * @example
- * const whatWasSent = await getLoggedWhatWasSent(source.loggedApiRequestId);
+ * const whatWasSent = await getLoggedWhatWasSent(message.loggedApiRequestId!);
  */
 export async function getLoggedWhatWasSent(
   loggedApiRequestId: number,
@@ -415,9 +231,7 @@ export async function getLoggedWhatWasSent(
         ? []
         : ((await loggedFailedAttemptsByMessage(prisma, [row.messageId])).get(row.messageId) ?? []);
     return {
-      isSideRequest: false,
-      parameters: sentParameters(body, {}),
-      timings: null,
+      parameters: sentParameters(body),
       failedAttempts,
       previousApiRequestId: previousRow?.id ?? null,
       firstNewMessageIndex:
@@ -435,11 +249,11 @@ export async function getLoggedWhatWasSent(
  * the parameters, `params.betas` included, then the system prompt, the tools
  * and the messages, each cache breakpoint set at its path — every message it
  * could not rebuild left out and counted. Not exactly as sent: the logs leave
- * out the billing-header system block, `metadata` and `stream`. No response,
- * no headers. Null for an unknown row.
+ * out the billing-header system block, `metadata` and `stream`. Null for an
+ * unknown row.
  *
  * @example
- * const rawApiRequest = await getLoggedRawApiRequest(source.loggedApiRequestId);
+ * const rawApiRequest = await getLoggedRawApiRequest(message.loggedApiRequestId!);
  */
 export async function getLoggedRawApiRequest(
   loggedApiRequestId: number,
@@ -453,8 +267,6 @@ export async function getLoggedRawApiRequest(
     return {
       requestBody: { ...body, messages: resolvedMessages },
       missingMessageCount: messages.length - resolvedMessages.length,
-      responseBody: null,
-      requestHeaders: null,
     };
   });
 }
@@ -502,8 +314,6 @@ export async function loggedFailedAttemptsByMessage(
       if (!row.isAttempt) return;
       const nextSentAt = chain[index + 1]?.sentAt ?? null;
       failedAttempts.push({
-        status: null,
-        errorMessage: null,
         lostMs: row.sentAt === null || nextSentAt === null ? null : Number(nextSentAt - row.sentAt),
         sentAt: row.sentAt === null ? null : new Date(Number(row.sentAt)).toISOString(),
       });
@@ -718,62 +528,11 @@ function withMessageCacheBreakpoints(
   return breakpointMessages;
 }
 
-/**
- * The API request of each of `keys` in the Recording of session `sessionId`,
- * in the order of `keys`: null for one the Recording does not hold, or for
- * every one when the Recording is gone.
- */
-function recordedApiRequestsOf(
-  sessionId: string,
-  keys: ApiRequestKey[],
-  opts: WhatWasSentOptions,
-): (RecordedApiRequest | null)[] {
-  const filePath = recordingFilePath(opts.recordingsRoot ?? defaultRecordingsRoot(), sessionId);
-  if (filePath === null) return keys.map(() => null);
-  const apiRequests = readApiRequestsUnlessVanished(filePath, keys);
-  return keys.map((key) => apiRequestOf(apiRequests, key));
-}
-
-/** The API requests of the file at `filePath` that match one of `keys`, in full; none when the file is gone. */
-function readApiRequestsUnlessVanished(filePath: string, keys: ApiRequestKey[]): RecordedApiRequest[] {
-  try {
-    return readSelectedApiRequests(filePath, (apiRequest) => keys.some((key) => isApiRequestOfKey(apiRequest, key)));
-  } catch (error) {
-    if (error instanceof Error && (error.cause as NodeJS.ErrnoException)?.code === "ENOENT") return [];
-    throw error;
-  }
-}
-
-/**
- * The API request of `key` among `apiRequests`: by `requestId` when the row
- * has one — the arrival time telling apart two requests sharing it — else by
- * arrival time, method, path and agent.
- */
-function apiRequestOf(apiRequests: RecordedApiRequest[], key: ApiRequestKey): RecordedApiRequest | null {
-  const matches = apiRequests.filter((apiRequest) => isApiRequestOfKey(apiRequest, key));
-  if (matches.length <= 1) return matches[0] ?? null;
-  return matches.find((apiRequest) => Date.parse(apiRequest.timings.arrivedAt) === Number(key.arrivedAt)) ?? null;
-}
-
-function isApiRequestOfKey(
-  apiRequest: Pick<RecordedApiRequest, "response" | "timings" | "method" | "path" | "agentId">,
-  key: ApiRequestKey,
-): boolean {
-  if (key.requestId !== null) return apiRequest.response.requestId === key.requestId;
-  return (
-    Date.parse(apiRequest.timings.arrivedAt) === Number(key.arrivedAt) &&
-    apiRequest.method === key.method &&
-    apiRequest.path === key.path &&
-    apiRequest.agentId === key.externalAgentId
-  );
-}
-
-function sentParameters(body: RequestBody, headers: RecordedHeaders): SentParameters {
+function sentParameters(body: RequestBody): SentParameters {
   const outputConfig = body.output_config;
   const effort = isPlainObject(outputConfig) && typeof outputConfig.effort === "string" ? outputConfig.effort : null;
-  const headerBetas = [headers["anthropic-beta"] ?? []].flat().flatMap((value) => value.split(","));
   const bodyBetas = Array.isArray(body.betas) ? body.betas.filter((beta) => typeof beta === "string") : [];
-  const betas = [...new Set([...headerBetas, ...bodyBetas].map((beta) => beta.trim()).filter(Boolean))];
+  const betas = [...new Set(bodyBetas.map((beta) => beta.trim()).filter(Boolean))];
   return {
     model: typeof body.model === "string" ? body.model : null,
     maxTokens: typeof body.max_tokens === "number" ? body.max_tokens : null,
@@ -793,23 +552,6 @@ function thinkingText(thinking: unknown): string {
       ([name, value]) => `${name} ${typeof value === "string" ? value : JSON.stringify(value)}`,
     ),
   ].join(" · ");
-}
-
-/**
- * The length of the longest prefix `messages` shares with `previousMessages`,
- * compared position by position without their cache breakpoints — so a new
- * prompt that repeats an earlier one is still new.
- */
-function sharedPrefixLength(messages: unknown[], previousMessages: unknown[]): number {
-  const comparableJson = (message: unknown) => canonicalJson(withoutCacheControl(message));
-  let length = 0;
-  while (
-    length < Math.min(messages.length, previousMessages.length) &&
-    comparableJson(messages[length]) === comparableJson(previousMessages[length])
-  ) {
-    length += 1;
-  }
-  return length;
 }
 
 /** The system-prompt diff from `previousBody` to `body`; null when the system text is the same. */
@@ -886,17 +628,6 @@ function lineDiffHunks(previousText: string, text: string): DiffHunk[] {
   }));
 }
 
-/** `value` with every `cache_control` key removed, at any depth. */
-function withoutCacheControl(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(withoutCacheControl);
-  if (!isPlainObject(value)) return value;
-  return Object.fromEntries(
-    Object.entries(value)
-      .filter(([key]) => key !== "cache_control")
-      .map(([key, nested]) => [key, withoutCacheControl(nested)]),
-  );
-}
-
 function sentMessage(message: unknown): SentMessage {
   if (!isPlainObject(message)) return { role: "unknown", blocks: [sentBlock(message)] };
   const content = message.content;
@@ -946,10 +677,6 @@ function sentTool(tool: unknown): SentTool {
   };
 }
 
-function messagesOf(body: RequestBody): unknown[] {
-  return Array.isArray(body.messages) ? body.messages : [];
-}
-
 /** The system blocks of `body`: a string system prompt is one block. */
 function systemBlocksOf(body: RequestBody): unknown[] {
   if (Array.isArray(body.system)) return body.system;
@@ -958,10 +685,6 @@ function systemBlocksOf(body: RequestBody): unknown[] {
 
 function toolsOf(body: RequestBody): unknown[] {
   return Array.isArray(body.tools) ? body.tools : [];
-}
-
-function isRequestBody(body: unknown): body is RequestBody {
-  return isPlainObject(body);
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

@@ -1,17 +1,15 @@
 "use client";
 
-// The "What was sent" disclosure of one Turn, or of one Side request. The page
-// ships only where to read it — a `logged_api_request` row id for an API
-// request the logs hold, else an `api_request` row id for one a Recording
-// holds — and the Turn's failed-attempt count and lost time; what it sent is
-// fetched from `GET /api/logged-api-request/<id>` or `GET /api/api-request/<id>`
-// the first time the reader opens it, and kept for every later open. Native
-// `<details>` stays the disclosure, as for tool calls. Under the request's
-// facts, a switch picks the view: Changes (what this request added), Request
-// (all of it, by part) or Raw (its JSON, fetched from the route's `/raw`
-// sibling the first time Raw opens). What the logs do not keep — timings,
-// a failed attempt's status and error, headers, the response — is left out; a
-// message they could not rebuild is shown missing at its place, and counted.
+// The "What was sent" disclosure of one Turn. The page ships only where to
+// read it — the `logged_api_request` row id of the Turn's API request in the
+// logs — and the Turn's failed-attempt count and lost time; what it sent is
+// fetched from `GET /api/logged-api-request/<id>` the first time the reader
+// opens it, and kept for every later open. Native `<details>` stays the
+// disclosure, as for tool calls. Under the request's facts, a switch picks the
+// view: Changes (what this request added), Request (all of it, by part) or Raw
+// (its JSON, fetched from the route's `/raw` sibling the first time Raw
+// opens). A message the logs could not rebuild is shown missing at its place,
+// and counted.
 //
 // ADR-0002: no core import — the payload comes over the route, its types from
 // the core-free `_lib/transcript`.
@@ -26,13 +24,11 @@ import { formatLatency } from "@/app/_lib/format";
 import type {
   DiffLine,
   FailedAttempt,
-  JsonValue,
   RawApiRequest,
   SentBlock,
   SentMessage,
   SentTool,
   WhatWasSent,
-  WhatWasSentSource,
 } from "@/app/_lib/transcript";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -49,41 +45,35 @@ const BLOCK_CLAMP_LINES = 15;
 const BLOCK_CLAMP_CHARS = 2_000;
 
 /**
- * A Turn's "What was sent" `<details>`, fetched on the first open from its
- * `source` — its API request in the logs, else in a Recording; its summary
- * counts the Turn's failed attempts and the time they lost, which the page
- * ships.
+ * A Turn's "What was sent" `<details>`, fetched on the first open from its API
+ * request in the logs, `loggedApiRequestId`; its summary counts the Turn's
+ * failed attempts and the time they lost, which the page ships.
  *
  * @example
- * {message.whatWasSentSource !== null && (
+ * {message.loggedApiRequestId !== null && (
  *   <WhatWasSentDisclosure
- *     source={message.whatWasSentSource}
+ *     loggedApiRequestId={message.loggedApiRequestId}
  *     failedAttemptCount={message.failedAttemptCount}
  *     failedAttemptsLostMs={message.failedAttemptsLostMs}
  *   />
  * )}
  */
 export function WhatWasSentDisclosure({
-  source,
+  loggedApiRequestId,
   failedAttemptCount,
   failedAttemptsLostMs,
-  isOpenInitially = false,
 }: {
-  source: WhatWasSentSource;
+  loggedApiRequestId: number;
   failedAttemptCount: number;
-  /** The time the failed attempts lost in all; null when unknown (a Recording's, or none). */
+  /** The time the failed attempts lost in all; null when unknown, or without any. */
   failedAttemptsLostMs: number | null;
-  /** Rendered open, reading what was sent at once: a Side request's pane, which shows nothing else. */
-  isOpenInitially?: boolean;
 }) {
   const { state, onToggle, detailsRef } = useReadOnFirstOpen<WhatWasSent>(() =>
-    source.from === "logs"
-      ? callRoute(routes.api["logged-api-request"](String(source.loggedApiRequestId)).GET())
-      : callRoute(routes.api["api-request"](String(source.apiRequestId)).GET()),
+    callRoute(routes.api["logged-api-request"](String(loggedApiRequestId)).GET()),
   );
 
   return (
-    <details ref={detailsRef} className="call sent" onToggle={onToggle} open={isOpenInitially || undefined}>
+    <details ref={detailsRef} className="call sent" onToggle={onToggle}>
       <summary>
         <ChevronRight aria-hidden className="chev" />
         <span className="call-name">What was sent</span>
@@ -96,7 +86,7 @@ export function WhatWasSentDisclosure({
       </summary>
       <div className="call-body sent-body">
         <ReadBody state={state} subject="what was sent">
-          {(whatWasSent) => <WhatWasSentView whatWasSent={whatWasSent} source={source} />}
+          {(whatWasSent) => <WhatWasSentView whatWasSent={whatWasSent} loggedApiRequestId={loggedApiRequestId} />}
         </ReadBody>
       </div>
     </details>
@@ -144,12 +134,16 @@ function countLabel(count: number, noun: string): string {
 }
 
 /** The request's facts and failed attempts, then the switch between its three views. */
-function WhatWasSentView({ whatWasSent, source }: { whatWasSent: WhatWasSent; source: WhatWasSentSource }) {
+function WhatWasSentView({
+  whatWasSent,
+  loggedApiRequestId,
+}: {
+  whatWasSent: WhatWasSent;
+  loggedApiRequestId: number;
+}) {
   // Held here, not in the Raw view, which unmounts with its tab: switching away and back reads nothing again.
   const raw = useReadOnFirstOpen<RawApiRequest>(() =>
-    source.from === "logs"
-      ? callRoute(routes.api["logged-api-request"](String(source.loggedApiRequestId)).raw.GET())
-      : callRoute(routes.api["api-request"](String(source.apiRequestId)).raw.GET()),
+    callRoute(routes.api["logged-api-request"](String(loggedApiRequestId)).raw.GET()),
   );
   const { failedAttempts, missingMessageCount, fullRequest } = whatWasSent;
   return (
@@ -198,7 +192,7 @@ function WhatWasSentView({ whatWasSent, source }: { whatWasSent: WhatWasSent; so
         </TabsContent>
         <TabsContent value="raw" className="sent-view">
           <ReadBody state={raw.state} subject="the raw request">
-            {(rawApiRequest) => <RawView rawApiRequest={rawApiRequest} source={source} />}
+            {(rawApiRequest) => <RawView rawApiRequest={rawApiRequest} />}
           </ReadBody>
         </TabsContent>
       </Tabs>
@@ -206,9 +200,9 @@ function WhatWasSentView({ whatWasSent, source }: { whatWasSent: WhatWasSent; so
   );
 }
 
-/** The request parameters and timings, as a key/value grid; the betas as a count that expands to their list. */
+/** The request parameters, as a key/value grid; the betas as a count that expands to their list. */
 function Facts({ whatWasSent }: { whatWasSent: WhatWasSent }) {
-  const { parameters, timings } = whatWasSent;
+  const { parameters } = whatWasSent;
   const facts: [string, React.ReactNode][] = [
     ["model", parameters.model],
     ["max_tokens", parameters.maxTokens],
@@ -232,8 +226,6 @@ function Facts({ whatWasSent }: { whatWasSent: WhatWasSent }) {
         </details>
       ),
     ],
-    ["first byte", timings !== null && timings.timeToFirstByteMs !== null && formatLatency(timings.timeToFirstByteMs)],
-    ["total", timings !== null && formatLatency(timings.durationMs)],
   ];
   return (
     <dl className="sent-facts">
@@ -249,20 +241,9 @@ function Facts({ whatWasSent }: { whatWasSent: WhatWasSent }) {
   );
 }
 
-/**
- * One failed attempt, as one line: its status and its error message when a
- * Recording knows them, then the time it lost when known — an em dash when
- * neither is, so the line still counts it.
- */
+/** One failed attempt, as one line: the time it lost when known — an em dash when not, so the line still counts it. */
 function FailedAttemptLine({ attempt }: { attempt: FailedAttempt }) {
-  const lostTime = attempt.lostMs === null ? null : `lost ${formatLatency(attempt.lostMs)}`;
-  if (attempt.status === null) return <p className="sent-line">{lostTime ?? "—"}</p>;
-  return (
-    <p className="sent-line">
-      <code>{attempt.status}</code> · {attempt.errorMessage ?? "no error message"}
-      {lostTime !== null && ` · ${lostTime}`}
-    </p>
-  );
+  return <p className="sent-line">{attempt.lostMs === null ? "—" : `lost ${formatLatency(attempt.lostMs)}`}</p>;
 }
 
 /**
@@ -271,14 +252,12 @@ function FailedAttemptLine({ attempt }: { attempt: FailedAttempt }) {
  * Without a previous request everything is new, so there is nothing to compare.
  */
 function ChangesView({ whatWasSent }: { whatWasSent: WhatWasSent }) {
-  const { isSideRequest, firstNewMessageIndex, previousApiRequestId, systemPromptDiff, toolsDiff, fullRequest } =
-    whatWasSent;
+  const { firstNewMessageIndex, previousApiRequestId, systemPromptDiff, toolsDiff, fullRequest } = whatWasSent;
   const hasPreviousRequest = previousApiRequestId !== null;
   return (
     <>
       <NewMessages
         newMessages={fullRequest.messages.slice(firstNewMessageIndex)}
-        isSideRequest={isSideRequest}
         hasPreviousRequest={hasPreviousRequest}
       />
 
@@ -319,22 +298,18 @@ function ChangesView({ whatWasSent }: { whatWasSent: WhatWasSent }) {
 /** The messages new since the previous API request, under a heading saying what they are new against. */
 function NewMessages({
   newMessages,
-  isSideRequest,
   hasPreviousRequest,
 }: {
   newMessages: (SentMessage | null)[];
-  isSideRequest: boolean;
   hasPreviousRequest: boolean;
 }) {
   const messageCount = countLabel(newMessages.length, "message");
   return (
     <section className="sent-section">
       <h4 className="io-label">
-        {isSideRequest
-          ? `Everything it sent (${messageCount})`
-          : hasPreviousRequest
-            ? `New since the previous API request (${messageCount})`
-            : `No earlier API request of this Agent: every message is new (${messageCount})`}
+        {hasPreviousRequest
+          ? `New since the previous API request (${messageCount})`
+          : `No earlier API request of this Agent: every message is new (${messageCount})`}
       </h4>
       {newMessages.map((message, index) => (
         <MessageBlocks key={index} message={message} />
@@ -383,56 +358,26 @@ function RequestView({ whatWasSent }: { whatWasSent: WhatWasSent }) {
   );
 }
 
-/** The parts of a raw API request, each a sub-tab, in order. */
-const RAW_PARTS = [
-  { value: "request-body", label: "Request body", valueOf: (raw: RawApiRequest): JsonValue => raw.requestBody },
-  { value: "response-body", label: "Response body", valueOf: (raw: RawApiRequest): JsonValue => raw.responseBody },
-  {
-    value: "request-headers",
-    label: "Request headers",
-    valueOf: (raw: RawApiRequest): JsonValue => raw.requestHeaders,
-  },
-] as const;
-
 /**
- * The API request as JSON: its request body, response body and request
- * headers, each a sub-tab with a copy button. An API request from the logs,
- * which keep no headers and no response, shows its request body alone, under
- * what it lacks: what the logs leave out, and the messages they could not rebuild.
+ * The API request's body as JSON, with a copy button, under what it lacks:
+ * what the logs leave out, and the messages they could not rebuild.
  */
-function RawView({ rawApiRequest, source }: { rawApiRequest: RawApiRequest; source: WhatWasSentSource }) {
-  const parts = rawApiRequest.requestHeaders === null ? RAW_PARTS.slice(0, 1) : RAW_PARTS;
-  const { missingMessageCount } = rawApiRequest;
+function RawView({ rawApiRequest }: { rawApiRequest: RawApiRequest }) {
+  const { requestBody, missingMessageCount } = rawApiRequest;
   return (
-    <Tabs defaultValue="request-body" className="sent-views">
-      {source.from === "logs" && (
-        <p className="sent-line">
-          Rebuilt from the conversation log: it lacks the billing-header system block, <code>metadata</code> and{" "}
-          <code>stream</code>
-          {missingMessageCount > 0 &&
-            `, and the ${countLabel(missingMessageCount, "message")} the logs could not rebuild`}
-          .
-        </p>
-      )}
-      <TabsList aria-label="Part of the raw request" className="sent-tab-list">
-        {parts.map((part) => (
-          <TabsTrigger key={part.value} value={part.value} className="sent-tab">
-            {part.label}
-          </TabsTrigger>
-        ))}
-      </TabsList>
-      {parts.map((part) => {
-        const value = part.valueOf(rawApiRequest);
-        return (
-          <TabsContent key={part.value} value={part.value} className="sent-view">
-            <div className="sent-raw-toolbar">
-              <CopyButton text={() => JSON.stringify(value, null, 2)} label="Copy JSON" />
-            </div>
-            <JsonTree value={value} />
-          </TabsContent>
-        );
-      })}
-    </Tabs>
+    <div className="flex flex-col gap-2.5">
+      <p className="sent-line">
+        Rebuilt from the conversation log: it lacks the billing-header system block, <code>metadata</code> and{" "}
+        <code>stream</code>
+        {missingMessageCount > 0 &&
+          `, and the ${countLabel(missingMessageCount, "message")} the logs could not rebuild`}
+        .
+      </p>
+      <div className="sent-raw-toolbar">
+        <CopyButton text={() => JSON.stringify(requestBody, null, 2)} label="Copy JSON" />
+      </div>
+      <JsonTree value={requestBody} />
+    </div>
   );
 }
 

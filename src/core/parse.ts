@@ -273,12 +273,6 @@ export type ParsedMessage = {
   /** Dedup key: assistant `message.id`, else the record's `requestId`; null on user Messages. */
   messageId: string | null;
   /**
-   * The assistant record's own `requestId` (the API's `request-id`), the first
-   * line's for a turn split across lines; null on user Messages. Joins the turn
-   * to its API request in a Recording, before `message.id` does.
-   */
-  requestId: string | null;
-  /**
    * The assistant record's `requestRef` (2.1.300+), the first line's for a
    * turn split across lines: the `id` of the `api-request` record it answers.
    * Null on user Messages and older records.
@@ -723,7 +717,6 @@ export function parseSessionLines(lines: readonly string[]): ParsedSession {
     const usage = parseUsage(message.usage as RawUsage | undefined);
     const parsed: ParsedMessage = {
       messageId,
-      requestId: asString(record.requestId),
       requestRef: asString(record.requestRef),
       uuid: asString(record.uuid),
       parentUuid: asString(record.parentUuid),
@@ -1030,7 +1023,6 @@ function userMessage(
 ): ParsedMessage {
   return {
     messageId: null,
-    requestId: null,
     requestRef: null,
     uuid: asString(record.uuid),
     parentUuid: asString(record.parentUuid),

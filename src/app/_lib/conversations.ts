@@ -26,7 +26,7 @@ import {
 } from "@/core/read";
 import { searchConversations } from "@/core/search";
 import { getToolCallSamples, getToolStats } from "@/core/tool-stats";
-import { getLoggedRawApiRequest, getLoggedWhatWasSent, getRawApiRequest, getWhatWasSent } from "@/core/what-was-sent";
+import { getLoggedRawApiRequest, getLoggedWhatWasSent } from "@/core/what-was-sent";
 
 /**
  * The home directory of the user running the app — the folder tree's `~` root.
@@ -157,37 +157,12 @@ export const loadToolCallBody = cache(async (id: number) => {
 });
 
 /**
- * Read what the API request of `api_request` row `apiRequestId` sent, from
- * the default database and Recordings root. Same request-time gating as
- * {@link loadConversations}; `null` for an unknown row or one its Recording no
- * longer holds (the Conversation was re-parsed since the page rendered).
- *
- * @example const whatWasSent = await loadWhatWasSent(message.apiRequestId);
- */
-export const loadWhatWasSent = cache(async (apiRequestId: number) => {
-  await connection();
-  return getWhatWasSent(apiRequestId);
-});
-
-/**
- * Read the API request of `api_request` row `apiRequestId` raw (its bodies and
- * request headers), from the default database and Recordings root. Gated and
- * `null` like {@link loadWhatWasSent}.
- *
- * @example const rawApiRequest = await loadRawApiRequest(apiRequestId);
- */
-export const loadRawApiRequest = cache(async (apiRequestId: number) => {
-  await connection();
-  return getRawApiRequest(apiRequestId);
-});
-
-/**
  * Read what the API request of `logged_api_request` row `loggedApiRequestId`
  * sent, from the default database. Same request-time gating as
  * {@link loadConversations}; `null` for an unknown row (the Conversation was
  * re-parsed since the page rendered).
  *
- * @example const whatWasSent = await loadLoggedWhatWasSent(source.loggedApiRequestId);
+ * @example const whatWasSent = await loadLoggedWhatWasSent(message.loggedApiRequestId!);
  */
 export const loadLoggedWhatWasSent = cache(async (loggedApiRequestId: number) => {
   await connection();

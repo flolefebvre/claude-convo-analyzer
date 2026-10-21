@@ -528,22 +528,6 @@ html:has(.tview) {
   white-space: nowrap;
   font-size: var(--text-ui);
 }
-/* A Side request: a small square, not an agent's dot or ring. */
-.tview .node-dot.is-side {
-  border-radius: 1.5px;
-}
-.tview .node-time {
-  flex-shrink: 0;
-  font-size: var(--text-xs);
-  color: var(--muted-foreground);
-  font-variant-numeric: tabular-nums;
-}
-/* A term whose one-line explanation shows on hover. */
-.tview .term {
-  cursor: help;
-  text-decoration: underline dotted;
-  text-underline-offset: 3px;
-}
 /* Per-node navigation feedback (see tree-node-link.tsx). The hint is a
    fixed-size, always-rendered slot so toggling it never shifts the row. It
    starts invisible and only animates in after a short delay, so a fast
@@ -1224,7 +1208,7 @@ html:has(.tview) {
   font-size: var(--text-xs);
   color: var(--muted-foreground);
 }
-/* "What was sent" on a recorded Turn: a `details.call` whose body stops at a
+/* "What was sent" on a Turn: a `details.call` whose body stops at a
    fixed height and scrolls inside itself, like an io-block, so one open panel
    never buries the transcript. Its blocks are plain text, never markdown. */
 .tview .sent-body {
@@ -1342,7 +1326,7 @@ html:has(.tview) {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
 }
-/* The view switch (Changes / Request / Raw, and Raw's parts): a compact
+/* The view switch (Changes / Request / Raw): a compact
    segmented control in the panel's muted chrome. */
 .tview .sent-views {
   gap: 10px;

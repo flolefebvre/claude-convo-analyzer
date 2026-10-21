@@ -2,15 +2,13 @@
 // logs record (Claude Code 2.1.300+, docs/conversation-log-format.md §9): its
 // system prompt and tool changes since the previous API request of its Agent,
 // its whole system prompt and tools, its parameters, and the body the logs
-// rebuild so far — read from the database, no Recording involved.
+// rebuild so far — read from the database.
 
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { getTranscript, type TranscriptMessage } from "@/core/read";
-import { openRecordingWriter, type RecordedApiRequest } from "@/core/recording";
-import { refresh } from "@/core/refresh";
 import { getLoggedRawApiRequest, getLoggedWhatWasSent } from "@/core/what-was-sent";
 
 import { seededTempDb } from "./helpers/temp-db";
@@ -43,37 +41,9 @@ async function turnsOf(agentId?: string, sessionId = SESSION_ID): Promise<Transc
 
 /** The logged API request id of the `ordinal`-th (1-based) assistant Turn of an Agent. */
 async function loggedApiRequestIdOfTurn(ordinal: number, agentId?: string, sessionId = SESSION_ID): Promise<number> {
-  const source = (await turnsOf(agentId, sessionId))[ordinal - 1]?.whatWasSentSource;
-  if (source?.from !== "logs") throw new Error(`Turn ${ordinal} has no logged API request`);
-  return source.loggedApiRequestId;
-}
-
-/** The first logged Main-thread Turn's API request as a Recording holds it, answered with `status`. */
-function recordedFirstTurn(status: number): RecordedApiRequest {
-  return {
-    sessionId: SESSION_ID,
-    agentId: null,
-    method: "POST",
-    path: "/v1/messages",
-    query: "",
-    headers: {},
-    body: { model: "claude-opus-4-8", messages: [] },
-    response: {
-      status,
-      requestId: status === 200 ? "rid-lmsg-1" : "rid-overloaded",
-      headers: {},
-      body:
-        status === 200
-          ? { id: "lmsg-1", type: "message", content: [] }
-          : { type: "error", error: { type: "overloaded_error", message: "Overloaded" } },
-      isStreamed: false,
-    },
-    timings: {
-      arrivedAt: "2026-10-21T10:00:01.005Z",
-      firstByteAt: "2026-10-21T10:00:02.000Z",
-      endedAt: "2026-10-21T10:00:04.000Z",
-    },
-  };
+  const loggedApiRequestId = (await turnsOf(agentId, sessionId))[ordinal - 1]?.loggedApiRequestId;
+  if (loggedApiRequestId == null) throw new Error(`Turn ${ordinal} has no logged API request`);
+  return loggedApiRequestId;
 }
 
 describe("a Turn's API request in the logs", () => {
@@ -81,34 +51,21 @@ describe("a Turn's API request in the logs", () => {
     const turns = await turnsOf();
 
     // The first Turn is history copied from a resumed session: its request is in no file here.
-    expect(turns.map((turn) => turn.whatWasSentSource?.from ?? null)).toEqual([null, "logs", "logs", "logs", "logs"]);
+    expect(turns.map((turn) => turn.loggedApiRequestId !== null)).toEqual([false, true, true, true, true]);
     expect(turns.map((turn) => turn.failedAttemptCount)).toEqual([0, 0, 0, 0, 0]);
   });
 
   it("is the source on a Sub-agent's Turns too", async () => {
     const turns = await turnsOf(SUB_AGENT_ID);
 
-    expect(turns.map((turn) => turn.whatWasSentSource?.from ?? null)).toEqual(["logs", "logs"]);
-  });
-
-  it("wins over a Recording holding the same Turn's API request, its failed attempts included", async () => {
-    const recordingsRoot = path.join(path.dirname(db.dbPath), "recordings");
-    const writer = openRecordingWriter(recordingsRoot);
-    await writer.append(recordedFirstTurn(529));
-    await writer.append(recordedFirstTurn(200));
-    await refresh({ logsRoot: LOGS_ROOT, dbPath: db.dbPath, recordingsRoot });
-
-    const [, firstLoggedTurn] = await turnsOf();
-
-    expect(firstLoggedTurn?.whatWasSentSource?.from).toBe("logs");
-    expect(firstLoggedTurn?.failedAttemptCount).toBe(0);
+    expect(turns.map((turn) => turn.loggedApiRequestId !== null)).toEqual([true, true]);
   });
 
   it("is not there for a Turn logged before Claude Code 2.1.300", async () => {
     const turns = await turnsOf(undefined, "sess-logged-old");
 
     expect(turns).toHaveLength(1);
-    expect(turns[0]?.whatWasSentSource).toBeNull();
+    expect(turns[0]?.loggedApiRequestId).toBeNull();
   });
 });
 
@@ -161,12 +118,6 @@ describe("What was sent from the logs", () => {
     expect(sent?.fullRequest.systemBlocks.map((block) => block.cacheControl)).toEqual(["ephemeral 1h", "ephemeral"]);
     expect(sent?.fullRequest.systemBlocks[0]).toMatchObject({ shownAs: "text", text: "You are a coding agent." });
     expect(sent?.fullRequest.tools.map((tool) => tool.name)).toEqual(["Bash", "Grep"]);
-  });
-
-  it("has none of what only a Recording knows", async () => {
-    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(4), { dbPath: db.dbPath });
-
-    expect(sent).toMatchObject({ isSideRequest: false, timings: null });
   });
 
   it("works the same for a Sub-agent's Turn, against that Sub-agent's previous API request", async () => {
@@ -377,8 +328,6 @@ describe("a logged API request raw", () => {
         ],
       },
       missingMessageCount: 0,
-      responseBody: null,
-      requestHeaders: null,
     });
   });
 

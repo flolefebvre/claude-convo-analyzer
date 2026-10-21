@@ -2,10 +2,8 @@ import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 
 import { ActiveNowMarker } from "@/app/_components/active-now-marker";
-import { formatClock } from "@/app/_lib/format";
-import { SIDE_REQUESTS_TOOLTIP, sideRequestLabel } from "@/app/_lib/side-requests";
 import type { AgentLabel } from "@/app/_lib/transcript";
-import { agentHref, sideRequestHref, withListReturn } from "@/app/_lib/transcript-url";
+import { agentHref, withListReturn } from "@/app/_lib/transcript-url";
 import type { TranscriptAgentNode, TranscriptView } from "@/core/read";
 
 import { AgentName, CostFigure, ErrorBadge, agentLabelText } from "./transcript-parts";
@@ -28,9 +26,7 @@ export function BackLink({ href }: { href: string }) {
 
 /**
  * The agent tree below the back link: the conversation header (title + session
- * id), the lineage-nested agent nodes, the Side requests of a Recorded
- * Conversation (each with its kind, time and cost, linking to `?sideRequest=`),
- * and the grand-total footer. Each agent node links to its own transcript
+ * id), the lineage-nested agent nodes, and the grand-total footer. Each agent node links to its own transcript
  * (`?agent=`); the selected node carries `aria-current="page"`. Even a solo conversation shows its single main node.
  * Same-named siblings carry their spawn ordinal ("Plan #2"). Renders inside the
  * route's `<aside>`.
@@ -42,7 +38,6 @@ export function TranscriptTree({
   labels,
   lowerBound,
   listReturn,
-  selectedSideRequestId,
   activeUntil = null,
 }: {
   view: TranscriptView;
@@ -53,8 +48,6 @@ export function TranscriptTree({
   /** The list view this transcript was opened from (`?from=`), carried on
    *  every agent link. */
   listReturn: string | undefined;
-  /** The `api_request` row id of the Side request the pane shows; no agent is then current. */
-  selectedSideRequestId?: number;
   /** When the Conversation stops being active now (`activeNowUntil`), or `null` when it is not. */
   activeUntil?: number | null;
 }) {
@@ -78,45 +71,8 @@ export function TranscriptTree({
         Agents
       </div>
       <nav className="tree-nodes" aria-labelledby="tree-caption">
-        <TreeNode
-          node={view.tree}
-          depth={0}
-          view={view}
-          labels={labels}
-          listReturn={listReturn}
-          isAgentSelected={selectedSideRequestId === undefined}
-        />
+        <TreeNode node={view.tree} depth={0} view={view} labels={labels} listReturn={listReturn} />
       </nav>
-      {/* Only a Recorded Conversation has Side requests: an unrecorded one
-          shows nothing more than before. */}
-      {view.sideRequests.length > 0 && (
-        <>
-          <div className="tree-caption" id="side-requests-caption">
-            <span className="term" title={SIDE_REQUESTS_TOOLTIP}>
-              Side requests
-            </span>
-          </div>
-          <nav className="tree-nodes" aria-labelledby="side-requests-caption">
-            {view.sideRequests.map((sideRequest) => {
-              const label = sideRequestLabel(sideRequest);
-              return (
-                <TreeNodeLink
-                  key={sideRequest.apiRequestId}
-                  href={withListReturn(sideRequestHref(view.sessionId, sideRequest.apiRequestId), listReturn)}
-                  isCurrent={sideRequest.apiRequestId === selectedSideRequestId}
-                  depth={0}
-                  title={`${label}, at ${formatClock(sideRequest.arrivedAt)}`}
-                >
-                  <span className="node-dot is-side" aria-hidden />
-                  <span className="node-label">{label}</span>
-                  <span className="node-time">{formatClock(sideRequest.arrivedAt)}</span>
-                  <CostFigure usd={sideRequest.costUsd} lowerBound={sideRequest.unpriced} />
-                </TreeNodeLink>
-              );
-            })}
-          </nav>
-        </>
-      )}
       <div className="tree-total">
         <div className="tree-total-row">
           <span className="tree-total-label">Conversation total</span>
@@ -140,17 +96,14 @@ function TreeNode({
   view,
   labels,
   listReturn,
-  isAgentSelected,
 }: {
   node: TranscriptAgentNode;
   depth: number;
   view: TranscriptView;
   labels: Map<string, AgentLabel>;
   listReturn: string | undefined;
-  /** False while the pane shows a Side request rather than an agent's transcript. */
-  isAgentSelected: boolean;
 }) {
-  const isCurrent = isAgentSelected && node.id === view.selectedAgentId;
+  const isCurrent = node.id === view.selectedAgentId;
   const label = labels.get(node.id) ?? { name: node.agentType || "main", ordinal: null };
   // The root links to the bare route (clean URL); children carry `?agent=`.
   const href = withListReturn(agentHref(view.sessionId, depth === 0 ? undefined : node.id), listReturn);
@@ -169,15 +122,7 @@ function TreeNode({
         <CostFigure usd={node.costUsd} lowerBound={node.unpriced} />
       </TreeNodeLink>
       {node.children.map((child) => (
-        <TreeNode
-          key={child.id}
-          node={child}
-          depth={depth + 1}
-          view={view}
-          labels={labels}
-          listReturn={listReturn}
-          isAgentSelected={isAgentSelected}
-        />
+        <TreeNode key={child.id} node={child} depth={depth + 1} view={view} labels={labels} listReturn={listReturn} />
       ))}
     </>
   );

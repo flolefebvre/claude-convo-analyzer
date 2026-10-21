@@ -216,7 +216,7 @@ const BASH_CMDS = ["pnpm test", "pnpm lint", "git status", "pnpm build", "npm ru
 const READ_FILES = ["src/index.ts", "src/server.ts", "README.md", "src/db.ts", "package.json"] as const;
 
 /** The Claude Code version every seeded record (and API request) states. */
-export const CC_VERSION = "2.1.185";
+const CC_VERSION = "2.1.185";
 
 const DAY = 86_400_000;
 
@@ -479,9 +479,6 @@ const TOOL_KINDS = [
   },
 ] as const;
 
-/** Every tool a seeded Turn can call, spawning a sub-agent included. */
-export type SeedToolName = (typeof TOOL_KINDS)[number]["name"] | "Agent";
-
 const TOTAL_TOOL_WEIGHT = TOOL_KINDS.reduce((sum, k) => sum + k.weight, 0);
 
 /** Pick a tool kind by weight, so built-ins dominate as they do in real logs. */
@@ -619,7 +616,7 @@ function spawnSubAgent(
 type ResumePoint = { uuid: string; ms: number };
 
 /** A seeded Conversation: where it is filed, and its JSONL records, main agent and sub-agents. */
-export type Conversation = {
+type Conversation = {
   /** The log folder Claude Code files it in (see {@link logFolderNameOf}). */
   logFolderName: string;
   /** The Project it belongs to (GLOSSARY.md, Project). */
@@ -1177,26 +1174,14 @@ function projectPathConversations(g: Gen, startIndex: number): Conversation[] {
   ];
 }
 
-/** The seeded Conversation whose every Turn, its sub-agent's included, is recorded (issue #127). */
-export const RECORDED_TITLE = "Add an audit trail to the billing exports";
-
-/** The session id of {@link RECORDED_TITLE}. */
-export const RECORDED_SESSION_ID = "5eed0000-0000-4000-8000-000000000001";
-
-/** The seeded Conversation whose Recording starts mid-way (issue #127). */
-export const PARTIALLY_RECORDED_TITLE = "Tighten the webhook signature checks";
-
-/** The session id of {@link PARTIALLY_RECORDED_TITLE}. */
-export const PARTIALLY_RECORDED_SESSION_ID = "5eed0000-0000-4000-8000-000000000002";
-
 /**
- * A Conversation shaped as a recorded one reads: its main agent's Turns —
- * a `Read`, an `Agent` spawn, a reply, then after a second prompt a `Bash` and
- * a reply — each answer a prompt or a tool result, and so does every Turn of
- * its one sub-agent. No Turn fails. `startedAgo` is how long before the anchor
- * it starts.
+ * A Conversation of two prompts: its main agent's Turns — a `Read`, an
+ * `Agent` spawn, a reply, then after the second prompt a `Bash` and a reply —
+ * each answer a prompt or a tool result, and so does every Turn of its one
+ * sub-agent. No Turn fails. `startedAgo` is how long before the anchor it
+ * starts.
  */
-function recordableConversation(
+function twoPromptConversation(
   g: Gen,
   project: SeedProject,
   opts: { sessionId: string; title: string; startedAgo: number },
@@ -1239,22 +1224,21 @@ function recordableConversation(
 }
 
 /**
- * The Conversations the seeded Recordings cover (issue #127): one recorded
- * throughout, one recorded only from mid-way. Both end hours before the
- * agent-messages one, so the anchor does not move.
+ * Two {@link twoPromptConversation}s under fixed session ids. Both end hours
+ * before the agent-messages one, so the anchor does not move.
  *
  * Drawn last, so every earlier Conversation keeps its draws.
  */
-function recordableConversations(g: Gen): Conversation[] {
+function twoPromptConversations(g: Gen): Conversation[] {
   return [
-    recordableConversation(g, PROJECTS[2], {
-      sessionId: RECORDED_SESSION_ID,
-      title: RECORDED_TITLE,
+    twoPromptConversation(g, PROJECTS[2], {
+      sessionId: "5eed0000-0000-4000-8000-000000000001",
+      title: "Add an audit trail to the billing exports",
       startedAgo: 8 * 3_600_000,
     }),
-    recordableConversation(g, PROJECTS[1], {
-      sessionId: PARTIALLY_RECORDED_SESSION_ID,
-      title: PARTIALLY_RECORDED_TITLE,
+    twoPromptConversation(g, PROJECTS[1], {
+      sessionId: "5eed0000-0000-4000-8000-000000000002",
+      title: "Tighten the webhook signature checks",
       startedAgo: 30 * 3_600_000,
     }),
   ];
@@ -1498,7 +1482,7 @@ function atLoggedRequestsVersion(line: string, requestRef?: string): string {
 }
 
 /**
- * An unrecorded Conversation whose log records every API request it sent, its
+ * A Conversation whose log records every API request it sent, its
  * Sub-agent's included (Claude Code 2.1.300+): after a first exchange that
  * spawns an Explore sub-agent — whose report's Turn went through on a retry,
  * after one Failed attempt — a second prompt finds the system prompt
@@ -1689,7 +1673,7 @@ function buildCorpus(anchor: number): Conversation[] {
   conversations.push(longConversation(g, conversations.length));
   conversations.push(...projectPathConversations(g, conversations.length));
   conversations.push(...scratchConversations(g, conversations.length));
-  conversations.push(...recordableConversations(g));
+  conversations.push(...twoPromptConversations(g));
   conversations.push(planHandoffConversation(g, conversations.length));
   conversations.push(untitledConversation(g, conversations.length));
   conversations.push(loggedRequestsConversation(g, conversations.length));
@@ -1751,18 +1735,14 @@ export type FakeLogsCounts = {
  * (seven more), 23 covering pagination, unpriced usage and API errors, one
  * where agents message each other, one long enough to span three Transcript
  * pages, one that enters a worktree and one that states no cwd, three in
- * per-session scratch directories under `/tmp`, the two the Recordings cover,
+ * per-session scratch directories under `/tmp`, two of two prompts each,
  * one that hands a plan to another session, one with no title, then one
- * whose log records its API requests — 72 in all. The same `now` always writes the same bytes. Returns the counts, and
- * the Conversations as written, for the Recordings to derive from.
+ * whose log records its API requests — 72 in all. The same `now` always writes the same bytes. Returns the counts.
  *
  * @example
- * const { counts, conversations } = generateFakeLogs({ logsRoot: "data/seed/projects", now: new Date() });
+ * const counts = generateFakeLogs({ logsRoot: "data/seed/projects", now: new Date() });
  */
-export function generateFakeLogs(opts: { logsRoot: string; now: Date }): {
-  counts: FakeLogsCounts;
-  conversations: readonly Conversation[];
-} {
+export function generateFakeLogs(opts: { logsRoot: string; now: Date }): FakeLogsCounts {
   // Conversations START at random offsets before the anchor, so the newest
   // record falls short of it. The draws never depend on the anchor, so a
   // draft measures that gap and the real pass moves the anchor forward by it.
@@ -1785,10 +1765,9 @@ export function generateFakeLogs(opts: { logsRoot: string; now: Date }): {
     }
   }
 
-  const counts = {
+  return {
     conversations: conversations.length,
     subAgents,
     projects: new Set(conversations.map((c) => c.projectPath)).size,
   };
-  return { counts, conversations };
 }

@@ -103,4 +103,28 @@ describe("migration idempotency", () => {
       db.close();
     }
   });
+
+  it("drops the API requests Recordings fed from a database that still holds them", async () => {
+    const target = committedMigrations().find((m) => m.endsWith("_drop_recorded_api_request"));
+    expect(target).toBeDefined();
+    createPrismaClient(dbPath);
+
+    // A database from before the drop: the table Recordings fed, with a row.
+    let db = new Database(dbPath);
+    db.prepare("DELETE FROM _cca_migrations WHERE migration_name = ?").run(target);
+    db.exec(`CREATE TABLE "api_request" ("id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "kind" TEXT NOT NULL)`);
+    db.exec(`INSERT INTO "api_request" ("kind") VALUES ('session-naming')`);
+    db.close();
+
+    const prisma = createPrismaClient(dbPath);
+    await prisma.$disconnect();
+
+    db = new Database(dbPath);
+    try {
+      const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'api_request'").all();
+      expect(tables).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
 });

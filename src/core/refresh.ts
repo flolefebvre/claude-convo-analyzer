@@ -1,6 +1,6 @@
 // Ingest spine (ADR-0001, ADR-0002). `refresh()` discovers top-level session
-// files + their sub-agent transcripts and Recordings, parses them, and writes
-// ALL eleven tables.
+// files + their sub-agent transcripts, parses them, and writes ALL eleven
+// tables.
 // The read seams (`listConversations()`, `getConversation()`) live in `read.ts`.
 // It writes through a bare better-sqlite3 connection, not Prisma (ADR-0005);
 // every statement it runs lives in `prisma/refresh-statements.ts`.
@@ -15,10 +15,9 @@
 // INCREMENTAL REFRESH (Slice 5): `refresh()` skips conversations whose source
 // has not changed, re-parses changed/new ones, and drops conversations whose
 // source file disappeared. The change key is a COMPOSITE of the main session
-// file PLUS its sub-agent transcripts and its Recording (max mtime, summed
-// size) — a sub-agent file or a Recording changing alone (the main file
-// untouched) still triggers a re-parse, because neither has an independent
-// conversation/mtime row of its own.
+// file PLUS its sub-agent transcripts (max mtime, summed size) — a sub-agent
+// file changing alone (the main file untouched) still triggers a re-parse,
+// because it has no independent conversation/mtime row of its own.
 // The stored `parserVersion` is part of that decision too: rows produced by an
 // older parser are re-parsed once even when their source files are untouched
 // (see `PARSER_VERSION`). It doubles as the COMMIT MARK of a refresh: a
@@ -53,24 +52,13 @@ import {
   discoverSessions,
   discoverSubAgents,
 } from "@/core/discovery";
-import { classifyApiRequest } from "@/core/api-request-kind";
 import {
   type ParsedAgentSpawn,
   type ParsedLoggedApiRequest,
   parseSessionLines,
   type ParsedSession,
-  parseUsage,
-  type RawUsage,
 } from "@/core/parse";
 import { type MessageRow, prepareRefreshStatements, type RefreshStatements } from "@/core/prisma/refresh-statements";
-import {
-  type ApiRequestWithStoredBodyHash,
-  defaultRecordingsRoot,
-  discoverRecordings,
-  type DiscoveredRecording,
-  readRecordingWithoutBodies,
-  type SentOutline,
-} from "@/core/recording";
 import { readFileUnlessVanished, statUnlessVanished } from "@/core/vanished-file";
 
 /**
@@ -95,8 +83,6 @@ export type RefreshSummary = {
   duplicateSessionsSkipped: DuplicateSessionSkip[];
   /** Log files (main or sub-agent) picked to re-parse, then gone before their read. */
   vanishedLogFilesSkipped: number;
-  /** Recordings that could not be decoded: their Conversation was ingested as if it had none. */
-  undecodableRecordingsSkipped: number;
   durationMs: number;
   /** Where `durationMs` went, in fractional milliseconds per phase (see `RefreshPhase`). */
   durationMsByPhase: Record<RefreshPhase, number>;
@@ -112,8 +98,6 @@ export type RefreshPhase = "discovery" | "parse" | "write" | "links" | "stamp";
 
 type RefreshOptions = {
   logsRoot?: string;
-  /** Where the Recordings are read from; `defaultRecordingsRoot()` when absent. */
-  recordingsRoot?: string;
   dbPath?: string;
   /**
    * Called with `{ done: 0, total }` once the run knows what to re-parse, then
@@ -190,8 +174,6 @@ type SessionToReparse = {
   /** The session, its `sourceMtime`/`sourceSize` set to the COMPOSITE change key. */
   session: DiscoveredSession;
   subAgentPaths: { agentId: string; sourcePath: string }[];
-  /** The session's Recording file, null when it has none. */
-  recordingPath: string | null;
   /** Row id of the stored conversation the re-parse replaces (null = new). */
   priorConversationId: number | null;
 };
@@ -201,41 +183,8 @@ type ParsedConversation = {
   session: DiscoveredSession;
   parsed: ParsedSession;
   subAgents: { agentId: string; parsed: ParsedSession }[];
-  /** The API requests of the session's Recording, in append order; empty without one. */
-  apiRequests: ReadApiRequest[];
   /** Row id of the stored conversation the write replaces (null = new). */
   priorConversationId: number | null;
-};
-
-/** An API request as the Refresh reads it: its `api_request` columns, what tells which others sent the same body, and what tells its kind. */
-type ReadApiRequest = RecordedApiRequestFields & {
-  /** Equal for two API requests of the Recording that sent the same body. */
-  storedBodyHash: string;
-  sentOutline: SentOutline;
-};
-
-/** What an `api_request` row keeps of an API request: everything but the Turn it joins and its kind. */
-type RecordedApiRequestFields = {
-  requestId: string | null;
-  responseMessageId: string | null;
-  externalAgentId: string | null;
-  method: string;
-  path: string;
-  status: number;
-  arrivedAt: number;
-  firstByteAt: number | null;
-  endedAt: number;
-  proxyError: string | null;
-  isClientAborted: boolean;
-  errorMessage: string | null;
-  /** The response's token split; all null when it carries no `usage`. */
-  inputTokens: number | null;
-  outputTokens: number | null;
-  cacheCreation5mTokens: number | null;
-  cacheCreation1hTokens: number | null;
-  cacheReadTokens: number | null;
-  /** The response's `model`, else the requested one. */
-  model: string | null;
 };
 
 /** What linking and stamping need of a conversation this run has written. */
@@ -255,8 +204,6 @@ type DiscoveredWithKey = {
   session: DiscoveredSession;
   /** Sub-agent transcript paths (folded into the change key + parsed if dirty). */
   subAgentPaths: { agentId: string; sourcePath: string }[];
-  /** The session's Recording file, null when it has none. */
-  recordingPath: string | null;
   /** Composite mtime: max over the session file + every sub-agent transcript. */
   compositeMtime: number;
   /** Composite size: sum over the session file + every sub-agent transcript. */
@@ -303,7 +250,6 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
   // never goes back.
   const start = performance.now();
   const logsRoot = opts.logsRoot ?? defaultLogsRoot();
-  const recordingsRoot = opts.recordingsRoot ?? defaultRecordingsRoot();
   const dbPath = opts.dbPath ?? defaultDbPath();
   const db = openRefreshConnection(dbPath);
 
@@ -312,7 +258,6 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
   let conversationsDeleted = 0;
   let malformedLinesSkipped = 0;
   let vanishedLogFilesSkipped = 0;
-  let undecodableRecordingsSkipped = 0;
 
   // Assigned by the dedupe below, before anything else looks at the file set.
   let duplicateSessionsSkipped: DuplicateSessionSkip[] = [];
@@ -332,7 +277,7 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     // Two files may carry the same session id (a copied transcript). Resolve
     // that HERE, before the incremental compare, so every pass below sees one
     // file per session id (see `dedupeBySessionId`).
-    const { unique: discovered, duplicatesSkipped } = dedupeBySessionId(discoverWithKeys(logsRoot, recordingsRoot));
+    const { unique: discovered, duplicatesSkipped } = dedupeBySessionId(discoverWithKeys(logsRoot));
     duplicateSessionsSkipped = duplicatesSkipped;
 
     // Stored rows, for the skip/changed/delete decision.
@@ -382,7 +327,6 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
       sessionsToReparse.push({
         session: { ...d.session, sourceMtime: d.compositeMtime, sourceSize: d.compositeSize },
         subAgentPaths: d.subAgentPaths,
-        recordingPath: d.recordingPath,
         priorConversationId: prior?.id ?? null,
       });
     }
@@ -419,8 +363,7 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     };
     const parseAndWrite = (sessionToReparse: SessionToReparse, isCwdLessPass: boolean) => {
       phaseStart = performance.now();
-      const { parsedConversation, vanishedSubAgentFileCount, isRecordingUndecodable } =
-        parseConversation(sessionToReparse);
+      const { parsedConversation, vanishedSubAgentFileCount } = parseConversation(sessionToReparse);
       if (parsedConversation === null) {
         // Its main transcript vanished: the session is gone, as if discovery
         // had not found it.
@@ -439,7 +382,6 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
         return;
       }
       vanishedLogFilesSkipped += vanishedSubAgentFileCount;
-      if (isRecordingUndecodable) undecodableRecordingsSkipped += 1;
       malformedLinesSkipped += parsedConversation.parsed.malformedLines;
       for (const sub of parsedConversation.subAgents) malformedLinesSkipped += sub.parsed.malformedLines;
       endPhase("parse");
@@ -493,7 +435,6 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     malformedLinesSkipped,
     duplicateSessionsSkipped,
     vanishedLogFilesSkipped,
-    undecodableRecordingsSkipped,
     durationMs: Math.round(performance.now() - start),
     durationMsByPhase,
   };
@@ -540,17 +481,11 @@ function dedupeBySessionId(discovered: DiscoveredWithKey[]): {
 }
 
 /**
- * Discover every session and fold its sub-agent transcripts and its Recording
- * into a composite change key. A sub-agent file or a Recording changing without
- * the main file changing still shifts the composite (max mtime / summed size),
- * so the Conversation re-parses. A session without a Recording keeps the key it
- * had before Recordings were read, so it is skipped as ever.
+ * Discover every session and fold its sub-agent transcripts into a composite
+ * change key. A sub-agent file changing without the main file changing still
+ * shifts the composite (max mtime / summed size), so the Conversation re-parses.
  */
-function discoverWithKeys(logsRoot: string, recordingsRoot: string): DiscoveredWithKey[] {
-  const recordingBySessionId = new Map<string, DiscoveredRecording>();
-  for (const recording of discoverRecordings(recordingsRoot)) {
-    if (recording.sessionId !== null) recordingBySessionId.set(recording.sessionId, recording);
-  }
+function discoverWithKeys(logsRoot: string): DiscoveredWithKey[] {
   const out: DiscoveredWithKey[] = [];
   for (const session of discoverSessions(logsRoot)) {
     const projectDir = path.dirname(session.sourcePath);
@@ -566,13 +501,7 @@ function discoverWithKeys(logsRoot: string, recordingsRoot: string): DiscoveredW
       compositeMtime = Math.max(compositeMtime, Math.floor(stat.mtimeMs));
       compositeSize += stat.size;
     }
-
-    const recording = recordingBySessionId.get(session.sessionId);
-    if (recording !== undefined) {
-      compositeMtime = Math.max(compositeMtime, recording.sourceMtime);
-      compositeSize += recording.sourceSize;
-    }
-    out.push({ session, subAgentPaths, recordingPath: recording?.sourcePath ?? null, compositeMtime, compositeSize });
+    out.push({ session, subAgentPaths, compositeMtime, compositeSize });
   }
   return out;
 }
@@ -587,20 +516,16 @@ function parseSession(sourcePath: string): ParsedSession | null {
 }
 
 /**
- * Parse a session's main transcript and every sub-agent transcript beside it,
- * and read its Recording's API requests. The conversation is null when the
- * main transcript vanished; a vanished sub-agent transcript is left out and
- * counted.
+ * Parse a session's main transcript and every sub-agent transcript beside it.
+ * The conversation is null when the main transcript vanished; a vanished
+ * sub-agent transcript is left out and counted.
  */
-function parseConversation({ session, subAgentPaths, recordingPath, priorConversationId }: SessionToReparse): {
+function parseConversation({ session, subAgentPaths, priorConversationId }: SessionToReparse): {
   parsedConversation: ParsedConversation | null;
   vanishedSubAgentFileCount: number;
-  isRecordingUndecodable: boolean;
 } {
   const parsed = parseSession(session.sourcePath);
-  if (parsed === null) {
-    return { parsedConversation: null, vanishedSubAgentFileCount: 0, isRecordingUndecodable: false };
-  }
+  if (parsed === null) return { parsedConversation: null, vanishedSubAgentFileCount: 0 };
   const subAgents: ParsedConversation["subAgents"] = [];
   let vanishedSubAgentFileCount = 0;
   for (const sub of subAgentPaths) {
@@ -608,89 +533,7 @@ function parseConversation({ session, subAgentPaths, recordingPath, priorConvers
     if (subParsed === null) vanishedSubAgentFileCount += 1;
     else subAgents.push({ agentId: sub.agentId, parsed: subParsed });
   }
-  const { apiRequests, isRecordingUndecodable } = readApiRequests(recordingPath);
-  return {
-    parsedConversation: { session, parsed, subAgents, apiRequests, priorConversationId },
-    vanishedSubAgentFileCount,
-    isRecordingUndecodable,
-  };
-}
-
-/**
- * The API requests of the Recording at `recordingPath`, read without their
- * bodies; none when there is no Recording or it vanished since discovery.
- *
- * A Recording only ever adds to a Conversation (ADR-0006), so one that cannot
- * be decoded never fails the run: its Conversation is written as if it had
- * none, and `isRecordingUndecodable` reports it. Its change key is stored all
- * the same, so it is not read again until the file changes — a corrupt file
- * does not heal on its own.
- */
-function readApiRequests(recordingPath: string | null): {
-  apiRequests: ReadApiRequest[];
-  isRecordingUndecodable: boolean;
-} {
-  if (recordingPath === null) return { apiRequests: [], isRecordingUndecodable: false };
-  try {
-    return {
-      apiRequests: readRecordingWithoutBodies(recordingPath).map(apiRequestFields),
-      isRecordingUndecodable: false,
-    };
-  } catch (error) {
-    const isVanished = error instanceof Error && (error.cause as NodeJS.ErrnoException)?.code === "ENOENT";
-    return { apiRequests: [], isRecordingUndecodable: !isVanished };
-  }
-}
-
-/** The `api_request` columns of one API request, its response body reduced to its `message.id`, error message, usage and model. */
-function apiRequestFields(apiRequest: ApiRequestWithStoredBodyHash): ReadApiRequest {
-  const responseBody = apiRequest.response.body;
-  const responseFields = isPlainObject(responseBody) ? responseBody : {};
-  const responseMessageId = typeof responseFields.id === "string" ? responseFields.id : null;
-  const usage = isPlainObject(responseFields.usage) ? parseUsage(responseFields.usage as RawUsage) : null;
-  return {
-    storedBodyHash: apiRequest.storedBodyHash,
-    sentOutline: apiRequest.sentOutline,
-    inputTokens: usage?.inputTokens ?? null,
-    outputTokens: usage?.outputTokens ?? null,
-    cacheCreation5mTokens: usage?.cacheCreation5mTokens ?? null,
-    cacheCreation1hTokens: usage?.cacheCreation1hTokens ?? null,
-    cacheReadTokens: usage?.cacheReadTokens ?? null,
-    model:
-      (typeof responseFields.model === "string" ? responseFields.model : null) ?? apiRequest.sentOutline.requestedModel,
-    requestId: apiRequest.response.requestId,
-    responseMessageId,
-    externalAgentId: apiRequest.agentId,
-    method: apiRequest.method,
-    path: apiRequest.path,
-    status: apiRequest.response.status,
-    arrivedAt: epochMsOf(apiRequest.timings.arrivedAt),
-    firstByteAt: apiRequest.timings.firstByteAt === null ? null : epochMsOf(apiRequest.timings.firstByteAt),
-    endedAt: epochMsOf(apiRequest.timings.endedAt),
-    proxyError: apiRequest.proxyError ?? null,
-    isClientAborted: apiRequest.isClientAborted ?? false,
-    errorMessage: responseErrorMessageOf(responseBody) ?? apiRequest.proxyError ?? null,
-  };
-}
-
-/** The `error.message` a response body carries as a string — an error response's, or a stream's cut short by an `error` event; null otherwise. */
-function responseErrorMessageOf(responseBody: unknown): string | null {
-  if (typeof responseBody !== "object" || responseBody === null || !("error" in responseBody)) return null;
-  const error = responseBody.error;
-  return typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
-    ? error.message
-    : null;
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/** An ISO 8601 timing of a Recording as epoch ms; throws on one that is not a date. */
-function epochMsOf(isoTimestamp: string): number {
-  const epochMs = Date.parse(isoTimestamp);
-  if (Number.isNaN(epochMs)) throw new Error(`Recording holds a timing that is not a date: ${isoTimestamp}`);
-  return epochMs;
+  return { parsedConversation: { session, parsed, subAgents, priorConversationId }, vanishedSubAgentFileCount };
 }
 
 /**
@@ -807,20 +650,11 @@ function writeAgentMessages(
   parsed: ParsedSession,
   conversationId: number,
   agentId: number,
-  turnRows: TurnRows,
 ): Map<string, number> {
   const messageRowByMsgId = new Map<string, number>();
   for (const message of parsed.messages) {
     const messageRowId = statements.insertMessage(messageRow(message, conversationId, agentId));
     if (message.messageId !== null) messageRowByMsgId.set(message.messageId, messageRowId);
-    if (message.role !== "assistant") continue;
-    const turnRow = { messageRowId, agentRowId: agentId };
-    if (message.requestId !== null && !turnRows.byRequestId.has(message.requestId)) {
-      turnRows.byRequestId.set(message.requestId, turnRow);
-    }
-    if (message.messageId !== null && !turnRows.byMessageId.has(message.messageId)) {
-      turnRows.byMessageId.set(message.messageId, turnRow);
-    }
   }
   return messageRowByMsgId;
 }
@@ -911,107 +745,12 @@ function failedAttemptOwners(
   return failedAttemptOfMessageRowIds;
 }
 
-/** The written row of one Turn: its assistant Message and its Agent. */
-type TurnRow = { messageRowId: number; agentRowId: number };
-
-/** Every Turn of a Conversation written so far, Main thread and sub-agents, by the keys an API request joins on. */
-type TurnRows = { byRequestId: Map<string, TurnRow>; byMessageId: Map<string, TurnRow> };
-
-/**
- * Write one `api_request` row per API request of the Conversation's
- * Recording, in append order, each joined to the Turn with its `requestId`,
- * else its `message.id`, else — when it is a failed attempt of one (see
- * `failedAttemptTurnRows`) — to that Turn, else to none, and classified by
- * kind (`classifyApiRequest`). Two API requests may join one Turn: both rows
- * are kept.
- */
-function writeApiRequests(
-  statements: RefreshStatements,
-  apiRequests: ReadApiRequest[],
-  conversationId: number,
-  turnRows: TurnRows,
-): void {
-  const joinedTurnRows = apiRequests.map(
-    (apiRequest) =>
-      (apiRequest.requestId === null ? undefined : turnRows.byRequestId.get(apiRequest.requestId)) ??
-      (apiRequest.responseMessageId === null ? undefined : turnRows.byMessageId.get(apiRequest.responseMessageId)) ??
-      null,
-  );
-  const attemptTurnRows = failedAttemptTurnRows(apiRequests, joinedTurnRows);
-  apiRequests.forEach(({ storedBodyHash: _storedBodyHash, sentOutline, ...apiRequest }, index) => {
-    const turnRow = joinedTurnRows[index] ?? attemptTurnRows[index];
-    const { kind, otherKindLabel } = classifyApiRequest({
-      isJoinedToTurn: joinedTurnRows[index] !== null,
-      isRetriedByTurn: attemptTurnRows[index] !== null,
-      isFailed: isFailedApiRequest(apiRequest),
-      path: apiRequest.path,
-      sentOutline,
-    });
-    statements.insertApiRequest({
-      ...apiRequest,
-      conversationId,
-      messageId: turnRow?.messageRowId ?? null,
-      agentId: turnRow?.agentRowId ?? null,
-      kind,
-      otherKindLabel,
-    });
-  });
-}
-
-/**
- * For each of `apiRequests` (in append order) that is a failed attempt, the
- * Turn it is an attempt of; null for every other. A failed attempt is an API
- * request that joined no Turn itself and did not succeed (a status outside
- * 2xx, an error in the response body — an error response, or a stream an
- * `error` event cut short —, a proxy error, or Claude Code disconnecting),
- * retried by a LATER API
- * request of the same Recording — same `x-claude-code-agent-id`, same stored
- * body — that joined a Turn (`joinedTurnRows`). The nearest such retry wins,
- * so every attempt of a chain (attempt, attempt, success) belongs to the one
- * success.
- *
- * An attempt no retry of which joined a Turn — Claude Code gave up, and the
- * logs show an API-error Turn, or nothing — is left alone: it stays a row with
- * `messageId` NULL, like a Side request, and `classifyApiRequest` tells the
- * two apart.
- */
-function failedAttemptTurnRows(apiRequests: ReadApiRequest[], joinedTurnRows: (TurnRow | null)[]): (TurnRow | null)[] {
-  const attemptTurnRows: (TurnRow | null)[] = apiRequests.map(() => null);
-  const nearestRetryTurnRowByRequestKey = new Map<string, TurnRow>();
-  for (let index = apiRequests.length - 1; index >= 0; index -= 1) {
-    const apiRequest = apiRequests[index];
-    const requestKey = JSON.stringify([apiRequest.externalAgentId, apiRequest.storedBodyHash]);
-    const joinedTurnRow = joinedTurnRows[index];
-    if (joinedTurnRow !== null) nearestRetryTurnRowByRequestKey.set(requestKey, joinedTurnRow);
-    else if (isFailedApiRequest(apiRequest)) {
-      attemptTurnRows[index] = nearestRetryTurnRowByRequestKey.get(requestKey) ?? null;
-    }
-  }
-  return attemptTurnRows;
-}
-
-/**
- * True when the API request did not succeed: a status outside 2xx, an error in
- * the response body — an error response, or a stream an `error` event cut
- * short —, a proxy error, or Claude Code disconnecting.
- */
-function isFailedApiRequest(apiRequest: RecordedApiRequestFields): boolean {
-  return (
-    apiRequest.status < 200 ||
-    apiRequest.status >= 300 ||
-    apiRequest.errorMessage !== null ||
-    apiRequest.proxyError !== null ||
-    apiRequest.isClientAborted
-  );
-}
-
 /**
  * Replace one conversation, inside the caller's transaction: delete its prior
- * row (if any), then write it + root agent + messages + tool_calls, then each
- * sub-agent (its own agent row + messages + tool_calls), then pr_links,
- * turn_durations and api_requests (see `writeApiRequests`), and return the new
- * conversation's row id. The conversations
- * that continued from the prior row are re-pointed at the new one. Sub-agent
+ * row (if any), then write it + root agent + messages + tool_calls + logged
+ * API requests, then each sub-agent (its own agent row + messages + tool_calls
+ * + logged API requests), then pr_links and turn_durations, and return the new
+ * conversation's row id. The conversations that continued from the prior row are re-pointed at the new one. Sub-agent
  * `spawnedByMessageId` is linked via the spawning `Agent` tool_use that produced
  * the matching `agentId` (log-format §4) — in whichever transcript that ledger
  * lives, main thread or another sub-agent (see `planSubAgents`);
@@ -1064,8 +803,7 @@ function writeConversation(statements: RefreshStatements, parsedConversation: Pa
     resolvedModel: parsed.dominantModel,
   });
 
-  const turnRows: TurnRows = { byRequestId: new Map(), byMessageId: new Map() };
-  const rootByMsgId = writeAgentMessages(statements, parsed, conversationId, rootAgentId, turnRows);
+  const rootByMsgId = writeAgentMessages(statements, parsed, conversationId, rootAgentId);
   writeToolCalls(statements, parsed, rootAgentId, rootByMsgId);
   writeLoggedApiRequests(statements, parsed, conversationId, rootAgentId, rootByMsgId);
 
@@ -1098,7 +836,7 @@ function writeConversation(statements: RefreshStatements, parsedConversation: Pa
       resolvedModel: plan.spawn?.resolvedModel ?? plan.parsed.dominantModel,
     });
 
-    const subByMsgId = writeAgentMessages(statements, plan.parsed, conversationId, subAgentId, turnRows);
+    const subByMsgId = writeAgentMessages(statements, plan.parsed, conversationId, subAgentId);
     writeToolCalls(statements, plan.parsed, subAgentId, subByMsgId);
     writeLoggedApiRequests(statements, plan.parsed, conversationId, subAgentId, subByMsgId);
     written.set(plan.agentId, {
@@ -1124,8 +862,6 @@ function writeConversation(statements: RefreshStatements, parsedConversation: Pa
       messageCount: turnDuration.messageCount,
     });
   }
-
-  writeApiRequests(statements, parsedConversation.apiRequests, conversationId, turnRows);
 
   return conversationId;
 }

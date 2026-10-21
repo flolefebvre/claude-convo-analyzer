@@ -1,5 +1,5 @@
 // Claude Conversation Analyzer — data model.
-// Twelve tables per ADR-0001 (docs/adr/0001-token-accounting-and-data-model.md).
+// Eleven tables per ADR-0001 (docs/adr/0001-token-accounting-and-data-model.md).
 // Prisma 7: `prisma-client` generator + @prisma/adapter-better-sqlite3 driver adapter.
 // The generated client output is gitignored (commit schema + migrations only).
 // The Refresh writes these tables WITHOUT Prisma (ADR-0005): mirror any column
@@ -62,7 +62,6 @@ model Conversation {
   messages          Message[]
   prLinks           PrLink[]
   turnDurations     TurnDuration[]
-  apiRequests       ApiRequest[]
   loggedApiRequests LoggedApiRequest[]
 
   @@index([projectId])
@@ -97,7 +96,6 @@ model Agent {
   spawnedBy         Message?           @relation("AgentSpawn", fields: [spawnedByMessageId], references: [id], onDelete: SetNull)
   messages          Message[]          @relation("AgentMessages")
   toolCalls         ToolCall[]
-  apiRequests       ApiRequest[]
   loggedApiRequests LoggedApiRequest[]
 
   @@index([conversationId])
@@ -167,7 +165,6 @@ model Message {
   agent                          Agent              @relation("AgentMessages", fields: [agentId], references: [id], onDelete: Cascade)
   spawnedAgents                  Agent[]            @relation("AgentSpawn")
   toolCalls                      ToolCall[]
-  apiRequests                    ApiRequest[]
   loggedApiRequests              LoggedApiRequest[] @relation("LoggedApiRequestTurn")
   /// The logged API requests that were this Turn's Failed attempts.
   failedAttemptLoggedApiRequests LoggedApiRequest[] @relation("LoggedApiRequestFailedAttempt")
@@ -236,73 +233,6 @@ model TurnDuration {
 
   @@index([conversationId])
   @@map("turn_duration")
-}
-
-/// One per API request a Recording holds for the Conversation's session
-/// (ADR-0006), joined to its Turn when one matches, with its kind and its
-/// response's usage. Nothing of what was sent.
-model ApiRequest {
-  id             Int     @id @default(autoincrement())
-  conversationId Int     @map("conversation_id")
-  /// The assistant Message of the Turn this API request belongs to: the one
-  /// with the same `requestId`, else the same `message.id`; for a failed
-  /// attempt, the Turn whose API request retried it. NULL for a Side request,
-  /// and for a failed attempt no retry of which joined a Turn.
-  messageId      Int?    @map("message_id")
-  /// The Agent of that Turn; NULL when `messageId` is.
-  agentId        Int?    @map("agent_id")
-  /// What the API request is (GLOSSARY.md, API request), as the Refresh
-  /// classified it (`classifyApiRequest`, `api-request-kind.ts`): `turn` |
-  /// `failed-attempt` | a Side request's kind — `session-naming` |
-  /// `quota-probe` | `safety-monitor` | `suggestion` | `token-count` | `other`.
-  kind           String
-  /// For `kind = other`, the first line of its system prompt; NULL otherwise,
-  /// and for one without a system prompt.
-  otherKindLabel String? @map("other_kind_label")
-
-  /// The `request-id` response header.
-  requestId         String? @map("request_id")
-  /// The response body's `message.id`.
-  responseMessageId String? @map("response_message_id")
-  /// The `x-claude-code-agent-id` request header, sent by a sub-agent.
-  externalAgentId   String? @map("external_agent_id")
-  method            String
-  path              String
-  /// The response's HTTP status.
-  status            Int
-  /// When the request reached the Recorder (epoch ms).
-  arrivedAt         BigInt  @map("arrived_at")
-  /// When the first response byte came back (epoch ms); NULL if none did.
-  firstByteAt       BigInt? @map("first_byte_at")
-  /// When the response ended or failed (epoch ms).
-  endedAt           BigInt  @map("ended_at")
-  /// Why the upstream failed: unreachable, or broken mid-response.
-  proxyError        String? @map("proxy_error")
-  /// True when Claude Code disconnected before the response ended.
-  isClientAborted   Boolean @default(false) @map("is_client_aborted")
-  /// The response body's `error.message` whenever it carries one as a string
-  /// (an error response, or a stream an `error` event cut short), else
-  /// `proxyError`; NULL otherwise. Set on any API request, not only attempts.
-  errorMessage      String? @map("error_message")
-
-  /// The response's token split, as `message` stores a Turn's; all NULL when
-  /// the response carries no `usage` (an error, a token count). Only an API
-  /// request that is not a Turn's adds it to Cost (GLOSSARY.md, Unlogged usage).
-  inputTokens           Int?    @map("input_tokens")
-  outputTokens          Int?    @map("output_tokens")
-  cacheCreation5mTokens Int?    @map("cache_creation_5m_tokens")
-  cacheCreation1hTokens Int?    @map("cache_creation_1h_tokens")
-  cacheReadTokens       Int?    @map("cache_read_tokens")
-  /// The response body's `model`, else the requested one; NULL with neither.
-  model                 String?
-
-  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  message      Message?     @relation(fields: [messageId], references: [id], onDelete: SetNull)
-  agent        Agent?       @relation(fields: [agentId], references: [id], onDelete: SetNull)
-
-  @@index([conversationId])
-  @@index([messageId])
-  @@map("api_request")
 }
 
 /// One per `api-request` record of the Conversation's log files, Main thread

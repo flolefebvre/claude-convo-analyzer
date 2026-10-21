@@ -25,9 +25,9 @@ async function answerOf(route: LoggedApiRequestRoute, id: string): Promise<{ sta
 /** The `logged_api_request` row id of the fixture's first Main-thread Turn its file holds the request of. */
 async function firstLoggedTurnId(): Promise<string> {
   const view = await getTranscript("sess-logged");
-  const source = view?.messages.find((message) => message.whatWasSentSource?.from === "logs")?.whatWasSentSource;
-  if (source?.from !== "logs") throw new Error("the fixture has no logged Turn");
-  return String(source.loggedApiRequestId);
+  const loggedApiRequestId = view?.messages.find((message) => message.loggedApiRequestId !== null)?.loggedApiRequestId;
+  if (loggedApiRequestId == null) throw new Error("the fixture has no logged Turn");
+  return String(loggedApiRequestId);
 }
 
 refreshedDefaultDatabase({
@@ -42,7 +42,6 @@ describe("GET /api/logged-api-request/[id]", () => {
     expect(res.status).toBe(200);
     expect(res.json).toMatchObject({
       parameters: { model: "claude-opus-4-8", maxTokens: 32000, betas: ["beta-one", "beta-two"] },
-      timings: null,
       failedAttempts: [],
       previousApiRequestId: null,
       fullRequest: { messages: expect.any(Array), tools: [{ name: "Bash" }] },
@@ -51,7 +50,7 @@ describe("GET /api/logged-api-request/[id]", () => {
 });
 
 describe("GET /api/logged-api-request/[id]/raw", () => {
-  it("answers the body the logs rebuild, with no response and no headers", async () => {
+  it("answers the body the logs rebuild", async () => {
     const res = await answerOf(getLoggedRawApiRequestRoute, await firstLoggedTurnId());
 
     expect(res.status).toBe(200);
@@ -62,8 +61,7 @@ describe("GET /api/logged-api-request/[id]/raw", () => {
         tools: expect.any(Array),
         messages: expect.any(Array),
       },
-      responseBody: null,
-      requestHeaders: null,
+      missingMessageCount: 0,
     });
   });
 });
