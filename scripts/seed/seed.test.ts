@@ -151,6 +151,20 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     const sent = await getLoggedWhatWasSent(third.loggedApiRequestId, { dbPath: seed.dbPath });
     expect(sent?.systemPromptDiff?.isVolatileOnly).toBe(false);
     expect(sent?.toolsDiff?.added.map((tool) => tool.name)).toEqual(["Grep"]);
+    // Its new messages: the Turn before it, the injected date change, and the prompt.
+    const newMessages = sent?.fullRequest.messages.slice(sent.firstNewMessageIndex);
+    expect(newMessages?.map((message) => [message?.role, message?.blocks[0]?.kind])).toEqual([
+      ["assistant", "text"],
+      ["system", "system-reminder"],
+      ["user", "text"],
+    ]);
+
+    // Every message of every Turn's request is rebuilt, from a blob or from the records.
+    for (const turn of turns) {
+      if (turn.whatWasSentSource?.from !== "logs") throw new Error("not from the logs");
+      const turnSent = await getLoggedWhatWasSent(turn.whatWasSentSource.loggedApiRequestId, { dbPath: seed.dbPath });
+      expect(turnSent?.missingMessageCount).toBe(0);
+    }
   });
 
   it("seeds a repo with two worktree Projects, and a /tmp parent with per-session sub-Folders", async () => {
