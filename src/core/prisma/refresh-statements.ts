@@ -255,6 +255,10 @@ export function prepareRefreshStatements(db: Database.Database) {
     `DELETE FROM "tool_set" WHERE NOT EXISTS
        (SELECT 1 FROM "logged_api_request" WHERE "tool_set_hash" = "tool_set"."hash")`,
   );
+  const deleteUnnamedSentMessages = db.prepare(
+    `DELETE FROM "sent_message" WHERE "hash" NOT IN
+       (SELECT "tail_hash"."value" FROM "logged_api_request", json_each("tail_message_hashes_json") AS "tail_hash")`,
+  );
   // `uuid` is not unique: the first message stored with it decides.
   const selectMessageOwner = db.prepare(
     `SELECT "id", "session_id" AS "sessionId" FROM "conversation"
@@ -308,10 +312,11 @@ export function prepareRefreshStatements(db: Database.Database) {
     insertToolSet: (hash: string, toolsJson: string) => void insertToolSet.run(hash, toolsJson),
     /** Store a sent message under its hash, keeping the smaller spelling when one already is. */
     insertSentMessage: (hash: string, messageJson: string) => void insertSentMessage.run(hash, messageJson),
-    /** Delete every system prompt and tool set no logged API request references any more. */
+    /** Delete every system prompt and tool set no logged API request references any more, and every sent message no tail names. */
     deleteUnreferencedRequestPieces: () => {
       deleteUnreferencedSystemPrompts.run();
       deleteUnreferencedToolSets.run();
+      deleteUnnamedSentMessages.run();
     },
   };
 }

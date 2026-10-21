@@ -267,28 +267,53 @@ describe("a re-parse", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("stores what a cold Refresh does, even when the change leaves a system prompt and a tool set unused", async () => {
+  /**
+   * Refresh the logged request logs, rewrite the main log's lines with
+   * `rewrite`, then Refresh again — and cold, into a second database: the
+   * request-record tables of each, and of the first Refresh.
+   */
+  async function reparsedAndCold(rewrite: (lines: string[]) => string[]) {
     const logsRoot = path.join(tmpDir, "logs");
     const reparsedDbPath = path.join(tmpDir, "reparsed.db");
     const coldDbPath = path.join(tmpDir, "cold.db");
     copyWithPinnedMtimes(path.join(FIXTURES_DIR, "logged-request-logs"), logsRoot);
     await refresh({ logsRoot, dbPath: reparsedDbPath });
-
-    // The last request now sends the first shape: the second one's system prompt and tool set are used by nothing.
+    const beforeContent = loggedApiRequestContent(reparsedDbPath, logsRoot);
     const mainLogPath = path.join(logsRoot, "-Users-me-dev-logged", "sess-logged.jsonl");
-    const lines = readFileSync(mainLogPath, "utf8").split("\n");
-    writeFileSync(
-      mainLogPath,
-      lines
-        .filter((line) => !line.includes('"shapeHash":"shape-2","shape"'))
-        .map((line) => line.replace('"shapeHash":"shape-2"', '"shapeHash":"shape-1"'))
-        .join("\n"),
-    );
+    writeFileSync(mainLogPath, rewrite(readFileSync(mainLogPath, "utf8").split("\n")).join("\n"));
     await refresh({ logsRoot, dbPath: reparsedDbPath });
     await refresh({ logsRoot, dbPath: coldDbPath });
+    return {
+      beforeContent,
+      reparsedContent: loggedApiRequestContent(reparsedDbPath, logsRoot),
+      coldContent: loggedApiRequestContent(coldDbPath, logsRoot),
+    };
+  }
 
-    expect(loggedApiRequestContent(reparsedDbPath, logsRoot)).toEqual(loggedApiRequestContent(coldDbPath, logsRoot));
-    expect(loggedApiRequestContent(coldDbPath, logsRoot).system_prompt.rowCount).toBe(3);
+  it("stores what a cold Refresh does, even when the change leaves a system prompt and a tool set unused", async () => {
+    // The last request now sends the first shape: the second one's system prompt and tool set are used by nothing.
+    const { reparsedContent, coldContent } = await reparsedAndCold((lines) =>
+      lines
+        .filter((line) => !line.includes('"shapeHash":"shape-2","shape"'))
+        .map((line) => line.replace('"shapeHash":"shape-2"', '"shapeHash":"shape-1"')),
+    );
+
+    expect(reparsedContent).toEqual(coldContent);
+    expect(coldContent.system_prompt.rowCount).toBe(3);
+  });
+
+  it("stores what a cold Refresh does, even when the change leaves a sent message named by no tail", async () => {
+    // The request that sent the date-change reminder no longer names it: its blob is sent by nothing.
+    const { beforeContent, reparsedContent, coldContent } = await reparsedAndCold((lines) => {
+      const blobLine = lines.find(
+        (line) => line.includes('"type":"api-request-blob"') && line.includes("date changed"),
+      );
+      const { hash } = JSON.parse(blobLine!) as { hash: string };
+      return lines.map((line) => line.replace(`"${hash}",`, ""));
+    });
+
+    expect(reparsedContent).toEqual(coldContent);
+    expect(coldContent.sent_message.rowCount).toBe(beforeContent.sent_message.rowCount - 1);
   });
 });
 
@@ -405,6 +430,7 @@ function loggedApiRequestContent(dbPath: string, logsRoot: string) {
       requests,
       system_prompt: fingerprintTable(db, "system_prompt", logsRoot),
       tool_set: fingerprintTable(db, "tool_set", logsRoot),
+      sent_message: fingerprintTable(db, "sent_message", logsRoot),
     };
   } finally {
     db.close();
