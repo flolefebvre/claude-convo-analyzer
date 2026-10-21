@@ -7,7 +7,7 @@
 // opens it, and kept for every later open. Native `<details>` stays the
 // disclosure, as for tool calls. Under the parameters line, the request reads
 // in the order the model read it: the system prompt, the tools, the earlier
-// messages as a count, then each block new for this Turn, every part one
+// messages as a count, then each part new for this Turn, every row one
 // summary line that opens for detail. The "Raw JSON" toggle swaps all of it
 // for the request body, fetched from the route's `/raw` sibling the first
 // time it is pressed. A message the logs could not rebuild is shown missing
@@ -205,7 +205,7 @@ function FailedAttemptLine({ attempt }: { attempt: FailedAttempt }) {
 
 /**
  * The request in the order the model read it: the system prompt, the tools,
- * how many earlier messages it repeated, then each block of the messages new
+ * how many earlier messages it repeated, then each part of the messages new
  * for this Turn. On the Agent's first request every message is new.
  */
 function RequestInReadingOrder({ whatWasSent }: { whatWasSent: WhatWasSent }) {
@@ -344,18 +344,18 @@ function toolNamesOf(tools: SentTool[]): string {
   return tools.map((tool) => tool.name).join(", ");
 }
 
-/** The rows of one message new for this Turn: one per block, its label and preview, opening to its content; one the logs could not rebuild, as a line saying so. */
+/** The rows of one message new for this Turn: one per part, its label and preview, opening to its content as sent; one the logs could not rebuild, as a line saying so. */
 function NewMessageRows({ message }: { message: SentMessage | null }) {
   if (message === null) return <p className="sent-row-static">A message the logs could not rebuild</p>;
-  return message.blocks.map((block, index) => (
+  return message.parts.map((part, index) => (
     <details key={index} className="sent-row">
       <summary>
         <ChevronRight aria-hidden className="chev" />
-        <span className={`sent-row-name sent-kind is-${block.kind}`}>{block.label}</span>
-        <span className="sent-row-preview">{block.preview}</span>
+        <span className={`sent-row-name sent-kind is-${part.kind}`}>{part.label}</span>
+        <span className="sent-row-preview">{part.preview}</span>
       </summary>
       <div className="sent-row-body">
-        <ClampedText text={block.shownAs === "text" ? block.text : block.json} />
+        <ClampedText text={part.shownAs === "text" ? part.text : part.json} />
       </div>
     </details>
   ));

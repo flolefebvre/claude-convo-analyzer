@@ -17,6 +17,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { type RecordedAttachment, writeRequestRecordsLog } from "@/core/__tests__/helpers/request-records-log";
 import { refresh } from "@/core/refresh";
 
 const FIXTURES_DIR = path.join(import.meta.dirname, "fixtures");
@@ -127,7 +128,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 15, sha256: "d79302a905b975c08cfd6c217e6ae3eaa17e44ca45bb318cdfeefa1ae7b0e329" },
-      conversation: { rowCount: 21, sha256: "3b9244582356d8518e8f1ca73f5d99952887efd3a879f8cd69e08c0037e15497" },
+      conversation: { rowCount: 21, sha256: "05ac3bd9c2da712c32d04b6aa6bfb8e6921ad2261cbce38bbdb2a60753bdc544" },
       agent: { rowCount: 35, sha256: "bcf922290517994e489068e748364ff9de40929e4a8ddfbcb68c6f6014836468" },
       message: { rowCount: 125, sha256: "a6c4493eb7d8954b3a993d59f57a4f00076d965adda9302418492d6c6a262250" },
       tool_call: { rowCount: 34, sha256: "58586fdaa0ea9e906fd5037c8a3c7809fd2fd1d4602ec6280e34db111716b5f4" },
@@ -143,7 +144,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "5d55ed2d1c37a5a354777b7e27dfce7bb9f299e0e7237d17a32956fee0357675" },
-      conversation: { rowCount: 1, sha256: "f2a4cacd0ce7217fea6ca6c889f3572d4e84dea3f1ba85ec433b4cbf890fc98f" },
+      conversation: { rowCount: 1, sha256: "2184b54356c66377c802adff9d8d0d942937f0d038e9e0c0bc1d864f929574b9" },
       agent: { rowCount: 2, sha256: "9cddce4d56d246718241b05d406551e917f8d9c1d9a116799eb257bc48089a61" },
       message: { rowCount: 28, sha256: "466d200445a86bff2133b1b984bb84e2275c7daafd0d394be1959e45dd9e1e73" },
       tool_call: { rowCount: 1, sha256: "a7fdb225fda2bff0ca75f88a22789a86cd79a97f5ea4e2f952e1d4559aa8efd9" },
@@ -159,7 +160,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 9, sha256: "e740c951fb2b58e8b13902eea830681396ac5eea03a445a31d6fb998c250a3e1" },
-      conversation: { rowCount: 13, sha256: "1abc05623266522c44bd2770c19b91096b3e0260ee4bb0a339b9519e75c71349" },
+      conversation: { rowCount: 13, sha256: "11269e63ac27253ea2515c69bd3effecfb9eaa41aaea3be96c82ae13f97fdfcb" },
       agent: { rowCount: 13, sha256: "47aa156cd547f0ad4f24ca8d2f27122dfa765f0de80b37a46a3507b22ade253f" },
       message: { rowCount: 22, sha256: "dcd26004fc7ee5f70d37088e8b7cead05a24a88ffca18899ea854cfec7514311" },
       tool_call: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
@@ -175,7 +176,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "c39a0134a2be51dcdd6348bf0657691be4b1d4092d6e1616117c4d0f4f58a771" },
-      conversation: { rowCount: 4, sha256: "a4e1f69f7ae506e1e06436dc1a5e8ed406d7cbca7a43e8aa50f5b1728eae7fc0" },
+      conversation: { rowCount: 4, sha256: "946356d48af6c9ccb4170489c4fcd6ee9d00c4ea16e2ea094551ce5862524905" },
       agent: { rowCount: 5, sha256: "c0938e2f66085f42e8e7e5ee608867bb0974528d74f6dd4ead50afad13e0e8a1" },
       message: { rowCount: 17, sha256: "57dd0ac441733ef3b55dd0bb598ece1c0204c1c55f28cbf23747937e96a049fb" },
       tool_call: { rowCount: 1, sha256: "e331ea30643c19a0602a2759f557187aacaf1729c796a955560799b9c4dbd73f" },
@@ -191,7 +192,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "8b9da1ddb86766f02f4a1ac8d582400f0f6c9e5071156b7b726e7b6d9bf11d31" },
-      conversation: { rowCount: 3, sha256: "ecbe0ad0042cc41d2ec6fb0987774df42dce9af3198082d6f6e42ac03da9f70d" },
+      conversation: { rowCount: 3, sha256: "fccb6355decc88e1fbb0e147bf40e059f8130becf32116864288aec285721021" },
       agent: { rowCount: 4, sha256: "5183823b6f5d49ed8cedbdc07b0046a87c72ec8ce45a90423a939cc6fe42d620" },
       message: { rowCount: 19, sha256: "f15867490847ded5e9c25fa1c23212303c2828b2e7b3c82c03f0d34dd972a592" },
       tool_call: { rowCount: 3, sha256: "e5f615b5d6290bc0dab75ea171da282d5e176e04be16438fc4d834c227f91b9d" },
@@ -202,7 +203,8 @@ describe("stored data equivalence", () => {
       system_prompt: { rowCount: 4, sha256: "179129a51d494cdd6ea7fb72cf50d62900d9163160ed521f850dc233dae050bf" },
       tool_set: { rowCount: 3, sha256: "6b550b32e7738d046dd3c9f444e69eeba02357a973be985eac064674d0326323" },
       // Fifteen messages: two blobs, the others rebuilt from records; the tail hash no file holds is not stored.
-      sent_message: { rowCount: 15, sha256: "126441cb097702d6b8e42db9bb724fa43d330ebe1e26322cde0285a9ddc48b67" },
+      // The two blobs carry the pieces of Injected context their attachments name: CLAUDE.md, and the date.
+      sent_message: { rowCount: 15, sha256: "132ab154cc97d01608e9e5ffd1016826fa8b59178bb9f1b3db2ad7cb04c15f2d" },
     });
   });
 });
@@ -373,6 +375,80 @@ describe("a piece two logs spell in two key orders", () => {
       { hash: expect.any(String), tools_json: smallestSpelling },
     ]);
     expect(storedToolSets(nameFirstThenSchemaFirst)).toEqual(storedToolSets(schemaFirstThenNameFirst));
+  });
+});
+
+describe("a sent message one log labels and another does not", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(tmpdir(), "cca-sent-message-labels-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  const DATE_TEXT = "The date has changed. Today's date is now 2026-10-22.";
+  /** The attachment naming the date change, in the log that labels it. */
+  const DATE_ATTACHMENT: RecordedAttachment = {
+    attachmentType: "date",
+    rendered: `<system-reminder>\n${DATE_TEXT}\n</system-reminder>`,
+    renderedRole: "system",
+  };
+
+  /** Write session `sessionId`, whose one API request sends the date change, logging its attachment when `isLabelled`. */
+  function writeSessionSendingTheDate(logsRoot: string, sessionId: string, isLabelled: boolean): void {
+    writeRequestRecordsLog(logsRoot, sessionId, [
+      {
+        system: "Answer briefly.",
+        tools: [],
+        messages: [
+          { role: "user", content: "hi" },
+          { role: "system", content: DATE_TEXT },
+        ],
+        attachments: isLabelled ? [DATE_ATTACHMENT] : [],
+      },
+    ]);
+  }
+
+  /** The stored sent messages of the database at `dbPath`. */
+  function storedSentMessages(dbPath: string): unknown[] {
+    const db = new Database(dbPath, { readonly: true });
+    try {
+      return db.prepare(`SELECT * FROM "sent_message" ORDER BY "hash"`).all();
+    } finally {
+      db.close();
+    }
+  }
+
+  /** The sent messages a Refresh of `firstSessionId` alone, then of both sessions, stores. */
+  async function storedAfterAddingTheOther(firstSessionId: "sess-labelled" | "sess-unlabelled") {
+    const logsRoot = path.join(tmpDir, `logs-${firstSessionId}`);
+    const dbPath = path.join(tmpDir, `${firstSessionId}-first.db`);
+    writeSessionSendingTheDate(logsRoot, firstSessionId, firstSessionId === "sess-labelled");
+    await refresh({ logsRoot, dbPath });
+    const otherSessionId = firstSessionId === "sess-labelled" ? "sess-unlabelled" : "sess-labelled";
+    writeSessionSendingTheDate(logsRoot, otherSessionId, otherSessionId === "sess-labelled");
+    await refresh({ logsRoot, dbPath });
+    return storedSentMessages(dbPath);
+  }
+
+  it("keeps the labelled copy, whichever log was parsed first, as a cold Refresh does", async () => {
+    const logsRoot = path.join(tmpDir, "logs-cold");
+    const coldDbPath = path.join(tmpDir, "cold.db");
+    writeSessionSendingTheDate(logsRoot, "sess-labelled", true);
+    writeSessionSendingTheDate(logsRoot, "sess-unlabelled", false);
+    await refresh({ logsRoot, dbPath: coldDbPath });
+    const cold = storedSentMessages(coldDbPath);
+
+    expect(cold).toContainEqual({
+      hash: expect.any(String),
+      message_json: JSON.stringify({ role: "system", content: DATE_TEXT }),
+      injected_context_pieces_json: JSON.stringify([{ blockIndex: 0, start: 0, end: DATE_TEXT.length, kind: "date" }]),
+    });
+    expect(await storedAfterAddingTheOther("sess-unlabelled")).toEqual(cold);
+    expect(await storedAfterAddingTheOther("sess-labelled")).toEqual(cold);
   });
 });
 

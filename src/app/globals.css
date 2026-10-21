@@ -1366,7 +1366,7 @@ html:has(.tview) {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
 }
-/* A new block's label, coloured by its kind. */
+/* A new part's label, coloured by its kind. */
 .tview .sent-kind {
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
@@ -1375,7 +1375,7 @@ html:has(.tview) {
   background: var(--muted);
   color: var(--muted-foreground);
 }
-.tview .sent-kind.is-system-reminder {
+.tview .sent-kind.is-injected-context {
   background: var(--skill-muted);
   color: var(--skill-foreground);
 }

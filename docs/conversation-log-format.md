@@ -51,7 +51,7 @@ Counts are from the snapshot (across main + sub-agent files combined).
 | ----------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
 | `assistant`             | 11808  | An assistant turn (see §3). Carries `message.usage`, `message.model`, content blocks, attribution.                                                                                                                                                      | **Yes** → `message` (+ `tool_call`)        |
 | `user`                  | 7251   | A user message OR a `tool_result` carrier (see §4).                                                                                                                                                                                                     | **Yes** → `message` / feeds `tool_call`    |
-| `attachment`            | 3105   | A dict `attachment` tied to a message via `parentUuid`: pasted content (images, files), a `queued_command` — a message delivered while the agent was working (§8) — or, since 2.1.266, injected context with the text the model saw in `rendered` (§9). | **Partly** → `queued_command` only (§8)    |
+| `attachment`            | 3105   | A dict `attachment` tied to a message via `parentUuid`: pasted content (images, files), a `queued_command` — a message delivered while the agent was working (§8) — or, since 2.1.266, injected context with the text the model saw in `rendered` (§9). | **Partly** → `queued_command`, `rendered`  |
 | `ai-title`              | 1252   | `aiTitle`: AI-generated conversation title.                                                                                                                                                                                                             | **Yes** → `conversation.title`             |
 | `mode`                  | 1016   | `mode` (e.g. `normal`) state marker.                                                                                                                                                                                                                    | **No** (low value)                         |
 | `permission-mode`       | 1013   | `permissionMode` (e.g. `default`, `plan`) state marker. Also present per-turn on `user` records.                                                                                                                                                        | **Partly** (per-turn field on `message`)   |
@@ -472,7 +472,12 @@ records of every file of a Conversation, main thread and sub-agents
   kept, whether the blob comes before or after its request. A tail hash the
   file cannot resolve is not stored; a request naming another file's message
   finds it only if that file stored it. A Refresh deletes the messages no tail
-  names any more.
+  names any more. Beside each message, the pieces of Injected context its
+  file's attachments name in it (below, "How the app names the pieces"): each
+  one's content block, span and attachment type, and the files of an
+  `instructions` one; the label is chosen when read. They travel with the
+  message's spelling; of one spelling, a labelled copy beats an unlabelled
+  one, so the first file to store a message does not decide its pieces.
 
 A request's message list is never stored whole: it is rebuilt when read, by
 walking the `base` chain over the requests of its file (step 1), and a
@@ -555,6 +560,30 @@ already in its §8 wrapper), whatever the role:
   (a blob), sometimes sharing it with other attachments' text;
 - **`user`** text is sent **verbatim**, wrapper included, inside a user
   message.
+
+**A fused system block.** A `role: "system"` message is one text block, and
+that block often joins **several** attachments' unwrapped texts with a blank
+line (`\n\n`), in log order: of 3,596 such blocks in the 80 most recently
+modified files, 2,916 equal exactly one attachment's text, 667 join several —
+the first Turn's carries the environment, model, deferred tools, agent list,
+MCP instructions, skill list, auto mode and date in one block — and 12 match
+none. A user-role attachment is always exactly one text block equal to its
+rendered text (207 of 207).
+
+**How the app names the pieces.** While a file is read, each rendered text of
+an attachment with a `renderedRole` maps to its attachment type, under both
+its logged and its unwrapped form, so it matches whatever role it went out
+under. A sent text block (not the assistant's) equal to one is one piece of
+that kind; any other block of a **system** message holds each rendered text
+found in it, in order and not overlapping. A user's text block is never
+split, so a Prompt quoting an injected text stays a Prompt: no user block has
+needed it — of 187 `queued_command` texts in the 120 latest logs, 52 are a
+whole user block, 133 sit inside a fused system block, 2 nowhere and none
+inside a larger user block. What a block holds around its matched pieces, and a block
+matching nothing, keeps the generic label. The text alone identifies the
+kind: equal texts (the Bash output note, repeated token reminders) are of one
+kind, so no `parentUuid` chain needs walking, and an attachment logged after
+the message that sent it still names it.
 
 #### GOTCHA — no `renderedRole` before 2.1.285
 

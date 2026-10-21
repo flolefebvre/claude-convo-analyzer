@@ -134,8 +134,10 @@ type RefreshOptions = {
  *     attempt of (`api_request.failed_attempt_of_message_id`).
  * 11 — assistant turns carry their thinking text and duration
  *     (`message.thinking_text`, `message.thinking_duration_ms`).
+ * 12 — a sent message keeps the pieces of Injected context its file's
+ *     attachments name in it (`sent_message.injected_context_pieces_json`).
  */
-export const PARSER_VERSION = 11;
+export const PARSER_VERSION = 12;
 
 /**
  * The version a conversation carries while it is written but NOT YET COMPLETE:
@@ -685,7 +687,7 @@ function writeApiRequests(
   }
   for (const [hash, blocksJson] of parsed.systemPromptJsonByHash) statements.insertSystemPrompt(hash, blocksJson);
   for (const [hash, toolsJson] of parsed.toolSetJsonByHash) statements.insertToolSet(hash, toolsJson);
-  for (const [hash, messageJson] of parsed.sentMessageJsonByHash) statements.insertSentMessage(hash, messageJson);
+  for (const [hash, sentMessage] of parsed.sentMessageByHash) statements.insertSentMessage(hash, sentMessage);
   const failedAttemptOfMessageRowIds = failedAttemptOwners(parsed.apiRequests, messageRowIdByRequestRef);
   parsed.apiRequests.forEach((request, positionInFile) => {
     statements.insertApiRequest({

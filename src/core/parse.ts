@@ -20,6 +20,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 
 import { canonicalJson } from "@/core/canonical-json";
+import { injectedContextDictionary, type SentTextBlock } from "@/core/injected-context";
 
 /** A `tool_use` block lifted out of an assistant message (one `tool_call` row). */
 export type ParsedToolUse = {
@@ -324,6 +325,17 @@ export type ParsedMessage = {
   timestamp: number | null;
 };
 
+/** A message an API request sent, as its `sent_message` row keeps it. */
+export type ParsedSentMessage = {
+  /** The message as logged (JSON). */
+  messageJson: string;
+  /**
+   * The pieces of Injected context its text blocks hold that the file's
+   * attachments name (JSON, `InjectedContextPiece[]`, injected-context.ts); null without any.
+   */
+  injectedContextPiecesJson: string | null;
+};
+
 /**
  * An `api-request` record (log-format §9): one API request the file's Agent
  * sent, as its `api_request` row keeps it.
@@ -384,10 +396,9 @@ export type ParsedSession = {
   toolSetJsonByHash: Map<string, string>;
   /**
    * Each message a `tail` of the file names that the file can rebuild — from
-   * a blob, else from its own records (log-format §9, step 2) — as logged
-   * (JSON), by that hash.
+   * a blob, else from its own records (log-format §9, step 2) — by that hash.
    */
-  sentMessageJsonByHash: Map<string, string>;
+  sentMessageByHash: Map<string, ParsedSentMessage>;
   malformedLines: number;
 };
 
@@ -683,6 +694,7 @@ export function parseSessionLines(lines: readonly string[]): ParsedSession {
     }
 
     if (type === "attachment") {
+      sentMessages.addAttachment(record);
       const queued = parseQueuedCommand(record);
       if (queued !== null && !deliveries.seen(queued.keys)) {
         deliveries.add(queued.keys);
@@ -806,7 +818,7 @@ export function parseSessionLines(lines: readonly string[]): ParsedSession {
     })),
     systemPromptJsonByHash: requestShapes.systemPromptJsonByHash,
     toolSetJsonByHash: requestShapes.toolSetJsonByHash,
-    sentMessageJsonByHash: sentMessages.namedJsonByHash(),
+    sentMessageByHash: sentMessages.namedByHash(),
     malformedLines,
   };
 }
@@ -883,11 +895,15 @@ function requestShapeLedger() {
  * The messages of one file's request records (log-format §9): the hashes its
  * tails name, and each message it can rebuild, kept until the whole file is
  * read — a blob may follow the request that sent it — and then only those a
- * tail names.
+ * tail names, each with the pieces of Injected context the file's
+ * attachments name in it, wherever in the file they are.
  */
 function sentMessageLedger(isRebuildingFromRecords: boolean) {
   const namedHashes = new Set<string>();
   const blobJsonByHash = new Map<string, string>();
+  /** The role and text blocks of each blob not from the assistant, kept to find Injected context in once the file is read. */
+  const blobTextBlocksByHash = new Map<string, { role: string; textBlocks: SentTextBlock[] }>();
+  const injectedContext = injectedContextDictionary();
   /** Each message the file's records rebuild, by its hash: the records of it, kept as their lines until a tail is known to name it. */
   const rebuiltSourceByHash = new Map<string, RebuiltMessageSource>();
   let userRun: RebuiltMessageDraft | null = null;
@@ -932,22 +948,55 @@ function sentMessageLedger(isRebuildingFromRecords: boolean) {
       const json = JSON.stringify(record.message);
       const keptJson = blobJsonByHash.get(hash);
       if (keptJson === undefined || json < keptJson) blobJsonByHash.set(hash, json);
+      // Two spellings of one hash hold the same blocks.
+      if (isRebuildingFromRecords && keptJson === undefined && record.message.role !== "assistant") {
+        blobTextBlocksByHash.set(hash, {
+          role: asString(record.message.role) ?? "unknown",
+          textBlocks: textBlocksOf(record.message.content),
+        });
+      }
+    },
+    /** An `attachment` record: what its rendered text names. Ignored in a file without request records. */
+    addAttachment: (record: Record<string, unknown>) => {
+      if (isRebuildingFromRecords) injectedContext.add(record);
     },
     /** Each message a tail names that the file holds, by its hash: from a blob, else rebuilt from its records. */
-    namedJsonByHash: (): Map<string, string> => {
+    namedByHash: (): Map<string, ParsedSentMessage> => {
       for (const draft of assistantDrafts) {
         keepFirst(draft.hash(), { role: "assistant", lines: draft.lines, recordCount: draft.lines.length });
       }
-      const jsonByHash = new Map<string, string>();
+      const sentMessageByHash = new Map<string, ParsedSentMessage>();
       for (const hash of namedHashes) {
         const blobJson = blobJsonByHash.get(hash);
         const source = blobJson === undefined ? rebuiltSourceByHash.get(hash) : undefined;
-        const json = blobJson ?? (source === undefined ? undefined : rebuiltMessageJson(source));
-        if (json !== undefined) jsonByHash.set(hash, json);
+        const rebuilt = source === undefined ? undefined : rebuiltMessage(source);
+        const messageJson = blobJson ?? rebuilt?.messageJson;
+        if (messageJson === undefined) continue;
+        // The assistant's own text is never Injected context.
+        const { role, textBlocks } =
+          blobJson !== undefined
+            ? (blobTextBlocksByHash.get(hash) ?? { role: "assistant", textBlocks: [] })
+            : source?.role === "user"
+              ? { role: "user", textBlocks: textBlocksOf(rebuilt?.content) }
+              : { role: "assistant", textBlocks: [] };
+        const pieces = injectedContext.piecesOf(textBlocks, role);
+        sentMessageByHash.set(hash, {
+          messageJson,
+          injectedContextPiecesJson: pieces.length === 0 ? null : JSON.stringify(pieces),
+        });
       }
-      return jsonByHash;
+      return sentMessageByHash;
     },
   };
+}
+
+/** The text blocks of a message's `content`, with their index among its blocks: a string is block 0. */
+function textBlocksOf(content: unknown): SentTextBlock[] {
+  return contentBlocksOf(content).flatMap((block, blockIndex) =>
+    isRecord(block) && block.type === "text" && typeof block.text === "string"
+      ? [{ blockIndex, text: block.text }]
+      : [],
+  );
 }
 
 /** The records a message is rebuilt from: the first `recordCount` of `lines`. */
@@ -993,16 +1042,17 @@ function contentBlocksOf(content: unknown): unknown[] {
 }
 
 /**
- * The message `source` rebuilds, as logged: one record's `content` as it is
- * (a string kept), several records' blocks concatenated in order.
+ * The message `source` rebuilds, as logged (JSON), and its content: one
+ * record's `content` as it is (a string kept), several records' blocks
+ * concatenated in order.
  */
-function rebuiltMessageJson(source: RebuiltMessageSource): string {
+function rebuiltMessage(source: RebuiltMessageSource): { messageJson: string; content: unknown } {
   const contents = source.lines.slice(0, source.recordCount).map((line) => {
     const record = JSON.parse(line) as Record<string, unknown>;
     return isRecord(record.message) ? record.message.content : undefined;
   });
   const content = contents.length === 1 ? (contents[0] ?? []) : contents.flatMap(contentBlocksOf);
-  return JSON.stringify({ role: source.role, content });
+  return { messageJson: JSON.stringify({ role: source.role, content }), content };
 }
 
 /**

@@ -13,7 +13,12 @@ import { getTranscript, type TranscriptMessage } from "@/core/read";
 import { refresh } from "@/core/refresh";
 import { getRawApiRequest, getWhatWasSent, VOLATILE_SYSTEM_LINE_PATTERNS } from "@/core/what-was-sent";
 
-import { type RecordedRequest, type RequestRecordMessage, writeRequestRecordsLog } from "./helpers/request-records-log";
+import {
+  type RecordedAttachment,
+  type RecordedRequest,
+  type RequestRecordMessage,
+  writeRequestRecordsLog,
+} from "./helpers/request-records-log";
 import { seededTempDb } from "./helpers/temp-db";
 
 const LOGS_ROOT = path.join(import.meta.dirname, "fixtures", "logged-request-logs");
@@ -150,17 +155,17 @@ describe("What was sent from the logs", () => {
 });
 
 describe("the messages an API request sent", () => {
-  it("include the system-reminder Claude Code injected in a user message, from the blob that logs it", async () => {
+  it("include the CLAUDE.md Claude Code injected in a user message, from the blob that logs it, named by its attachment", async () => {
     const sent = await getWhatWasSent(await apiRequestIdOfTurn(2), { dbPath: db.dbPath });
 
     expect(sent?.fullRequest.messages[2]).toEqual({
       role: "user",
-      blocks: [
+      parts: [
         {
-          kind: "system-reminder",
+          kind: "injected-context",
           shownAs: "text",
           text: "<system-reminder>\nCLAUDE.md: keep exports in one module.\n</system-reminder>",
-          label: "Injected context",
+          label: "CLAUDE.md",
           preview: "CLAUDE.md: keep exports in one module.",
         },
       ],
@@ -171,15 +176,15 @@ describe("the messages an API request sent", () => {
     const sent = await getWhatWasSent(await apiRequestIdOfTurn(4), { dbPath: db.dbPath });
 
     expect(sent?.missingMessageCount).toBe(0);
-    expect(sent?.fullRequest.messages.map((message) => [message?.role, message?.blocks[0]?.kind])).toEqual([
+    expect(sent?.fullRequest.messages.map((message) => [message?.role, message?.parts[0]?.kind])).toEqual([
       ["user", "text"],
       ["assistant", "text"],
-      ["user", "system-reminder"],
+      ["user", "injected-context"],
       ["user", "text"],
       ["assistant", "text"],
       ["user", "tool_result"],
       ["assistant", "text"],
-      ["system", "text"],
+      ["system", "injected-context"],
       ["user", "text"],
     ]);
   });
@@ -188,8 +193,8 @@ describe("the messages an API request sent", () => {
     const sent = await getWhatWasSent(await apiRequestIdOfTurn(3), { dbPath: db.dbPath });
 
     expect(sent?.fullRequest.messages[4]?.role).toBe("assistant");
-    expect(sent?.fullRequest.messages[4]?.blocks.map((block) => block.kind)).toEqual(["text", "tool_use"]);
-    expect(sent?.fullRequest.messages[4]?.blocks[0]).toMatchObject({ text: "Let me delegate the search." });
+    expect(sent?.fullRequest.messages[4]?.parts.map((part) => part.kind)).toEqual(["text", "tool_use"]);
+    expect(sent?.fullRequest.messages[4]?.parts[0]).toMatchObject({ text: "Let me delegate the search." });
   });
 
   it("rebuild the leading part of a run of user records a request sent before the run grew", async () => {
@@ -199,7 +204,7 @@ describe("the messages an API request sent", () => {
     expect(sent?.fullRequest.messages).toHaveLength(11);
     expect(sent?.fullRequest.messages[10]).toEqual({
       role: "user",
-      blocks: [
+      parts: [
         {
           kind: "tool_result",
           shownAs: "json",
@@ -216,7 +221,7 @@ describe("the messages an API request sent", () => {
     const sent = await getWhatWasSent(await apiRequestIdOfTurn(2, SUB_AGENT_ID), { dbPath: db.dbPath });
 
     expect(sent?.fullRequest.messages.map((message) => message?.role)).toEqual(["user", "assistant", "user"]);
-    expect(sent?.fullRequest.messages[0]?.blocks).toEqual([
+    expect(sent?.fullRequest.messages[0]?.parts).toEqual([
       {
         kind: "text",
         shownAs: "text",
@@ -231,10 +236,10 @@ describe("the messages an API request sent", () => {
     const sent = await getWhatWasSent(await apiRequestIdOfTurn(5), { dbPath: db.dbPath });
 
     // lreq-5 keeps lreq-4's, which kept lreq-3's, itself the retry of lreq-2, which kept lreq-1's.
-    expect(sent?.fullRequest.messages.map((message) => message?.blocks[0])).toMatchObject([
+    expect(sent?.fullRequest.messages.map((message) => message?.parts[0])).toMatchObject([
       { text: "earlier question" },
       { text: "Earlier answer." },
-      { kind: "system-reminder" },
+      { kind: "injected-context" },
       { text: "audit the exports" },
       { text: "Let me delegate the search." },
       { kind: "tool_result" },
@@ -250,7 +255,7 @@ describe("the messages an API request sent", () => {
     const sent = await getWhatWasSent(await apiRequestIdOfTurn(4), { dbPath: db.dbPath });
 
     expect(sent?.firstNewMessageIndex).toBe(6);
-    expect(sent?.fullRequest.messages.slice(6).map((message) => message?.blocks[0])).toMatchObject([
+    expect(sent?.fullRequest.messages.slice(6).map((message) => message?.parts[0])).toMatchObject([
       { text: "The exports live in one module." },
       { text: "The date changed: it is now 2026-10-21." },
       { text: "now add a test" },
@@ -289,7 +294,7 @@ describe("the messages an API request sent", () => {
       null,
       {
         role: "user",
-        blocks: [
+        parts: [
           {
             kind: "text",
             shownAs: "text",
@@ -303,18 +308,18 @@ describe("the messages an API request sent", () => {
     ]);
   });
 
-  it("include the system message Claude Code injected, from a blob logged after the request, its string content kept", async () => {
+  it("include the date change Claude Code injected as a system message, from a blob logged after the request, its string content kept", async () => {
     const sent = await getWhatWasSent(await apiRequestIdOfTurn(4), { dbPath: db.dbPath });
     const raw = await getRawApiRequest(await apiRequestIdOfTurn(4), { dbPath: db.dbPath });
 
     expect(sent?.fullRequest.messages[7]).toEqual({
       role: "system",
-      blocks: [
+      parts: [
         {
-          kind: "text",
+          kind: "injected-context",
           shownAs: "text",
           text: "The date changed: it is now 2026-10-21.",
-          label: "Injected context",
+          label: "Date",
           preview: "The date changed: it is now 2026-10-21.",
         },
       ],
@@ -651,11 +656,11 @@ describe("What was sent, request by request", () => {
     });
   });
 
-  describe("the kind of a sent block", () => {
-    /** The blocks of a request's one message, sent as `content`, as their kind and how they show. */
+  describe("the kind of a sent part", () => {
+    /** The parts of a request's one message, sent as `content`, as their kind and how they show. */
     async function kindsOfContent(content: unknown): Promise<[string, string][]> {
       const [sent] = await whatWasSentOf([{ system: SYSTEM, tools: [], messages: [{ role: "user", content }] }]);
-      return (sent?.fullRequest.messages[0]?.blocks ?? []).map((block) => [block.kind, block.shownAs]);
+      return (sent?.fullRequest.messages[0]?.parts ?? []).map((part) => [part.kind, part.shownAs]);
     }
 
     it("is its type, a text block shown as text and any other as JSON", async () => {
@@ -679,10 +684,10 @@ describe("What was sent, request by request", () => {
     it("is a tool_use for a tool call the model made", async () => {
       const [, sent] = await whatWasSentOf(twoRequests());
 
-      expect(sent?.fullRequest.messages[1]?.blocks.map((block) => block.kind)).toEqual(["tool_use"]);
+      expect(sent?.fullRequest.messages[1]?.parts.map((part) => part.kind)).toEqual(["tool_use"]);
     });
 
-    it("is a system-reminder for a text block opening with its tag, leading whitespace aside", async () => {
+    it("is injected-context for a text block opening with a system-reminder tag, leading whitespace aside", async () => {
       expect(
         await kindsOfContent([
           { type: "text", text: SYSTEM_REMINDER },
@@ -690,28 +695,28 @@ describe("What was sent, request by request", () => {
           { type: "text", text: `See this: ${SYSTEM_REMINDER}` },
         ]),
       ).toEqual([
-        ["system-reminder", "text"],
-        ["system-reminder", "text"],
+        ["injected-context", "text"],
+        ["injected-context", "text"],
         ["text", "text"],
       ]);
     });
 
-    it("is a text block, or a system-reminder, for a message whose content is a string", async () => {
-      expect(await kindsOfContent(SYSTEM_REMINDER)).toEqual([["system-reminder", "text"]]);
+    it("is a text block, or injected-context, for a message whose content is a string", async () => {
+      expect(await kindsOfContent(SYSTEM_REMINDER)).toEqual([["injected-context", "text"]]);
     });
 
-    it("is none for a message sent without content: it has no blocks", async () => {
+    it("is none for a message sent without content: it has no parts", async () => {
       const [sent] = await whatWasSentOf([{ system: SYSTEM, tools: [], messages: [{ role: "user" }] }]);
 
-      expect(sent?.fullRequest.messages).toEqual([{ role: "user", blocks: [] }]);
+      expect(sent?.fullRequest.messages).toEqual([{ role: "user", parts: [] }]);
     });
   });
 
-  describe("the label of a sent block", () => {
-    /** The labels of each message's blocks, of the one request sending `messages`. */
+  describe("the label of a sent part", () => {
+    /** The labels of each message's parts, of the one request sending `messages`. */
     async function labelsOf(messages: RequestRecordMessage[]): Promise<string[][]> {
       const [sent] = await whatWasSentOf([{ system: SYSTEM, tools: [], messages }]);
-      return (sent?.fullRequest.messages ?? []).map((message) => (message?.blocks ?? []).map((block) => block.label));
+      return (sent?.fullRequest.messages ?? []).map((message) => (message?.parts ?? []).map((part) => part.label));
     }
 
     it("tells the context Claude Code injected from the prompt in one user message", async () => {
@@ -732,6 +737,198 @@ describe("What was sent, request by request", () => {
       expect(await labelsOf([PROMPT, { role: "system", content: "The date changed." }])).toEqual([
         ["Prompt"],
         ["Injected context"],
+      ]);
+    });
+
+    /** The label and text of each part of each message of the one request sending `messages` after `attachments` were logged. */
+    async function labelledPartsOf(
+      attachments: RecordedAttachment[],
+      messages: RequestRecordMessage[],
+    ): Promise<[string, string][][]> {
+      const [sent] = await whatWasSentOf([{ system: SYSTEM, tools: [], messages, attachments }]);
+      return (sent?.fullRequest.messages ?? []).map((message) =>
+        (message?.parts ?? []).map((part) => [part.label, part.shownAs === "text" ? part.text : part.json]),
+      );
+    }
+
+    /** `text` as the log keeps the rendered text of a system-role attachment: in a system-reminder. */
+    const wrapped = (text: string) => `<system-reminder>\n${text}\n</system-reminder>`;
+    const ENVIRONMENT_TEXT = "# Environment\nPrimary working directory: /Users/me/dev/sent\nPlatform: darwin";
+    const DATE_TEXT = "The date has changed. Today's date is now 2026-10-22.";
+    const SKILL_LISTING_TEXT = "The following skills are available:\n- tdd: Test-driven development.";
+    const CLAUDE_MD_REMINDER = wrapped("Contents of /Users/me/dev/sent/CLAUDE.md:\nKeep exports in one module.");
+
+    it("names the instruction files of the CLAUDE.md context injected in a user message, each once, in order", async () => {
+      expect(
+        await labelledPartsOf(
+          [
+            {
+              attachmentType: "instructions",
+              rendered: CLAUDE_MD_REMINDER,
+              renderedRole: "user",
+              filePaths: [
+                "/Users/me/.claude/CLAUDE.md",
+                "/Users/me/dev/sent/CLAUDE.md",
+                "/Users/me/dev/sent/AGENTS.md",
+              ],
+            },
+          ],
+          [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: CLAUDE_MD_REMINDER },
+                { type: "text", text: "audit the exports" },
+              ],
+            },
+          ],
+        ),
+      ).toEqual([
+        [
+          ["CLAUDE.md · AGENTS.md", CLAUDE_MD_REMINDER],
+          ["Prompt", "audit the exports"],
+        ],
+      ]);
+    });
+
+    it("is Instructions for instructions that list no file", async () => {
+      expect(
+        await labelledPartsOf(
+          [{ attachmentType: "instructions", rendered: CLAUDE_MD_REMINDER, renderedRole: "user" }],
+          [{ role: "user", content: [{ type: "text", text: CLAUDE_MD_REMINDER }] }],
+        ),
+      ).toEqual([[["Instructions", CLAUDE_MD_REMINDER]]]);
+    });
+
+    it("is Skill list for the skill listing, wrapped in the log and sent unwrapped in a system message", async () => {
+      expect(
+        await labelledPartsOf(
+          [{ attachmentType: "skill_listing", rendered: wrapped(SKILL_LISTING_TEXT), renderedRole: "system" }],
+          [PROMPT, { role: "system", content: [{ type: "text", text: SKILL_LISTING_TEXT }] }],
+        ),
+      ).toEqual([[["Prompt", "audit the exports"]], [["Skill list", SKILL_LISTING_TEXT]]]);
+    });
+
+    it("is Date for the date change sent as a system message's string content, logged after the request", async () => {
+      expect(
+        await labelledPartsOf(
+          [
+            {
+              attachmentType: "date",
+              rendered: wrapped(DATE_TEXT),
+              renderedRole: "system",
+              isLoggedAfterRequest: true,
+            },
+          ],
+          [{ role: "system", content: DATE_TEXT }],
+        ),
+      ).toEqual([[["Date", DATE_TEXT]]]);
+    });
+
+    it("splits a system block that fuses several attachments' texts into one labelled part each", async () => {
+      expect(
+        await labelledPartsOf(
+          [
+            { attachmentType: "environment", rendered: wrapped(ENVIRONMENT_TEXT), renderedRole: "system" },
+            { attachmentType: "skill_listing", rendered: wrapped(SKILL_LISTING_TEXT), renderedRole: "system" },
+            { attachmentType: "date", rendered: wrapped(DATE_TEXT), renderedRole: "system" },
+          ],
+          [
+            {
+              role: "system",
+              content: [{ type: "text", text: [ENVIRONMENT_TEXT, SKILL_LISTING_TEXT, DATE_TEXT].join("\n\n") }],
+            },
+          ],
+        ),
+      ).toEqual([
+        [
+          ["Environment", ENVIRONMENT_TEXT],
+          ["Skill list", SKILL_LISTING_TEXT],
+          ["Date", DATE_TEXT],
+        ],
+      ]);
+    });
+
+    it("keeps what a fused block holds around its matched pieces as Injected context", async () => {
+      const unknownText = "Something no attachment logged.";
+      expect(
+        await labelledPartsOf(
+          [
+            { attachmentType: "environment", rendered: wrapped(ENVIRONMENT_TEXT), renderedRole: "system" },
+            { attachmentType: "date", rendered: wrapped(DATE_TEXT), renderedRole: "system" },
+          ],
+          [{ role: "system", content: [ENVIRONMENT_TEXT, unknownText, DATE_TEXT].join("\n\n") }],
+        ),
+      ).toEqual([
+        [
+          ["Environment", ENVIRONMENT_TEXT],
+          ["Injected context", `\n\n${unknownText}\n\n`],
+          ["Date", DATE_TEXT],
+        ],
+      ]);
+    });
+
+    it("stays one Prompt for a user's text that quotes an injected text word for word", async () => {
+      const prompt = `Why does it say "${DATE_TEXT}" when the deadline moved?`;
+      const [sent] = await whatWasSentOf([
+        {
+          system: SYSTEM,
+          tools: [],
+          messages: [{ role: "user", content: prompt }],
+          attachments: [{ attachmentType: "date", rendered: wrapped(DATE_TEXT), renderedRole: "system" }],
+        },
+      ]);
+
+      expect(sent?.fullRequest.messages[0]?.parts.map((part) => [part.kind, part.label])).toEqual([["text", "Prompt"]]);
+    });
+
+    it("stays Injected context for a block no attachment of the file matches", async () => {
+      expect(
+        await labelledPartsOf(
+          [{ attachmentType: "date", rendered: wrapped(DATE_TEXT), renderedRole: "system" }],
+          [{ role: "system", content: "A reminder no attachment logged." }],
+        ),
+      ).toEqual([[["Injected context", "A reminder no attachment logged."]]]);
+    });
+
+    it("names a kind the table does not list after its attachment type, made readable", async () => {
+      const noteText = "Bash output is shown to the user.";
+      expect(
+        await labelledPartsOf(
+          [{ attachmentType: "bash_output_audience_note", rendered: wrapped(noteText), renderedRole: "system" }],
+          [{ role: "system", content: noteText }],
+        ),
+      ).toEqual([[["Bash output audience note", noteText]]]);
+    });
+
+    it("labels the injected context of a Sub-agent's Turn from the attachments of its own transcript", async () => {
+      const logsRoot = path.join(scratchDir, "projects");
+      const dbPath = path.join(scratchDir, "analyzer.db");
+      writeRequestRecordsLog(logsRoot, "sess-sent", [{ system: SYSTEM, tools: [], messages: [PROMPT] }]);
+      writeRequestRecordsLog(
+        logsRoot,
+        "sess-sent",
+        [
+          {
+            system: SYSTEM,
+            tools: [],
+            messages: [PROMPT, { role: "system", content: SKILL_LISTING_TEXT }],
+            attachments: [
+              { attachmentType: "skill_listing", rendered: wrapped(SKILL_LISTING_TEXT), renderedRole: "system" },
+            ],
+          },
+        ],
+        { subAgentId: "sub1" },
+      );
+      await refresh({ logsRoot, dbPath });
+      const [subAgentTurn] = ((await getTranscript("sess-sent", { dbPath, agentId: "sub1" }))?.messages ?? []).filter(
+        (message) => message.role === "assistant",
+      );
+      const sent = await getWhatWasSent(subAgentTurn!.apiRequestId!, { dbPath });
+
+      expect(sent?.fullRequest.messages.map((message) => message?.parts.map((part) => part.label))).toEqual([
+        ["Prompt"],
+        ["Skill list"],
       ]);
     });
 
@@ -770,11 +967,11 @@ describe("What was sent, request by request", () => {
     });
   });
 
-  describe("the preview of a sent block", () => {
-    /** The previews of the blocks of the one message sent as `message`. */
+  describe("the preview of a sent part", () => {
+    /** The previews of the parts of the one message sent as `message`. */
     async function previewsOf(...messages: RequestRecordMessage[]): Promise<string[]> {
       const [sent] = await whatWasSentOf([{ system: SYSTEM, tools: [], messages }]);
-      return (sent?.fullRequest.messages.at(-1)?.blocks ?? []).map((block) => block.preview);
+      return (sent?.fullRequest.messages.at(-1)?.parts ?? []).map((part) => part.preview);
     }
 
     it("is a text's first non-blank line, the system-reminder tag left out", async () => {

@@ -170,7 +170,10 @@ previous request (a change of only the date, git status or working directory
 reads as volatile) with its diff one toggle away; the tools, with those added,
 removed or changed; how many earlier messages it repeated; and, under **New
 for this Turn**, each block the request added, labelled — the prompt, a tool
-result, the context Claude Code injected. **Raw JSON** swaps the view for the
+result, the context Claude Code injected, each piece of it named for what it is
+(the CLAUDE.md and AGENTS.md files, Skill list, Date, Environment, Token
+budget, …) and a message fusing several split into one line each, opening to
+its text exactly as sent. **Raw JSON** swaps the view for the
 request body as the logs rebuild it, as copyable JSON. A message the logs
 cannot rebuild is shown missing and counted. A turn Claude Code had to retry
 shows how many failed attempts preceded it and the time they lost, though not
