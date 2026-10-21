@@ -138,7 +138,7 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     await expect(rawView.getByText("anthropic-version:", { exact: true })).toBeVisible();
   });
 
-  test("shows what an unrecorded Turn sent, from its log: the changes, the whole request, and the body so far", async ({
+  test("shows what an unrecorded Turn sent, from its log: the new messages and changes, the whole request, and the rebuilt body", async ({
     page,
   }) => {
     await openConversation(page, LOGGED_REQUESTS_TITLE);
@@ -146,7 +146,13 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     // The third Turn: the day after, its system prompt changed and Grep was loaded.
     const whatWasSent = page.getByRole("main").getByRole("group").filter({ hasText: "What was sent" }).nth(2);
     await whatWasSent.getByText("What was sent").click();
-    await expect(whatWasSent.getByText("Messages: not shown yet for an API request from the logs.")).toBeVisible();
+    // Its new messages: the previous Turn, the date change Claude Code injected, and the prompt.
+    await expect(
+      whatWasSent.getByRole("heading", { name: "New since the previous API request (3 messages)" }),
+    ).toBeVisible();
+    await expect(whatWasSent.getByText(/The date has changed\. Today's date is now/)).toBeVisible();
+    await expect(whatWasSent.getByText("Now check the date filter on the same query.")).toBeVisible();
+    await expect(whatWasSent.getByText(/could not be rebuilt/)).toHaveCount(0);
     await expect(whatWasSent.getByRole("heading", { name: "System prompt changed" })).toBeVisible();
     await expect(whatWasSent.getByText(/^Added: Grep$/)).toBeVisible();
     await expect(factOf(whatWasSent, "max_tokens")).toHaveText("32000");
@@ -158,12 +164,15 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     await expect(requestView.getByRole("heading", { name: "System prompt (2 blocks)" })).toBeVisible();
     await expect(requestView.getByRole("heading", { name: "Tools (3 tools)" })).toBeVisible();
     await expect(requestView.getByText("Cache breakpoint: ephemeral 1h")).toBeVisible();
+    await expect(requestView.getByRole("heading", { name: "Messages (6 messages)" })).toBeVisible();
+    await expect(requestView.getByText(/# claudeMd/)).toBeVisible();
 
     await whatWasSent.getByRole("tab", { name: "Raw" }).click();
     const rawView = whatWasSent.getByRole("tabpanel", { name: "Raw" });
     await expect(rawView.getByRole("tab")).toHaveText(["Request body"]);
     await expect(rawView.getByText("tools", { exact: true })).toBeVisible();
-    await expect(rawView.getByText("messages", { exact: true })).toHaveCount(0);
+    await expect(rawView.getByText("messages", { exact: true })).toBeVisible();
+    await expect(rawView.getByText(/^Rebuilt from the conversation log/)).toBeVisible();
     await expect(rawView.getByRole("button", { name: "Copy JSON" })).toBeVisible();
   });
 

@@ -10,8 +10,8 @@
 // facts, a switch picks the view: Changes (what this request added), Request
 // (all of it, by part) or Raw (its JSON, fetched from the route's `/raw`
 // sibling the first time Raw opens). What the logs do not keep — timings,
-// failed attempts, headers, the response, and for now the messages — is left
-// out, the messages said so.
+// failed attempts, headers, the response — is left out; a message they could
+// not rebuild is shown missing at its place, and counted.
 //
 // ADR-0002: no core import — the payload comes over the route, its types from
 // the core-free `_lib/transcript`.
@@ -138,10 +138,17 @@ function WhatWasSentView({ whatWasSent, source }: { whatWasSent: WhatWasSent; so
       ? callRoute(routes.api["logged-api-request"](String(source.loggedApiRequestId)).raw.GET())
       : callRoute(routes.api["api-request"](String(source.apiRequestId)).raw.GET()),
   );
-  const { failedAttempts } = whatWasSent;
+  const { failedAttempts, missingMessageCount, fullRequest } = whatWasSent;
   return (
     <>
       <Facts whatWasSent={whatWasSent} />
+
+      {missingMessageCount > 0 && (
+        <p className="sent-line">
+          {missingMessageCount} of {countLabel(fullRequest.messages.length, "message")} could not be rebuilt from the
+          logs.
+        </p>
+      )}
 
       {failedAttempts.length > 0 && (
         <section className="sent-section">
@@ -178,7 +185,7 @@ function WhatWasSentView({ whatWasSent, source }: { whatWasSent: WhatWasSent; so
         </TabsContent>
         <TabsContent value="raw" className="sent-view">
           <ReadBody state={raw.state} subject="the raw request">
-            {(rawApiRequest) => <RawView rawApiRequest={rawApiRequest} />}
+            {(rawApiRequest) => <RawView rawApiRequest={rawApiRequest} source={source} />}
           </ReadBody>
         </TabsContent>
       </Tabs>
@@ -250,20 +257,11 @@ function ChangesView({ whatWasSent }: { whatWasSent: WhatWasSent }) {
   const hasPreviousRequest = previousApiRequestId !== null;
   return (
     <>
-      {fullRequest.messages === null ? (
-        <>
-          <MessagesNotShownYet />
-          {!hasPreviousRequest && (
-            <p className="sent-line">No earlier API request of this Agent: nothing to compare against.</p>
-          )}
-        </>
-      ) : (
-        <NewMessages
-          newMessages={fullRequest.messages.slice(firstNewMessageIndex)}
-          isSideRequest={isSideRequest}
-          hasPreviousRequest={hasPreviousRequest}
-        />
-      )}
+      <NewMessages
+        newMessages={fullRequest.messages.slice(firstNewMessageIndex)}
+        isSideRequest={isSideRequest}
+        hasPreviousRequest={hasPreviousRequest}
+      />
 
       {systemPromptDiff ? (
         <section className="sent-section">
@@ -305,7 +303,7 @@ function NewMessages({
   isSideRequest,
   hasPreviousRequest,
 }: {
-  newMessages: SentMessage[];
+  newMessages: (SentMessage | null)[];
   isSideRequest: boolean;
   hasPreviousRequest: boolean;
 }) {
@@ -317,18 +315,13 @@ function NewMessages({
           ? `Everything it sent (${messageCount})`
           : hasPreviousRequest
             ? `New since the previous API request (${messageCount})`
-            : `No earlier API request of this Agent was recorded: every message is new (${messageCount})`}
+            : `No earlier API request of this Agent: every message is new (${messageCount})`}
       </h4>
       {newMessages.map((message, index) => (
         <MessageBlocks key={index} message={message} />
       ))}
     </section>
   );
-}
-
-/** Says that an API request from the logs shows no messages yet, rather than an empty list. */
-function MessagesNotShownYet() {
-  return <p className="sent-line">Messages: not shown yet for an API request from the logs.</p>;
 }
 
 /** The whole request by part: its parameters, system blocks, tool definitions and every message. */
@@ -361,16 +354,12 @@ function RequestView({ whatWasSent }: { whatWasSent: WhatWasSent }) {
           </details>
         ))}
       </section>
-      {messages === null ? (
-        <MessagesNotShownYet />
-      ) : (
-        <section className="sent-section">
-          <h4 className="io-label">Messages ({countLabel(messages.length, "message")})</h4>
-          {messages.map((message, index) => (
-            <MessageBlocks key={index} message={message} />
-          ))}
-        </section>
-      )}
+      <section className="sent-section">
+        <h4 className="io-label">Messages ({countLabel(messages.length, "message")})</h4>
+        {messages.map((message, index) => (
+          <MessageBlocks key={index} message={message} />
+        ))}
+      </section>
     </>
   );
 }
@@ -389,12 +378,23 @@ const RAW_PARTS = [
 /**
  * The API request as JSON: its request body, response body and request
  * headers, each a sub-tab with a copy button. An API request from the logs,
- * which keep no headers and no response, shows its request body alone.
+ * which keep no headers and no response, shows its request body alone, under
+ * what it lacks: what the logs leave out, and the messages they could not rebuild.
  */
-function RawView({ rawApiRequest }: { rawApiRequest: RawApiRequest }) {
+function RawView({ rawApiRequest, source }: { rawApiRequest: RawApiRequest; source: WhatWasSentSource }) {
   const parts = rawApiRequest.requestHeaders === null ? RAW_PARTS.slice(0, 1) : RAW_PARTS;
+  const { missingMessageCount } = rawApiRequest;
   return (
     <Tabs defaultValue="request-body" className="sent-views">
+      {source.from === "logs" && (
+        <p className="sent-line">
+          Rebuilt from the conversation log: it lacks the billing-header system block, <code>metadata</code> and{" "}
+          <code>stream</code>
+          {missingMessageCount > 0 &&
+            `, and the ${countLabel(missingMessageCount, "message")} the logs could not rebuild`}
+          .
+        </p>
+      )}
       <TabsList aria-label="Part of the raw request" className="sent-tab-list">
         {parts.map((part) => (
           <TabsTrigger key={part.value} value={part.value} className="sent-tab">
@@ -417,7 +417,15 @@ function RawView({ rawApiRequest }: { rawApiRequest: RawApiRequest }) {
   );
 }
 
-function MessageBlocks({ message }: { message: SentMessage }) {
+/** A message by its role and blocks; one the logs could not rebuild (null), as a line saying so, at its place. */
+function MessageBlocks({ message }: { message: SentMessage | null }) {
+  if (message === null) {
+    return (
+      <div className="sent-message">
+        <p className="sent-line">A message the logs could not rebuild.</p>
+      </div>
+    );
+  }
   return (
     <div className="sent-message">
       <span className="sent-role">{message.role}</span>

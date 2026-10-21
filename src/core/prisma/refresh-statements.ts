@@ -242,6 +242,11 @@ export function prepareRefreshStatements(db: Database.Database) {
        ON CONFLICT ("hash") DO UPDATE SET "tools_json" = "excluded"."tools_json"
        WHERE "excluded"."tools_json" < "tool_set"."tools_json"`,
   );
+  const insertSentMessage = db.prepare(
+    `INSERT INTO "sent_message" ("hash", "message_json") VALUES (?, ?)
+       ON CONFLICT ("hash") DO UPDATE SET "message_json" = "excluded"."message_json"
+       WHERE "excluded"."message_json" < "sent_message"."message_json"`,
+  );
   const deleteUnreferencedSystemPrompts = db.prepare(
     `DELETE FROM "system_prompt" WHERE NOT EXISTS
        (SELECT 1 FROM "logged_api_request" WHERE "system_prompt_hash" = "system_prompt"."hash")`,
@@ -249,6 +254,10 @@ export function prepareRefreshStatements(db: Database.Database) {
   const deleteUnreferencedToolSets = db.prepare(
     `DELETE FROM "tool_set" WHERE NOT EXISTS
        (SELECT 1 FROM "logged_api_request" WHERE "tool_set_hash" = "tool_set"."hash")`,
+  );
+  const deleteUnnamedSentMessages = db.prepare(
+    `DELETE FROM "sent_message" WHERE "hash" NOT IN
+       (SELECT "tail_hash"."value" FROM "logged_api_request", json_each("tail_message_hashes_json") AS "tail_hash")`,
   );
   // `uuid` is not unique: the first message stored with it decides.
   const selectMessageOwner = db.prepare(
@@ -301,10 +310,13 @@ export function prepareRefreshStatements(db: Database.Database) {
     insertSystemPrompt: (hash: string, blocksJson: string) => void insertSystemPrompt.run(hash, blocksJson),
     /** Store a tool set under its hash, keeping the smaller spelling when one already is. */
     insertToolSet: (hash: string, toolsJson: string) => void insertToolSet.run(hash, toolsJson),
-    /** Delete every system prompt and tool set no logged API request references any more. */
+    /** Store a sent message under its hash, keeping the smaller spelling when one already is. */
+    insertSentMessage: (hash: string, messageJson: string) => void insertSentMessage.run(hash, messageJson),
+    /** Delete every system prompt and tool set no logged API request references any more, and every sent message no tail names. */
     deleteUnreferencedRequestPieces: () => {
       deleteUnreferencedSystemPrompts.run();
       deleteUnreferencedToolSets.run();
+      deleteUnnamedSentMessages.run();
     },
   };
 }

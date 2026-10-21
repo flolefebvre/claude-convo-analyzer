@@ -1,8 +1,9 @@
 // What was sent (GLOSSARY.md): what a Turn's API request actually sent the
 // model, read on demand when the reader opens it, from one of two sources.
 // From the logs (Claude Code 2.1.300+, ADR-0007), the database holds it all:
-// the `logged_api_request` row and its system prompt and tool set — the
-// messages are not rebuilt yet. From a Recording, the database locates the
+// the `logged_api_request` rows of the Agent, whose base chain gives the
+// request's message hashes, and its system prompt, tool set and messages,
+// each stored under its hash. From a Recording, the database locates the
 // API request and the previous one of the same Agent, and the Recording file
 // provides their bodies, the only two restored (ADR-0006). The Raw view reads
 // one API request the same way. Framework-free (ADR-0002).
@@ -147,10 +148,12 @@ export type WhatWasSent = {
   /**
    * Index in `fullRequest.messages` of the first message the previous API
    * request did not send — the messages before it are those the two share, in
-   * order (cache breakpoints ignored); 0 without a previous one, or without
-   * the messages.
+   * order (cache breakpoints ignored; from the logs, by hash); 0 without a
+   * previous one.
    */
   firstNewMessageIndex: number;
+  /** How many of `fullRequest.messages` the logs could not rebuild (its null entries); 0 from a Recording. */
+  missingMessageCount: number;
   /** How the system prompt changed since the previous API request; null when it did not, or without one. */
   systemPromptDiff: SystemPromptDiff | null;
   /** How the tool definitions changed since the previous API request; null when none did, or without one. */
@@ -159,8 +162,8 @@ export type WhatWasSent = {
   fullRequest: {
     systemBlocks: SentSystemBlock[];
     tools: SentTool[];
-    /** Null for an API request from the logs: its messages are not rebuilt yet. */
-    messages: SentMessage[] | null;
+    /** Every message, in order: null for one the logs could not rebuild, kept at its place. */
+    messages: (SentMessage | null)[];
     /** Every body field but `system`, `tools` and `messages`, as sent. */
     parameterByName: Record<string, JsonValue>;
   };
@@ -171,9 +174,11 @@ export type RawApiRequest = {
   /**
    * From a Recording, the request body exactly as sent, rebuilt from its
    * pieces (`metadata.user_id` redacted); from the logs, the body as they
-   * rebuild it so far — parameters, system prompt and tools, no messages.
+   * rebuild it, every message they could not rebuild left out.
    */
   requestBody: JsonValue;
+  /** How many messages the logs could not rebuild, left out of `requestBody`; 0 from a Recording. */
+  missingMessageCount: number;
   /** The response body as the Recording reassembled it (a stream's events folded into one message); null without one, and from the logs. */
   responseBody: JsonValue;
   /** The request headers, credentials redacted; null from the logs, which do not keep them. */
@@ -270,6 +275,7 @@ export async function getWhatWasSent(apiRequestId: number, opts: WhatWasSentOpti
       })),
       previousApiRequestId: previousBody === null ? null : previousRow!.id,
       firstNewMessageIndex: sharedPrefixLength(messages, previousBody === null ? [] : messagesOf(previousBody)),
+      missingMessageCount: 0,
       ...pieceChanges(previousBody, body),
       fullRequest: fullRequestOf(body, messages.map(sentMessage)),
     };
@@ -288,7 +294,7 @@ function pieceChanges(
 }
 
 /** The whole of `body`, by part, with `messages` as its messages. */
-function fullRequestOf(body: RequestBody, messages: SentMessage[] | null): WhatWasSent["fullRequest"] {
+function fullRequestOf(body: RequestBody, messages: (SentMessage | null)[]): WhatWasSent["fullRequest"] {
   return {
     systemBlocks: systemBlocksOf(body).map(sentSystemBlock),
     tools: toolsOf(body).map(sentTool),
@@ -317,6 +323,7 @@ export async function getRawApiRequest(
     return {
       // Both bodies were parsed from JSON when the Recording was read.
       requestBody: (apiRequest.body ?? null) as JsonValue,
+      missingMessageCount: 0,
       responseBody: (apiRequest.response.body ?? null) as JsonValue,
       requestHeaders: apiRequest.headers,
     };
@@ -368,8 +375,9 @@ async function withReadClient<Result>(
  * from the logs (docs/conversation-log-format.md §9), against the previous
  * API request of the same Agent: the latest earlier one of its file a Turn
  * answered, so an unanswered request, retried since, is skipped. Its messages
- * are not rebuilt yet (`fullRequest.messages` is null); what only a Recording
- * knows — timings, failed attempts — is left out. Null for an unknown row.
+ * are rebuilt from the database, a message it could not rebuild kept as null
+ * at its place and counted; what only a Recording knows — timings, failed
+ * attempts — is left out. Null for an unknown row.
  *
  * @example
  * const whatWasSent = await getLoggedWhatWasSent(source.loggedApiRequestId);
@@ -384,27 +392,35 @@ export async function getLoggedWhatWasSent(
       orderBy: { positionInFile: "desc" },
       include: LOGGED_API_REQUEST_PIECES,
     });
-    const body = loggedRequestBody(row);
+    const messageHashesOf = await messageHashesOfAgentRequests(prisma, row);
+    const messageHashes = messageHashesOf(row);
+    const body = await loggedRequestBody(prisma, row, messageHashes);
+    const messages = (body.messages as (JsonValue | null)[]).map((message) =>
+      message === null ? null : sentMessage(message),
+    );
     return {
       isSideRequest: false,
       parameters: sentParameters(body, {}),
       timings: null,
       failedAttempts: [],
       previousApiRequestId: previousRow?.id ?? null,
-      firstNewMessageIndex: 0,
-      ...pieceChanges(previousRow === null ? null : loggedRequestBody(previousRow), body),
-      fullRequest: fullRequestOf(body, null),
+      firstNewMessageIndex:
+        previousRow === null ? 0 : sharedMessageHashPrefixLength(messageHashes, messageHashesOf(previousRow)),
+      missingMessageCount: messages.filter((message) => message === null).length,
+      ...pieceChanges(previousRow === null ? null : loggedRequestPieces(previousRow), body),
+      fullRequest: fullRequestOf(body, messages),
     };
   });
 }
 
 /**
  * The API request of `logged_api_request` row `loggedApiRequestId` raw: its
- * body as the logs rebuild it so far (docs/conversation-log-format.md §9,
- * step 4) — the parameters, `params.betas` included, then the system prompt
- * with its cache breakpoints and the tools, no messages yet. Not exactly as
- * sent: the logs leave out the billing-header system block, `metadata` and
- * `stream`. No response, no headers. Null for an unknown row.
+ * body as the logs rebuild it (docs/conversation-log-format.md §9, step 4) —
+ * the parameters, `params.betas` included, then the system prompt, the tools
+ * and the messages, each cache breakpoint set at its path — every message it
+ * could not rebuild left out and counted. Not exactly as sent: the logs leave
+ * out the billing-header system block, `metadata` and `stream`. No response,
+ * no headers. Null for an unknown row.
  *
  * @example
  * const rawApiRequest = await getLoggedRawApiRequest(source.loggedApiRequestId);
@@ -413,11 +429,18 @@ export async function getLoggedRawApiRequest(
   loggedApiRequestId: number,
   opts: { dbPath?: string } = {},
 ): Promise<RawApiRequest | null> {
-  return withLoggedApiRequestRow(loggedApiRequestId, opts.dbPath, async (row) => ({
-    requestBody: loggedRequestBody(row),
-    responseBody: null,
-    requestHeaders: null,
-  }));
+  return withLoggedApiRequestRow(loggedApiRequestId, opts.dbPath, async (row, prisma) => {
+    const messageHashes = (await messageHashesOfAgentRequests(prisma, row))(row);
+    const body = await loggedRequestBody(prisma, row, messageHashes);
+    const messages = body.messages as (JsonValue | null)[];
+    const resolvedMessages = messages.filter((message) => message !== null);
+    return {
+      requestBody: { ...body, messages: resolvedMessages },
+      missingMessageCount: messages.length - resolvedMessages.length,
+      responseBody: null,
+      requestHeaders: null,
+    };
+  });
 }
 
 /** The pieces a `logged_api_request` row is read with. */
@@ -449,7 +472,84 @@ function withLoggedApiRequestRow<Result>(
   });
 }
 
-/** What {@link loggedRequestBody} needs of a `logged_api_request` row. */
+/** What the walk of a base chain needs of a `logged_api_request` row. */
+type MessageChainRow = {
+  recordId: string;
+  baseRecordId: string | null;
+  keptMessageCount: number;
+  tailMessageHashesJson: string;
+  positionInFile: number;
+};
+
+/** A message's hash; null where the logs do not say which message stood there (a base that is in no request of the file). */
+type MessageHash = string | null;
+
+/**
+ * Read the requests of `row`'s Agent up to it, once, and return what gives
+ * the message hashes of any of them (log-format §9, step 1): the first
+ * `keep` of its base's, then its tail — its base being the latest earlier
+ * request of the file with that record id, and a base the file does not hold
+ * leaving its `keep` messages unknown.
+ */
+async function messageHashesOfAgentRequests(
+  prisma: ReadPrisma,
+  row: { agentId: number; positionInFile: number },
+): Promise<(request: MessageChainRow) => MessageHash[]> {
+  const agentRequests = await prisma.loggedApiRequest.findMany({
+    where: { agentId: row.agentId, positionInFile: { lte: row.positionInFile } },
+    orderBy: { positionInFile: "asc" },
+    select: {
+      recordId: true,
+      baseRecordId: true,
+      keptMessageCount: true,
+      tailMessageHashesJson: true,
+      positionInFile: true,
+    },
+  });
+  const requestsByRecordId = new Map<string, MessageChainRow[]>();
+  for (const request of agentRequests) {
+    requestsByRecordId.set(request.recordId, [...(requestsByRecordId.get(request.recordId) ?? []), request]);
+  }
+  const baseOf = (request: MessageChainRow): MessageChainRow | undefined =>
+    request.baseRecordId === null
+      ? undefined
+      : requestsByRecordId
+          .get(request.baseRecordId)
+          ?.findLast((candidate) => candidate.positionInFile < request.positionInFile);
+  return (request) => {
+    const chain = [request];
+    for (let base = baseOf(request); base !== undefined; base = baseOf(base)) chain.unshift(base);
+    let messageHashes: MessageHash[] = [];
+    for (const link of chain) {
+      const keptMessageHashes = Array.from(
+        { length: link.keptMessageCount },
+        (_, index) => messageHashes[index] ?? null,
+      );
+      // Every column was written by `JSON.stringify` (refresh.ts).
+      messageHashes = [...keptMessageHashes, ...(JSON.parse(link.tailMessageHashesJson) as string[])];
+    }
+    return messageHashes;
+  };
+}
+
+/**
+ * The length of the longest prefix two requests' message hashes share: equal
+ * hashes match whether or not their messages could be rebuilt, and a position
+ * whose hash is unknown (null) never matches.
+ */
+function sharedMessageHashPrefixLength(messageHashes: MessageHash[], previousMessageHashes: MessageHash[]): number {
+  let length = 0;
+  while (
+    length < Math.min(messageHashes.length, previousMessageHashes.length) &&
+    messageHashes[length] !== null &&
+    messageHashes[length] === previousMessageHashes[length]
+  ) {
+    length += 1;
+  }
+  return length;
+}
+
+/** What {@link loggedRequestPieces} needs of a `logged_api_request` row. */
 type LoggedApiRequestRow = {
   parametersJson: string;
   cacheBreakpointsJson: string;
@@ -458,11 +558,39 @@ type LoggedApiRequestRow = {
 };
 
 /**
- * The body a logged API request's row rebuilds so far: its parameters, then
- * its system blocks — each carrying the `cache_control` its breakpoints set at
- * `["system", i]` — and its tools; a piece its file lacked is left out.
+ * The body of a logged API request: its pieces (see {@link loggedRequestPieces}),
+ * then the messages of `messageHashes` as stored — null for one the database
+ * does not hold, or whose hash is unknown — each carrying the `cache_control`
+ * its breakpoints set at `["messages", i, "content", j]`.
  */
-function loggedRequestBody(row: LoggedApiRequestRow): RequestBody {
+async function loggedRequestBody(
+  prisma: ReadPrisma,
+  row: LoggedApiRequestRow,
+  messageHashes: MessageHash[],
+): Promise<RequestBody> {
+  const sentMessageRows = await prisma.sentMessage.findMany({
+    where: { hash: { in: [...new Set(messageHashes.filter((hash) => hash !== null))] } },
+  });
+  const messageJsonByHash = new Map(
+    sentMessageRows.map((sentMessageRow) => [sentMessageRow.hash, sentMessageRow.messageJson]),
+  );
+  const messages = messageHashes.map((hash) => {
+    const messageJson = hash === null ? undefined : messageJsonByHash.get(hash);
+    return messageJson === undefined ? null : (JSON.parse(messageJson) as JsonValue);
+  });
+  return {
+    ...loggedRequestPieces(row),
+    messages: withMessageCacheBreakpoints(messages, JSON.parse(row.cacheBreakpointsJson) as JsonValue),
+  };
+}
+
+/**
+ * The body a logged API request's row holds without its messages: its
+ * parameters, then its system blocks — each carrying the `cache_control` its
+ * breakpoints set at `["system", i]` — and its tools; a piece its file lacked
+ * is left out.
+ */
+function loggedRequestPieces(row: LoggedApiRequestRow): RequestBody {
   // Every column was written by `JSON.stringify` (refresh.ts).
   const body = JSON.parse(row.parametersJson) as RequestBody;
   if (row.systemPrompt !== null) {
@@ -475,17 +603,49 @@ function loggedRequestBody(row: LoggedApiRequestRow): RequestBody {
   return body;
 }
 
+/** The well-formed cache breakpoints of `cacheBreakpoints`: each `path`, and the `value` set there. */
+function cacheBreakpointsOf(cacheBreakpoints: JsonValue): { path: JsonValue[]; value: JsonValue }[] {
+  return (Array.isArray(cacheBreakpoints) ? cacheBreakpoints : []).flatMap((breakpoint) =>
+    isPlainObject(breakpoint) && Array.isArray(breakpoint.path) && breakpoint.value !== undefined
+      ? [{ path: breakpoint.path, value: breakpoint.value }]
+      : [],
+  );
+}
+
 /** `systemBlocks` with each breakpoint at a path `["system", i]` set as block `i`'s `cache_control`. */
 function withSystemCacheBreakpoints(systemBlocks: JsonValue[], cacheBreakpoints: JsonValue): JsonValue[] {
   const blocks = [...systemBlocks];
-  for (const breakpoint of Array.isArray(cacheBreakpoints) ? cacheBreakpoints : []) {
-    if (!isPlainObject(breakpoint) || !Array.isArray(breakpoint.path) || breakpoint.path.length !== 2) continue;
-    const [part, index] = breakpoint.path;
+  for (const { path, value } of cacheBreakpointsOf(cacheBreakpoints)) {
+    const [part, index] = path;
     const block = typeof index === "number" ? blocks[index] : undefined;
-    if (part !== "system" || !isPlainObject(block) || breakpoint.value === undefined) continue;
-    blocks[index as number] = { ...block, cache_control: breakpoint.value };
+    if (path.length !== 2 || part !== "system" || !isPlainObject(block)) continue;
+    blocks[index as number] = { ...block, cache_control: value };
   }
   return blocks;
+}
+
+/**
+ * `messages` with each breakpoint at a path `["messages", i, "content", j]`
+ * set as the `cache_control` of message `i`'s content block `j` — none on a
+ * message missing, or whose content is a string.
+ */
+function withMessageCacheBreakpoints(
+  messages: (JsonValue | null)[],
+  cacheBreakpoints: JsonValue,
+): (JsonValue | null)[] {
+  const breakpointMessages = [...messages];
+  for (const { path, value } of cacheBreakpointsOf(cacheBreakpoints)) {
+    const [part, messageIndex, contentField, blockIndex] = path;
+    if (path.length !== 4 || part !== "messages" || contentField !== "content") continue;
+    const message = typeof messageIndex === "number" ? breakpointMessages[messageIndex] : undefined;
+    if (!isPlainObject(message) || !Array.isArray(message.content) || typeof blockIndex !== "number") continue;
+    const block = message.content[blockIndex];
+    if (!isPlainObject(block)) continue;
+    const content = [...message.content];
+    content[blockIndex] = { ...block, cache_control: value };
+    breakpointMessages[messageIndex as number] = { ...message, content };
+  }
+  return breakpointMessages;
 }
 
 /**

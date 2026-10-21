@@ -15,8 +15,9 @@ import { loggedApiRequestIdSchema } from "./logged-api-request-id-schema";
 
 /**
  * What the logged API request with row id `[id]` sent (parameters, the
- * system-prompt and tools diffs, the system prompt and tools; no messages
- * yet): 400 for a malformed id, 404 for an unknown one.
+ * messages — the new ones, and those not rebuilt counted — the system-prompt
+ * and tools diffs, the system prompt and tools): 400 for a malformed id, 404
+ * for an unknown one.
  *
  * @example const res = await callRoute(routes.api["logged-api-request"](String(source.loggedApiRequestId)).GET());
  */

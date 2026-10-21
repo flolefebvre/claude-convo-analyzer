@@ -151,6 +151,26 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     const sent = await getLoggedWhatWasSent(third.loggedApiRequestId, { dbPath: seed.dbPath });
     expect(sent?.systemPromptDiff?.isVolatileOnly).toBe(false);
     expect(sent?.toolsDiff?.added.map((tool) => tool.name)).toEqual(["Grep"]);
+    // Its new messages: the Turn before it, the injected date change, and the prompt.
+    const newMessages = sent?.fullRequest.messages.slice(sent.firstNewMessageIndex);
+    expect(newMessages?.map((message) => [message?.role, message?.blocks[0]?.kind])).toEqual([
+      ["assistant", "text"],
+      ["system", "text"],
+      ["user", "text"],
+    ]);
+
+    // The first Turn's prompt went out after the CLAUDE.md system-reminder injected into its message.
+    const first = view!.messages.find((m) => m.role === "assistant")!.whatWasSentSource!;
+    if (first.from !== "logs") throw new Error("not from the logs");
+    const firstSent = await getLoggedWhatWasSent(first.loggedApiRequestId, { dbPath: seed.dbPath });
+    expect(firstSent?.fullRequest.messages[0]?.blocks.map((block) => block.kind)).toEqual(["system-reminder", "text"]);
+
+    // Every message of every Turn's request is rebuilt, from a blob or from the records.
+    for (const turn of turns) {
+      if (turn.whatWasSentSource?.from !== "logs") throw new Error("not from the logs");
+      const turnSent = await getLoggedWhatWasSent(turn.whatWasSentSource.loggedApiRequestId, { dbPath: seed.dbPath });
+      expect(turnSent?.missingMessageCount).toBe(0);
+    }
   });
 
   it("seeds a repo with two worktree Projects, and a /tmp parent with per-session sub-Folders", async () => {

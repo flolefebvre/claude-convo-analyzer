@@ -26,7 +26,7 @@ true` and the same per-turn `usage` shape as the main thread — often on a
 
 ## Decision
 
-Model the domain as eleven tables:
+Model the domain as twelve tables:
 
 - `project` — one per Project path: the directory its Conversations run in,
   per their records' `cwd` (GLOSSARY.md, Project), not the log folder they are
@@ -72,6 +72,10 @@ Model the domain as eleven tables:
   definitions a `logged_api_request` sent, once, under the sha256 of its
   canonical JSON, shared across Conversations; a Refresh deletes those no
   request references any more.
+- `sent_message` — each distinct message a `logged_api_request`'s `tail`
+  names, once, under that hash, shared across Conversations; a Refresh deletes
+  those no tail names any more. A request's whole message list is rebuilt at
+  read time from its `base` chain.
 
 Token accounting rules:
 

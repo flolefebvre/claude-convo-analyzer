@@ -80,6 +80,7 @@ describe("GET /api/api-request/[id]/raw", () => {
     expect(res.status).toBe(200);
     expect(res.json).toEqual({
       requestBody: FIRST_TURN.body,
+      missingMessageCount: 0,
       responseBody: null,
       requestHeaders: { "anthropic-version": "2023-06-01", authorization: "<redacted>" },
     });

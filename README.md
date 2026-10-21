@@ -159,10 +159,11 @@ CCA_DB_PATH=data/demo.db CCA_LOGS_ROOT=/tmp/demo-logs pnpm dev
 
 Since Claude Code 2.1.300 the logs record each request Claude Code sends, and
 every turn of such a conversation, sub-agents included, shows **What was
-sent** without the Recorder: how the system prompt and tools changed since the
-previous request, the whole system prompt and tools, the request parameters,
-and the request body as the logs rebuild it so far. The messages it sent are
-not shown yet. Where a turn was also recorded, what the logs hold wins.
+sent** without the Recorder: the messages new since the previous request, the
+system-reminders Claude Code injected included, how the system prompt and
+tools changed since it, the whole request with every message, and the request
+body as the logs rebuild it. A message the logs cannot rebuild is shown
+missing and counted. Where a turn was also recorded, what the logs hold wins.
 
 Before 2.1.300 the logs show the conversation, but not what Claude Code
 actually sent the API: the system prompt, the tool definitions, the

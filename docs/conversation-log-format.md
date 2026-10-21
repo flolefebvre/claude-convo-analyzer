@@ -47,28 +47,28 @@ Each `.jsonl` file is **one JSON object per line**, each with a `type`.
 
 Counts are from the snapshot (across main + sub-agent files combined).
 
-| `type`                  | ~count | What it is                                                                                                                                                                                                                                              | Modeled?                                 |
-| ----------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
-| `assistant`             | 11808  | An assistant turn (see §3). Carries `message.usage`, `message.model`, content blocks, attribution.                                                                                                                                                      | **Yes** → `message` (+ `tool_call`)      |
-| `user`                  | 7251   | A user message OR a `tool_result` carrier (see §4).                                                                                                                                                                                                     | **Yes** → `message` / feeds `tool_call`  |
-| `attachment`            | 3105   | A dict `attachment` tied to a message via `parentUuid`: pasted content (images, files), a `queued_command` — a message delivered while the agent was working (§8) — or, since 2.1.266, injected context with the text the model saw in `rendered` (§9). | **Partly** → `queued_command` only (§8)  |
-| `ai-title`              | 1252   | `aiTitle`: AI-generated conversation title.                                                                                                                                                                                                             | **Yes** → `conversation.title`           |
-| `mode`                  | 1016   | `mode` (e.g. `normal`) state marker.                                                                                                                                                                                                                    | **No** (low value)                       |
-| `permission-mode`       | 1013   | `permissionMode` (e.g. `default`, `plan`) state marker. Also present per-turn on `user` records.                                                                                                                                                        | **Partly** (per-turn field on `message`) |
-| `last-prompt`           | 992    | `lastPrompt` text + `leafUuid`. Duplicates content already in `user` records.                                                                                                                                                                           | **No** (redundant)                       |
-| `file-history-snapshot` | 798    | `snapshot` dict = file contents for undo/checkpoint, keyed to a `messageId`. Lets you reconstruct which files changed + diffs.                                                                                                                          | **No** (large; see §6)                   |
-| `queue-operation`       | 632    | Queued user input (`operation: enqueue`, `content`).                                                                                                                                                                                                    | **No**                                   |
-| `system`                | 522    | Meta events by `subtype`: `turn_duration` (`durationMs`, `messageCount`), compaction (`compactMetadata`), API retries (`retryAttempt`, `maxRetries`, `retryInMs`), errors.                                                                              | **Partly** → `turn_duration` table only  |
-| `pr-link`               | 78     | `prNumber`, `prUrl`, `prRepository` — a PR surfaced in the session.                                                                                                                                                                                     | **Yes** → `pr_link`                      |
-| `bridge-session`        | 58     | `bridgeSessionId` — links a CLI session to a web/bridge session.                                                                                                                                                                                        | **No**                                   |
-| `agent-name`            | 50     | `agentName` — a name assigned to a (sub)agent session.                                                                                                                                                                                                  | **No**                                   |
-| `agent-setting`         | 23     | `agentSetting` (e.g. `claude`).                                                                                                                                                                                                                         | **No**                                   |
-| `worktree-state`        | 15     | `worktreeSession` dict — git worktree association.                                                                                                                                                                                                      | **No**                                   |
-| `custom-title`          | 15     | `customTitle` — user-set conversation title.                                                                                                                                                                                                            | **Consider** (overrides `ai-title`)      |
-| `api-request`           | §9     | One API request an Agent sent, since 2.1.300: its parameters, and pointers to its system prompt, tools and messages.                                                                                                                                    | **No** (§9)                              |
-| `api-request-shape`     | §9     | The system prompt and tools of `api-request`s, stored once under `shapeHash`.                                                                                                                                                                           | **No** (§9)                              |
-| `api-request-blob`      | §9     | One message of `api-request`s, stored once under its hash.                                                                                                                                                                                              | **No** (§9)                              |
-| `cost-state`            | §9     | Claude Code's own per-process cost and usage totals.                                                                                                                                                                                                    | **No** (§9)                              |
+| `type`                  | ~count | What it is                                                                                                                                                                                                                                              | Modeled?                                   |
+| ----------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `assistant`             | 11808  | An assistant turn (see §3). Carries `message.usage`, `message.model`, content blocks, attribution.                                                                                                                                                      | **Yes** → `message` (+ `tool_call`)        |
+| `user`                  | 7251   | A user message OR a `tool_result` carrier (see §4).                                                                                                                                                                                                     | **Yes** → `message` / feeds `tool_call`    |
+| `attachment`            | 3105   | A dict `attachment` tied to a message via `parentUuid`: pasted content (images, files), a `queued_command` — a message delivered while the agent was working (§8) — or, since 2.1.266, injected context with the text the model saw in `rendered` (§9). | **Partly** → `queued_command` only (§8)    |
+| `ai-title`              | 1252   | `aiTitle`: AI-generated conversation title.                                                                                                                                                                                                             | **Yes** → `conversation.title`             |
+| `mode`                  | 1016   | `mode` (e.g. `normal`) state marker.                                                                                                                                                                                                                    | **No** (low value)                         |
+| `permission-mode`       | 1013   | `permissionMode` (e.g. `default`, `plan`) state marker. Also present per-turn on `user` records.                                                                                                                                                        | **Partly** (per-turn field on `message`)   |
+| `last-prompt`           | 992    | `lastPrompt` text + `leafUuid`. Duplicates content already in `user` records.                                                                                                                                                                           | **No** (redundant)                         |
+| `file-history-snapshot` | 798    | `snapshot` dict = file contents for undo/checkpoint, keyed to a `messageId`. Lets you reconstruct which files changed + diffs.                                                                                                                          | **No** (large; see §6)                     |
+| `queue-operation`       | 632    | Queued user input (`operation: enqueue`, `content`).                                                                                                                                                                                                    | **No**                                     |
+| `system`                | 522    | Meta events by `subtype`: `turn_duration` (`durationMs`, `messageCount`), compaction (`compactMetadata`), API retries (`retryAttempt`, `maxRetries`, `retryInMs`), errors.                                                                              | **Partly** → `turn_duration` table only    |
+| `pr-link`               | 78     | `prNumber`, `prUrl`, `prRepository` — a PR surfaced in the session.                                                                                                                                                                                     | **Yes** → `pr_link`                        |
+| `bridge-session`        | 58     | `bridgeSessionId` — links a CLI session to a web/bridge session.                                                                                                                                                                                        | **No**                                     |
+| `agent-name`            | 50     | `agentName` — a name assigned to a (sub)agent session.                                                                                                                                                                                                  | **No**                                     |
+| `agent-setting`         | 23     | `agentSetting` (e.g. `claude`).                                                                                                                                                                                                                         | **No**                                     |
+| `worktree-state`        | 15     | `worktreeSession` dict — git worktree association.                                                                                                                                                                                                      | **No**                                     |
+| `custom-title`          | 15     | `customTitle` — user-set conversation title.                                                                                                                                                                                                            | **Consider** (overrides `ai-title`)        |
+| `api-request`           | §9     | One API request an Agent sent, since 2.1.300: its parameters, and pointers to its system prompt, tools and messages.                                                                                                                                    | **Yes** → `logged_api_request` (§9)        |
+| `api-request-shape`     | §9     | The system prompt and tools of `api-request`s, stored once under `shapeHash`.                                                                                                                                                                           | **Yes** → `system_prompt`, `tool_set` (§9) |
+| `api-request-blob`      | §9     | One message of `api-request`s, stored once under its hash.                                                                                                                                                                                              | **Yes** → `sent_message` (§9)              |
+| `cost-state`            | §9     | Claude Code's own per-process cost and usage totals.                                                                                                                                                                                                    | **No** (§9)                                |
 
 ## 3. The `assistant` record (the heart of accounting)
 
@@ -201,9 +201,8 @@ files without schema-breaking surprises — this section is the pointer.
 - **Attachments** (`attachment` records) other than `queued_command`: pasted
   images/files, and the injected context of §9. Skipped (large/binary).
   `queued_command` attachments ARE modeled (§8).
-- **Message blobs** (`api-request-blob`) and `cost-state` (§9). The
-  `api-request` and `api-request-shape` records ARE modeled (§9, "How they are
-  stored").
+- **`cost-state`** (§9). The `api-request`, `api-request-shape` and
+  `api-request-blob` records ARE modeled (§9, "How they are stored").
 - **Compaction events** (`system` with `compactMetadata`): when a conversation
   was auto-summarized. Relevant if you analyze long-conversation behavior.
 - **Retries & API errors** (`system` `retryAttempt`/`maxRetries`/`retryInMs`;
@@ -217,8 +216,8 @@ Tokens/cost (per turn, deduped, per resolved model), tool calls (name + input +
 truncated result + size), sub-agent lineage, conversation title, project,
 per-turn attribution & timestamps, git branch, CC version, permission mode,
 api-error flag, PR links, turn durations, each user Message's kind and
-`origin` extras (§8), and each API request's parameters, system prompt and
-tools (§9).
+`origin` extras (§8), and each API request's parameters, system prompt, tools
+and messages (§9).
 
 ## 7. Refresh implication
 
@@ -226,10 +225,10 @@ Because the modeled subset is a strict, deterministic projection of these files,
 re-parsing is idempotent. Incremental refresh can key off each conversation
 file's mtime/size (stored on `conversation`). Anything in §6 can be added later
 by extending the parser and re-reading — the raw logs are the durable source of
-truth; the SQLite DB is a disposable, rebuildable cache. The one store shared
-across Conversations — the system prompts and tool sets of §9 — keeps that
-property: a Refresh ends by deleting every piece no request references, so a
-re-parse leaves the database a cold Refresh would write.
+truth; the SQLite DB is a disposable, rebuildable cache. The stores shared
+across Conversations — the system prompts, tool sets and sent messages of §9 —
+keep that property: a Refresh ends by deleting every piece no request
+references, so a re-parse leaves the database a cold Refresh would write.
 
 ## 8. Who a user message is from: `origin`, and mid-turn delivery
 
@@ -433,9 +432,9 @@ they name is on disk nowhere. Show such a Turn without What was sent.
 
 #### How they are stored
 
-Refresh reads the `api-request` and `api-request-shape` records of every file
-of a Conversation, main thread and sub-agents (`parseSessionLines`,
-`src/core/parse.ts`); blobs are not read yet, so the messages are not rebuilt.
+Refresh reads the `api-request`, `api-request-shape` and `api-request-blob`
+records of every file of a Conversation, main thread and sub-agents
+(`parseSessionLines`, `src/core/parse.ts`).
 
 - **`logged_api_request`**: one row per `api-request` record, whether or not a
   Turn answered it, with its file's Agent and its place in that file. Its
@@ -450,11 +449,29 @@ of a Conversation, main thread and sub-agents (`parseSessionLines`,
   names a pair. Two logs spelling one piece in two key orders store its
   smallest spelling, so the stored text never depends on parse order. A
   Refresh deletes those no request references any more.
+- **`sent_message`**: each message a tail of the file names that the file can
+  rebuild (step 2), under that hash, as logged (key order and a string
+  `content` kept), the smallest spelling winning as above. A blob is stored
+  under the `hash` it is logged with; a message rebuilt from the records,
+  under the hash computed as step 2 says. Only a file with request records
+  hashes its records, and only the messages some tail of the file names are
+  kept, whether the blob comes before or after its request. A tail hash the
+  file cannot resolve is not stored; a request naming another file's message
+  finds it only if that file stored it. A Refresh deletes the messages no tail
+  names any more.
+
+A request's message list is never stored whole: it is rebuilt when read, by
+walking the `base` chain over the requests of its file (step 1), and a
+message the database does not hold, or a position a base outside the file
+leaves unknown, is shown missing at its place and counted.
 
 What was sent for a Turn compares its request with the latest earlier request
 of the same file that a Turn answered, so an unanswered request retried since
-is never the baseline. `cache_control` is set on the system blocks from the
-`["system", i]` paths; the message paths wait for the messages.
+is never the baseline. Its new messages start after the longest prefix of
+message hashes the two share; a position whose hash is unknown never matches.
+`cache_control` is set at every path, `["system", i]` and
+`["messages", i, "content", j]`, before the missing messages are left out of
+the raw body.
 
 #### Retries
 

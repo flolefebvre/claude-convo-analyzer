@@ -142,8 +142,9 @@ type RefreshOptions = {
  *     requests told apart), and keeps its response's usage and model.
  * 8 — the request records Claude Code 2.1.300+ logs are stored
  *     (`logged_api_request`, with each system prompt and tool set once).
+ * 9 — so are the messages they sent (`sent_message`, each once).
  */
-export const PARSER_VERSION = 8;
+export const PARSER_VERSION = 9;
 
 /**
  * The version a conversation carries while it is written but NOT YET COMPLETE:
@@ -278,9 +279,9 @@ type DiscoveredWithKey = {
  * conversations — so a skipped (unchanged) parent still resolves; (3) stamp the
  * current `parserVersion` on that set — the commit mark that lets a later run
  * skip them — and delete every Project left without a Conversation, and every
- * system prompt and tool set no logged API request references. Passes 2
- * and 3 share one final transaction. The sub-agent
- * transcript is the single source of truth for its tokens (GOTCHA 3) — the
+ * system prompt and tool set no logged API request references, and every sent
+ * message no tail names. Passes 2 and 3 share one final transaction. The
+ * sub-agent transcript is the single source of truth for its tokens (GOTCHA 3) — the
  * parent aggregate is a cross-check only.
  *
  * @example
@@ -464,8 +465,8 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     // and therefore re-parseable (see `UNSTAMPED_PARSER_VERSION`).
     stampParserVersion(statements, writtenConversations);
     // A re-parse or a vanished file can leave a Project with no Conversation,
-    // and a system prompt or tool set no logged API request references: gone,
-    // as a cold Refresh would never have stored them.
+    // a system prompt or tool set no logged API request references, and a sent
+    // message no tail names: gone, as a cold Refresh would never have stored them.
     statements.deleteProjectsWithoutConversations();
     statements.deleteUnreferencedRequestPieces();
     statements.commitTransaction();
@@ -817,7 +818,8 @@ function writeAgentMessages(
 
 /**
  * Write one agent's log file's request records (log-format §9): each distinct
- * system prompt and tool set under its hash, unless already stored, then one
+ * system prompt, tool set and sent message under its hash, unless already
+ * stored, then one
  * `logged_api_request` row per `api-request` record, in file order, joined to
  * the Turn of that same file whose `requestRef` names it — a `requestRef`
  * naming a request of another file joins nothing.
@@ -840,6 +842,7 @@ function writeLoggedApiRequests(
   }
   for (const [hash, blocksJson] of parsed.systemPromptJsonByHash) statements.insertSystemPrompt(hash, blocksJson);
   for (const [hash, toolsJson] of parsed.toolSetJsonByHash) statements.insertToolSet(hash, toolsJson);
+  for (const [hash, messageJson] of parsed.sentMessageJsonByHash) statements.insertSentMessage(hash, messageJson);
   parsed.loggedApiRequests.forEach((request, positionInFile) => {
     statements.insertLoggedApiRequest({
       conversationId,

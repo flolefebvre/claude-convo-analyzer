@@ -18,6 +18,8 @@ import { seededTempDb } from "./helpers/temp-db";
 const LOGS_ROOT = path.join(import.meta.dirname, "fixtures", "logged-request-logs");
 const SESSION_ID = "sess-logged";
 const SUB_AGENT_ID = "lsub1";
+/** A session whose one API request's base is in no file, and whose tail names a message no record holds. */
+const GAPS_SESSION_ID = "sess-logged-gaps";
 
 /** The parameters every fixture request logs, `safeguards` left out. */
 const STORED_PARAMETERS = {
@@ -40,8 +42,8 @@ async function turnsOf(agentId?: string, sessionId = SESSION_ID): Promise<Transc
 }
 
 /** The logged API request id of the `ordinal`-th (1-based) assistant Turn of an Agent. */
-async function loggedApiRequestIdOfTurn(ordinal: number, agentId?: string): Promise<number> {
-  const source = (await turnsOf(agentId))[ordinal - 1]?.whatWasSentSource;
+async function loggedApiRequestIdOfTurn(ordinal: number, agentId?: string, sessionId = SESSION_ID): Promise<number> {
+  const source = (await turnsOf(agentId, sessionId))[ordinal - 1]?.whatWasSentSource;
   if (source?.from !== "logs") throw new Error(`Turn ${ordinal} has no logged API request`);
   return source.loggedApiRequestId;
 }
@@ -79,8 +81,8 @@ describe("a Turn's API request in the logs", () => {
     const turns = await turnsOf();
 
     // The first Turn is history copied from a resumed session: its request is in no file here.
-    expect(turns.map((turn) => turn.whatWasSentSource?.from ?? null)).toEqual([null, "logs", "logs", "logs"]);
-    expect(turns.map((turn) => turn.failedAttemptCount)).toEqual([0, 0, 0, 0]);
+    expect(turns.map((turn) => turn.whatWasSentSource?.from ?? null)).toEqual([null, "logs", "logs", "logs", "logs"]);
+    expect(turns.map((turn) => turn.failedAttemptCount)).toEqual([0, 0, 0, 0, 0]);
   });
 
   it("is the source on a Sub-agent's Turns too", async () => {
@@ -161,16 +163,10 @@ describe("What was sent from the logs", () => {
     expect(sent?.fullRequest.tools.map((tool) => tool.name)).toEqual(["Bash", "Grep"]);
   });
 
-  it("does not rebuild the messages yet, and has none of what only a Recording knows", async () => {
+  it("has none of what only a Recording knows", async () => {
     const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(4), { dbPath: db.dbPath });
 
-    expect(sent).toMatchObject({
-      isSideRequest: false,
-      timings: null,
-      failedAttempts: [],
-      firstNewMessageIndex: 0,
-      fullRequest: { messages: null },
-    });
+    expect(sent).toMatchObject({ isSideRequest: false, timings: null, failedAttempts: [] });
   });
 
   it("works the same for a Sub-agent's Turn, against that Sub-agent's previous API request", async () => {
@@ -191,8 +187,155 @@ describe("What was sent from the logs", () => {
   });
 });
 
+describe("the messages a logged API request sent", () => {
+  it("include the system-reminder Claude Code injected in a user message, from the blob that logs it", async () => {
+    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(2), { dbPath: db.dbPath });
+
+    expect(sent?.fullRequest.messages[2]).toEqual({
+      role: "user",
+      blocks: [
+        {
+          kind: "system-reminder",
+          shownAs: "text",
+          text: "<system-reminder>\nCLAUDE.md: keep exports in one module.\n</system-reminder>",
+        },
+      ],
+    });
+  });
+
+  it("are every message, rebuilt from the file's records where no blob holds one", async () => {
+    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(4), { dbPath: db.dbPath });
+
+    expect(sent?.missingMessageCount).toBe(0);
+    expect(sent?.fullRequest.messages.map((message) => [message?.role, message?.blocks[0]?.kind])).toEqual([
+      ["user", "text"],
+      ["assistant", "text"],
+      ["user", "system-reminder"],
+      ["user", "text"],
+      ["assistant", "text"],
+      ["user", "tool_result"],
+      ["assistant", "text"],
+      ["system", "text"],
+      ["user", "text"],
+    ]);
+  });
+
+  it("rebuild a Turn written as several records sharing its message id as one message, their blocks in order", async () => {
+    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(3), { dbPath: db.dbPath });
+
+    expect(sent?.fullRequest.messages[4]?.role).toBe("assistant");
+    expect(sent?.fullRequest.messages[4]?.blocks.map((block) => block.kind)).toEqual(["text", "tool_use"]);
+    expect(sent?.fullRequest.messages[4]?.blocks[0]).toMatchObject({ text: "Let me delegate the search." });
+  });
+
+  it("rebuild the leading part of a run of user records a request sent before the run grew", async () => {
+    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(5), { dbPath: db.dbPath });
+
+    expect(sent?.missingMessageCount).toBe(0);
+    expect(sent?.fullRequest.messages).toHaveLength(11);
+    expect(sent?.fullRequest.messages[10]).toEqual({
+      role: "user",
+      blocks: [
+        {
+          kind: "tool_result",
+          shownAs: "json",
+          json: JSON.stringify({ type: "tool_result", tool_use_id: "ltu-3", content: "1 passed" }, null, 2),
+        },
+      ],
+    });
+  });
+
+  it("are a Sub-agent's own, rebuilt from its transcript", async () => {
+    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(2, SUB_AGENT_ID), { dbPath: db.dbPath });
+
+    expect(sent?.fullRequest.messages.map((message) => message?.role)).toEqual(["user", "assistant", "user"]);
+    expect(sent?.fullRequest.messages[0]?.blocks).toEqual([
+      { kind: "text", shownAs: "text", text: "Find the export code." },
+    ]);
+  });
+
+  it("follow the base chain back through every earlier request of the file", async () => {
+    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(5), { dbPath: db.dbPath });
+
+    // lreq-5 keeps lreq-4's, which kept lreq-3's, itself the retry of lreq-2, which kept lreq-1's.
+    expect(sent?.fullRequest.messages.map((message) => message?.blocks[0])).toMatchObject([
+      { text: "earlier question" },
+      { text: "Earlier answer." },
+      { kind: "system-reminder" },
+      { text: "audit the exports" },
+      { text: "Let me delegate the search." },
+      { kind: "tool_result" },
+      { text: "The exports live in one module." },
+      { text: "The date changed: it is now 2026-10-21." },
+      { text: "now add a test" },
+      { text: "Added a test." },
+      { kind: "tool_result" },
+    ]);
+  });
+
+  it("are new from the first one the previous API request of the Agent did not send", async () => {
+    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(4), { dbPath: db.dbPath });
+
+    expect(sent?.firstNewMessageIndex).toBe(6);
+    expect(sent?.fullRequest.messages.slice(6).map((message) => message?.blocks[0])).toMatchObject([
+      { text: "The exports live in one module." },
+      { text: "The date changed: it is now 2026-10-21." },
+      { text: "now add a test" },
+    ]);
+  });
+
+  it("are new since the previous answered API request, a retry's included", async () => {
+    // lreq-3 retries lreq-2, which no Turn answered: what lreq-2 added is new against lreq-1.
+    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(3), { dbPath: db.dbPath });
+
+    expect(sent?.firstNewMessageIndex).toBe(4);
+    expect(sent?.fullRequest.messages.slice(4).map((message) => message?.role)).toEqual(["assistant", "user"]);
+  });
+
+  it("are all new on the Agent's first API request", async () => {
+    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(2), { dbPath: db.dbPath });
+
+    expect(sent?.firstNewMessageIndex).toBe(0);
+  });
+
+  it("are new on a Sub-agent's Turn since that Sub-agent's previous API request", async () => {
+    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(2, SUB_AGENT_ID), { dbPath: db.dbPath });
+
+    expect(sent?.firstNewMessageIndex).toBe(1);
+  });
+
+  it("keep the place of each one the logs cannot rebuild, and count them", async () => {
+    // greq-1's base is in no file, and the last hash of its tail names nothing its file holds.
+    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(1, undefined, GAPS_SESSION_ID), {
+      dbPath: db.dbPath,
+    });
+
+    expect(sent?.missingMessageCount).toBe(3);
+    expect(sent?.fullRequest.messages).toEqual([
+      null,
+      null,
+      { role: "user", blocks: [{ kind: "text", shownAs: "text", text: "pick up where we left off" }] },
+      null,
+    ]);
+  });
+
+  it("include the system message Claude Code injected, from a blob logged after the request, its string content kept", async () => {
+    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(4), { dbPath: db.dbPath });
+    const raw = await getLoggedRawApiRequest(await loggedApiRequestIdOfTurn(4), { dbPath: db.dbPath });
+
+    expect(sent?.fullRequest.messages[7]).toEqual({
+      role: "system",
+      blocks: [{ kind: "text", shownAs: "text", text: "The date changed: it is now 2026-10-21." }],
+    });
+    expect((raw?.requestBody as { messages: unknown[] }).messages[7]).toEqual({
+      role: "system",
+      content: "The date changed: it is now 2026-10-21.",
+    });
+  });
+});
+
 describe("a logged API request raw", () => {
-  it("is the body as the logs rebuild it so far: the parameters, the system prompt and the tools, no messages", async () => {
+  it("is the body as the logs rebuild it: the parameters, the system prompt, the tools and the messages as logged", async () => {
     const raw = await getLoggedRawApiRequest(await loggedApiRequestIdOfTurn(2), { dbPath: db.dbPath });
 
     expect(raw).toEqual({
@@ -217,9 +360,41 @@ describe("a logged API request raw", () => {
             input_schema: { type: "object", properties: { command: { type: "string" } } },
           },
         ],
+        // A string content stays a string; the breakpoint at ["messages", 1, "content", 0] is set there.
+        messages: [
+          { role: "user", content: "earlier question" },
+          {
+            role: "assistant",
+            content: [{ type: "text", text: "Earlier answer.", cache_control: { type: "ephemeral" } }],
+          },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "<system-reminder>\nCLAUDE.md: keep exports in one module.\n</system-reminder>" },
+            ],
+          },
+          { role: "user", content: "audit the exports" },
+        ],
       },
+      missingMessageCount: 0,
       responseBody: null,
       requestHeaders: null,
+    });
+  });
+
+  it("leaves out the messages the logs cannot rebuild, counted, its breakpoints still where they were sent", async () => {
+    const raw = await getLoggedRawApiRequest(await loggedApiRequestIdOfTurn(1, undefined, GAPS_SESSION_ID), {
+      dbPath: db.dbPath,
+    });
+
+    expect(raw?.missingMessageCount).toBe(3);
+    expect(raw?.requestBody).toMatchObject({
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "pick up where we left off", cache_control: { type: "ephemeral" } }],
+        },
+      ],
     });
   });
 });

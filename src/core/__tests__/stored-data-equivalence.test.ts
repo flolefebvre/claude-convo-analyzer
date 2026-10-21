@@ -22,7 +22,7 @@ import { refresh } from "@/core/refresh";
 
 const FIXTURES_DIR = path.join(import.meta.dirname, "fixtures");
 
-/** The eleven tables of ADR-0001, each pinned by its row count and checksum. */
+/** The twelve tables of ADR-0001, each pinned by its row count and checksum. */
 const STORED_TABLES = [
   "project",
   "conversation",
@@ -35,6 +35,7 @@ const STORED_TABLES = [
   "logged_api_request",
   "system_prompt",
   "tool_set",
+  "sent_message",
 ] as const;
 
 type StoredTable = (typeof STORED_TABLES)[number];
@@ -53,6 +54,7 @@ const NO_LOGGED_API_REQUESTS = {
   logged_api_request: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
   system_prompt: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
   tool_set: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+  sent_message: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
 };
 
 /** Stands in for the per-run temp directory inside a stored `source_path`. */
@@ -93,7 +95,7 @@ function fingerprintTable(db: Database.Database, table: StoredTable, logsRoot: s
   return { rowCount: rows.length, sha256: hash.digest("hex") };
 }
 
-/** Fingerprint all eleven tables of the database at `dbPath`. */
+/** Fingerprint all twelve tables of the database at `dbPath`. */
 function fingerprintStoredData(dbPath: string, logsRoot: string): Record<StoredTable, TableFingerprint> {
   const db = new Database(dbPath, { readonly: true });
   try {
@@ -127,7 +129,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 15, sha256: "d79302a905b975c08cfd6c217e6ae3eaa17e44ca45bb318cdfeefa1ae7b0e329" },
-      conversation: { rowCount: 21, sha256: "d728b77316000b548a027f261cd904fabe9df6891c62c16d8e9cb3ba07c78431" },
+      conversation: { rowCount: 21, sha256: "2e9e497305bc297f55d3fe43596a66d8b0ef0449b9a0fb8d8a3eeca53c79b490" },
       agent: { rowCount: 35, sha256: "bcf922290517994e489068e748364ff9de40929e4a8ddfbcb68c6f6014836468" },
       message: { rowCount: 125, sha256: "efde03aefa67065d8cc0e7f5c061c6d75b5d6a3211263c175dee68f0862b48c5" },
       tool_call: { rowCount: 34, sha256: "58586fdaa0ea9e906fd5037c8a3c7809fd2fd1d4602ec6280e34db111716b5f4" },
@@ -144,7 +146,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "5d55ed2d1c37a5a354777b7e27dfce7bb9f299e0e7237d17a32956fee0357675" },
-      conversation: { rowCount: 1, sha256: "cdb72e44dac2a6b61b8b862e8181d31f837ec969000ed9f1defca7337c998288" },
+      conversation: { rowCount: 1, sha256: "e73f97295b501e25791eab72c09a8c3113c704d5264a2908bcbc8b7cfba19788" },
       agent: { rowCount: 2, sha256: "9cddce4d56d246718241b05d406551e917f8d9c1d9a116799eb257bc48089a61" },
       message: { rowCount: 28, sha256: "cfdb0c9218cd0184517845f99b348d217ec655bd135e7c723999498fba0260dd" },
       tool_call: { rowCount: 1, sha256: "a7fdb225fda2bff0ca75f88a22789a86cd79a97f5ea4e2f952e1d4559aa8efd9" },
@@ -161,7 +163,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 9, sha256: "e740c951fb2b58e8b13902eea830681396ac5eea03a445a31d6fb998c250a3e1" },
-      conversation: { rowCount: 13, sha256: "4524902c51ae00b0b4c6cf78af84d2a171815836bd9a57b93126df1a000045e2" },
+      conversation: { rowCount: 13, sha256: "92ea025af30d1223c78f34ea5e63b5b399861ccb1656408a5c2b451006cb199b" },
       agent: { rowCount: 13, sha256: "47aa156cd547f0ad4f24ca8d2f27122dfa765f0de80b37a46a3507b22ade253f" },
       message: { rowCount: 22, sha256: "c939415a25c68bca466283e335cd5a19447d35732c36f53ab3b32e8376a93c77" },
       tool_call: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
@@ -178,7 +180,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "c39a0134a2be51dcdd6348bf0657691be4b1d4092d6e1616117c4d0f4f58a771" },
-      conversation: { rowCount: 4, sha256: "436336945993e0e5687edf8f949adaa6aabaffcbe7eb58879963818d13634750" },
+      conversation: { rowCount: 4, sha256: "cfa80d5a91d397b5057db318d464108efbc388cd685c7b2fc2082cdadc920a13" },
       agent: { rowCount: 5, sha256: "c0938e2f66085f42e8e7e5ee608867bb0974528d74f6dd4ead50afad13e0e8a1" },
       message: { rowCount: 17, sha256: "897eb312a4eb322388b382eeb8fefdf153a78cd7ef9b579df7438c4b530d01d1" },
       tool_call: { rowCount: 1, sha256: "e331ea30643c19a0602a2759f557187aacaf1729c796a955560799b9c4dbd73f" },
@@ -195,17 +197,19 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "8b9da1ddb86766f02f4a1ac8d582400f0f6c9e5071156b7b726e7b6d9bf11d31" },
-      conversation: { rowCount: 2, sha256: "b2194e47411fdacf8fff8a3113700ab8c338f5bc036aa21c77af290c7859d818" },
-      agent: { rowCount: 3, sha256: "96dcd85589b9dcdbaa61541dab952ca7dd1ace25b6b4bd0ed499969728da7f10" },
-      message: { rowCount: 14, sha256: "20d1e452f96abdf0b69546ca889eafe2065502f5b85896535de4202d9582d819" },
-      tool_call: { rowCount: 2, sha256: "c4f26c211b4d51770344956997fafc8361d560fa79abf05512c0e4265472ef24" },
+      conversation: { rowCount: 3, sha256: "d3f4bfb680e5b5949e674ca6ad0a0ecf4d288d8e28edbadac07494c13e5174fd" },
+      agent: { rowCount: 4, sha256: "5183823b6f5d49ed8cedbdc07b0046a87c72ec8ce45a90423a939cc6fe42d620" },
+      message: { rowCount: 19, sha256: "9c3703378cc1178a480d2e9789f47e756190b245966d558c35c4e1a29e535978" },
+      tool_call: { rowCount: 3, sha256: "e5f615b5d6290bc0dab75ea171da282d5e176e04be16438fc4d834c227f91b9d" },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       api_request: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
-      logged_api_request: { rowCount: 6, sha256: "78a0c048456e447dc55d7789f87fb3eaf7783712e6ce4b704223dbd7d286288b" },
-      // Three system prompts and two tool sets: the Sub-agent shares the Main thread's first one.
-      system_prompt: { rowCount: 3, sha256: "078966990d7b9a08dc687e257b9117c3238ca03ce895107c7960303e0f1f5e76" },
-      tool_set: { rowCount: 2, sha256: "d0be61d7d9bc03ee986cfd851e9fb1e7630cbb111eb633776564b1df5c3b6a75" },
+      logged_api_request: { rowCount: 8, sha256: "dd7f5374386680f00fa29f087b1bf8b100c9d08e6bc9afb053ea9b5308adcf09" },
+      // Four system prompts and three tool sets: the Sub-agent shares the Main thread's first one.
+      system_prompt: { rowCount: 4, sha256: "179129a51d494cdd6ea7fb72cf50d62900d9163160ed521f850dc233dae050bf" },
+      tool_set: { rowCount: 3, sha256: "6b550b32e7738d046dd3c9f444e69eeba02357a973be985eac064674d0326323" },
+      // Fifteen messages: two blobs, the others rebuilt from records; the tail hash no file holds is not stored.
+      sent_message: { rowCount: 15, sha256: "126441cb097702d6b8e42db9bb724fa43d330ebe1e26322cde0285a9ddc48b67" },
     });
   });
 
@@ -263,28 +267,53 @@ describe("a re-parse", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("stores what a cold Refresh does, even when the change leaves a system prompt and a tool set unused", async () => {
+  /**
+   * Refresh the logged request logs, rewrite the main log's lines with
+   * `rewrite`, then Refresh again — and cold, into a second database: the
+   * request-record tables of each, and of the first Refresh.
+   */
+  async function reparsedAndCold(rewrite: (lines: string[]) => string[]) {
     const logsRoot = path.join(tmpDir, "logs");
     const reparsedDbPath = path.join(tmpDir, "reparsed.db");
     const coldDbPath = path.join(tmpDir, "cold.db");
     copyWithPinnedMtimes(path.join(FIXTURES_DIR, "logged-request-logs"), logsRoot);
     await refresh({ logsRoot, dbPath: reparsedDbPath });
-
-    // The last request now sends the first shape: the second one's system prompt and tool set are used by nothing.
+    const beforeContent = loggedApiRequestContent(reparsedDbPath, logsRoot);
     const mainLogPath = path.join(logsRoot, "-Users-me-dev-logged", "sess-logged.jsonl");
-    const lines = readFileSync(mainLogPath, "utf8").split("\n");
-    writeFileSync(
-      mainLogPath,
-      lines
-        .filter((line) => !line.includes('"shapeHash":"shape-2","shape"'))
-        .map((line) => line.replace('"shapeHash":"shape-2"', '"shapeHash":"shape-1"'))
-        .join("\n"),
-    );
+    writeFileSync(mainLogPath, rewrite(readFileSync(mainLogPath, "utf8").split("\n")).join("\n"));
     await refresh({ logsRoot, dbPath: reparsedDbPath });
     await refresh({ logsRoot, dbPath: coldDbPath });
+    return {
+      beforeContent,
+      reparsedContent: loggedApiRequestContent(reparsedDbPath, logsRoot),
+      coldContent: loggedApiRequestContent(coldDbPath, logsRoot),
+    };
+  }
 
-    expect(loggedApiRequestContent(reparsedDbPath, logsRoot)).toEqual(loggedApiRequestContent(coldDbPath, logsRoot));
-    expect(loggedApiRequestContent(coldDbPath, logsRoot).system_prompt.rowCount).toBe(2);
+  it("stores what a cold Refresh does, even when the change leaves a system prompt and a tool set unused", async () => {
+    // The last request now sends the first shape: the second one's system prompt and tool set are used by nothing.
+    const { reparsedContent, coldContent } = await reparsedAndCold((lines) =>
+      lines
+        .filter((line) => !line.includes('"shapeHash":"shape-2","shape"'))
+        .map((line) => line.replace('"shapeHash":"shape-2"', '"shapeHash":"shape-1"')),
+    );
+
+    expect(reparsedContent).toEqual(coldContent);
+    expect(coldContent.system_prompt.rowCount).toBe(3);
+  });
+
+  it("stores what a cold Refresh does, even when the change leaves a sent message named by no tail", async () => {
+    // The request that sent the date-change reminder no longer names it: its blob is sent by nothing.
+    const { beforeContent, reparsedContent, coldContent } = await reparsedAndCold((lines) => {
+      const blobLine = lines.find(
+        (line) => line.includes('"type":"api-request-blob"') && line.includes("date changed"),
+      );
+      const { hash } = JSON.parse(blobLine!) as { hash: string };
+      return lines.map((line) => line.replace(`"${hash}",`, ""));
+    });
+
+    expect(reparsedContent).toEqual(coldContent);
+    expect(coldContent.sent_message.rowCount).toBe(beforeContent.sent_message.rowCount - 1);
   });
 });
 
@@ -401,6 +430,7 @@ function loggedApiRequestContent(dbPath: string, logsRoot: string) {
       requests,
       system_prompt: fingerprintTable(db, "system_prompt", logsRoot),
       tool_set: fingerprintTable(db, "tool_set", logsRoot),
+      sent_message: fingerprintTable(db, "sent_message", logsRoot),
     };
   } finally {
     db.close();

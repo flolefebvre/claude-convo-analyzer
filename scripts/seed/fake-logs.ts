@@ -11,6 +11,8 @@ import { mkdirSync, utimesSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import { sentMessageHash } from "@/core/canonical-json";
+
 /** One call's generator state: a deterministic PRNG (LCG), an id counter, and
  *  the instant the seeded timeline ends at. */
 type Gen = {
@@ -1358,10 +1360,52 @@ function seedToolDefinition(name: string, description: string, field: string) {
   };
 }
 
+/** One message a seeded API request sends: as the model got it, and whether its log holds it as a blob. */
+type SeedSentMessage = { message: { role: string; content: unknown }; isLoggedAsBlob?: true };
+
+/** The message a `user` or `assistant` record `line` holds, as its request sends it: rebuilt from the log. */
+function sentMessageOf(line: string): SeedSentMessage {
+  const { message } = JSON.parse(line) as { message: { role: string; content: unknown } };
+  return { message: { role: message.role, content: message.content } };
+}
+
+/** Context Claude Code injects as a system message, unwrapped (log-format §9), which the log holds as a blob. */
+function seedSystemMessage(text: string): SeedSentMessage {
+  return { message: { role: "system", content: text }, isLoggedAsBlob: true };
+}
+
+/**
+ * The prompt of user record `promptLine` as sent: after a system-reminder
+ * Claude Code injected into the same user message (CLAUDE.md goes out this
+ * way), which the log holds as a blob.
+ */
+function seedPromptWithSystemReminder(promptLine: string, reminderText: string): SeedSentMessage {
+  const prompt = sentMessageOf(promptLine).message.content as string;
+  return {
+    message: {
+      role: "user",
+      content: [
+        { type: "text", text: `<system-reminder>\n${reminderText}\n</system-reminder>` },
+        { type: "text", text: prompt },
+      ],
+    },
+    isLoggedAsBlob: true,
+  };
+}
+
+/** A tool result as the model got it, in full — its record keeps only a stub — which the log holds as a blob. */
+function seedToolResultSent(toolUseId: string, result: string): SeedSentMessage {
+  return {
+    message: { role: "user", content: [{ type: "tool_result", tool_use_id: toolUseId, content: result }] },
+    isLoggedAsBlob: true,
+  };
+}
+
 /**
  * The request records of one seeded log file (log-format §9): a shape is
- * logged before the first request that sends it, and each request starts from
- * the previous one, keeping all its messages.
+ * logged before the first request that sends it, each blob message before the
+ * request, and each request starts from the previous one, keeping all its
+ * messages.
  */
 function requestRecorder(g: Gen, sessionId: string, model: string, querySource: string, agentId?: string) {
   const loggedShapeHashes = new Set<string>();
@@ -1369,8 +1413,8 @@ function requestRecorder(g: Gen, sessionId: string, model: string, querySource: 
   const inFile = (record: Record<string, unknown>) =>
     JSON.stringify(agentId === undefined ? record : { ...record, agentId });
   return {
-    /** The lines that log one request sent at `ms` with `shape`, its tail `newMessageCount` messages long. */
-    send(ms: number, shape: { shapeHash: string; system: object[]; tools: object[] }, newMessageCount: number) {
+    /** The lines that log one request sent at `ms` with `shape`, its tail `tail`. */
+    send(ms: number, shape: { shapeHash: string; system: object[]; tools: object[] }, tail: SeedSentMessage[]) {
       const lines: string[] = [];
       if (!loggedShapeHashes.has(shape.shapeHash)) {
         loggedShapeHashes.add(shape.shapeHash);
@@ -1383,15 +1427,20 @@ function requestRecorder(g: Gen, sessionId: string, model: string, querySource: 
           }),
         );
       }
+      for (const { message, isLoggedAsBlob } of tail) {
+        if (isLoggedAsBlob)
+          lines.push(inFile({ type: "api-request-blob", sessionId, hash: sentMessageHash(message), message }));
+      }
       const recordId = g.uid("apireq");
+      const keptMessageCount = previous?.messageCount ?? 0;
       lines.push(
         inFile({
           type: "api-request",
           sessionId,
           id: recordId,
           ...(previous === null ? {} : { base: previous.recordId }),
-          keep: previous?.messageCount ?? 0,
-          tail: Array.from({ length: newMessageCount }, () => g.uid("msghash")),
+          keep: keptMessageCount,
+          tail: tail.map(({ message }) => sentMessageHash(message)),
           shapeHash: shape.shapeHash,
           params: {
             model,
@@ -1404,13 +1453,14 @@ function requestRecorder(g: Gen, sessionId: string, model: string, querySource: 
           cacheControl: [
             { path: ["system", 0], value: { type: "ephemeral", ttl: "1h", scope: "global" } },
             { path: ["system", 1], value: { type: "ephemeral" } },
+            { path: ["messages", keptMessageCount + tail.length - 1, "content", 0], value: { type: "ephemeral" } },
           ],
           querySource,
           requestDigest: g.uid("digest"),
           timestamp: iso(ms),
         }),
       );
-      previous = { recordId, messageCount: (previous?.messageCount ?? 0) + newMessageCount };
+      previous = { recordId, messageCount: keptMessageCount + tail.length };
       return { lines, recordId };
     },
   };
@@ -1457,29 +1507,53 @@ function loggedRequestsConversation(g: Gen, index: number): Conversation {
     tools: [bash, read, seedToolDefinition("Grep", "Search file contents.", "pattern")],
   };
   const requests = requestRecorder(g, sessionId, model, "repl_main_thread");
-  const lines = [
-    JSON.stringify({ type: "ai-title", aiTitle: LOGGED_REQUESTS_TITLE }),
-    atLoggedRequestsVersion(userPrompt(g, t, cwd, "The invoice list takes eight seconds to load — find out why.")),
-  ];
-  /** Log a request sent with `shape` and `newMessageCount` new messages, then the Turn answering it. */
-  const turn = (shape: typeof firstShape, newMessageCount: number, toolUses?: object[]) => {
-    const sent = requests.send((t += 1_000), shape, newMessageCount);
+  const firstPrompt = atLoggedRequestsVersion(
+    userPrompt(g, t, cwd, "The invoice list takes eight seconds to load — find out why."),
+  );
+  const lines = [JSON.stringify({ type: "ai-title", aiTitle: LOGGED_REQUESTS_TITLE }), firstPrompt];
+  let lastTurnLine = "";
+  /** Log a request sent with `shape` and the messages of `tail`, then the Turn answering it. */
+  const turn = (shape: typeof firstShape, tail: SeedSentMessage[], toolUses?: object[]) => {
+    const sent = requests.send((t += 1_000), shape, tail);
     lines.push(...sent.lines);
-    lines.push(atLoggedRequestsVersion(assistantTurn(g, (t += 9_000), cwd, model, { toolUses }), sent.recordId));
+    lastTurnLine = atLoggedRequestsVersion(assistantTurn(g, (t += 9_000), cwd, model, { toolUses }), sent.recordId);
+    lines.push(lastTurnLine);
   };
 
   const { toolUse, ledgerResult, sub } = loggedRequestsSubAgent(g, t + 12_000, cwd, sessionId);
-  turn(firstShape, 1, [toolUse]);
-  t += 120_000; // after the sub-agent's last record
-  lines.push(atLoggedRequestsVersion(toolResult(g, t, cwd, (toolUse as { id: string }).id, ledgerResult)));
-  turn(firstShape, 2);
-  lines.push(
-    atLoggedRequestsVersion(userPrompt(g, (t = resumedAt), cwd, "Now check the date filter on the same query.")),
+  turn(
+    firstShape,
+    [
+      seedPromptWithSystemReminder(
+        firstPrompt,
+        "As you answer the user's questions, you can use the following context:\n# claudeMd\nRun `pnpm test` before every commit; keep queries in src/invoices/.",
+      ),
+    ],
+    [toolUse],
   );
+  t += 120_000; // after the sub-agent's last record
+  const agentUseId = (toolUse as { id: string }).id;
+  lines.push(atLoggedRequestsVersion(toolResult(g, t, cwd, agentUseId, ledgerResult)));
+  turn(firstShape, [sentMessageOf(lastTurnLine), seedToolResultSent(agentUseId, SUBAGENT_REPORTS.Explore)]);
+  const secondPrompt = atLoggedRequestsVersion(
+    userPrompt(g, (t = resumedAt), cwd, "Now check the date filter on the same query."),
+  );
+  lines.push(secondPrompt);
   const grepUseId = g.uid("tu");
-  turn(secondShape, 2, [{ type: "tool_use", id: grepUseId, name: "Grep", input: { pattern: "invoice_date" } }]);
+  turn(
+    secondShape,
+    [
+      sentMessageOf(lastTurnLine),
+      seedSystemMessage(`The date has changed. Today's date is now ${iso(resumedAt).slice(0, 10)}.`),
+      sentMessageOf(secondPrompt),
+    ],
+    [{ type: "tool_use", id: grepUseId, name: "Grep", input: { pattern: "invoice_date" } }],
+  );
   lines.push(atLoggedRequestsVersion(toolResult(g, (t += 4_000), cwd, grepUseId, "src/invoices/query.ts:42")));
-  turn(secondShape, 2);
+  turn(secondShape, [
+    sentMessageOf(lastTurnLine),
+    seedToolResultSent(grepUseId, "src/invoices/query.ts:42:  WHERE invoice_date >= $1"),
+  ]);
 
   return {
     logFolderName,
@@ -1510,8 +1584,9 @@ function loggedRequestsSubAgent(
     tools: [seedToolDefinition("Read", "Read a file.", "file_path")],
   };
   const requests = requestRecorder(g, sessionId, MODELS[3], "agent:builtin:Explore", agentId);
-  const subTurn = (turnMs: number, newMessageCount: number, toolUses?: object[]) => {
-    const sent = requests.send(turnMs, shape, newMessageCount);
+  /** The lines of a request sent at `turnMs` with the messages of `tail`, then the Turn answering it. */
+  const subTurn = (turnMs: number, tail: SeedSentMessage[], toolUses?: object[]) => {
+    const sent = requests.send(turnMs, shape, tail);
     const reply = JSON.parse(assistantTurn(g, turnMs + 5_000, cwd, MODELS[3], { toolUses, scale: 0.6 })) as Record<
       string,
       unknown
@@ -1525,13 +1600,19 @@ function loggedRequestsSubAgent(
     ];
   };
   const readUseId = g.uid("tu");
+  const subPrompt = atLoggedRequestsVersion(userPrompt(g, ms, cwd, prompt, undefined, agent));
+  const firstTurnLines = subTurn(
+    ms + 2_000,
+    [sentMessageOf(subPrompt)],
+    [{ type: "tool_use", id: readUseId, name: "Read", input: { file_path: "src/invoices/query.ts" } }],
+  );
+  const readResult = atLoggedRequestsVersion(toolResult(g, ms + 30_000, cwd, readUseId, RESULT_FILLER, false, agent));
   const lines = [
-    atLoggedRequestsVersion(userPrompt(g, ms, cwd, prompt, undefined, agent)),
-    ...subTurn(ms + 2_000, 1, [
-      { type: "tool_use", id: readUseId, name: "Read", input: { file_path: "src/invoices/query.ts" } },
-    ]),
-    atLoggedRequestsVersion(toolResult(g, ms + 30_000, cwd, readUseId, RESULT_FILLER, false, agent)),
-    ...subTurn(ms + 32_000, 2),
+    subPrompt,
+    ...firstTurnLines,
+    readResult,
+    // Rebuilt from the sub-agent's own records: its Turn, then the tool result.
+    ...subTurn(ms + 32_000, [sentMessageOf(firstTurnLines.at(-1)!), sentMessageOf(readResult)]),
   ];
   const toolUseId = g.uid("tu");
   return {

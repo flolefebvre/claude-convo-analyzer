@@ -1,5 +1,5 @@
 // Claude Conversation Analyzer — data model.
-// Eleven tables per ADR-0001 (docs/adr/0001-token-accounting-and-data-model.md).
+// Twelve tables per ADR-0001 (docs/adr/0001-token-accounting-and-data-model.md).
 // Prisma 7: `prisma-client` generator + @prisma/adapter-better-sqlite3 driver adapter.
 // The generated client output is gitignored (commit schema + migrations only).
 // The Refresh writes these tables WITHOUT Prisma (ADR-0005): mirror any column
@@ -305,8 +305,9 @@ model ApiRequest {
 
 /// One per `api-request` record of the Conversation's log files, Main thread
 /// and Sub-agents alike (docs/conversation-log-format.md, §9): an API request
-/// as Claude Code 2.1.300+ logs it, its system prompt and tool set each stored
-/// once, under their hash, in `system_prompt` and `tool_set`.
+/// as Claude Code 2.1.300+ logs it, its system prompt, tool set and messages
+/// each stored once, under their hash, in `system_prompt`, `tool_set` and
+/// `sent_message`.
 model LoggedApiRequest {
   id             Int  @id @default(autoincrement())
   conversationId Int  @map("conversation_id")
@@ -386,4 +387,18 @@ model ToolSet {
   loggedApiRequests LoggedApiRequest[]
 
   @@map("tool_set")
+}
+
+/// One per distinct message a logged API request's `tail` names, shared across
+/// Conversations; the Refresh deletes it once no request's tail names it.
+model SentMessage {
+  /// The sha256 hex of the message's canonical JSON (`canonical-json.ts`), a
+  /// string `content` first rewritten as one text block: the hash a `tail`
+  /// names, its identity only, never what is shown.
+  hash        String @id
+  /// The message as logged, key order and a string `content` kept: what the
+  /// model saw. When logs spell the same message two ways, the smallest spelling.
+  messageJson String @map("message_json")
+
+  @@map("sent_message")
 }
