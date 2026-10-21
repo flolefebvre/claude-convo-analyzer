@@ -4,14 +4,16 @@
 // its whole system prompt and tools, its parameters, and the body the logs
 // rebuild so far — read from the database, no Recording involved.
 
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { getTranscript, type TranscriptMessage } from "@/core/read";
+import { openRecordingWriter, type RecordedApiRequest } from "@/core/recording";
 import { refresh } from "@/core/refresh";
 import { getLoggedRawApiRequest, getLoggedWhatWasSent } from "@/core/what-was-sent";
+
+import { seededTempDb } from "./helpers/temp-db";
 
 const LOGS_ROOT = path.join(import.meta.dirname, "fixtures", "logged-request-logs");
 const SESSION_ID = "sess-logged";
@@ -29,20 +31,11 @@ const STORED_PARAMETERS = {
 /** The `safeguards` context the fixture logs on every request, which is never stored. */
 const SAFEGUARDS_TEXT = "stub-safeguards-context";
 
-let scratchDir = "";
-let dbPath = "";
-
-beforeEach(async () => {
-  scratchDir = mkdtempSync(path.join(tmpdir(), "cca-what-was-sent-from-logs-"));
-  dbPath = path.join(scratchDir, "analyzer.db");
-  await refresh({ logsRoot: LOGS_ROOT, dbPath, recordingsRoot: path.join(scratchDir, "recordings") });
-});
-
-afterEach(() => rmSync(scratchDir, { recursive: true, force: true }));
+const db = seededTempDb({ prefix: "cca-what-was-sent-from-logs-", logsRoot: LOGS_ROOT });
 
 /** The assistant Turns of one Agent's transcript (`agentId` undefined: the Main thread). */
 async function turnsOf(agentId?: string, sessionId = SESSION_ID): Promise<TranscriptMessage[]> {
-  const view = await getTranscript(sessionId, { dbPath, agentId });
+  const view = await getTranscript(sessionId, { dbPath: db.dbPath, agentId });
   return (view?.messages ?? []).filter((message) => message.role === "assistant");
 }
 
@@ -51,6 +44,34 @@ async function loggedApiRequestIdOfTurn(ordinal: number, agentId?: string): Prom
   const source = (await turnsOf(agentId))[ordinal - 1]?.whatWasSentSource;
   if (source?.from !== "logs") throw new Error(`Turn ${ordinal} has no logged API request`);
   return source.loggedApiRequestId;
+}
+
+/** The first logged Main-thread Turn's API request as a Recording holds it, answered with `status`. */
+function recordedFirstTurn(status: number): RecordedApiRequest {
+  return {
+    sessionId: SESSION_ID,
+    agentId: null,
+    method: "POST",
+    path: "/v1/messages",
+    query: "",
+    headers: {},
+    body: { model: "claude-opus-4-8", messages: [] },
+    response: {
+      status,
+      requestId: status === 200 ? "rid-lmsg-1" : "rid-overloaded",
+      headers: {},
+      body:
+        status === 200
+          ? { id: "lmsg-1", type: "message", content: [] }
+          : { type: "error", error: { type: "overloaded_error", message: "Overloaded" } },
+      isStreamed: false,
+    },
+    timings: {
+      arrivedAt: "2026-10-21T10:00:01.005Z",
+      firstByteAt: "2026-10-21T10:00:02.000Z",
+      endedAt: "2026-10-21T10:00:04.000Z",
+    },
+  };
 }
 
 describe("a Turn's API request in the logs", () => {
@@ -68,6 +89,19 @@ describe("a Turn's API request in the logs", () => {
     expect(turns.map((turn) => turn.whatWasSentSource?.from ?? null)).toEqual(["logs", "logs"]);
   });
 
+  it("wins over a Recording holding the same Turn's API request, its failed attempts included", async () => {
+    const recordingsRoot = path.join(path.dirname(db.dbPath), "recordings");
+    const writer = openRecordingWriter(recordingsRoot);
+    await writer.append(recordedFirstTurn(529));
+    await writer.append(recordedFirstTurn(200));
+    await refresh({ logsRoot: LOGS_ROOT, dbPath: db.dbPath, recordingsRoot });
+
+    const [, firstLoggedTurn] = await turnsOf();
+
+    expect(firstLoggedTurn?.whatWasSentSource?.from).toBe("logs");
+    expect(firstLoggedTurn?.failedAttemptCount).toBe(0);
+  });
+
   it("is not there for a Turn logged before Claude Code 2.1.300", async () => {
     const turns = await turnsOf(undefined, "sess-logged-old");
 
@@ -78,7 +112,7 @@ describe("a Turn's API request in the logs", () => {
 
 describe("What was sent from the logs", () => {
   it("shows how the system prompt and the tools changed since the previous API request of the Agent", async () => {
-    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(4), { dbPath });
+    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(4), { dbPath: db.dbPath });
 
     expect(sent?.previousApiRequestId).toBe(await loggedApiRequestIdOfTurn(3));
     expect(sent?.systemPromptDiff?.isVolatileOnly).toBe(false);
@@ -96,7 +130,7 @@ describe("What was sent from the logs", () => {
   });
 
   it("compares against the previous answered API request, never an unanswered one retried since", async () => {
-    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(3), { dbPath });
+    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(3), { dbPath: db.dbPath });
 
     expect(sent?.previousApiRequestId).toBe(await loggedApiRequestIdOfTurn(2));
     expect(sent?.systemPromptDiff).toBeNull();
@@ -104,7 +138,7 @@ describe("What was sent from the logs", () => {
   });
 
   it("has nothing to compare on the Agent's first API request", async () => {
-    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(2), { dbPath });
+    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(2), { dbPath: db.dbPath });
 
     expect(sent?.previousApiRequestId).toBeNull();
     expect(sent?.systemPromptDiff).toBeNull();
@@ -112,7 +146,7 @@ describe("What was sent from the logs", () => {
   });
 
   it("gives the parameters, the whole system prompt with its cache breakpoints, and the tools", async () => {
-    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(4), { dbPath });
+    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(4), { dbPath: db.dbPath });
 
     expect(sent?.parameters).toEqual({
       model: "claude-opus-4-8",
@@ -128,7 +162,7 @@ describe("What was sent from the logs", () => {
   });
 
   it("does not rebuild the messages yet, and has none of what only a Recording knows", async () => {
-    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(4), { dbPath });
+    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(4), { dbPath: db.dbPath });
 
     expect(sent).toMatchObject({
       isSideRequest: false,
@@ -141,7 +175,7 @@ describe("What was sent from the logs", () => {
 
   it("works the same for a Sub-agent's Turn, against that Sub-agent's previous API request", async () => {
     const first = await loggedApiRequestIdOfTurn(1, SUB_AGENT_ID);
-    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(2, SUB_AGENT_ID), { dbPath });
+    const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(2, SUB_AGENT_ID), { dbPath: db.dbPath });
 
     expect(sent?.previousApiRequestId).toBe(first);
     expect(sent?.systemPromptDiff).toBeNull();
@@ -152,14 +186,14 @@ describe("What was sent from the logs", () => {
   });
 
   it("is null for an unknown id", async () => {
-    expect(await getLoggedWhatWasSent(999_999, { dbPath })).toBeNull();
-    expect(await getLoggedRawApiRequest(999_999, { dbPath })).toBeNull();
+    expect(await getLoggedWhatWasSent(999_999, { dbPath: db.dbPath })).toBeNull();
+    expect(await getLoggedRawApiRequest(999_999, { dbPath: db.dbPath })).toBeNull();
   });
 });
 
 describe("a logged API request raw", () => {
   it("is the body as the logs rebuild it so far: the parameters, the system prompt and the tools, no messages", async () => {
-    const raw = await getLoggedRawApiRequest(await loggedApiRequestIdOfTurn(2), { dbPath });
+    const raw = await getLoggedRawApiRequest(await loggedApiRequestIdOfTurn(2), { dbPath: db.dbPath });
 
     expect(raw).toEqual({
       requestBody: {
@@ -192,7 +226,7 @@ describe("a logged API request raw", () => {
 
 describe("safeguards", () => {
   it("are never stored", () => {
-    for (const file of [dbPath, `${dbPath}-wal`]) {
+    for (const file of [db.dbPath, `${db.dbPath}-wal`]) {
       if (existsSync(file)) expect(readFileSync(file).includes(SAFEGUARDS_TEXT)).toBe(false);
     }
   });
