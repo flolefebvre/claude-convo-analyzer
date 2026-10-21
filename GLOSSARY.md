@@ -292,7 +292,9 @@ One request Claude Code sent to the Anthropic API, and its response, as the
 Recorder saw it: the system prompt, the tool definitions, every message exactly
 as sent, the response, its token usage and its timings. An API request is of
 one of three kinds: a Turn's request, which some Agent's Turn came from; a
-Failed attempt of a Turn; or a Side request.
+Failed attempt of a Turn; or a Side request. Since Claude Code 2.1.300 the
+conversation logs also record each API request an Agent sent, without its
+response; for the same request, the logs win over a Recording.
 _Avoid_: exchange, call (clashes with Tool call).
 
 ### What was sent
@@ -307,7 +309,10 @@ also gives the API request **raw**: its body exactly as sent, its headers
 is **volatile** when only lines that move on their own changed — the date, the
 git status, the working directory — and **real** otherwise. On a Side request
 the panel shows everything it sent, there being no previous request to compare
-against.
+against. A Turn whose API request the conversation logs record (Claude Code
+2.1.300 and later) gets What was sent from them, with no Recording — so far its
+system prompt, tool definitions and parameters, not its messages — and the
+logs win when a Recording has the same request.
 
 ### Failed attempt
 
