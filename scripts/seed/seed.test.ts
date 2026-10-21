@@ -155,9 +155,15 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     const newMessages = sent?.fullRequest.messages.slice(sent.firstNewMessageIndex);
     expect(newMessages?.map((message) => [message?.role, message?.blocks[0]?.kind])).toEqual([
       ["assistant", "text"],
-      ["system", "system-reminder"],
+      ["system", "text"],
       ["user", "text"],
     ]);
+
+    // The first Turn's prompt went out after the CLAUDE.md system-reminder injected into its message.
+    const first = view!.messages.find((m) => m.role === "assistant")!.whatWasSentSource!;
+    if (first.from !== "logs") throw new Error("not from the logs");
+    const firstSent = await getLoggedWhatWasSent(first.loggedApiRequestId, { dbPath: seed.dbPath });
+    expect(firstSent?.fullRequest.messages[0]?.blocks.map((block) => block.kind)).toEqual(["system-reminder", "text"]);
 
     // Every message of every Turn's request is rebuilt, from a blob or from the records.
     for (const turn of turns) {

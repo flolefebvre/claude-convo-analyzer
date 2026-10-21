@@ -1369,10 +1369,26 @@ function sentMessageOf(line: string): SeedSentMessage {
   return { message: { role: message.role, content: message.content } };
 }
 
-/** Context Claude Code injects as a message of its own, which the log holds as a blob. */
-function seedSystemReminder(text: string): SeedSentMessage {
+/** Context Claude Code injects as a system message, unwrapped (log-format §9), which the log holds as a blob. */
+function seedSystemMessage(text: string): SeedSentMessage {
+  return { message: { role: "system", content: text }, isLoggedAsBlob: true };
+}
+
+/**
+ * The prompt of user record `promptLine` as sent: after a system-reminder
+ * Claude Code injected into the same user message (CLAUDE.md goes out this
+ * way), which the log holds as a blob.
+ */
+function seedPromptWithSystemReminder(promptLine: string, reminderText: string): SeedSentMessage {
+  const prompt = sentMessageOf(promptLine).message.content as string;
   return {
-    message: { role: "system", content: `<system-reminder>\n${text}\n</system-reminder>` },
+    message: {
+      role: "user",
+      content: [
+        { type: "text", text: `<system-reminder>\n${reminderText}\n</system-reminder>` },
+        { type: "text", text: prompt },
+      ],
+    },
     isLoggedAsBlob: true,
   };
 }
@@ -1508,10 +1524,10 @@ function loggedRequestsConversation(g: Gen, index: number): Conversation {
   turn(
     firstShape,
     [
-      seedSystemReminder(
+      seedPromptWithSystemReminder(
+        firstPrompt,
         "As you answer the user's questions, you can use the following context:\n# claudeMd\nRun `pnpm test` before every commit; keep queries in src/invoices/.",
       ),
-      sentMessageOf(firstPrompt),
     ],
     [toolUse],
   );
@@ -1528,7 +1544,7 @@ function loggedRequestsConversation(g: Gen, index: number): Conversation {
     secondShape,
     [
       sentMessageOf(lastTurnLine),
-      seedSystemReminder(`The date has changed. Today's date is now ${iso(resumedAt).slice(0, 10)}.`),
+      seedSystemMessage(`The date has changed. Today's date is now ${iso(resumedAt).slice(0, 10)}.`),
       sentMessageOf(secondPrompt),
     ],
     [{ type: "tool_use", id: grepUseId, name: "Grep", input: { pattern: "invoice_date" } }],

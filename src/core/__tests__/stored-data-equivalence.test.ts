@@ -197,19 +197,19 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "8b9da1ddb86766f02f4a1ac8d582400f0f6c9e5071156b7b726e7b6d9bf11d31" },
-      conversation: { rowCount: 3, sha256: "995c445fdc69e4d78b827fe3b007d5161164af0887913af143f59a5c304f6db4" },
+      conversation: { rowCount: 3, sha256: "d3f4bfb680e5b5949e674ca6ad0a0ecf4d288d8e28edbadac07494c13e5174fd" },
       agent: { rowCount: 4, sha256: "5183823b6f5d49ed8cedbdc07b0046a87c72ec8ce45a90423a939cc6fe42d620" },
       message: { rowCount: 19, sha256: "9c3703378cc1178a480d2e9789f47e756190b245966d558c35c4e1a29e535978" },
       tool_call: { rowCount: 3, sha256: "e5f615b5d6290bc0dab75ea171da282d5e176e04be16438fc4d834c227f91b9d" },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       api_request: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
-      logged_api_request: { rowCount: 8, sha256: "110a54663b53e577e553fc863944eecdbb9e8b100e46f23b99c6f7fbdb7bb0d3" },
+      logged_api_request: { rowCount: 8, sha256: "dd7f5374386680f00fa29f087b1bf8b100c9d08e6bc9afb053ea9b5308adcf09" },
       // Four system prompts and three tool sets: the Sub-agent shares the Main thread's first one.
       system_prompt: { rowCount: 4, sha256: "179129a51d494cdd6ea7fb72cf50d62900d9163160ed521f850dc233dae050bf" },
       tool_set: { rowCount: 3, sha256: "6b550b32e7738d046dd3c9f444e69eeba02357a973be985eac064674d0326323" },
       // Fifteen messages: two blobs, the others rebuilt from records; the tail hash no file holds is not stored.
-      sent_message: { rowCount: 15, sha256: "057de7a1e2d743f48181ea1f7908867e5c72eac6d52166a141932d5c643bccf7" },
+      sent_message: { rowCount: 15, sha256: "126441cb097702d6b8e42db9bb724fa43d330ebe1e26322cde0285a9ddc48b67" },
     });
   });
 

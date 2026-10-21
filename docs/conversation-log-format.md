@@ -67,7 +67,7 @@ Counts are from the snapshot (across main + sub-agent files combined).
 | `custom-title`          | 15     | `customTitle` — user-set conversation title.                                                                                                                                                                                                            | **Consider** (overrides `ai-title`)      |
 | `api-request`           | §9     | One API request an Agent sent, since 2.1.300: its parameters, and pointers to its system prompt, tools and messages.                                                                                                                                    | **No** (§9)                              |
 | `api-request-shape`     | §9     | The system prompt and tools of `api-request`s, stored once under `shapeHash`.                                                                                                                                                                           | **No** (§9)                              |
-| `api-request-blob`      | §9     | One message of `api-request`s, stored once under its hash.                                                                                                                                                                                              | **No** (§9)                              |
+| `api-request-blob`      | §9     | One message of `api-request`s, stored once under its hash.                                                                                                                                                                                              | **Yes** → `sent_message` (§9)            |
 | `cost-state`            | §9     | Claude Code's own per-process cost and usage totals.                                                                                                                                                                                                    | **No** (§9)                              |
 
 ## 3. The `assistant` record (the heart of accounting)
@@ -201,9 +201,8 @@ files without schema-breaking surprises — this section is the pointer.
 - **Attachments** (`attachment` records) other than `queued_command`: pasted
   images/files, and the injected context of §9. Skipped (large/binary).
   `queued_command` attachments ARE modeled (§8).
-- **Message blobs** (`api-request-blob`) and `cost-state` (§9). The
-  `api-request` and `api-request-shape` records ARE modeled (§9, "How they are
-  stored").
+- **`cost-state`** (§9). The `api-request`, `api-request-shape` and
+  `api-request-blob` records ARE modeled (§9, "How they are stored").
 - **Compaction events** (`system` with `compactMetadata`): when a conversation
   was auto-summarized. Relevant if you analyze long-conversation behavior.
 - **Retries & API errors** (`system` `retryAttempt`/`maxRetries`/`retryInMs`;
@@ -217,8 +216,8 @@ Tokens/cost (per turn, deduped, per resolved model), tool calls (name + input +
 truncated result + size), sub-agent lineage, conversation title, project,
 per-turn attribution & timestamps, git branch, CC version, permission mode,
 api-error flag, PR links, turn durations, each user Message's kind and
-`origin` extras (§8), and each API request's parameters, system prompt and
-tools (§9).
+`origin` extras (§8), and each API request's parameters, system prompt, tools
+and messages (§9).
 
 ## 7. Refresh implication
 
@@ -226,10 +225,10 @@ Because the modeled subset is a strict, deterministic projection of these files,
 re-parsing is idempotent. Incremental refresh can key off each conversation
 file's mtime/size (stored on `conversation`). Anything in §6 can be added later
 by extending the parser and re-reading — the raw logs are the durable source of
-truth; the SQLite DB is a disposable, rebuildable cache. The one store shared
-across Conversations — the system prompts and tool sets of §9 — keeps that
-property: a Refresh ends by deleting every piece no request references, so a
-re-parse leaves the database a cold Refresh would write.
+truth; the SQLite DB is a disposable, rebuildable cache. The stores shared
+across Conversations — the system prompts, tool sets and sent messages of §9 —
+keep that property: a Refresh ends by deleting every piece no request
+references, so a re-parse leaves the database a cold Refresh would write.
 
 ## 8. Who a user message is from: `origin`, and mid-turn delivery
 

@@ -164,7 +164,7 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     await expect(requestView.getByRole("heading", { name: "System prompt (2 blocks)" })).toBeVisible();
     await expect(requestView.getByRole("heading", { name: "Tools (3 tools)" })).toBeVisible();
     await expect(requestView.getByText("Cache breakpoint: ephemeral 1h")).toBeVisible();
-    await expect(requestView.getByRole("heading", { name: "Messages (7 messages)" })).toBeVisible();
+    await expect(requestView.getByRole("heading", { name: "Messages (6 messages)" })).toBeVisible();
     await expect(requestView.getByText(/# claudeMd/)).toBeVisible();
 
     await whatWasSent.getByRole("tab", { name: "Raw" }).click();

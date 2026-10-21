@@ -188,11 +188,11 @@ describe("What was sent from the logs", () => {
 });
 
 describe("the messages a logged API request sent", () => {
-  it("include the context Claude Code injected, from the blob that logs it, its string content kept", async () => {
+  it("include the system-reminder Claude Code injected in a user message, from the blob that logs it", async () => {
     const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(2), { dbPath: db.dbPath });
 
     expect(sent?.fullRequest.messages[2]).toEqual({
-      role: "system",
+      role: "user",
       blocks: [
         {
           kind: "system-reminder",
@@ -210,12 +210,12 @@ describe("the messages a logged API request sent", () => {
     expect(sent?.fullRequest.messages.map((message) => [message?.role, message?.blocks[0]?.kind])).toEqual([
       ["user", "text"],
       ["assistant", "text"],
-      ["system", "system-reminder"],
+      ["user", "system-reminder"],
       ["user", "text"],
       ["assistant", "text"],
       ["user", "tool_result"],
       ["assistant", "text"],
-      ["system", "system-reminder"],
+      ["system", "text"],
       ["user", "text"],
     ]);
   });
@@ -266,7 +266,7 @@ describe("the messages a logged API request sent", () => {
       { text: "Let me delegate the search." },
       { kind: "tool_result" },
       { text: "The exports live in one module." },
-      { kind: "system-reminder" },
+      { text: "The date changed: it is now 2026-10-21." },
       { text: "now add a test" },
       { text: "Added a test." },
       { kind: "tool_result" },
@@ -279,7 +279,7 @@ describe("the messages a logged API request sent", () => {
     expect(sent?.firstNewMessageIndex).toBe(6);
     expect(sent?.fullRequest.messages.slice(6).map((message) => message?.blocks[0])).toMatchObject([
       { text: "The exports live in one module." },
-      { kind: "system-reminder", text: expect.stringContaining("The date changed") },
+      { text: "The date changed: it is now 2026-10-21." },
       { text: "now add a test" },
     ]);
   });
@@ -319,18 +319,17 @@ describe("the messages a logged API request sent", () => {
     ]);
   });
 
-  it("include a blob logged after the request that sent it", async () => {
+  it("include the system message Claude Code injected, from a blob logged after the request, its string content kept", async () => {
     const sent = await getLoggedWhatWasSent(await loggedApiRequestIdOfTurn(4), { dbPath: db.dbPath });
+    const raw = await getLoggedRawApiRequest(await loggedApiRequestIdOfTurn(4), { dbPath: db.dbPath });
 
     expect(sent?.fullRequest.messages[7]).toEqual({
       role: "system",
-      blocks: [
-        {
-          kind: "system-reminder",
-          shownAs: "text",
-          text: "<system-reminder>\nThe date changed: it is now 2026-10-21.\n</system-reminder>",
-        },
-      ],
+      blocks: [{ kind: "text", shownAs: "text", text: "The date changed: it is now 2026-10-21." }],
+    });
+    expect((raw?.requestBody as { messages: unknown[] }).messages[7]).toEqual({
+      role: "system",
+      content: "The date changed: it is now 2026-10-21.",
     });
   });
 });
@@ -369,8 +368,10 @@ describe("a logged API request raw", () => {
             content: [{ type: "text", text: "Earlier answer.", cache_control: { type: "ephemeral" } }],
           },
           {
-            role: "system",
-            content: "<system-reminder>\nCLAUDE.md: keep exports in one module.\n</system-reminder>",
+            role: "user",
+            content: [
+              { type: "text", text: "<system-reminder>\nCLAUDE.md: keep exports in one module.\n</system-reminder>" },
+            ],
           },
           { role: "user", content: "audit the exports" },
         ],
