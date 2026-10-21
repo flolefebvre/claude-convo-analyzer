@@ -203,8 +203,8 @@ function Facts({ whatWasSent }: { whatWasSent: WhatWasSent }) {
         </details>
       ),
     ],
-    ["first byte", timings.timeToFirstByteMs !== null && formatLatency(timings.timeToFirstByteMs)],
-    ["total", formatLatency(timings.durationMs)],
+    ["first byte", timings !== null && timings.timeToFirstByteMs !== null && formatLatency(timings.timeToFirstByteMs)],
+    ["total", timings !== null && formatLatency(timings.durationMs)],
   ];
   return (
     <dl className="sent-facts">
@@ -238,23 +238,23 @@ function FailedAttemptLine({ attempt }: { attempt: FailedAttempt }) {
 function ChangesView({ whatWasSent }: { whatWasSent: WhatWasSent }) {
   const { isSideRequest, firstNewMessageIndex, previousApiRequestId, systemPromptDiff, toolsDiff, fullRequest } =
     whatWasSent;
-  const newMessages = fullRequest.messages.slice(firstNewMessageIndex);
-  const messageCount = countLabel(newMessages.length, "message");
   const hasPreviousRequest = previousApiRequestId !== null;
   return (
     <>
-      <section className="sent-section">
-        <h4 className="io-label">
-          {isSideRequest
-            ? `Everything it sent (${messageCount})`
-            : hasPreviousRequest
-              ? `New since the previous API request (${messageCount})`
-              : `No earlier API request of this Agent was recorded: every message is new (${messageCount})`}
-        </h4>
-        {newMessages.map((message, index) => (
-          <MessageBlocks key={index} message={message} />
-        ))}
-      </section>
+      {fullRequest.messages === null ? (
+        <>
+          <MessagesNotShownYet />
+          {!hasPreviousRequest && (
+            <p className="sent-line">No earlier API request of this Agent: nothing to compare against.</p>
+          )}
+        </>
+      ) : (
+        <NewMessages
+          newMessages={fullRequest.messages.slice(firstNewMessageIndex)}
+          isSideRequest={isSideRequest}
+          hasPreviousRequest={hasPreviousRequest}
+        />
+      )}
 
       {systemPromptDiff ? (
         <section className="sent-section">
@@ -290,6 +290,38 @@ function ChangesView({ whatWasSent }: { whatWasSent: WhatWasSent }) {
   );
 }
 
+/** The messages new since the previous API request, under a heading saying what they are new against. */
+function NewMessages({
+  newMessages,
+  isSideRequest,
+  hasPreviousRequest,
+}: {
+  newMessages: SentMessage[];
+  isSideRequest: boolean;
+  hasPreviousRequest: boolean;
+}) {
+  const messageCount = countLabel(newMessages.length, "message");
+  return (
+    <section className="sent-section">
+      <h4 className="io-label">
+        {isSideRequest
+          ? `Everything it sent (${messageCount})`
+          : hasPreviousRequest
+            ? `New since the previous API request (${messageCount})`
+            : `No earlier API request of this Agent was recorded: every message is new (${messageCount})`}
+      </h4>
+      {newMessages.map((message, index) => (
+        <MessageBlocks key={index} message={message} />
+      ))}
+    </section>
+  );
+}
+
+/** Says that an API request from the logs shows no messages yet, rather than an empty list. */
+function MessagesNotShownYet() {
+  return <p className="sent-line">Messages: not shown yet for an API request from the logs.</p>;
+}
+
 /** The whole request by part: its parameters, system blocks, tool definitions and every message. */
 function RequestView({ whatWasSent }: { whatWasSent: WhatWasSent }) {
   const { systemBlocks, tools, messages, parameterByName } = whatWasSent.fullRequest;
@@ -320,12 +352,16 @@ function RequestView({ whatWasSent }: { whatWasSent: WhatWasSent }) {
           </details>
         ))}
       </section>
-      <section className="sent-section">
-        <h4 className="io-label">Messages ({countLabel(messages.length, "message")})</h4>
-        {messages.map((message, index) => (
-          <MessageBlocks key={index} message={message} />
-        ))}
-      </section>
+      {messages === null ? (
+        <MessagesNotShownYet />
+      ) : (
+        <section className="sent-section">
+          <h4 className="io-label">Messages ({countLabel(messages.length, "message")})</h4>
+          {messages.map((message, index) => (
+            <MessageBlocks key={index} message={message} />
+          ))}
+        </section>
+      )}
     </>
   );
 }
@@ -341,18 +377,23 @@ const RAW_PARTS = [
   },
 ] as const;
 
-/** The API request as JSON: its request body, response body and request headers, each a sub-tab with a copy button. */
+/**
+ * The API request as JSON: its request body, response body and request
+ * headers, each a sub-tab with a copy button. An API request from the logs,
+ * which keep no headers and no response, shows its request body alone.
+ */
 function RawView({ rawApiRequest }: { rawApiRequest: RawApiRequest }) {
+  const parts = rawApiRequest.requestHeaders === null ? RAW_PARTS.slice(0, 1) : RAW_PARTS;
   return (
     <Tabs defaultValue="request-body" className="sent-views">
       <TabsList aria-label="Part of the raw request" className="sent-tab-list">
-        {RAW_PARTS.map((part) => (
+        {parts.map((part) => (
           <TabsTrigger key={part.value} value={part.value} className="sent-tab">
             {part.label}
           </TabsTrigger>
         ))}
       </TabsList>
-      {RAW_PARTS.map((part) => {
+      {parts.map((part) => {
         const value = part.valueOf(rawApiRequest);
         return (
           <TabsContent key={part.value} value={part.value} className="sent-view">

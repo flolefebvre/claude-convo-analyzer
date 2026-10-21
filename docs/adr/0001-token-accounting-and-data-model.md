@@ -26,7 +26,7 @@ true` and the same per-turn `usage` shape as the main thread — often on a
 
 ## Decision
 
-Model the domain as eight tables:
+Model the domain as eleven tables:
 
 - `project` — one per Project path: the directory its Conversations run in,
   per their records' `cwd` (GLOSSARY.md, Project), not the log folder they are
@@ -63,6 +63,15 @@ Model the domain as eight tables:
   Turn matches). Never what was sent: request bodies grow with the square of
   the Conversation, and stay in the Recording. Superseded by ADR-0007: API
   requests come from the logs, their pieces stored once in the database.
+- `logged_api_request` — one per `api-request` record Claude Code 2.1.300+
+  logs (ADR-0007), in any of the Conversation's files: FK to `conversation`,
+  to the file's `agent`, and to the Turn's `message` whose `requestRef` names
+  it within that file (NULL otherwise), with its parameters (never
+  `safeguards`), cache breakpoints, send time and `base`/`keep`/`tail`.
+- `system_prompt`, `tool_set` — each distinct system prompt and set of tool
+  definitions a `logged_api_request` sent, once, under the sha256 of its
+  canonical JSON, shared across Conversations; a Refresh deletes those no
+  request references any more.
 
 Token accounting rules:
 

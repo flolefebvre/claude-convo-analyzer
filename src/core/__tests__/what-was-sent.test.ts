@@ -173,11 +173,17 @@ async function turnsOf(agentId?: string): Promise<TranscriptMessage[]> {
   return (view?.messages ?? []).filter((message) => message.role === "assistant");
 }
 
+/** The `api_request` row id a Turn's What was sent is read by from its Recording; null without one. */
+function recordedApiRequestIdOf(turn: TranscriptMessage | undefined): number | null {
+  const source = turn?.whatWasSentSource;
+  return source?.from === "recording" ? source.apiRequestId : null;
+}
+
 /** What was sent for the `ordinal`-th (1-based) assistant Turn of an Agent. */
 async function whatWasSentForTurn(ordinal: number, agentId?: string) {
   const turn = (await turnsOf(agentId))[ordinal - 1];
-  expect(turn?.apiRequestId).toEqual(expect.any(Number));
-  return getWhatWasSent(turn!.apiRequestId!, { dbPath, recordingsRoot });
+  expect(recordedApiRequestIdOf(turn)).toEqual(expect.any(Number));
+  return getWhatWasSent(recordedApiRequestIdOf(turn)!, { dbPath, recordingsRoot });
 }
 
 /** Messages as their role and the text (or JSON) of each block. */
@@ -190,7 +196,7 @@ function summarized(messages: SentMessage[]): string[][] {
 
 /** The messages `sent` sent that the previous API request did not: those from its first new one on. */
 function newMessagesOf(sent: WhatWasSent | null): SentMessage[] {
-  return sent === null ? [] : sent.fullRequest.messages.slice(sent.firstNewMessageIndex);
+  return sent === null ? [] : (sent.fullRequest.messages ?? []).slice(sent.firstNewMessageIndex);
 }
 
 describe("a Turn's API request", () => {
@@ -199,9 +205,9 @@ describe("a Turn's API request", () => {
 
     const turns = await turnsOf();
 
-    expect(turns.map((turn) => turn.apiRequestId === null)).toEqual([true, false, false]);
+    expect(turns.map((turn) => recordedApiRequestIdOf(turn) === null)).toEqual([true, false, false]);
     const view = await getTranscript(SESSION_ID, { dbPath });
-    expect(view?.messages.filter((m) => m.role === "user").every((m) => m.apiRequestId === null)).toBe(true);
+    expect(view?.messages.filter((m) => m.role === "user").every((m) => m.whatWasSentSource === null)).toBe(true);
   });
 
   it("is the 2xx one when a failed attempt matched the same Turn", async () => {
@@ -214,7 +220,7 @@ describe("a Turn's API request", () => {
 
     const sent = await whatWasSentForTurn(1);
 
-    expect(sent?.timings.timeToFirstByteMs).toBe(800);
+    expect(sent?.timings?.timeToFirstByteMs).toBe(800);
   });
 });
 
@@ -273,7 +279,7 @@ describe("what was sent for a Turn", () => {
 
     const sent = await whatWasSentForTurn(3);
 
-    expect(sent?.fullRequest.messages.map((message) => message.role)).toEqual([
+    expect(sent?.fullRequest.messages?.map((message) => message.role)).toEqual([
       "user",
       "assistant",
       "user",
@@ -353,7 +359,7 @@ describe("what was sent for a Turn", () => {
     const sent = await whatWasSentForTurn(3);
     const second = (await turnsOf())[1];
 
-    expect(sent?.previousApiRequestId).toBe(second?.apiRequestId);
+    expect(sent?.previousApiRequestId).toBe(recordedApiRequestIdOf(second));
     expect(summarized(newMessagesOf(sent))).toEqual([
       ["assistant", "The exports live in billing/export.ts."],
       ["user", "now add a test"],
@@ -421,7 +427,7 @@ describe("what was sent for a Turn", () => {
     const writer = openRecordingWriter(recordingsRoot);
     await writer.append(mainTurns()[1]);
 
-    expect(await getWhatWasSent(turn!.apiRequestId!, { dbPath, recordingsRoot })).toBeNull();
+    expect(await getWhatWasSent(recordedApiRequestIdOf(turn)!, { dbPath, recordingsRoot })).toBeNull();
   });
 
   it("is null for an unknown API request", async () => {
@@ -483,7 +489,7 @@ describe("the raw API request of a Turn", () => {
     await recordAndRefresh([firstTurnSending(responseBody)]);
     const [turn] = await turnsOf();
 
-    const raw = await getRawApiRequest(turn!.apiRequestId!, { dbPath, recordingsRoot });
+    const raw = await getRawApiRequest(recordedApiRequestIdOf(turn)!, { dbPath, recordingsRoot });
 
     // The Recording keeps the system blocks, tools and messages as hashed
     // pieces; rebuilt, the body is the one sent, but for the redaction its
@@ -504,7 +510,7 @@ describe("the raw API request of a Turn", () => {
     const [turn] = await turnsOf();
     rmSync(recordingsRoot, { recursive: true, force: true });
 
-    expect(await getRawApiRequest(turn!.apiRequestId!, { dbPath, recordingsRoot })).toBeNull();
+    expect(await getRawApiRequest(recordedApiRequestIdOf(turn)!, { dbPath, recordingsRoot })).toBeNull();
   });
 
   it("is null for an unknown API request", async () => {
@@ -566,7 +572,7 @@ describe("the failed attempts of a Turn", () => {
     const sent = await whatWasSentForTurn(3);
     const secondTurn = (await turnsOf())[1];
 
-    expect(sent?.previousApiRequestId).toBe(secondTurn?.apiRequestId);
+    expect(sent?.previousApiRequestId).toBe(recordedApiRequestIdOf(secondTurn));
     expect(summarized(newMessagesOf(sent))).toEqual([
       ["assistant", "The exports live in billing/export.ts."],
       ["user", "now add a test"],

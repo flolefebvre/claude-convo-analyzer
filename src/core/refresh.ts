@@ -1,6 +1,6 @@
 // Ingest spine (ADR-0001, ADR-0002). `refresh()` discovers top-level session
 // files + their sub-agent transcripts and Recordings, parses them, and writes
-// ALL eight tables.
+// ALL eleven tables.
 // The read seams (`listConversations()`, `getConversation()`) live in `read.ts`.
 // It writes through a bare better-sqlite3 connection, not Prisma (ADR-0005);
 // every statement it runs lives in `prisma/refresh-statements.ts`.
@@ -140,8 +140,10 @@ type RefreshOptions = {
  *     and every API request keeps its response's error message.
  * 7 — every API request is classified by kind (`api_request.kind`, Side
  *     requests told apart), and keeps its response's usage and model.
+ * 8 — the request records Claude Code 2.1.300+ logs are stored
+ *     (`logged_api_request`, with each system prompt and tool set once).
  */
-export const PARSER_VERSION = 7;
+export const PARSER_VERSION = 8;
 
 /**
  * The version a conversation carries while it is written but NOT YET COMPLETE:
@@ -809,6 +811,52 @@ function writeAgentMessages(
   return messageRowByMsgId;
 }
 
+/**
+ * Write one agent's log file's request records (log-format §9): each distinct
+ * system prompt and tool set under its hash, unless already stored, then one
+ * `logged_api_request` row per `api-request` record, in file order, joined to
+ * the Turn of that same file whose `requestRef` names it — a `requestRef`
+ * naming a request of another file joins nothing.
+ */
+function writeLoggedApiRequests(
+  statements: RefreshStatements,
+  parsed: ParsedSession,
+  conversationId: number,
+  agentId: number,
+  messageRowByMsgId: Map<string, number>,
+): void {
+  if (parsed.loggedApiRequests.length === 0) return;
+  const messageRowIdByRequestRef = new Map<string, number>();
+  for (const message of parsed.messages) {
+    if (message.requestRef === null || message.messageId === null) continue;
+    const messageRowId = messageRowByMsgId.get(message.messageId);
+    if (messageRowId !== undefined && !messageRowIdByRequestRef.has(message.requestRef)) {
+      messageRowIdByRequestRef.set(message.requestRef, messageRowId);
+    }
+  }
+  for (const [hash, blocksJson] of parsed.systemPromptJsonByHash) statements.insertSystemPrompt(hash, blocksJson);
+  for (const [hash, toolsJson] of parsed.toolSetJsonByHash) statements.insertToolSet(hash, toolsJson);
+  parsed.loggedApiRequests.forEach((request, positionInFile) => {
+    statements.insertLoggedApiRequest({
+      conversationId,
+      agentId,
+      messageId: messageRowIdByRequestRef.get(request.recordId) ?? null,
+      recordId: request.recordId,
+      baseRecordId: request.baseRecordId,
+      keptMessageCount: request.keptMessageCount,
+      tailMessageHashesJson: JSON.stringify(request.tailMessageHashes),
+      parametersJson: JSON.stringify(request.parameters),
+      cacheBreakpointsJson: JSON.stringify(request.cacheBreakpoints),
+      querySource: request.querySource,
+      requestDigest: request.requestDigest,
+      sentAt: request.sentAt,
+      positionInFile,
+      systemPromptHash: request.systemPromptHash,
+      toolSetHash: request.toolSetHash,
+    });
+  });
+}
+
 /** The written row of one Turn: its assistant Message and its Agent. */
 type TurnRow = { messageRowId: number; agentRowId: number };
 
@@ -965,6 +1013,7 @@ function writeConversation(statements: RefreshStatements, parsedConversation: Pa
   const turnRows: TurnRows = { byRequestId: new Map(), byMessageId: new Map() };
   const rootByMsgId = writeAgentMessages(statements, parsed, conversationId, rootAgentId, turnRows);
   writeToolCalls(statements, parsed, rootAgentId, rootByMsgId);
+  writeLoggedApiRequests(statements, parsed, conversationId, rootAgentId, rootByMsgId);
 
   // Sub-agents: each transcript is its own agent row (single source of truth
   // for its tokens — the parent aggregate is NOT summed). Linked back to the
@@ -997,6 +1046,7 @@ function writeConversation(statements: RefreshStatements, parsedConversation: Pa
 
     const subByMsgId = writeAgentMessages(statements, plan.parsed, conversationId, subAgentId, turnRows);
     writeToolCalls(statements, plan.parsed, subAgentId, subByMsgId);
+    writeLoggedApiRequests(statements, plan.parsed, conversationId, subAgentId, subByMsgId);
     written.set(plan.agentId, {
       agentRowId: subAgentId,
       parsed: plan.parsed,

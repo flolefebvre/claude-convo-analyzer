@@ -11,6 +11,8 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { constants as zlibConstants, gunzipSync, gzip } from "node:zlib";
 
+import { canonicalJson } from "@/core/canonical-json";
+
 const gzipAsync = promisify(gzip);
 
 /** The value stored in place of a secret. */
@@ -528,25 +530,6 @@ const PIECE_HASH_LENGTH = 16;
 /** The hash a piece is stored under: the first {@link PIECE_HASH_LENGTH} hex characters of its canonical JSON's sha256. */
 function hashOf(content: unknown): string {
   return createHash("sha256").update(canonicalJson(content)).digest("hex").slice(0, PIECE_HASH_LENGTH);
-}
-
-/**
- * JSON with every object's keys sorted, so equal values serialize alike: the
- * form a piece is hashed in (docs/recording-format.md, "Hashing rule").
- *
- * @example
- * canonicalJson({ b: 1, a: [2] }); // '{"a":[2],"b":1}'
- */
-export function canonicalJson(value: unknown): string {
-  return JSON.stringify(value, (_key, nested: unknown) =>
-    isPlainObject(nested)
-      ? Object.fromEntries(
-          Object.keys(nested)
-            .sort()
-            .map((key) => [key, nested[key]]),
-        )
-      : nested,
-  );
 }
 
 /**

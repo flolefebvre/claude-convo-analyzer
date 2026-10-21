@@ -44,9 +44,10 @@ async function responseOf(route: (typeof ROUTES)[number][1], id: string): Promis
 }
 
 /** The `api_request` row id of the fixture's first Main-thread Turn. */
-async function firstTurnApiRequestId(): Promise<number | null | undefined> {
+async function firstTurnApiRequestId(): Promise<number | null> {
   const view = await getTranscript(SESSION_ID);
-  return view?.messages.find((message) => message.role === "assistant")?.apiRequestId;
+  const source = view?.messages.find((message) => message.role === "assistant")?.whatWasSentSource;
+  return source?.from === "recording" ? source.apiRequestId : null;
 }
 
 const db = refreshedDefaultDatabase({
