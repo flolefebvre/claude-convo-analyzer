@@ -1,9 +1,8 @@
 # Glossary — Claude Conversation Analyzer
 
 A local-only app that reads the Claude Code conversation logs stored on this
-machine — and, when the Recorder is used, the Recordings of what Claude Code
-actually sent the API — parses them deterministically into a SQLite database,
-and presents analysis (starting with per-conversation token usage and cost).
+machine, parses them deterministically into a SQLite database, and presents
+analysis (starting with per-conversation token usage and cost).
 
 This file is the **glossary** — the ubiquitous language for the domain. It
 contains no implementation details. Architectural decisions live in
@@ -235,14 +234,15 @@ individual Tool call**. Therefore:
 The hypothetical price of a Conversation had it run on the Claude API, computed
 from its token usage and a per-model, per-token-type price list. Costs are
 attributed per Resolved model, so Main-thread and sub-agent costs can differ
-within one Conversation. A Recorded Conversation's Cost also includes its
-Unlogged usage, which the conversation logs never show.
+within one Conversation. Claude Code's own background requests (naming the
+session, suggestions, web summaries) never appear in the logs, so Cost leaves
+them out.
 
 ### Refresh
 
-The action that re-reads the conversation logs (and Recordings) from disk and
-updates the local SQLite database, so the UI does not re-parse on every view.
-The user triggers it, or Live does when they change.
+The action that re-reads the conversation logs from disk and updates the local
+SQLite database, so the UI does not re-parse on every view. The user triggers
+it, or Live does when they change.
 
 At most one Refresh runs at a time. A click starts one, or joins the one already
 running; it outlives the page that started it, and every open page sees its
@@ -260,15 +260,15 @@ Conversation must be re-parsed.
 ### Live
 
 A mode the user switches on in the app, off by default: while it is on, the app
-watches the conversation logs and Recordings and runs a Refresh whenever they
-change, so open pages follow Conversations as they happen. Switching it on
-first starts watching, then runs a catch-up Refresh, so nothing written in
-between is missed.
+watches the conversation logs and runs a Refresh whenever they change, so open
+pages follow Conversations as they happen. Switching it on first starts
+watching, then runs a catch-up Refresh, so nothing written in between is
+missed.
 
 A Conversation is **active now** while Live is on and its newest source change
-— its log, any of its sub-agent transcripts, or its Recording — is under 2
-minutes old. It is a Live-only notion: with Live off the stored data is only as
-fresh as the last Refresh, so no Conversation is active now.
+— its log or any of its sub-agent transcripts — is under 2 minutes old. It is a
+Live-only notion: with Live off the stored data is only as fresh as the last
+Refresh, so no Conversation is active now.
 
 ### Recorder
 
@@ -279,81 +279,32 @@ running cannot reach the API. The Recorder runs on its own, independently of
 the app, which shows whether it is running and can start it.
 _Avoid_: proxy (in the UI), capture tool.
 
-### Recording
-
-What the Recorder keeps: every API request it forwarded, with its response. A
-Recording is a source in its own right, alongside the conversation logs — unlike
-the database, it cannot be rebuilt from anything else.
-_Avoid_: capture, trace.
-
 ### API request
 
-One request Claude Code sent to the Anthropic API, and its response, as the
-Recorder saw it: the system prompt, the tool definitions, every message exactly
-as sent, the response, its token usage and its timings. An API request is of
-one of three kinds: a Turn's request, which some Agent's Turn came from; a
-Failed attempt of a Turn; or a Side request. Since Claude Code 2.1.300 the
-conversation logs also record each API request an Agent sent, without its
-response; for the same request, the logs win over a Recording.
+One request Claude Code sent to the Anthropic API for an Agent's Turn, as the
+conversation logs record it since Claude Code 2.1.300: the system prompt, the
+tool definitions, every message exactly as sent, and the request parameters
+(model, effort, thinking, maximum output, cache breakpoints). An API request is
+either a Turn's request, which the Turn came from, or a Failed attempt of one.
+Conversations logged by earlier versions have none.
 _Avoid_: exchange, call (clashes with Tool call).
 
 ### What was sent
 
-What a recorded Turn's API request actually gave the model, shown on that
-Turn: the messages new since the previous API request of the same Agent (the
-system-reminders and other injected context the logs omit included), how the
-system prompt and the tool definitions changed since it, the request
-parameters and timings, and the whole system prompt and tool definitions. It
-also gives the API request **raw**: its body exactly as sent, its headers
-(credentials redacted) and its response body, as JSON. A system-prompt change
-is **volatile** when only lines that move on their own changed — the date, the
-git status, the working directory — and **real** otherwise. On a Side request
-the panel shows everything it sent, there being no previous request to compare
-against. A Turn whose API request the conversation logs record (Claude Code
-2.1.300 and later) gets What was sent from them, with no Recording — its
-messages, system prompt, tool definitions and parameters, without timings, and
-raw as its body rebuilt from the log — and the logs win when a Recording has
-the same request. A message the logs cannot rebuild is shown missing, at its
-place, and counted.
+What a Turn's API request gave the model, shown on that Turn: how the system
+prompt and the tool definitions changed since the previous API request of the
+same Agent, the messages new since it, the request parameters and when it was
+sent, and the whole request. It also gives the API request **raw**: its body as
+rebuilt from the logs, as JSON. A system-prompt change is **volatile** when
+only lines that move on their own changed — the date, the git status, the
+working directory — and **real** otherwise. A message the logs cannot rebuild
+is shown missing, at its place, and counted.
 
 ### Failed attempt
 
-An API request the API refused or dropped (overloaded, rate-limited, a server
-error, a broken connection) and that Claude Code then retried: the same request
-of the same Agent, sent again later. It belongs to the Turn whose API request
-was the retry that succeeded, which shows how many failed attempts preceded it
-and, for each, its status, its error message and the time it lost, from its
-arrival to its failure. A failed attempt counts toward Cost only if the API
-reported usage for it, which normally it does not. The conversation logs know
-failed attempts too, with neither status nor error message: an API request no
-Turn answered that the next request of the same Agent resent, which lost the
-time from its sending to that next request's; they never count toward Cost.
+An API request the API refused or dropped and that Claude Code then retried:
+the same request of the same Agent, sent again. It belongs to the Turn whose
+API request was the retry that succeeded, which shows how many failed attempts
+preceded it and the time they lost, up to the retry. The logs record neither
+its status nor its error message, and it never counts toward Cost.
 _Avoid_: retry (that is the request after it), failed request.
-
-### Side request
-
-An API request that is neither a Turn of any Agent nor a Failed attempt of one:
-Claude Code's own background
-requests, such as naming the session, probing the quota, the safety monitor or
-suggestions. Side requests never appear in the conversation logs, so their usage
-is only known for Recorded Conversations.
-
-A Side request is of one **kind**, told from what it sent: session naming, quota
-probe, safety monitor, suggestion, token count, or other (labelled by the first
-line of its system prompt).
-
-### Unlogged usage
-
-The token usage a Recording adds to a Conversation's Cost: its Side requests'
-usage, and that of the Failed attempts the API reported usage for. The
-conversation logs never show it, so an unrecorded Conversation has none. A
-Turn's own usage always comes from the logs, never from its API request.
-_Avoid_: add-on cost, side cost.
-
-### Recorded
-
-A Conversation is **recorded** when its Turns have matching API requests in a
-Recording, **partially recorded** when only some do (the Recorder was started or
-stopped mid-way), and **unrecorded** otherwise. An unrecorded Conversation is
-shown exactly as from its logs alone; recording only ever adds to it.
-_Avoid_: thread (the Recorder's old word for an Agent).
