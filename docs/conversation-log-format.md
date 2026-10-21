@@ -240,8 +240,9 @@ file's mtime/size (stored on `conversation`). Anything in §6 can be added later
 by extending the parser and re-reading — the raw logs are the durable source of
 truth; the SQLite DB is a disposable, rebuildable cache. The stores shared
 across Conversations — the system prompts, tool sets and sent messages of §9 —
-keep that property: a Refresh ends by deleting every piece no request
-references, so a re-parse leaves the database a cold Refresh would write.
+keep that property: each is interned, and a Refresh ends by deleting every
+interned value no request references, so a re-parse leaves the database a cold
+Refresh would write.
 
 ## 8. Who a user message is from: `origin`, and mid-turn delivery
 
@@ -460,9 +461,9 @@ records of every file of a Conversation, main thread and sub-agents
 - **`system_prompt`, `tool_set`**: each shape's `system` and `tools`, stored
   once as logged (key order kept) under the sha256 hex of their canonical JSON
   (`src/core/canonical-json.ts`), not under the per-file `shapeHash`, which
-  names a pair. Two logs spelling one piece in two key orders store its
-  smallest spelling, so the stored text never depends on parse order. A
-  Refresh deletes those no request references any more.
+  names a pair. Two logs spelling one system prompt or tool set in two key
+  orders store its smallest spelling, so the stored text never depends on
+  parse order. A Refresh deletes those no request references any more.
 - **`sent_message`**: each message a tail of the file names that the file can
   rebuild (step 2), under that hash, as logged (key order and a string
   `content` kept), the smallest spelling winning as above. A blob is stored
