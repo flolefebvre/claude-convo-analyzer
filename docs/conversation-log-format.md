@@ -242,7 +242,9 @@ truth; the SQLite DB is a disposable, rebuildable cache. The stores shared
 across Conversations — the system prompts, tool sets and sent messages of §9 —
 keep that property: each is interned, and a Refresh ends by deleting every
 interned value no request references, so a re-parse leaves the database a cold
-Refresh would write.
+Refresh would write. So do a Turn's links to a request in another
+Conversation's file: a Refresh ends by linking every Turn left without one
+(§9, "How they are stored").
 
 ## 8. Who a user message is from: `origin`, and mid-turn delivery
 
@@ -435,8 +437,12 @@ rebuilt body equals the body sent except:
 A resumed or forked session's assistant records can point at an `api-request`
 that only exists in the file it came from. Of the distinct `requestRef`s per
 file, 610 of 9,490 on the main thread (6.4%) and 20 of 17,801 in sub-agents
-point only to another file. 111 request `id`s appear in more than one file.
-Index requests across files, not per file.
+point only to another file. 111 request `id`s appear in more than one file,
+each a copy of one request: the same `requestDigest`, `base`, `keep`, `tail`
+and `params` in every file (all 111 are Sub-agent transcripts copied into a
+forked session's folder). Index requests across files, not per file: the app
+resolves a Turn's `requestRef` in its own file first, then in any other
+(below, "How they are stored").
 
 **A `requestRef` can point to no file at all**, so a Turn's request is not
 always buildable: 15 in the scan (2.1.300–2.1.304; 9 main-thread, 6
@@ -451,13 +457,27 @@ records of every file of a Conversation, main thread and sub-agents
 (`parseSessionLines`, `src/core/parse.ts`).
 
 - **`api_request`**: one row per `api-request` record, whether or not a
-  Turn answered it, with its file's Agent and its place in that file. Its
-  Turn is the assistant record of the same file whose `requestRef` names it;
-  a `requestRef` into another file joins nothing, so such a Turn has no What
-  was sent. A Failed attempt (Retries, below) also names the Turn that owns
-  it, in `failed_attempt_of_message_id`. It keeps `base`, `keep`, `tail`, `params` **without
-  `safeguards`**, `cacheControl`, `querySource`, `requestDigest` and
+  Turn answered it, with its file's Agent and its place in that file. A
+  Failed attempt (Retries, below) also names the Turn that owns it, in
+  `failed_attempt_of_message_id`. It keeps `base`, `keep`, `tail`, `params`
+  **without `safeguards`**, `cacheControl`, `querySource`, `requestDigest` and
   `timestamp`, and the hashes of its system prompt and tool set.
+- **A Turn's request** is named on its `message` row, `api_request_id`, beside
+  its `requestRef` (`request_ref`): several Turns can name one request — its
+  own file's and their copies in resumed and forked sessions. As each file is
+  written, its Turns get the request of that file their `requestRef` names
+  (of several, the latest in file order). At the end of the Refresh, every
+  Turn of the database still without one gets the request of another file:
+  of several files, the one of the Conversation with the smallest
+  `source_path` (plain lexicographic order), its Main thread before its
+  Sub-agents and these by agent id, then the latest in file order. Only ids
+  are read, through the database, so a Turn of a Conversation the Refresh
+  skipped is linked too, and one whose request's Conversation was re-parsed
+  or deleted is linked again, or left without, as a cold Refresh would. A
+  Turn linked to another file's request keeps it when a smaller-path file
+  holding the same request appears later; a cold Refresh would pick that one
+  — a known limit, harmless while the copies are identical. A `requestRef`
+  that names no file leaves the Turn without What was sent.
 - **`system_prompt`, `tool_set`**: each shape's `system` and `tools`, stored
   once as logged (key order kept) under the sha256 hex of their canonical JSON
   (`src/core/canonical-json.ts`), not under the per-file `shapeHash`, which
@@ -487,7 +507,8 @@ leaves unknown, is shown missing at its place and counted.
 
 What was sent for a Turn compares its request with the latest earlier request
 of the same file that a Turn answered, so an unanswered request retried since
-is never the baseline. Its new messages start after the longest prefix of
+is never the baseline. For a request found in another file, that is the other
+file's; the first request of a resumed session's own file therefore has none. Its new messages start after the longest prefix of
 message hashes the two share; a position whose hash is unknown never matches.
 `cache_control` is set at every path, `["system", i]` and
 `["messages", i, "content", j]`, before the missing messages are left out of
@@ -509,7 +530,9 @@ request whose next request of the file sends something else (a user
 interruption), belong to no Turn; a `requestDigest` missing on either side
 never matches. The time an attempt lost, from its `timestamp` to the next
 request's (the failure plus the backoff), is worked out when read. No attempt
-counts toward Cost.
+counts toward Cost. A Turn's Failed attempts are its request's — those owned
+by the Turn of the request's own file — so a Turn copied into a resumed
+session shows them too.
 
 #### Sizes
 
