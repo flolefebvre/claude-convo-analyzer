@@ -25,8 +25,25 @@ export type SentBlock = { kind: SentBlockKind } & (
   { shownAs: "text"; text: string } | { shownAs: "json"; json: string }
 );
 
+/** One content block of a sent message, with what it is to a reader and its first line. */
+export type SentMessageBlock = SentBlock & {
+  /**
+   * What the block is: "Injected context" (a system-reminder, or a system
+   * message's text), "Prompt" (a user's text), "Assistant text", "Thinking",
+   * "Image", "Tool call · <name>", "Tool result · <name>" (the call an earlier
+   * message of the request made; "Tool result" without one), else its kind.
+   */
+  label: string;
+  /**
+   * Its first non-blank line — a text's (system-reminder tags left out), a tool
+   * result's text, a tool call's input as compact JSON — cut at
+   * {@link SENT_BLOCK_PREVIEW_MAX_CHARS} characters, then "…"; empty for any other block.
+   */
+  preview: string;
+};
+
 /** One message of an API request: its role, then each content block (a string content is one text block, a missing one none). */
-export type SentMessage = { role: string; blocks: SentBlock[] };
+export type SentMessage = { role: string; blocks: SentMessageBlock[] };
 
 /** One system block as sent, with the cache breakpoint it carries (`cache_control.type`, plus its `ttl`), if any. */
 export type SentSystemBlock = SentBlock & { cacheControl: string | null };
@@ -225,9 +242,7 @@ export async function getWhatWasSent(
     const messageHashesOf = await messageHashesOfAgentRequests(prisma, row);
     const messageHashes = messageHashesOf(row);
     const body = await requestBodyOf(prisma, row, messageHashes);
-    const messages = (body.messages as (JsonValue | null)[]).map((message) =>
-      message === null ? null : sentMessage(message),
-    );
+    const messages = sentMessagesOf(body.messages as (JsonValue | null)[]);
     const failedAttempts =
       row.messageId === null ? [] : ((await failedAttemptsByMessage(prisma, [row.messageId])).get(row.messageId) ?? []);
     return {
@@ -626,17 +641,107 @@ function lineDiffHunks(previousText: string, text: string): DiffHunk[] {
   }));
 }
 
-function sentMessage(message: unknown): SentMessage {
-  if (!isPlainObject(message)) return { role: "unknown", blocks: [sentBlock(message)] };
+/**
+ * `messages` as sent, in order, each block labelled: a tool result by the
+ * tool of the call an earlier message made; null kept for one the logs could
+ * not rebuild.
+ */
+function sentMessagesOf(messages: (JsonValue | null)[]): (SentMessage | null)[] {
+  const toolNameByUseId = new Map<string, string>();
+  return messages.map((message) => {
+    if (message === null) return null;
+    const role = isPlainObject(message) && typeof message.role === "string" ? message.role : "unknown";
+    const blocks = contentBlocksOf(message);
+    const sent = { role, blocks: blocks.map((block) => sentMessageBlock(block, role, toolNameByUseId)) };
+    for (const block of blocks) {
+      if (isPlainObject(block) && block.type === "tool_use" && typeof block.id === "string") {
+        toolNameByUseId.set(block.id, typeof block.name === "string" ? block.name : "unnamed");
+      }
+    }
+    return sent;
+  });
+}
+
+/** The content blocks of `message`: a string content is one block, a missing one none, a message that is no object one. */
+function contentBlocksOf(message: unknown): unknown[] {
+  if (!isPlainObject(message)) return [message];
   const content = message.content;
+  return Array.isArray(content) ? content : content === undefined ? [] : [content];
+}
+
+/** How long a sent block's preview gets before it is cut. */
+const SENT_BLOCK_PREVIEW_MAX_CHARS = 120;
+
+/** `block` of a message from `role`, labelled, the tool of a result found in `toolNameByUseId`. */
+function sentMessageBlock(block: unknown, role: string, toolNameByUseId: Map<string, string>): SentMessageBlock {
+  const sent = sentBlock(block);
+  const fields = isPlainObject(block) ? block : {};
   return {
-    role: typeof message.role === "string" ? message.role : "unknown",
-    blocks: Array.isArray(content) ? content.map(sentBlock) : content === undefined ? [] : [sentBlock(content)],
+    ...sent,
+    label: sentBlockLabel(sent, fields, role, toolNameByUseId),
+    preview: sentBlockPreview(sent, fields),
   };
+}
+
+/** See {@link SentMessageBlock.label}. */
+function sentBlockLabel(
+  sent: SentBlock,
+  fields: Record<string, unknown>,
+  role: string,
+  toolNameByUseId: Map<string, string>,
+): string {
+  switch (sent.kind) {
+    case "system-reminder":
+      return "Injected context";
+    case "text":
+      if (role === "user") return "Prompt";
+      if (role === "assistant") return "Assistant text";
+      return role === "system" ? "Injected context" : sent.kind;
+    case "tool_use":
+      return typeof fields.name === "string" ? `Tool call · ${fields.name}` : "Tool call";
+    case "tool_result": {
+      const toolName = typeof fields.tool_use_id === "string" ? toolNameByUseId.get(fields.tool_use_id) : undefined;
+      return toolName === undefined ? "Tool result" : `Tool result · ${toolName}`;
+    }
+    case "thinking":
+      return "Thinking";
+    case "image":
+      return "Image";
+    default:
+      return sent.kind;
+  }
+}
+
+/** See {@link SentMessageBlock.preview}. */
+function sentBlockPreview(sent: SentBlock, fields: Record<string, unknown>): string {
+  if (sent.shownAs === "text") return previewLineOf(sent.text.replace(SYSTEM_REMINDER_TAG_PATTERN, ""));
+  if (sent.kind === "tool_use") return previewLineOf(JSON.stringify(fields.input ?? {}));
+  if (sent.kind !== "tool_result") return "";
+  const content = fields.content;
+  if (typeof content === "string") return previewLineOf(content);
+  if (!Array.isArray(content)) return "";
+  return previewLineOf(
+    content
+      .filter((part) => isPlainObject(part) && typeof part.text === "string")
+      .map((part) => (part as { text: string }).text)
+      .join("\n"),
+  );
+}
+
+/** The first non-blank line of `text`, trimmed, cut at {@link SENT_BLOCK_PREVIEW_MAX_CHARS} characters then "…"; empty without one. */
+function previewLineOf(text: string): string {
+  const line = text
+    .split("\n")
+    .map((candidate) => candidate.trim())
+    .find((candidate) => candidate !== "");
+  if (line === undefined) return "";
+  return line.length > SENT_BLOCK_PREVIEW_MAX_CHARS ? `${line.slice(0, SENT_BLOCK_PREVIEW_MAX_CHARS)}…` : line;
 }
 
 /** The tag opening a system-reminder: context Claude Code injects into a text block. */
 const SYSTEM_REMINDER_TAG = "<system-reminder>";
+/** A system-reminder's opening or closing tag, anywhere in a text. */
+const SYSTEM_REMINDER_TAG_PATTERN = /<\/?system-reminder>/g;
 
 /** A string, or a `text` block, as its text; anything else as pretty-printed JSON. */
 function sentBlock(block: unknown): SentBlock {

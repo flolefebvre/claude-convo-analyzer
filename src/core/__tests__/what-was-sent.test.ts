@@ -158,6 +158,8 @@ describe("the messages an API request sent", () => {
           kind: "system-reminder",
           shownAs: "text",
           text: "<system-reminder>\nCLAUDE.md: keep exports in one module.\n</system-reminder>",
+          label: "Injected context",
+          preview: "CLAUDE.md: keep exports in one module.",
         },
       ],
     });
@@ -200,6 +202,9 @@ describe("the messages an API request sent", () => {
           kind: "tool_result",
           shownAs: "json",
           json: JSON.stringify({ type: "tool_result", tool_use_id: "ltu-3", content: "1 passed" }, null, 2),
+          // Its call is in the Turn before: "Added a test." then a Bash call.
+          label: "Tool result · Bash",
+          preview: "1 passed",
         },
       ],
     });
@@ -210,7 +215,13 @@ describe("the messages an API request sent", () => {
 
     expect(sent?.fullRequest.messages.map((message) => message?.role)).toEqual(["user", "assistant", "user"]);
     expect(sent?.fullRequest.messages[0]?.blocks).toEqual([
-      { kind: "text", shownAs: "text", text: "Find the export code." },
+      {
+        kind: "text",
+        shownAs: "text",
+        text: "Find the export code.",
+        label: "Prompt",
+        preview: "Find the export code.",
+      },
     ]);
   });
 
@@ -274,7 +285,18 @@ describe("the messages an API request sent", () => {
     expect(sent?.fullRequest.messages).toEqual([
       null,
       null,
-      { role: "user", blocks: [{ kind: "text", shownAs: "text", text: "pick up where we left off" }] },
+      {
+        role: "user",
+        blocks: [
+          {
+            kind: "text",
+            shownAs: "text",
+            text: "pick up where we left off",
+            label: "Prompt",
+            preview: "pick up where we left off",
+          },
+        ],
+      },
       null,
     ]);
   });
@@ -285,7 +307,15 @@ describe("the messages an API request sent", () => {
 
     expect(sent?.fullRequest.messages[7]).toEqual({
       role: "system",
-      blocks: [{ kind: "text", shownAs: "text", text: "The date changed: it is now 2026-10-21." }],
+      blocks: [
+        {
+          kind: "text",
+          shownAs: "text",
+          text: "The date changed: it is now 2026-10-21.",
+          label: "Injected context",
+          preview: "The date changed: it is now 2026-10-21.",
+        },
+      ],
     });
     expect((raw?.requestBody as { messages: unknown[] }).messages[7]).toEqual({
       role: "system",
@@ -618,6 +648,128 @@ describe("What was sent, request by request", () => {
       const [sent] = await whatWasSentOf([{ system: SYSTEM, tools: [], messages: [{ role: "user" }] }]);
 
       expect(sent?.fullRequest.messages).toEqual([{ role: "user", blocks: [] }]);
+    });
+  });
+
+  describe("the label of a sent block", () => {
+    /** The labels of each message's blocks, of the one request sending `messages`. */
+    async function labelsOf(messages: RequestRecordMessage[]): Promise<string[][]> {
+      const [sent] = await whatWasSentOf([{ system: SYSTEM, tools: [], messages }]);
+      return (sent?.fullRequest.messages ?? []).map((message) => (message?.blocks ?? []).map((block) => block.label));
+    }
+
+    it("tells the context Claude Code injected from the prompt in one user message", async () => {
+      expect(
+        await labelsOf([
+          {
+            role: "user",
+            content: [
+              { type: "text", text: SYSTEM_REMINDER },
+              { type: "text", text: "audit the exports" },
+            ],
+          },
+        ]),
+      ).toEqual([["Injected context", "Prompt"]]);
+    });
+
+    it("is Injected context for a system message", async () => {
+      expect(await labelsOf([PROMPT, { role: "system", content: "The date changed." }])).toEqual([
+        ["Prompt"],
+        ["Injected context"],
+      ]);
+    });
+
+    it("names the tool of a call, and of its result from the call an earlier message made", async () => {
+      expect(await labelsOf([PROMPT, REPLY, RESULT])).toEqual([
+        ["Prompt"],
+        ["Tool call · Bash"],
+        ["Tool result · Bash"],
+      ]);
+    });
+
+    it("is a bare Tool result when no earlier message made its call", async () => {
+      expect(await labelsOf([RESULT])).toEqual([["Tool result"]]);
+    });
+
+    it("tells the assistant's text, its thinking, an image, and any other block by its kind", async () => {
+      expect(
+        await labelsOf([
+          PROMPT,
+          {
+            role: "assistant",
+            content: [
+              { type: "thinking", thinking: "Look at billing first.", signature: "sig" },
+              { type: "text", text: "The exports live in billing." },
+            ],
+          },
+          {
+            role: "user",
+            content: [
+              { type: "image", source: { type: "base64", media_type: "image/png", data: "iVBORw0KGgo=" } },
+              { type: "document", source: { type: "text", media_type: "text/plain", data: "notes" } },
+            ],
+          },
+        ]),
+      ).toEqual([["Prompt"], ["Thinking", "Assistant text"], ["Image", "document"]]);
+    });
+  });
+
+  describe("the preview of a sent block", () => {
+    /** The previews of the blocks of the one message sent as `message`. */
+    async function previewsOf(...messages: RequestRecordMessage[]): Promise<string[]> {
+      const [sent] = await whatWasSentOf([{ system: SYSTEM, tools: [], messages }]);
+      return (sent?.fullRequest.messages.at(-1)?.blocks ?? []).map((block) => block.preview);
+    }
+
+    it("is a text's first non-blank line, the system-reminder tag left out", async () => {
+      expect(
+        await previewsOf({
+          role: "user",
+          content: [
+            { type: "text", text: "<system-reminder>\n\nCLAUDE.md: keep exports in one module.\n</system-reminder>" },
+            { type: "text", text: "\n  audit the exports\nthen the imports" },
+          ],
+        }),
+      ).toEqual(["CLAUDE.md: keep exports in one module.", "audit the exports"]);
+    });
+
+    it("is the first line of a tool result's text", async () => {
+      expect(
+        await previewsOf({
+          role: "user",
+          content: [
+            { type: "tool_result", tool_use_id: "tu-1", content: "export.ts\nimport.ts" },
+            { type: "tool_result", tool_use_id: "tu-2", content: [{ type: "text", text: "\nread.ts" }] },
+          ],
+        }),
+      ).toEqual(["export.ts", "read.ts"]);
+    });
+
+    it("is a tool call's input as compact JSON", async () => {
+      expect(await previewsOf(PROMPT, REPLY)).toEqual(['{"command":"ls billing"}']);
+    });
+
+    it("is empty for a block with no text to show", async () => {
+      expect(
+        await previewsOf({
+          role: "user",
+          content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: "iVBORw0KGgo=" } }],
+        }),
+      ).toEqual([""]);
+    });
+
+    it("stops at 120 characters, then an ellipsis", async () => {
+      expect(await previewsOf({ role: "user", content: "x".repeat(200) })).toEqual([`${"x".repeat(120)}…`]);
+    });
+
+    it("stops a tool call's input at 120 characters too", async () => {
+      const [preview] = await previewsOf(PROMPT, {
+        role: "assistant",
+        content: [{ type: "tool_use", id: "tu-1", name: "Bash", input: { command: "y".repeat(200) } }],
+      });
+
+      expect(preview).toHaveLength(121);
+      expect(preview).toMatch(/^\{"command":"y+…$/);
     });
   });
 });
