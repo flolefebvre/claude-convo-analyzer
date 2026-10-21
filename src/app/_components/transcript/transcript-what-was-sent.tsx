@@ -1,13 +1,17 @@
 "use client";
 
-// The "What was sent" disclosure of one recorded Turn, or of one Side request.
-// The page ships only the `api_request` row id and the Turn's failed-attempt
-// count; what the API request sent, its failed attempts included, is fetched from
-// `GET /api/api-request/<id>` the first time the reader opens it, and kept for
-// every later open. Native `<details>` stays the disclosure, as for tool calls.
-// Under the request's facts, a switch picks the view: Changes (what this
-// request added), Request (all of it, by part) or Raw (its JSON, fetched from
-// `GET /api/api-request/<id>/raw` the first time Raw opens).
+// The "What was sent" disclosure of one Turn, or of one Side request. The page
+// ships only where to read it — a `logged_api_request` row id for an API
+// request the logs hold, else an `api_request` row id for one a Recording
+// holds — and the Turn's failed-attempt count; what the API request sent is
+// fetched from `GET /api/logged-api-request/<id>` or `GET /api/api-request/<id>`
+// the first time the reader opens it, and kept for every later open. Native
+// `<details>` stays the disclosure, as for tool calls. Under the request's
+// facts, a switch picks the view: Changes (what this request added), Request
+// (all of it, by part) or Raw (its JSON, fetched from the route's `/raw`
+// sibling the first time Raw opens). What the logs do not keep — timings,
+// failed attempts, headers, the response, and for now the messages — is left
+// out, the messages said so.
 //
 // ADR-0002: no core import — the payload comes over the route, its types from
 // the core-free `_lib/transcript`.
@@ -28,6 +32,7 @@ import type {
   SentMessage,
   SentTool,
   WhatWasSent,
+  WhatWasSentSource,
 } from "@/app/_lib/transcript";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -44,27 +49,29 @@ const BLOCK_CLAMP_LINES = 15;
 const BLOCK_CLAMP_CHARS = 2_000;
 
 /**
- * A recorded Turn's "What was sent" `<details>`, fetched by `api_request` row
- * `apiRequestId` on the first open; its summary counts the Turn's failed
- * attempts, which the page ships.
+ * A Turn's "What was sent" `<details>`, fetched on the first open from its
+ * `source` — its API request in the logs, else in a Recording; its summary
+ * counts the Turn's failed attempts, which the page ships.
  *
  * @example
- * {message.apiRequestId !== null && (
- *   <WhatWasSentDisclosure apiRequestId={message.apiRequestId} failedAttemptCount={message.failedAttemptCount} />
+ * {message.whatWasSentSource !== null && (
+ *   <WhatWasSentDisclosure source={message.whatWasSentSource} failedAttemptCount={message.failedAttemptCount} />
  * )}
  */
 export function WhatWasSentDisclosure({
-  apiRequestId,
+  source,
   failedAttemptCount,
   isOpenInitially = false,
 }: {
-  apiRequestId: number;
+  source: WhatWasSentSource;
   failedAttemptCount: number;
   /** Rendered open, reading what was sent at once: a Side request's pane, which shows nothing else. */
   isOpenInitially?: boolean;
 }) {
   const { state, onToggle, detailsRef } = useReadOnFirstOpen<WhatWasSent>(() =>
-    callRoute(routes.api["api-request"](String(apiRequestId)).GET()),
+    source.from === "logs"
+      ? callRoute(routes.api["logged-api-request"](String(source.loggedApiRequestId)).GET())
+      : callRoute(routes.api["api-request"](String(source.apiRequestId)).GET()),
   );
 
   return (
@@ -76,7 +83,7 @@ export function WhatWasSentDisclosure({
       </summary>
       <div className="call-body sent-body">
         <ReadBody state={state} subject="what was sent">
-          {(whatWasSent) => <WhatWasSentView whatWasSent={whatWasSent} apiRequestId={apiRequestId} />}
+          {(whatWasSent) => <WhatWasSentView whatWasSent={whatWasSent} source={source} />}
         </ReadBody>
       </div>
     </details>
@@ -124,10 +131,12 @@ function countLabel(count: number, noun: string): string {
 }
 
 /** The request's facts and failed attempts, then the switch between its three views. */
-function WhatWasSentView({ whatWasSent, apiRequestId }: { whatWasSent: WhatWasSent; apiRequestId: number }) {
+function WhatWasSentView({ whatWasSent, source }: { whatWasSent: WhatWasSent; source: WhatWasSentSource }) {
   // Held here, not in the Raw view, which unmounts with its tab: switching away and back reads nothing again.
   const raw = useReadOnFirstOpen<RawApiRequest>(() =>
-    callRoute(routes.api["api-request"](String(apiRequestId)).raw.GET()),
+    source.from === "logs"
+      ? callRoute(routes.api["logged-api-request"](String(source.loggedApiRequestId)).raw.GET())
+      : callRoute(routes.api["api-request"](String(source.apiRequestId)).raw.GET()),
   );
   const { failedAttempts } = whatWasSent;
   return (
@@ -203,8 +212,8 @@ function Facts({ whatWasSent }: { whatWasSent: WhatWasSent }) {
         </details>
       ),
     ],
-    ["first byte", timings.timeToFirstByteMs !== null && formatLatency(timings.timeToFirstByteMs)],
-    ["total", formatLatency(timings.durationMs)],
+    ["first byte", timings !== null && timings.timeToFirstByteMs !== null && formatLatency(timings.timeToFirstByteMs)],
+    ["total", timings !== null && formatLatency(timings.durationMs)],
   ];
   return (
     <dl className="sent-facts">
@@ -238,23 +247,23 @@ function FailedAttemptLine({ attempt }: { attempt: FailedAttempt }) {
 function ChangesView({ whatWasSent }: { whatWasSent: WhatWasSent }) {
   const { isSideRequest, firstNewMessageIndex, previousApiRequestId, systemPromptDiff, toolsDiff, fullRequest } =
     whatWasSent;
-  const newMessages = fullRequest.messages.slice(firstNewMessageIndex);
-  const messageCount = countLabel(newMessages.length, "message");
   const hasPreviousRequest = previousApiRequestId !== null;
   return (
     <>
-      <section className="sent-section">
-        <h4 className="io-label">
-          {isSideRequest
-            ? `Everything it sent (${messageCount})`
-            : hasPreviousRequest
-              ? `New since the previous API request (${messageCount})`
-              : `No earlier API request of this Agent was recorded: every message is new (${messageCount})`}
-        </h4>
-        {newMessages.map((message, index) => (
-          <MessageBlocks key={index} message={message} />
-        ))}
-      </section>
+      {fullRequest.messages === null ? (
+        <>
+          <MessagesNotShownYet />
+          {!hasPreviousRequest && (
+            <p className="sent-line">No earlier API request of this Agent: nothing to compare against.</p>
+          )}
+        </>
+      ) : (
+        <NewMessages
+          newMessages={fullRequest.messages.slice(firstNewMessageIndex)}
+          isSideRequest={isSideRequest}
+          hasPreviousRequest={hasPreviousRequest}
+        />
+      )}
 
       {systemPromptDiff ? (
         <section className="sent-section">
@@ -290,6 +299,38 @@ function ChangesView({ whatWasSent }: { whatWasSent: WhatWasSent }) {
   );
 }
 
+/** The messages new since the previous API request, under a heading saying what they are new against. */
+function NewMessages({
+  newMessages,
+  isSideRequest,
+  hasPreviousRequest,
+}: {
+  newMessages: SentMessage[];
+  isSideRequest: boolean;
+  hasPreviousRequest: boolean;
+}) {
+  const messageCount = countLabel(newMessages.length, "message");
+  return (
+    <section className="sent-section">
+      <h4 className="io-label">
+        {isSideRequest
+          ? `Everything it sent (${messageCount})`
+          : hasPreviousRequest
+            ? `New since the previous API request (${messageCount})`
+            : `No earlier API request of this Agent was recorded: every message is new (${messageCount})`}
+      </h4>
+      {newMessages.map((message, index) => (
+        <MessageBlocks key={index} message={message} />
+      ))}
+    </section>
+  );
+}
+
+/** Says that an API request from the logs shows no messages yet, rather than an empty list. */
+function MessagesNotShownYet() {
+  return <p className="sent-line">Messages: not shown yet for an API request from the logs.</p>;
+}
+
 /** The whole request by part: its parameters, system blocks, tool definitions and every message. */
 function RequestView({ whatWasSent }: { whatWasSent: WhatWasSent }) {
   const { systemBlocks, tools, messages, parameterByName } = whatWasSent.fullRequest;
@@ -320,12 +361,16 @@ function RequestView({ whatWasSent }: { whatWasSent: WhatWasSent }) {
           </details>
         ))}
       </section>
-      <section className="sent-section">
-        <h4 className="io-label">Messages ({countLabel(messages.length, "message")})</h4>
-        {messages.map((message, index) => (
-          <MessageBlocks key={index} message={message} />
-        ))}
-      </section>
+      {messages === null ? (
+        <MessagesNotShownYet />
+      ) : (
+        <section className="sent-section">
+          <h4 className="io-label">Messages ({countLabel(messages.length, "message")})</h4>
+          {messages.map((message, index) => (
+            <MessageBlocks key={index} message={message} />
+          ))}
+        </section>
+      )}
     </>
   );
 }
@@ -341,18 +386,23 @@ const RAW_PARTS = [
   },
 ] as const;
 
-/** The API request as JSON: its request body, response body and request headers, each a sub-tab with a copy button. */
+/**
+ * The API request as JSON: its request body, response body and request
+ * headers, each a sub-tab with a copy button. An API request from the logs,
+ * which keep no headers and no response, shows its request body alone.
+ */
 function RawView({ rawApiRequest }: { rawApiRequest: RawApiRequest }) {
+  const parts = rawApiRequest.requestHeaders === null ? RAW_PARTS.slice(0, 1) : RAW_PARTS;
   return (
     <Tabs defaultValue="request-body" className="sent-views">
       <TabsList aria-label="Part of the raw request" className="sent-tab-list">
-        {RAW_PARTS.map((part) => (
+        {parts.map((part) => (
           <TabsTrigger key={part.value} value={part.value} className="sent-tab">
             {part.label}
           </TabsTrigger>
         ))}
       </TabsList>
-      {RAW_PARTS.map((part) => {
+      {parts.map((part) => {
         const value = part.valueOf(rawApiRequest);
         return (
           <TabsContent key={part.value} value={part.value} className="sent-view">

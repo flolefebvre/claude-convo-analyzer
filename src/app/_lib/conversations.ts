@@ -26,7 +26,7 @@ import {
 } from "@/core/read";
 import { searchConversations } from "@/core/search";
 import { getToolCallSamples, getToolStats } from "@/core/tool-stats";
-import { getRawApiRequest, getWhatWasSent } from "@/core/what-was-sent";
+import { getLoggedRawApiRequest, getLoggedWhatWasSent, getRawApiRequest, getWhatWasSent } from "@/core/what-was-sent";
 
 /**
  * The home directory of the user running the app — the folder tree's `~` root.
@@ -179,6 +179,31 @@ export const loadWhatWasSent = cache(async (apiRequestId: number) => {
 export const loadRawApiRequest = cache(async (apiRequestId: number) => {
   await connection();
   return getRawApiRequest(apiRequestId);
+});
+
+/**
+ * Read what the API request of `logged_api_request` row `loggedApiRequestId`
+ * sent, from the default database. Same request-time gating as
+ * {@link loadConversations}; `null` for an unknown row (the Conversation was
+ * re-parsed since the page rendered).
+ *
+ * @example const whatWasSent = await loadLoggedWhatWasSent(source.loggedApiRequestId);
+ */
+export const loadLoggedWhatWasSent = cache(async (loggedApiRequestId: number) => {
+  await connection();
+  return getLoggedWhatWasSent(loggedApiRequestId);
+});
+
+/**
+ * Read the API request of `logged_api_request` row `loggedApiRequestId` raw
+ * (its body as the logs rebuild it so far), from the default database. Gated
+ * and `null` like {@link loadLoggedWhatWasSent}.
+ *
+ * @example const rawApiRequest = await loadLoggedRawApiRequest(loggedApiRequestId);
+ */
+export const loadLoggedRawApiRequest = cache(async (loggedApiRequestId: number) => {
+  await connection();
+  return getLoggedRawApiRequest(loggedApiRequestId);
 });
 
 /**

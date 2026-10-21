@@ -201,8 +201,9 @@ files without schema-breaking surprises — this section is the pointer.
 - **Attachments** (`attachment` records) other than `queued_command`: pasted
   images/files, and the injected context of §9. Skipped (large/binary).
   `queued_command` attachments ARE modeled (§8).
-- **Request records** (`api-request`, `-shape`, `-blob`) and `cost-state`
-  (§9).
+- **Message blobs** (`api-request-blob`) and `cost-state` (§9). The
+  `api-request` and `api-request-shape` records ARE modeled (§9, "How they are
+  stored").
 - **Compaction events** (`system` with `compactMetadata`): when a conversation
   was auto-summarized. Relevant if you analyze long-conversation behavior.
 - **Retries & API errors** (`system` `retryAttempt`/`maxRetries`/`retryInMs`;
@@ -215,8 +216,9 @@ files without schema-breaking surprises — this section is the pointer.
 Tokens/cost (per turn, deduped, per resolved model), tool calls (name + input +
 truncated result + size), sub-agent lineage, conversation title, project,
 per-turn attribution & timestamps, git branch, CC version, permission mode,
-api-error flag, PR links, turn durations, and each user Message's kind and
-`origin` extras (§8).
+api-error flag, PR links, turn durations, each user Message's kind and
+`origin` extras (§8), and each API request's parameters, system prompt and
+tools (§9).
 
 ## 7. Refresh implication
 
@@ -224,7 +226,10 @@ Because the modeled subset is a strict, deterministic projection of these files,
 re-parsing is idempotent. Incremental refresh can key off each conversation
 file's mtime/size (stored on `conversation`). Anything in §6 can be added later
 by extending the parser and re-reading — the raw logs are the durable source of
-truth; the SQLite DB is a disposable, rebuildable cache.
+truth; the SQLite DB is a disposable, rebuildable cache. The one store shared
+across Conversations — the system prompts and tool sets of §9 — keeps that
+property: a Refresh ends by deleting every piece no request references, so a
+re-parse leaves the database a cold Refresh would write.
 
 ## 8. Who a user message is from: `origin`, and mid-turn delivery
 
@@ -425,6 +430,31 @@ always buildable: 15 in the scan (2.1.300–2.1.304; 9 main-thread, 6
 sub-agent). The 9 main-thread ones all sit before their file's first
 `api-request`, where a resumed session's copied history goes; the request
 they name is on disk nowhere. Show such a Turn without What was sent.
+
+#### How they are stored
+
+Refresh reads the `api-request` and `api-request-shape` records of every file
+of a Conversation, main thread and sub-agents (`parseSessionLines`,
+`src/core/parse.ts`); blobs are not read yet, so the messages are not rebuilt.
+
+- **`logged_api_request`**: one row per `api-request` record, whether or not a
+  Turn answered it, with its file's Agent and its place in that file. Its
+  Turn is the assistant record of the same file whose `requestRef` names it;
+  a `requestRef` into another file joins nothing, so such a Turn has no What
+  was sent. It keeps `base`, `keep`, `tail`, `params` **without
+  `safeguards`**, `cacheControl`, `querySource`, `requestDigest` and
+  `timestamp`, and the hashes of its system prompt and tool set.
+- **`system_prompt`, `tool_set`**: each shape's `system` and `tools`, stored
+  once as logged (key order kept) under the sha256 hex of their canonical JSON
+  (`src/core/canonical-json.ts`), not under the per-file `shapeHash`, which
+  names a pair. Two logs spelling one piece in two key orders store its
+  smallest spelling, so the stored text never depends on parse order. A
+  Refresh deletes those no request references any more.
+
+What was sent for a Turn compares its request with the latest earlier request
+of the same file that a Turn answered, so an unanswered request retried since
+is never the baseline. `cache_control` is set on the system blocks from the
+`["system", i]` paths; the message paths wait for the messages.
 
 #### Retries
 

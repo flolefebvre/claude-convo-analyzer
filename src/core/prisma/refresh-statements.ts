@@ -136,6 +136,24 @@ const API_REQUEST_COLUMN_BY_FIELD = {
   model: "model",
 } as const;
 
+const LOGGED_API_REQUEST_COLUMN_BY_FIELD = {
+  conversationId: "conversation_id",
+  agentId: "agent_id",
+  messageId: "message_id",
+  recordId: "record_id",
+  baseRecordId: "base_record_id",
+  keptMessageCount: "kept_message_count",
+  tailMessageHashesJson: "tail_message_hashes_json",
+  parametersJson: "parameters_json",
+  cacheBreakpointsJson: "cache_breakpoints_json",
+  querySource: "query_source",
+  requestDigest: "request_digest",
+  sentAt: "sent_at",
+  positionInFile: "position_in_file",
+  systemPromptHash: "system_prompt_hash",
+  toolSetHash: "tool_set_hash",
+} as const;
+
 /** A `project` row to insert. */
 export type ProjectRow = InsertRow<keyof typeof PROJECT_COLUMN_BY_FIELD>;
 /** A `conversation` row to insert. */
@@ -152,6 +170,8 @@ export type PrLinkRow = InsertRow<keyof typeof PR_LINK_COLUMN_BY_FIELD>;
 export type TurnDurationRow = InsertRow<keyof typeof TURN_DURATION_COLUMN_BY_FIELD>;
 /** An `api_request` row to insert. */
 export type ApiRequestRow = InsertRow<keyof typeof API_REQUEST_COLUMN_BY_FIELD>;
+/** A `logged_api_request` row to insert. */
+export type LoggedApiRequestRow = InsertRow<keyof typeof LOGGED_API_REQUEST_COLUMN_BY_FIELD>;
 
 /** What the skip/changed/delete decision needs of a stored Conversation. */
 export type StoredConversation = {
@@ -209,6 +229,27 @@ export function prepareRefreshStatements(db: Database.Database) {
   const deleteProjectsWithoutConversations = db.prepare(
     `DELETE FROM "project" WHERE "id" NOT IN (SELECT "project_id" FROM "conversation")`,
   );
+  // A piece is shared across Conversations, under the hash of its canonical
+  // JSON: two logs may spell it in two key orders, and the smallest spelling
+  // is kept, so what is stored never depends on which log was parsed first.
+  const insertSystemPrompt = db.prepare(
+    `INSERT INTO "system_prompt" ("hash", "blocks_json") VALUES (?, ?)
+       ON CONFLICT ("hash") DO UPDATE SET "blocks_json" = "excluded"."blocks_json"
+       WHERE "excluded"."blocks_json" < "system_prompt"."blocks_json"`,
+  );
+  const insertToolSet = db.prepare(
+    `INSERT INTO "tool_set" ("hash", "tools_json") VALUES (?, ?)
+       ON CONFLICT ("hash") DO UPDATE SET "tools_json" = "excluded"."tools_json"
+       WHERE "excluded"."tools_json" < "tool_set"."tools_json"`,
+  );
+  const deleteUnreferencedSystemPrompts = db.prepare(
+    `DELETE FROM "system_prompt" WHERE NOT EXISTS
+       (SELECT 1 FROM "logged_api_request" WHERE "system_prompt_hash" = "system_prompt"."hash")`,
+  );
+  const deleteUnreferencedToolSets = db.prepare(
+    `DELETE FROM "tool_set" WHERE NOT EXISTS
+       (SELECT 1 FROM "logged_api_request" WHERE "tool_set_hash" = "tool_set"."hash")`,
+  );
   // `uuid` is not unique: the first message stored with it decides.
   const selectMessageOwner = db.prepare(
     `SELECT "id", "session_id" AS "sessionId" FROM "conversation"
@@ -255,5 +296,15 @@ export function prepareRefreshStatements(db: Database.Database) {
     insertPrLink: prepareInsert(db, "pr_link", PR_LINK_COLUMN_BY_FIELD),
     insertTurnDuration: prepareInsert(db, "turn_duration", TURN_DURATION_COLUMN_BY_FIELD),
     insertApiRequest: prepareInsert(db, "api_request", API_REQUEST_COLUMN_BY_FIELD),
+    insertLoggedApiRequest: prepareInsert(db, "logged_api_request", LOGGED_API_REQUEST_COLUMN_BY_FIELD),
+    /** Store a system prompt under its hash, keeping the smaller spelling when one already is. */
+    insertSystemPrompt: (hash: string, blocksJson: string) => void insertSystemPrompt.run(hash, blocksJson),
+    /** Store a tool set under its hash, keeping the smaller spelling when one already is. */
+    insertToolSet: (hash: string, toolsJson: string) => void insertToolSet.run(hash, toolsJson),
+    /** Delete every system prompt and tool set no logged API request references any more. */
+    deleteUnreferencedRequestPieces: () => {
+      deleteUnreferencedSystemPrompts.run();
+      deleteUnreferencedToolSets.run();
+    },
   };
 }

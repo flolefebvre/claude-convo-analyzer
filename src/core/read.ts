@@ -1,5 +1,5 @@
 // Read API (ADR-0001, ADR-0002). `listConversations()` and `getConversation()`
-// are the stable read seams over the eight tables written by `refresh()` (the
+// are the stable read seams over the eleven tables written by `refresh()` (the
 // ingest spine, in `refresh.ts`). This module is read-only — it issues SUM
 // queries and prices/assembles summaries, and never writes.
 //
@@ -16,6 +16,7 @@ import { type MessageOrigin, messageOriginSchema } from "@/core/parse";
 import type { Prisma, PrismaClient } from "@/core/prisma/generated/client";
 import { PARSER_VERSION } from "@/core/refresh";
 import { toolCallBodyParts, type ToolCallBodyParts } from "@/core/tool-call-views";
+import type { WhatWasSentSource } from "@/core/what-was-sent";
 import {
   type DailyUsageRow,
   type ModelSumRow,
@@ -208,13 +209,17 @@ export type TranscriptMessage = {
   /** `tool_use` blocks on this (assistant) turn, in stored order. */
   toolCalls: TranscriptToolCall[];
   /**
-   * Row id of this recorded Turn's API request — the key `getWhatWasSent`
-   * reads what was sent by. Of two joining the Turn by its ids, the 2xx one,
-   * else the latest; never a failed attempt. Null on an unrecorded Turn and on
-   * user Messages.
+   * Where this Turn's What was sent is read from: its API request in the logs
+   * when its file holds one (of several, the latest), else its API request in
+   * a Recording (of two joining the Turn by its ids, the 2xx one, else the
+   * latest; never a failed attempt). Null when neither holds it, and on user
+   * Messages.
    */
-  apiRequestId: number | null;
-  /** How many failed attempts preceded this Turn's API request; 0 on an unrecorded Turn and on user Messages. */
+  whatWasSentSource: WhatWasSentSource | null;
+  /**
+   * How many failed attempts preceded this Turn's API request in a Recording;
+   * 0 when its source is the logs or none, and on user Messages.
+   */
   failedAttemptCount: number;
 };
 
@@ -1403,10 +1408,12 @@ async function readAgentTranscript(
     prisma,
     rows.map((r) => r.id),
   );
+  const assistantMessageIds = rows.filter((r) => r.role === "assistant").map((r) => r.id);
   const { apiRequestIdByMessageId, failedAttemptCountByMessageId } = await turnApiRequestsByMessage(
     prisma,
-    rows.filter((r) => r.role === "assistant").map((r) => r.id),
+    assistantMessageIds,
   );
+  const loggedApiRequestIdByMessageId = await turnLoggedApiRequestsByMessage(prisma, assistantMessageIds);
 
   // A Sub-agent's agent id is its external id, so `senderTaskId`/`taskId`
   // resolve against it; a coordinator is the agent that spawned this one.
@@ -1426,6 +1433,15 @@ async function readAgentTranscript(
   return rows.map((r) => {
     const turn = priceTurn(r);
     const origin = readOrigin(r.origin);
+    const loggedApiRequestId = loggedApiRequestIdByMessageId.get(r.id);
+    const apiRequestId = apiRequestIdByMessageId.get(r.id);
+    // The logs win over a Recording for the same Turn (ADR-0007).
+    const whatWasSentSource: WhatWasSentSource | null =
+      loggedApiRequestId !== undefined
+        ? { from: "logs", loggedApiRequestId }
+        : apiRequestId !== undefined
+          ? { from: "recording", apiRequestId }
+          : null;
     return {
       id: r.id,
       uuid: r.uuid,
@@ -1442,10 +1458,30 @@ async function readAgentTranscript(
       apiErrorMessage: r.apiErrorMessage,
       timestamp: r.timestamp === null ? null : new Date(Number(r.timestamp)).toISOString(),
       toolCalls: toolCallsByMsg.get(r.id) ?? [],
-      apiRequestId: apiRequestIdByMessageId.get(r.id) ?? null,
-      failedAttemptCount: failedAttemptCountByMessageId.get(r.id) ?? 0,
+      whatWasSentSource,
+      failedAttemptCount: whatWasSentSource?.from === "recording" ? (failedAttemptCountByMessageId.get(r.id) ?? 0) : 0,
     };
   });
+}
+
+/**
+ * Of each Turn among `messageIds` whose log file holds its API request,
+ * batched: the `logged_api_request` row id — of several, the latest in file
+ * order.
+ */
+async function turnLoggedApiRequestsByMessage(
+  prisma: PrismaClient,
+  messageIds: number[],
+): Promise<Map<number, number>> {
+  const loggedApiRequestIdByMessageId = new Map<number, number>();
+  if (messageIds.length === 0) return loggedApiRequestIdByMessageId;
+  const rows = await prisma.loggedApiRequest.findMany({
+    where: { messageId: { in: messageIds } },
+    orderBy: [{ positionInFile: "asc" }, { id: "asc" }],
+    select: { id: true, messageId: true },
+  });
+  for (const row of rows) loggedApiRequestIdByMessageId.set(row.messageId!, row.id);
+  return loggedApiRequestIdByMessageId;
 }
 
 /**

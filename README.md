@@ -157,9 +157,17 @@ CCA_DB_PATH=data/demo.db CCA_LOGS_ROOT=/tmp/demo-logs pnpm dev
 
 ## Recording what Claude Code sent
 
-The logs show the conversation, but not what Claude Code actually sent the API:
-the system prompt, the tool definitions, the system-reminders it injects, the
-requests it retried, and its own background requests (naming the session,
+Since Claude Code 2.1.300 the logs record each request Claude Code sends, and
+every turn of such a conversation, sub-agents included, shows **What was
+sent** without the Recorder: how the system prompt and tools changed since the
+previous request, the whole system prompt and tools, the request parameters,
+and the request body as the logs rebuild it so far. The messages it sent are
+not shown yet. Where a turn was also recorded, what the logs hold wins.
+
+Before 2.1.300 the logs show the conversation, but not what Claude Code
+actually sent the API: the system prompt, the tool definitions, the
+system-reminders it injects. And they never show why a request failed before
+Claude Code retried it, nor its own background requests (naming the session,
 probing your quota, the safety monitor, suggestions), whose tokens are missing
 from every cost the logs alone give. The **Recorder** fills that gap: an
 optional local proxy that forwards every request to the Anthropic API unchanged

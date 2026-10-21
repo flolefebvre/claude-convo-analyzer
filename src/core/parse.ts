@@ -2,9 +2,10 @@
 // lines into a typed, deduplicated `ParsedSession` ready for DB write.
 //
 // SLICE SCOPE: handles `assistant`, `user` (incl. tool_result), `ai-title`,
-// `custom-title`, `pr-link`, `system`/`turn_duration`, and `queued_command`
-// attachments (mid-turn user Messages); tool_use blocks and `Agent` spawn
-// ledgers are lifted too. Other record types are skipped gracefully
+// `custom-title`, `pr-link`, `system`/`turn_duration`, `queued_command`
+// attachments (mid-turn user Messages), and the `api-request` and
+// `api-request-shape` request records (log-format §9); tool_use blocks and
+// `Agent` spawn ledgers are lifted too. Other record types are skipped gracefully
 // (log-format §6). A line that fails JSON.parse is skipped and counted (never fatal).
 //
 // EXTENSION POINTS:
@@ -15,7 +16,10 @@
 //   - `ParsedMessage` already carries `uuid`/`parentUuid` so Slice 4 can build the
 //     message-uuid index for continued-from resolution.
 
+import { createHash } from "node:crypto";
 import { z } from "zod";
+
+import { canonicalJson } from "@/core/canonical-json";
 
 /** A `tool_use` block lifted out of an assistant message (one `tool_call` row). */
 export type ParsedToolUse = {
@@ -274,6 +278,12 @@ export type ParsedMessage = {
    * to its API request in a Recording, before `message.id` does.
    */
   requestId: string | null;
+  /**
+   * The assistant record's `requestRef` (2.1.300+), the first line's for a
+   * turn split across lines: the `id` of the `api-request` record it answers.
+   * Null on user Messages and older records.
+   */
+  requestRef: string | null;
   uuid: string | null;
   parentUuid: string | null;
   role: "user" | "assistant";
@@ -312,6 +322,33 @@ export type ParsedMessage = {
   timestamp: number | null;
 };
 
+/**
+ * An `api-request` record (log-format §9): one API request the file's Agent
+ * sent, as its `logged_api_request` row keeps it.
+ */
+export type ParsedLoggedApiRequest = {
+  /** The record's `id`, which an assistant record's `requestRef` names. */
+  recordId: string;
+  /** `base`; null when absent (`keep` is then 0). */
+  baseRecordId: string | null;
+  /** `keep`. */
+  keptMessageCount: number;
+  /** `tail`. */
+  tailMessageHashes: string[];
+  /** `params`, without `safeguards` (never stored, ADR-0007). */
+  parameters: Record<string, unknown>;
+  /** `cacheControl`: `[{path, value}]`. */
+  cacheBreakpoints: unknown[];
+  querySource: string | null;
+  requestDigest: string | null;
+  /** `timestamp` in epoch ms: when the request was sent. */
+  sentAt: number | null;
+  /** The hash of its system prompt: a key of `ParsedSession.systemPromptJsonByHash`; null without its shape. */
+  systemPromptHash: string | null;
+  /** The hash of its tool set: a key of `ParsedSession.toolSetJsonByHash`; null without its shape. */
+  toolSetHash: string | null;
+};
+
 /** Per-session context fields, taken from the first record that carries them. */
 export type ParsedSession = {
   /**
@@ -337,6 +374,12 @@ export type ParsedSession = {
   turnDurations: ParsedTurnDuration[];
   /** `Agent` spawn ledgers keyed by spawned `agentId` (cross-check + linkage). */
   agentSpawns: Map<string, ParsedAgentSpawn>;
+  /** The `api-request` records, in file order (log-format §9). */
+  loggedApiRequests: ParsedLoggedApiRequest[];
+  /** Each distinct system prompt of the file's shapes, as logged (JSON), by the sha256 of its canonical JSON. */
+  systemPromptJsonByHash: Map<string, string>;
+  /** Each distinct tool set of the file's shapes, as logged (JSON), by the sha256 of its canonical JSON. */
+  toolSetJsonByHash: Map<string, string>;
   malformedLines: number;
 };
 
@@ -519,6 +562,8 @@ export function parseSessionLines(lines: Iterable<string>): ParsedSession {
   // records for the same turn merge into the existing message (see below).
   const assistantById = new Map<string, ParsedMessage>();
   const deliveries = deliveryLedger();
+  const loggedApiRequests: { request: ParsedLoggedApiRequest; shapeHash: string | null }[] = [];
+  const requestShapes = requestShapeLedger();
   let malformedLines = 0;
 
   let firstCwd: string | null = null;
@@ -572,6 +617,16 @@ export function parseSessionLines(lines: Iterable<string>): ParsedSession {
         });
       }
       continue; // other system subtypes (compaction, retries) not modeled.
+    }
+
+    if (type === "api-request") {
+      const loggedApiRequest = parseLoggedApiRequest(record);
+      if (loggedApiRequest !== null) loggedApiRequests.push(loggedApiRequest);
+      continue;
+    }
+    if (type === "api-request-shape") {
+      requestShapes.add(record);
+      continue; // `api-request-blob` records (the messages) are not read yet.
     }
 
     if (type === "attachment") {
@@ -644,6 +699,7 @@ export function parseSessionLines(lines: Iterable<string>): ParsedSession {
     const parsed: ParsedMessage = {
       messageId,
       requestId: asString(record.requestId),
+      requestRef: asString(record.requestRef),
       uuid: asString(record.uuid),
       parentUuid: asString(record.parentUuid),
       role: "assistant",
@@ -683,7 +739,82 @@ export function parseSessionLines(lines: Iterable<string>): ParsedSession {
     prLinks,
     turnDurations,
     agentSpawns,
+    // Resolved once the whole file is read: a shape need not precede its requests.
+    loggedApiRequests: loggedApiRequests.map(({ request, shapeHash }) => ({
+      ...request,
+      ...requestShapes.pieceHashesOf(shapeHash),
+    })),
+    systemPromptJsonByHash: requestShapes.systemPromptJsonByHash,
+    toolSetJsonByHash: requestShapes.toolSetJsonByHash,
     malformedLines,
+  };
+}
+
+/**
+ * An `api-request` record as its row keeps it, with the `shapeHash` that
+ * locates its system prompt and tool set; null without an `id`.
+ */
+function parseLoggedApiRequest(
+  record: Record<string, unknown>,
+): { request: ParsedLoggedApiRequest; shapeHash: string | null } | null {
+  const recordId = asString(record.id);
+  if (recordId === null) return null;
+  const parameters = isRecord(record.params) ? { ...record.params } : {};
+  delete parameters.safeguards;
+  return {
+    request: {
+      recordId,
+      baseRecordId: asString(record.base),
+      keptMessageCount: asInteger(record.keep) ?? 0,
+      tailMessageHashes: Array.isArray(record.tail)
+        ? record.tail.filter((hash): hash is string => typeof hash === "string")
+        : [],
+      parameters,
+      cacheBreakpoints: Array.isArray(record.cacheControl) ? record.cacheControl : [],
+      querySource: asString(record.querySource),
+      requestDigest: asString(record.requestDigest),
+      sentAt: toEpochMs(record.timestamp),
+      systemPromptHash: null,
+      toolSetHash: null,
+    },
+    shapeHash: asString(record.shapeHash),
+  };
+}
+
+/**
+ * The `api-request-shape` records of one file, each reduced as it is read to
+ * the hashes of its system prompt and tool set — the sha256 of their canonical
+ * JSON — with each distinct piece kept once, as logged (the smallest of its spellings).
+ */
+function requestShapeLedger() {
+  const pieceHashesByShapeHash = new Map<string, { systemPromptHash: string; toolSetHash: string }>();
+  const systemPromptJsonByHash = new Map<string, string>();
+  const toolSetJsonByHash = new Map<string, string>();
+  /** The hash of `piece`, kept in `jsonByHash` as logged — of two spellings of one piece, the smallest. */
+  const keep = (piece: unknown, jsonByHash: Map<string, string>): string => {
+    const hash = createHash("sha256").update(canonicalJson(piece)).digest("hex");
+    const json = JSON.stringify(piece);
+    const keptJson = jsonByHash.get(hash);
+    if (keptJson === undefined || json < keptJson) jsonByHash.set(hash, json);
+    return hash;
+  };
+  return {
+    systemPromptJsonByHash,
+    toolSetJsonByHash,
+    add: (record: Record<string, unknown>) => {
+      const shapeHash = asString(record.shapeHash);
+      if (shapeHash === null || !isRecord(record.shape) || pieceHashesByShapeHash.has(shapeHash)) return;
+      pieceHashesByShapeHash.set(shapeHash, {
+        systemPromptHash: keep(record.shape.system ?? [], systemPromptJsonByHash),
+        toolSetHash: keep(record.shape.tools ?? [], toolSetJsonByHash),
+      });
+    },
+    /** The piece hashes of the shape stored under `shapeHash`; both null when the file holds none. */
+    pieceHashesOf: (shapeHash: string | null) =>
+      (shapeHash === null ? undefined : pieceHashesByShapeHash.get(shapeHash)) ?? {
+        systemPromptHash: null,
+        toolSetHash: null,
+      },
   };
 }
 
@@ -748,6 +879,7 @@ function userMessage(
   return {
     messageId: null,
     requestId: null,
+    requestRef: null,
     uuid: asString(record.uuid),
     parentUuid: asString(record.parentUuid),
     role: "user",

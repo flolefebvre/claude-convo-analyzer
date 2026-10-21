@@ -17,8 +17,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { canonicalJson } from "@/core/canonical-json";
 import {
-  canonicalJson,
   discoverRecordings,
   openRecordingWriter,
   readRecording,

@@ -1,16 +1,18 @@
-// What was sent (GLOSSARY.md): what a recorded Turn's API request actually
-// sent the model, read on demand when the reader opens it. The database
-// locates the API request and the previous one of the same Agent; the
-// Recording file provides their bodies, the only two restored (ADR-0006: no
-// body is ever written to the database). Its Raw view reads one API request
-// the same way, as the Recording holds it. Framework-free (ADR-0002).
+// What was sent (GLOSSARY.md): what a Turn's API request actually sent the
+// model, read on demand when the reader opens it, from one of two sources.
+// From the logs (Claude Code 2.1.300+, ADR-0007), the database holds it all:
+// the `logged_api_request` row and its system prompt and tool set — the
+// messages are not rebuilt yet. From a Recording, the database locates the
+// API request and the previous one of the same Agent, and the Recording file
+// provides their bodies, the only two restored (ADR-0006). The Raw view reads
+// one API request the same way. Framework-free (ADR-0002).
 
 import { structuredPatch } from "diff";
 
 import { isSideRequestKind } from "@/core/api-request-kind";
+import { canonicalJson } from "@/core/canonical-json";
 import { readClient } from "@/core/db";
 import {
-  canonicalJson,
   defaultRecordingsRoot,
   readSelectedApiRequests,
   type RecordedApiRequest,
@@ -128,19 +130,25 @@ export type WhatWasSent = {
   /** True when the API request is a Side request (GLOSSARY.md), which belongs to no Agent. */
   isSideRequest: boolean;
   parameters: SentParameters;
-  timings: SentTimings;
-  /** The failed attempts that preceded this API request, oldest first; empty when it succeeded at the first try. */
+  /** Null for an API request from the logs, which time only its sending. */
+  timings: SentTimings | null;
+  /**
+   * The failed attempts that preceded this API request, oldest first; empty
+   * when it succeeded at the first try, and for an API request from the logs.
+   */
   failedAttempts: FailedAttempt[];
   /**
-   * Row id of the previous API request of the same Agent; null when none was
-   * recorded (the Agent's first Turn, or the first recorded one) or on a Side
-   * request, which has no Agent, and then every message is new.
+   * Row id of the previous API request of the same Agent, from the same
+   * source (an `api_request` row, or a `logged_api_request` one); null when
+   * there is none (the Agent's first Turn, or the first recorded one) or on a
+   * Side request, which has no Agent, and then every message is new.
    */
   previousApiRequestId: number | null;
   /**
    * Index in `fullRequest.messages` of the first message the previous API
    * request did not send — the messages before it are those the two share, in
-   * order (cache breakpoints ignored); 0 without a previous one.
+   * order (cache breakpoints ignored); 0 without a previous one, or without
+   * the messages.
    */
   firstNewMessageIndex: number;
   /** How the system prompt changed since the previous API request; null when it did not, or without one. */
@@ -151,7 +159,8 @@ export type WhatWasSent = {
   fullRequest: {
     systemBlocks: SentSystemBlock[];
     tools: SentTool[];
-    messages: SentMessage[];
+    /** Null for an API request from the logs: its messages are not rebuilt yet. */
+    messages: SentMessage[] | null;
     /** Every body field but `system`, `tools` and `messages`, as sent. */
     parameterByName: Record<string, JsonValue>;
   };
@@ -159,13 +168,24 @@ export type WhatWasSent = {
 
 /** An API request raw (GLOSSARY.md, What was sent), as JSON: what the panel's Raw view shows. Plain and serializable. */
 export type RawApiRequest = {
-  /** The request body exactly as sent, rebuilt from the Recording's pieces (`metadata.user_id` redacted). */
+  /**
+   * From a Recording, the request body exactly as sent, rebuilt from its
+   * pieces (`metadata.user_id` redacted); from the logs, the body as they
+   * rebuild it so far — parameters, system prompt and tools, no messages.
+   */
   requestBody: JsonValue;
-  /** The response body as the Recording reassembled it (a stream's events folded into one message); null without one. */
+  /** The response body as the Recording reassembled it (a stream's events folded into one message); null without one, and from the logs. */
   responseBody: JsonValue;
-  /** The request headers, credentials redacted. */
-  requestHeaders: RecordedHeaders;
+  /** The request headers, credentials redacted; null from the logs, which do not keep them. */
+  requestHeaders: RecordedHeaders | null;
 };
+
+/**
+ * Where a Turn's What was sent is read from: its API request in the logs
+ * (a `logged_api_request` row), else in a Recording (an `api_request` row).
+ */
+export type WhatWasSentSource =
+  { from: "logs"; loggedApiRequestId: number } | { from: "recording"; apiRequestId: number };
 
 type WhatWasSentOptions = {
   dbPath?: string;
@@ -250,16 +270,31 @@ export async function getWhatWasSent(apiRequestId: number, opts: WhatWasSentOpti
       })),
       previousApiRequestId: previousBody === null ? null : previousRow!.id,
       firstNewMessageIndex: sharedPrefixLength(messages, previousBody === null ? [] : messagesOf(previousBody)),
-      systemPromptDiff: previousBody === null ? null : systemPromptDiff(previousBody, body),
-      toolsDiff: previousBody === null ? null : toolsDiff(toolsOf(previousBody), toolsOf(body)),
-      fullRequest: {
-        systemBlocks: systemBlocksOf(body).map(sentSystemBlock),
-        tools: toolsOf(body).map(sentTool),
-        messages: messages.map(sentMessage),
-        parameterByName: Object.fromEntries(Object.entries(body).filter(([field]) => !PIECE_FIELDS.has(field))),
-      },
+      ...pieceChanges(previousBody, body),
+      fullRequest: fullRequestOf(body, messages.map(sentMessage)),
     };
   });
+}
+
+/** How the system prompt and the tool definitions changed from `previousBody` to `body`; neither without a previous body. */
+function pieceChanges(
+  previousBody: RequestBody | null,
+  body: RequestBody,
+): Pick<WhatWasSent, "systemPromptDiff" | "toolsDiff"> {
+  return {
+    systemPromptDiff: previousBody === null ? null : systemPromptDiff(previousBody, body),
+    toolsDiff: previousBody === null ? null : toolsDiff(toolsOf(previousBody), toolsOf(body)),
+  };
+}
+
+/** The whole of `body`, by part, with `messages` as its messages. */
+function fullRequestOf(body: RequestBody, messages: SentMessage[] | null): WhatWasSent["fullRequest"] {
+  return {
+    systemBlocks: systemBlocksOf(body).map(sentSystemBlock),
+    tools: toolsOf(body).map(sentTool),
+    messages,
+    parameterByName: Object.fromEntries(Object.entries(body).filter(([field]) => !PIECE_FIELDS.has(field))),
+  };
 }
 
 /**
@@ -302,20 +337,155 @@ function findApiRequestRow(prisma: ReadPrisma, apiRequestId: number) {
 type ApiRequestRow = NonNullable<Awaited<ReturnType<typeof findApiRequestRow>>>;
 
 /** What `read` makes of `api_request` row `apiRequestId`, read from the database at `dbPath`; null for an unknown row. */
-async function withApiRequestRow<Result>(
+function withApiRequestRow<Result>(
   apiRequestId: number,
   dbPath: string | undefined,
   read: (row: ApiRequestRow, prisma: ReadPrisma) => Promise<Result | null>,
 ): Promise<Result | null> {
-  const { prisma, owned } = readClient(dbPath);
-  try {
+  return withReadClient(dbPath, async (prisma) => {
     const row = await findApiRequestRow(prisma, apiRequestId);
     return row === null ? null : await read(row, prisma);
+  });
+}
+
+/** What `read` makes of the database at `dbPath`. */
+async function withReadClient<Result>(
+  dbPath: string | undefined,
+  read: (prisma: ReadPrisma) => Promise<Result>,
+): Promise<Result> {
+  const { prisma, owned } = readClient(dbPath);
+  try {
+    return await read(prisma);
   } finally {
     // Only a caller-owned (non-default) client is disconnected; the shared
     // default singleton stays open for the next request.
     if (owned) await prisma.$disconnect();
   }
+}
+
+/**
+ * What the API request of `logged_api_request` row `loggedApiRequestId` sent,
+ * from the logs (docs/conversation-log-format.md §9), against the previous
+ * API request of the same Agent: the latest earlier one of its file a Turn
+ * answered, so an unanswered request, retried since, is skipped. Its messages
+ * are not rebuilt yet (`fullRequest.messages` is null); what only a Recording
+ * knows — timings, failed attempts — is left out. Null for an unknown row.
+ *
+ * @example
+ * const whatWasSent = await getLoggedWhatWasSent(source.loggedApiRequestId);
+ */
+export async function getLoggedWhatWasSent(
+  loggedApiRequestId: number,
+  opts: { dbPath?: string } = {},
+): Promise<WhatWasSent | null> {
+  return withLoggedApiRequestRow(loggedApiRequestId, opts.dbPath, async (row, prisma) => {
+    const previousRow = await prisma.loggedApiRequest.findFirst({
+      where: { agentId: row.agentId, positionInFile: { lt: row.positionInFile }, messageId: { not: null } },
+      orderBy: { positionInFile: "desc" },
+      include: LOGGED_API_REQUEST_PIECES,
+    });
+    const body = loggedRequestBody(row);
+    return {
+      isSideRequest: false,
+      parameters: sentParameters(body, {}),
+      timings: null,
+      failedAttempts: [],
+      previousApiRequestId: previousRow?.id ?? null,
+      firstNewMessageIndex: 0,
+      ...pieceChanges(previousRow === null ? null : loggedRequestBody(previousRow), body),
+      fullRequest: fullRequestOf(body, null),
+    };
+  });
+}
+
+/**
+ * The API request of `logged_api_request` row `loggedApiRequestId` raw: its
+ * body as the logs rebuild it so far (docs/conversation-log-format.md §9,
+ * step 4) — the parameters, `params.betas` included, then the system prompt
+ * with its cache breakpoints and the tools, no messages yet. Not exactly as
+ * sent: the logs leave out the billing-header system block, `metadata` and
+ * `stream`. No response, no headers. Null for an unknown row.
+ *
+ * @example
+ * const rawApiRequest = await getLoggedRawApiRequest(source.loggedApiRequestId);
+ */
+export async function getLoggedRawApiRequest(
+  loggedApiRequestId: number,
+  opts: { dbPath?: string } = {},
+): Promise<RawApiRequest | null> {
+  return withLoggedApiRequestRow(loggedApiRequestId, opts.dbPath, async (row) => ({
+    requestBody: loggedRequestBody(row),
+    responseBody: null,
+    requestHeaders: null,
+  }));
+}
+
+/** The pieces a `logged_api_request` row is read with. */
+const LOGGED_API_REQUEST_PIECES = {
+  systemPrompt: { select: { blocksJson: true } },
+  toolSet: { select: { toolsJson: true } },
+} as const;
+
+/** The `logged_api_request` row `loggedApiRequestId`, with its pieces; null for an unknown one. */
+function findLoggedApiRequestRow(prisma: ReadPrisma, loggedApiRequestId: number) {
+  return prisma.loggedApiRequest.findUnique({
+    where: { id: loggedApiRequestId },
+    include: LOGGED_API_REQUEST_PIECES,
+  });
+}
+
+/** What `read` makes of `logged_api_request` row `loggedApiRequestId`, read from the database at `dbPath`; null for an unknown row. */
+function withLoggedApiRequestRow<Result>(
+  loggedApiRequestId: number,
+  dbPath: string | undefined,
+  read: (
+    row: NonNullable<Awaited<ReturnType<typeof findLoggedApiRequestRow>>>,
+    prisma: ReadPrisma,
+  ) => Promise<Result | null>,
+): Promise<Result | null> {
+  return withReadClient(dbPath, async (prisma) => {
+    const row = await findLoggedApiRequestRow(prisma, loggedApiRequestId);
+    return row === null ? null : await read(row, prisma);
+  });
+}
+
+/** What {@link loggedRequestBody} needs of a `logged_api_request` row. */
+type LoggedApiRequestRow = {
+  parametersJson: string;
+  cacheBreakpointsJson: string;
+  systemPrompt: { blocksJson: string } | null;
+  toolSet: { toolsJson: string } | null;
+};
+
+/**
+ * The body a logged API request's row rebuilds so far: its parameters, then
+ * its system blocks — each carrying the `cache_control` its breakpoints set at
+ * `["system", i]` — and its tools; a piece its file lacked is left out.
+ */
+function loggedRequestBody(row: LoggedApiRequestRow): RequestBody {
+  // Every column was written by `JSON.stringify` (refresh.ts).
+  const body = JSON.parse(row.parametersJson) as RequestBody;
+  if (row.systemPrompt !== null) {
+    const systemBlocks = JSON.parse(row.systemPrompt.blocksJson) as JsonValue;
+    body.system = Array.isArray(systemBlocks)
+      ? withSystemCacheBreakpoints(systemBlocks, JSON.parse(row.cacheBreakpointsJson) as JsonValue)
+      : systemBlocks;
+  }
+  if (row.toolSet !== null) body.tools = JSON.parse(row.toolSet.toolsJson) as JsonValue;
+  return body;
+}
+
+/** `systemBlocks` with each breakpoint at a path `["system", i]` set as block `i`'s `cache_control`. */
+function withSystemCacheBreakpoints(systemBlocks: JsonValue[], cacheBreakpoints: JsonValue): JsonValue[] {
+  const blocks = [...systemBlocks];
+  for (const breakpoint of Array.isArray(cacheBreakpoints) ? cacheBreakpoints : []) {
+    if (!isPlainObject(breakpoint) || !Array.isArray(breakpoint.path) || breakpoint.path.length !== 2) continue;
+    const [part, index] = breakpoint.path;
+    const block = typeof index === "number" ? blocks[index] : undefined;
+    if (part !== "system" || !isPlainObject(block) || breakpoint.value === undefined) continue;
+    blocks[index as number] = { ...block, cache_control: breakpoint.value };
+  }
+  return blocks;
 }
 
 /**

@@ -1,5 +1,5 @@
 // Claude Conversation Analyzer — data model.
-// Eight tables per ADR-0001 (docs/adr/0001-token-accounting-and-data-model.md).
+// Eleven tables per ADR-0001 (docs/adr/0001-token-accounting-and-data-model.md).
 // Prisma 7: `prisma-client` generator + @prisma/adapter-better-sqlite3 driver adapter.
 // The generated client output is gitignored (commit schema + migrations only).
 // The Refresh writes these tables WITHOUT Prisma (ADR-0005): mirror any column
@@ -63,6 +63,7 @@ model Conversation {
   prLinks           PrLink[]
   turnDurations     TurnDuration[]
   apiRequests       ApiRequest[]
+  loggedApiRequests LoggedApiRequest[]
 
   @@index([projectId])
   @@map("conversation")
@@ -95,8 +96,9 @@ model Agent {
   /// The Agent-tool message that spawned this sub-agent.
   spawnedBy        Message?  @relation("AgentSpawn", fields: [spawnedByMessageId], references: [id], onDelete: SetNull)
   messages         Message[] @relation("AgentMessages")
-  toolCalls        ToolCall[]
-  apiRequests      ApiRequest[]
+  toolCalls         ToolCall[]
+  apiRequests       ApiRequest[]
+  loggedApiRequests LoggedApiRequest[]
 
   @@index([conversationId])
   @@index([parentAgentId])
@@ -164,8 +166,9 @@ model Message {
   conversation  Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   agent         Agent        @relation("AgentMessages", fields: [agentId], references: [id], onDelete: Cascade)
   spawnedAgents Agent[]      @relation("AgentSpawn")
-  toolCalls     ToolCall[]
-  apiRequests   ApiRequest[]
+  toolCalls         ToolCall[]
+  apiRequests       ApiRequest[]
+  loggedApiRequests LoggedApiRequest[]
 
   @@index([conversationId])
   @@index([agentId])
@@ -298,4 +301,89 @@ model ApiRequest {
   @@index([conversationId])
   @@index([messageId])
   @@map("api_request")
+}
+
+/// One per `api-request` record of the Conversation's log files, Main thread
+/// and Sub-agents alike (docs/conversation-log-format.md, §9): an API request
+/// as Claude Code 2.1.300+ logs it, its system prompt and tool set each stored
+/// once, under their hash, in `system_prompt` and `tool_set`.
+model LoggedApiRequest {
+  id             Int  @id @default(autoincrement())
+  conversationId Int  @map("conversation_id")
+  /// The Agent of the log file holding the record.
+  agentId        Int  @map("agent_id")
+  /// The assistant Message of the Turn whose `requestRef` names this record,
+  /// among the Turns of the same file; NULL when none does (a request then
+  /// retried, or never answered).
+  messageId      Int? @map("message_id")
+
+  /// The record's own `id`: what an assistant record's `requestRef` names.
+  recordId              String  @map("record_id")
+  /// `base`: the `recordId` of the request whose first `keptMessageCount`
+  /// messages this one's start with; NULL when its tail holds them all.
+  baseRecordId          String? @map("base_record_id")
+  /// `keep`: how many of the base request's messages it starts with.
+  keptMessageCount      Int     @map("kept_message_count")
+  /// `tail`: the hashes of the messages that follow, in order, as a JSON array.
+  tailMessageHashesJson String  @map("tail_message_hashes_json")
+  /// `params` as JSON, without `safeguards`, which is never stored (ADR-0007).
+  parametersJson        String  @map("parameters_json")
+  /// `cacheControl` as JSON: `[{path, value}]`, where its `cache_control` markers go.
+  cacheBreakpointsJson  String  @map("cache_breakpoints_json")
+  /// `repl_main_thread`, `sdk`, `agent:builtin:<type>`, …
+  querySource           String? @map("query_source")
+  /// The sha256 of the whole request body, as Claude Code computed it.
+  requestDigest         String? @map("request_digest")
+  /// When the request was sent (epoch ms).
+  sentAt                BigInt? @map("sent_at")
+  /// Its 0-based place among the `api-request` records of its file: the
+  /// previous API request of an Agent is the previous one in file order.
+  positionInFile        Int     @map("position_in_file")
+  /// NULL when its file holds no `api-request-shape` under its `shapeHash`.
+  systemPromptHash      String? @map("system_prompt_hash")
+  /// NULL when its file holds no `api-request-shape` under its `shapeHash`.
+  toolSetHash           String? @map("tool_set_hash")
+
+  conversation Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  agent        Agent         @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  message      Message?      @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  systemPrompt SystemPrompt? @relation(fields: [systemPromptHash], references: [hash], onDelete: Restrict)
+  toolSet      ToolSet?      @relation(fields: [toolSetHash], references: [hash], onDelete: Restrict)
+
+  @@index([conversationId])
+  @@index([messageId])
+  @@index([agentId, positionInFile])
+  @@index([systemPromptHash])
+  @@index([toolSetHash])
+  @@map("logged_api_request")
+}
+
+/// One per distinct system prompt a logged API request sent, shared across
+/// Conversations; the Refresh deletes it once no request references it.
+model SystemPrompt {
+  /// The sha256 hex of the blocks' canonical JSON (`canonical-json.ts`): its
+  /// identity only, never what is shown.
+  hash       String @id
+  /// The system blocks as logged, key order kept: what the model saw. When
+  /// logs spell the same blocks in two key orders, the smallest spelling.
+  blocksJson String @map("blocks_json")
+
+  loggedApiRequests LoggedApiRequest[]
+
+  @@map("system_prompt")
+}
+
+/// One per distinct set of tool definitions a logged API request sent, shared
+/// across Conversations; the Refresh deletes it once no request references it.
+model ToolSet {
+  /// The sha256 hex of the definitions' canonical JSON (`canonical-json.ts`):
+  /// its identity only, never what is shown.
+  hash      String @id
+  /// The tool definitions as logged, in order, key order kept: what the model
+  /// saw. When logs spell the same set in two key orders, the smallest spelling.
+  toolsJson String @map("tools_json")
+
+  loggedApiRequests LoggedApiRequest[]
+
+  @@map("tool_set")
 }

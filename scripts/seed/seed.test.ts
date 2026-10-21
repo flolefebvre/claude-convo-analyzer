@@ -18,6 +18,7 @@ import { SIDE_REQUEST_KINDS } from "@/core/api-request-kind";
 import { getConversation, getToolCallBody, getTranscript, listConversations } from "@/core/read";
 import { discoverRecordings, readRecording, readRecordings, type RecordedApiRequest } from "@/core/recording";
 import { readSettings, writeSettings } from "@/core/settings";
+import { getLoggedWhatWasSent } from "@/core/what-was-sent";
 
 import { seedEnvironment } from "./environment";
 import {
@@ -25,6 +26,7 @@ import {
   CWD_LESS_TITLE,
   FAMILY_WORKTREE_PROJECT_PATH,
   LONG_PAGE_TWO_TEXT,
+  LOGGED_REQUESTS_TITLE,
   LONG_TITLE,
   PARTIALLY_RECORDED_SESSION_ID,
   PLAN_HANDOFF_TITLE,
@@ -67,8 +69,8 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     expect(seed.summary.duplicateSessionsSkipped).toEqual([]);
 
     const conversations = await listConversations({ dbPath: seed.dbPath });
-    expect(conversations).toHaveLength(71);
-    expect(conversations.reduce((sum, c) => sum + c.subAgentCount, 0)).toBe(86);
+    expect(conversations).toHaveLength(72);
+    expect(conversations.reduce((sum, c) => sum + c.subAgentCount, 0)).toBe(87);
 
     const continued = conversations.filter((c) => c.continuedFromId !== null);
     expect(continued).toHaveLength(5);
@@ -127,6 +129,28 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     expect(conversations.filter((c) => c.title === null).map((c) => c.id)).toEqual([UNTITLED_SESSION_ID]);
     const firstPage = sortConversations(conversations, DEFAULT_SORT).slice(0, PAGE_SIZE);
     expect(firstPage.map((c) => c.id)).toContain(UNTITLED_SESSION_ID);
+  });
+
+  it("seeds an unrecorded Conversation whose every Turn, its Sub-agent's included, shows What was sent from its logs", async () => {
+    const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
+
+    const conversations = await listConversations({ dbPath: seed.dbPath });
+    const logged = conversations.find((c) => c.title === LOGGED_REQUESTS_TITLE);
+    expect(logged?.recordedState).toBe("unrecorded");
+    // On the list's first page, where the e2e spec opens it.
+    expect(sortConversations(conversations, DEFAULT_SORT).slice(0, PAGE_SIZE)).toContain(logged);
+    const view = await getTranscript(logged!.id, { dbPath: seed.dbPath });
+    const subAgent = view?.tree.children.find((node) => node.agentType === "Explore");
+    const subAgentView = await getTranscript(logged!.id, { dbPath: seed.dbPath, agentId: subAgent?.id });
+    const turns = [...(view?.messages ?? []), ...(subAgentView?.messages ?? [])].filter((m) => m.role === "assistant");
+    expect(turns.map((turn) => turn.whatWasSentSource?.from)).toEqual(Array(6).fill("logs"));
+
+    // The third Main-thread Turn: the system prompt and the tools changed since the second.
+    const third = view!.messages.filter((m) => m.role === "assistant")[2]!.whatWasSentSource!;
+    if (third.from !== "logs") throw new Error("not from the logs");
+    const sent = await getLoggedWhatWasSent(third.loggedApiRequestId, { dbPath: seed.dbPath });
+    expect(sent?.systemPromptDiff?.isVolatileOnly).toBe(false);
+    expect(sent?.toolsDiff?.added.map((tool) => tool.name)).toEqual(["Grep"]);
   });
 
   it("seeds a repo with two worktree Projects, and a /tmp parent with per-session sub-Folders", async () => {
@@ -406,7 +430,7 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     const after = await seedEnvironment({ dir, now: NOW });
 
     expect(existsSync(leftover)).toBe(false);
-    expect(await listConversations({ dbPath: after.dbPath })).toHaveLength(71);
+    expect(await listConversations({ dbPath: after.dbPath })).toHaveLength(72);
   });
 });
 
