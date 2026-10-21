@@ -508,11 +508,12 @@ function discoverWithKeys(logsRoot: string): DiscoveredWithKey[] {
 
 /**
  * Read + parse one transcript file (main or sub-agent — same per-turn shape),
- * or null when it vanished since discovery.
+ * its tool results cut to what the write stores of them (see
+ * `keepStoredToolResults`), or null when it vanished since discovery.
  */
 function parseSession(sourcePath: string): ParsedSession | null {
   const text = readFileUnlessVanished(sourcePath);
-  return text === null ? null : parseSessionLines(text.split("\n"));
+  return text === null ? null : keepStoredToolResults(parseSessionLines(text.split("\n")));
 }
 
 /**
@@ -605,6 +606,32 @@ function resultStorageCap(name: string): number {
 }
 
 /**
+ * Cut each of `parsed`'s tool results, in place, to the most any `tool_use`
+ * naming it stores ({@link resultStorageCap}; a result no `tool_use` names is
+ * never stored, so cut like any non-Agent one), so a Conversation held until
+ * its write keeps no more of a result than its rows: `resultCharSize` keeps
+ * the full length. A `slice` keeps the string it was cut from alive; the JSON
+ * round trip is the copy that frees it.
+ */
+function keepStoredToolResults(parsed: ParsedSession): ParsedSession {
+  const capByToolUseId = new Map<string, number>();
+  for (const message of parsed.messages) {
+    for (const toolUse of message.toolUses) {
+      if (toolUse.toolUseId === null) continue;
+      const cap = Math.max(capByToolUseId.get(toolUse.toolUseId) ?? 0, resultStorageCap(toolUse.name));
+      capByToolUseId.set(toolUse.toolUseId, cap);
+    }
+  }
+  for (const result of parsed.toolResults.values()) {
+    const cap = capByToolUseId.get(result.toolUseId) ?? RESULT_TRUNCATE_CHARS;
+    if (result.resultText !== null && result.resultText.length > cap) {
+      result.resultText = JSON.parse(JSON.stringify(result.resultText.slice(0, cap))) as string;
+    }
+  }
+  return parsed;
+}
+
+/**
  * Write the `tool_call` rows for one agent's messages, pairing each `tool_use`
  * with its result (matched by `tool_use_id`, finding #6). The result is stored
  * up to its tool's {@link resultStorageCap}; `resultCharSize` keeps the FULL
@@ -625,8 +652,9 @@ function writeToolCalls(
     for (const tu of msg.toolUses) {
       const result = tu.toolUseId === null ? undefined : parsed.toolResults.get(tu.toolUseId);
       const fullResult = result?.resultText ?? null;
+      const fullLength = result?.resultCharSize ?? null;
       const cap = resultStorageCap(tu.name);
-      const truncated = fullResult !== null && fullResult.length > cap;
+      const truncated = fullResult !== null && fullLength !== null && fullLength > cap;
       statements.insertToolCall({
         messageId: messageRowId,
         agentId,
@@ -635,7 +663,7 @@ function writeToolCalls(
         inputJson: tu.inputJson,
         resultText: fullResult === null || !truncated ? fullResult : fullResult.slice(0, cap),
         resultTruncated: truncated,
-        resultCharSize: fullResult === null ? null : fullResult.length,
+        resultCharSize: fullResult === null ? null : fullLength,
         isError: result?.isError ?? false,
       });
     }
