@@ -440,7 +440,8 @@ records of every file of a Conversation, main thread and sub-agents
   Turn answered it, with its file's Agent and its place in that file. Its
   Turn is the assistant record of the same file whose `requestRef` names it;
   a `requestRef` into another file joins nothing, so such a Turn has no What
-  was sent. It keeps `base`, `keep`, `tail`, `params` **without
+  was sent. A Failed attempt (Retries, below) also names the Turn that owns
+  it, in `failed_attempt_of_message_id`. It keeps `base`, `keep`, `tail`, `params` **without
   `safeguards`**, `cacheControl`, `querySource`, `requestDigest` and
   `timestamp`, and the hashes of its system prompt and tool set.
 - **`system_prompt`, `tool_set`**: each shape's `system` and `tools`, stored
@@ -481,6 +482,15 @@ A request no `assistant` record points to, followed by one with the same
 a request a Turn answers. The logs record no status or error for the failed
 ones. 16 more unanswered requests have no retry; half of them are the last
 request of their file.
+
+The Refresh models it: every request of a chain but its last is a Failed
+attempt of the Turn that answers the last, which its row names
+(`failed_attempt_of_message_id`). A chain no Turn answers, and an unanswered
+request whose next request of the file sends something else (a user
+interruption), belong to no Turn; a `requestDigest` missing on either side
+never matches. The time an attempt lost, from its `timestamp` to the next
+request's (the failure plus the backoff), is worked out when read. No attempt
+counts toward Cost.
 
 #### Sizes
 

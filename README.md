@@ -163,7 +163,9 @@ sent** without the Recorder: the messages new since the previous request, the
 system-reminders Claude Code injected included, how the system prompt and
 tools changed since it, the whole request with every message, and the request
 body as the logs rebuild it. A message the logs cannot rebuild is shown
-missing and counted. Where a turn was also recorded, what the logs hold wins.
+missing and counted. A turn Claude Code had to retry shows how many failed
+attempts preceded it and the time they lost, though not why they failed.
+Where a turn was also recorded, what the logs hold wins.
 
 Before 2.1.300 the logs show the conversation, but not what Claude Code
 actually sent the API: the system prompt, the tool definitions, the
@@ -200,8 +202,9 @@ recorded conversation gains:
   prompt and tools changed; **Request**, the whole request by part; and
   **Raw**, its request body, response body and headers as JSON, each copyable.
   The request parameters and timings sit above all three.
-- **Failed attempts**: the overloaded, rate-limited or dropped requests Claude
-  Code retried before the turn succeeded, and the time each one lost.
+- **Failed attempts** with their status and error: the overloaded,
+  rate-limited or dropped requests Claude Code retried before the turn
+  succeeded, why each failed, and the time each one lost.
 - **Side requests**: Claude Code's background requests, in the Transcript and
   in the conversation's cost.
 
