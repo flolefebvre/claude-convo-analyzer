@@ -447,7 +447,9 @@ of a Conversation, main thread and sub-agents (`parseSessionLines`,
 - **`system_prompt`, `tool_set`**: each shape's `system` and `tools`, stored
   once as logged (key order kept) under the sha256 hex of their canonical JSON
   (`src/core/canonical-json.ts`), not under the per-file `shapeHash`, which
-  names a pair. A Refresh deletes those no request references any more.
+  names a pair. Two logs spelling one piece in two key orders store its
+  smallest spelling, so the stored text never depends on parse order. A
+  Refresh deletes those no request references any more.
 
 What was sent for a Turn compares its request with the latest earlier request
 of the same file that a Turn answered, so an unanswered request retried since

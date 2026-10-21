@@ -364,7 +364,8 @@ model SystemPrompt {
   /// The sha256 hex of the blocks' canonical JSON (`canonical-json.ts`): its
   /// identity only, never what is shown.
   hash       String @id
-  /// The system blocks as logged, key order kept: what the model saw.
+  /// The system blocks as logged, key order kept: what the model saw. When
+  /// logs spell the same blocks in two key orders, the smallest spelling.
   blocksJson String @map("blocks_json")
 
   loggedApiRequests LoggedApiRequest[]
@@ -378,7 +379,8 @@ model ToolSet {
   /// The sha256 hex of the definitions' canonical JSON (`canonical-json.ts`):
   /// its identity only, never what is shown.
   hash      String @id
-  /// The tool definitions as logged, in order, key order kept: what the model saw.
+  /// The tool definitions as logged, in order, key order kept: what the model
+  /// saw. When logs spell the same set in two key orders, the smallest spelling.
   toolsJson String @map("tools_json")
 
   loggedApiRequests LoggedApiRequest[]

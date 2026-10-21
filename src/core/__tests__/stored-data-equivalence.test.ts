@@ -12,7 +12,7 @@
 // value the failing assertion reports.
 
 import { createHash } from "node:crypto";
-import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
@@ -285,6 +285,99 @@ describe("a re-parse", () => {
 
     expect(loggedApiRequestContent(reparsedDbPath, logsRoot)).toEqual(loggedApiRequestContent(coldDbPath, logsRoot));
     expect(loggedApiRequestContent(coldDbPath, logsRoot).system_prompt.rowCount).toBe(2);
+  });
+});
+
+describe("a piece two logs spell in two key orders", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(tmpdir(), "cca-piece-spelling-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  /** A tool definition, its keys in the order given. */
+  const BASH_NAME_FIRST = { name: "Bash", description: "Run a command.", input_schema: { type: "object" } };
+  const BASH_SCHEMA_FIRST = { input_schema: { type: "object" }, description: "Run a command.", name: "Bash" };
+
+  /** Write a 2.1.305 session `sessionId` whose one API request sends `tools`. */
+  function writeSessionSending(logsRoot: string, sessionId: string, tools: object[]): void {
+    const folder = path.join(logsRoot, "-Users-me-dev-spelling");
+    mkdirSync(folder, { recursive: true });
+    const records = [
+      {
+        type: "user",
+        uuid: `${sessionId}-u`,
+        timestamp: "2026-10-21T10:00:00.000Z",
+        cwd: "/Users/me/dev/spelling",
+        version: "2.1.305",
+        message: { role: "user", content: "hi" },
+      },
+      { type: "api-request-shape", sessionId, shapeHash: "shape", shape: { system: [], tools } },
+      {
+        type: "api-request",
+        sessionId,
+        id: `${sessionId}-req`,
+        keep: 0,
+        tail: [],
+        shapeHash: "shape",
+        params: {},
+        cacheControl: [],
+        timestamp: "2026-10-21T10:00:01.000Z",
+      },
+      {
+        type: "assistant",
+        uuid: `${sessionId}-a`,
+        requestRef: `${sessionId}-req`,
+        timestamp: "2026-10-21T10:00:05.000Z",
+        cwd: "/Users/me/dev/spelling",
+        version: "2.1.305",
+        message: {
+          id: `${sessionId}-msg`,
+          role: "assistant",
+          model: "claude-opus-4-8",
+          content: [{ type: "text", text: "Hello." }],
+        },
+      },
+    ];
+    writeFileSync(
+      path.join(folder, `${sessionId}.jsonl`),
+      records.map((record) => JSON.stringify(record)).join("\n") + "\n",
+    );
+  }
+
+  /** The stored tool sets of the database at `dbPath`. */
+  function storedToolSets(dbPath: string): unknown[] {
+    const db = new Database(dbPath, { readonly: true });
+    try {
+      return db.prepare(`SELECT "hash", "tools_json" FROM "tool_set" ORDER BY "hash"`).all();
+    } finally {
+      db.close();
+    }
+  }
+
+  it("is stored as the smallest spelling, whichever log was parsed first", async () => {
+    const logsRoot = path.join(tmpDir, "logs");
+    const schemaFirstThenNameFirst = path.join(tmpDir, "schema-first.db");
+    const nameFirstThenSchemaFirst = path.join(tmpDir, "name-first.db");
+    // Discovery writes `sess-a` before `sess-b`: a cold Refresh of both parses the schema-first one first…
+    writeSessionSending(logsRoot, "sess-a", [BASH_SCHEMA_FIRST]);
+    writeSessionSending(logsRoot, "sess-b", [BASH_NAME_FIRST]);
+    await refresh({ logsRoot, dbPath: schemaFirstThenNameFirst });
+    // …and a Refresh that sees `sess-b` alone, then both, parses the name-first one first.
+    rmSync(path.join(logsRoot, "-Users-me-dev-spelling", "sess-a.jsonl"));
+    await refresh({ logsRoot, dbPath: nameFirstThenSchemaFirst });
+    writeSessionSending(logsRoot, "sess-a", [BASH_SCHEMA_FIRST]);
+    await refresh({ logsRoot, dbPath: nameFirstThenSchemaFirst });
+
+    const smallestSpelling = [JSON.stringify([BASH_NAME_FIRST]), JSON.stringify([BASH_SCHEMA_FIRST])].sort()[0];
+    expect(storedToolSets(schemaFirstThenNameFirst)).toEqual([
+      { hash: expect.any(String), tools_json: smallestSpelling },
+    ]);
+    expect(storedToolSets(nameFirstThenSchemaFirst)).toEqual(storedToolSets(schemaFirstThenNameFirst));
   });
 });
 

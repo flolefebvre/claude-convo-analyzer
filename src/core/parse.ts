@@ -784,16 +784,18 @@ function parseLoggedApiRequest(
 /**
  * The `api-request-shape` records of one file, each reduced as it is read to
  * the hashes of its system prompt and tool set — the sha256 of their canonical
- * JSON — with each distinct piece kept once, as logged.
+ * JSON — with each distinct piece kept once, as logged (the smallest of its spellings).
  */
 function requestShapeLedger() {
   const pieceHashesByShapeHash = new Map<string, { systemPromptHash: string; toolSetHash: string }>();
   const systemPromptJsonByHash = new Map<string, string>();
   const toolSetJsonByHash = new Map<string, string>();
-  /** The hash of `piece`, kept in `jsonByHash` as logged unless an equal one already is. */
+  /** The hash of `piece`, kept in `jsonByHash` as logged — of two spellings of one piece, the smallest. */
   const keep = (piece: unknown, jsonByHash: Map<string, string>): string => {
     const hash = createHash("sha256").update(canonicalJson(piece)).digest("hex");
-    if (!jsonByHash.has(hash)) jsonByHash.set(hash, JSON.stringify(piece));
+    const json = JSON.stringify(piece);
+    const keptJson = jsonByHash.get(hash);
+    if (keptJson === undefined || json < keptJson) jsonByHash.set(hash, json);
     return hash;
   };
   return {
