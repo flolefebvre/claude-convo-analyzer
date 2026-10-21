@@ -146,7 +146,7 @@ export type WhatWasSent = {
   timings: SentTimings | null;
   /**
    * The failed attempts that preceded this API request, oldest first; empty
-   * when it succeeded at the first try, and for an API request from the logs.
+   * when it succeeded at the first try.
    */
   failedAttempts: FailedAttempt[];
   /**
@@ -387,8 +387,9 @@ async function withReadClient<Result>(
  * API request of the same Agent: the latest earlier one of its file a Turn
  * answered, so an unanswered request, retried since, is skipped. Its messages
  * are rebuilt from the database, a message it could not rebuild kept as null
- * at its place and counted; what only a Recording knows — timings, failed
- * attempts — is left out. Null for an unknown row.
+ * at its place and counted; its failed attempts come with neither status nor
+ * error message, and what only a Recording knows — timings — is left out.
+ * Null for an unknown row.
  *
  * @example
  * const whatWasSent = await getLoggedWhatWasSent(source.loggedApiRequestId);
@@ -409,11 +410,15 @@ export async function getLoggedWhatWasSent(
     const messages = (body.messages as (JsonValue | null)[]).map((message) =>
       message === null ? null : sentMessage(message),
     );
+    const failedAttempts =
+      row.messageId === null
+        ? []
+        : ((await loggedFailedAttemptsByMessage(prisma, [row.messageId])).get(row.messageId) ?? []);
     return {
       isSideRequest: false,
       parameters: sentParameters(body, {}),
       timings: null,
-      failedAttempts: [],
+      failedAttempts,
       previousApiRequestId: previousRow?.id ?? null,
       firstNewMessageIndex:
         previousRow === null ? 0 : sharedMessageHashPrefixLength(messageHashes, messageHashesOf(previousRow)),
