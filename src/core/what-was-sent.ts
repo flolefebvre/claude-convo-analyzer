@@ -61,6 +61,8 @@ export type SentParameters = {
   effort: string | null;
   /** The beta features: the body's `betas`, deduplicated. */
   betas: string[];
+  /** How many cache breakpoints the request set, on its system prompt, tools and messages. */
+  cacheBreakpointCount: number;
 };
 
 /** One line of a line diff: added, removed, or unchanged context around a change. */
@@ -77,6 +79,8 @@ export type SystemPromptDiff = {
   hunks: { lines: SystemPromptDiffLine[] }[];
   /** True when every changed line is volatile (dates, git status, the working directory). */
   isVolatileOnly: boolean;
+  /** What the volatile changed lines belong to, each once, in the order the diff meets them; empty without any. */
+  volatileChangeNames: VolatileChangeName[];
 };
 
 /** A tool definition whose description or input schema changed, as a line diff of its pretty-printed definition. */
@@ -92,25 +96,29 @@ export type ToolsDiff = { added: SentTool[]; removed: SentTool[]; changed: Chang
 /** How many unchanged lines a diff hunk keeps around its changed lines. */
 const DIFF_CONTEXT_LINE_COUNT = 2;
 
+/** What a volatile system-prompt line belongs to: the thing that moved when it changed. */
+export type VolatileChangeName = "date" | "working directory" | "git status" | "blank lines";
+
 /**
  * The system-prompt lines that change between Turns without anything real
- * changing: today's date, the working directory, the git status section
- * (status, branch, its file entries and recent commits), and blank lines.
+ * changing, each with what it belongs to: today's date, the working
+ * directory, the git status section (status, branch, its file entries and
+ * recent commits), and blank lines. A line belongs to the first it matches.
  */
-export const VOLATILE_SYSTEM_LINE_PATTERNS: readonly RegExp[] = [
-  /^\s*(?:Today's date|Current date)\b/i,
-  /^\s*(?:Primary )?working directory:/i,
-  /^\s*(?:gitStatus|Git status):/i,
-  /^\s*Current branch:/i,
-  /^\s*Status:/i,
-  /^\s*Recent commits:/i,
+export const VOLATILE_SYSTEM_LINE_PATTERNS: readonly { name: VolatileChangeName; pattern: RegExp }[] = [
+  { name: "date", pattern: /^\s*(?:Today's date|Current date)\b/i },
+  { name: "working directory", pattern: /^\s*(?:Primary )?working directory:/i },
+  { name: "git status", pattern: /^\s*(?:gitStatus|Git status):/i },
+  { name: "git status", pattern: /^\s*Current branch:/i },
+  { name: "git status", pattern: /^\s*Status:/i },
+  { name: "git status", pattern: /^\s*Recent commits:/i },
   // The git status of a clean tree, alone under `Status:`.
-  /^\s*\(clean\)\s*$/,
+  { name: "git status", pattern: /^\s*\(clean\)\s*$/ },
   // A git status entry: its status code, then one path-like token and nothing after it.
-  /^\s*[MADRCU?!]{1,2}\s+\S*[/.]\S*$/,
+  { name: "git status", pattern: /^\s*[MADRCU?!]{1,2}\s+\S*[/.]\S*$/ },
   // A recent commit: its abbreviated hash, then its subject.
-  /^[0-9a-f]{7,40}\s/,
-  /^\s*$/,
+  { name: "git status", pattern: /^[0-9a-f]{7,40}\s/ },
+  { name: "blank lines", pattern: /^\s*$/ },
 ];
 
 /**
@@ -154,14 +162,12 @@ export type WhatWasSent = {
   systemPromptDiff: SystemPromptDiff | null;
   /** How the tool definitions changed since the previous API request; null when none did, or without one. */
   toolsDiff: ToolsDiff | null;
-  /** The whole request: every system block with its cache breakpoints, every tool definition and message, every other body field. */
+  /** The whole request but its parameters: every system block with its cache breakpoints, every tool definition and message. */
   fullRequest: {
     systemBlocks: SentSystemBlock[];
     tools: SentTool[];
     /** Every message, in order: null for one the logs could not rebuild, kept at its place. */
     messages: (SentMessage | null)[];
-    /** Every body field but `system`, `tools` and `messages`, as sent. */
-    parameterByName: Record<string, JsonValue>;
   };
 };
 
@@ -172,9 +178,6 @@ export type RawApiRequest = {
   /** How many messages the logs could not rebuild, left out of `requestBody`. */
   missingMessageCount: number;
 };
-
-/** The body fields stored as pieces of their own; every other field is a parameter. */
-const PIECE_FIELDS = new Set(["system", "tools", "messages"]);
 
 /** A request body that is a JSON object: what a Messages request is. */
 type RequestBody = Record<string, JsonValue>;
@@ -190,13 +193,12 @@ function pieceChanges(
   };
 }
 
-/** The whole of `body`, by part, with `messages` as its messages. */
+/** The system blocks and tools of `body`, with `messages` as its messages. */
 function fullRequestOf(body: RequestBody, messages: (SentMessage | null)[]): WhatWasSent["fullRequest"] {
   return {
     systemBlocks: systemBlocksOf(body).map(sentSystemBlock),
     tools: toolsOf(body).map(sentTool),
     messages,
-    parameterByName: Object.fromEntries(Object.entries(body).filter(([field]) => !PIECE_FIELDS.has(field))),
   };
 }
 
@@ -246,7 +248,7 @@ export async function getWhatWasSent(
     const failedAttempts =
       row.messageId === null ? [] : ((await failedAttemptsByMessage(prisma, [row.messageId])).get(row.messageId) ?? []);
     return {
-      parameters: sentParameters(body),
+      parameters: sentParameters(body, JSON.parse(row.cacheBreakpointsJson) as JsonValue),
       sentAt: row.sentAt === null ? null : new Date(Number(row.sentAt)).toISOString(),
       failedAttempts,
       previousApiRequestId: previousRow?.id ?? null,
@@ -541,7 +543,11 @@ function withMessageCacheBreakpoints(
   return breakpointMessages;
 }
 
-function sentParameters(body: RequestBody): SentParameters {
+/** The body parts a cache breakpoint can be set on. */
+const CACHE_BREAKPOINT_PARTS = new Set<JsonValue>(["system", "tools", "messages"]);
+
+/** The parameters of `body`, sent with `cacheBreakpoints`. */
+function sentParameters(body: RequestBody, cacheBreakpoints: JsonValue): SentParameters {
   const outputConfig = body.output_config;
   const effort = isPlainObject(outputConfig) && typeof outputConfig.effort === "string" ? outputConfig.effort : null;
   const bodyBetas = Array.isArray(body.betas) ? body.betas.filter((beta) => typeof beta === "string") : [];
@@ -552,6 +558,9 @@ function sentParameters(body: RequestBody): SentParameters {
     thinking: body.thinking === undefined ? null : thinkingText(body.thinking),
     effort,
     betas,
+    cacheBreakpointCount: cacheBreakpointsOf(cacheBreakpoints).filter(({ path }) =>
+      CACHE_BREAKPOINT_PARTS.has(path[0] ?? null),
+    ).length,
   };
 }
 
@@ -569,16 +578,24 @@ function thinkingText(thinking: unknown): string {
 
 /** The system-prompt diff from `previousBody` to `body`; null when the system text is the same. */
 function systemPromptDiff(previousBody: RequestBody, body: RequestBody): SystemPromptDiff | null {
+  const volatileChangeNames = new Set<VolatileChangeName>();
   const hunks = lineDiffHunks(systemTextOf(previousBody), systemTextOf(body)).map((hunk) => ({
-    lines: hunk.lines.map((line) => ({
-      ...line,
-      isVolatile:
-        line.change !== "unchanged" && VOLATILE_SYSTEM_LINE_PATTERNS.some((pattern) => pattern.test(line.text)),
-    })),
+    lines: hunk.lines.map((line) => {
+      const volatileChangeName =
+        line.change === "unchanged"
+          ? undefined
+          : VOLATILE_SYSTEM_LINE_PATTERNS.find(({ pattern }) => pattern.test(line.text))?.name;
+      if (volatileChangeName !== undefined) volatileChangeNames.add(volatileChangeName);
+      return { ...line, isVolatile: volatileChangeName !== undefined };
+    }),
   }));
   if (hunks.length === 0) return null;
   const changedLines = hunks.flatMap((hunk) => hunk.lines).filter((line) => line.change !== "unchanged");
-  return { hunks, isVolatileOnly: changedLines.every((line) => line.isVolatile) };
+  return {
+    hunks,
+    isVolatileOnly: changedLines.every((line) => line.isVolatile),
+    volatileChangeNames: [...volatileChangeNames],
+  };
 }
 
 /** The system text of `body`: each block's text (any other block as JSON), joined by newlines. */

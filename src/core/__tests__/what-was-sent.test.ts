@@ -78,6 +78,7 @@ describe("What was sent from the logs", () => {
 
     expect(sent?.previousApiRequestId).toBe(await apiRequestIdOfTurn(3));
     expect(sent?.systemPromptDiff?.isVolatileOnly).toBe(false);
+    expect(sent?.systemPromptDiff?.volatileChangeNames).toEqual(["date"]);
     const changedLines = sent?.systemPromptDiff?.hunks
       .flatMap((hunk) => hunk.lines)
       .filter((line) => line.change !== "unchanged");
@@ -122,8 +123,9 @@ describe("What was sent from the logs", () => {
       thinking: "adaptive · display updates",
       effort: "high",
       betas: ["beta-one", "beta-two"],
+      // Two on the system blocks, one on the last message.
+      cacheBreakpointCount: 3,
     });
-    expect(sent?.fullRequest.parameterByName).toEqual(STORED_PARAMETERS);
     expect(sent?.fullRequest.systemBlocks.map((block) => block.cacheControl)).toEqual(["ephemeral 1h", "ephemeral"]);
     expect(sent?.fullRequest.systemBlocks[0]).toMatchObject({ shownAs: "text", text: "You are a coding agent." });
     expect(sent?.fullRequest.tools.map((tool) => tool.name)).toEqual(["Bash", "Grep"]);
@@ -490,6 +492,25 @@ describe("What was sent, request by request", () => {
       expect(enabled?.parameters.thinking).toBe("enabled · budget_tokens 31999");
       expect(other?.parameters.thinking).toBe('"adaptive-ish"');
     });
+
+    it("count the cache breakpoints on the system prompt, the tools and the messages, and none other", async () => {
+      const breakpoint = { type: "ephemeral" };
+      const [none, some] = await whatWasSentOf([
+        twoRequests()[0]!,
+        {
+          ...twoRequests()[1]!,
+          cacheBreakpoints: [
+            { path: ["system", 1], value: breakpoint },
+            { path: ["tools", 0], value: breakpoint },
+            { path: ["messages", 2, "content", 0], value: breakpoint },
+            { path: ["metadata"], value: breakpoint },
+          ],
+        },
+      ]);
+
+      expect(none?.parameters.cacheBreakpointCount).toBe(0);
+      expect(some?.parameters.cacheBreakpointCount).toBe(3);
+    });
   });
 
   describe("when it was sent", () => {
@@ -528,6 +549,41 @@ describe("What was sent, request by request", () => {
 
       expect(sent?.systemPromptDiff?.isVolatileOnly).toBe(true);
       expect(changedLinesOf(sent?.systemPromptDiff?.hunks)).toEqual(["-(clean) ~", "+ M src/core/read.ts ~"]);
+      expect(sent?.systemPromptDiff?.volatileChangeNames).toEqual(["git status"]);
+    });
+
+    it("names each volatile thing that moved once, in the order the diff meets them", async () => {
+      const environment = (cwd: string, date: string) => [
+        { type: "text", text: `Working directory: ${cwd}\nToday's date: ${date}\nGit status: clean` },
+      ];
+      const [first, second] = twoRequests();
+      const [, sent] = await whatWasSentOf([
+        { ...first!, system: environment("/Users/me/dev/sent", "2026-10-20") },
+        { ...second!, system: environment("/Users/me/dev/other", "2026-10-21") },
+      ]);
+
+      expect(sent?.systemPromptDiff?.isVolatileOnly).toBe(true);
+      expect(sent?.systemPromptDiff?.volatileChangeNames).toEqual(["working directory", "date"]);
+    });
+
+    it("names blank lines when only those moved", async () => {
+      const [, sent] = await whatWasSentOf(
+        twoRequests({ system: [SYSTEM[0], { type: "text", text: `\n${SYSTEM[1]!.text}` }] }),
+      );
+
+      expect(sent?.systemPromptDiff?.isVolatileOnly).toBe(true);
+      expect(sent?.systemPromptDiff?.volatileChangeNames).toEqual(["blank lines"]);
+    });
+
+    it("names the volatile things that moved beside a real change too", async () => {
+      const [, sent] = await whatWasSentOf(
+        twoRequests({
+          system: [SYSTEM[0], { type: "text", text: "Working directory: /Users/me/dev/other\nAlways run the tests." }],
+        }),
+      );
+
+      expect(sent?.systemPromptDiff?.isVolatileOnly).toBe(false);
+      expect(sent?.systemPromptDiff?.volatileChangeNames).toEqual(["working directory", "git status"]);
     });
 
     it("reads a system prompt sent as one string as one block", async () => {
@@ -775,26 +831,30 @@ describe("What was sent, request by request", () => {
 });
 
 describe("a volatile system-prompt line", () => {
+  /** The name of the first volatile pattern `line` matches; undefined when it matches none. */
+  const volatileNameOf = (line: string) =>
+    VOLATILE_SYSTEM_LINE_PATTERNS.find(({ pattern }) => pattern.test(line))?.name;
+
   it.each([
-    "Today's date is 2026-10-19.",
-    "Today's date: 2026-10-19",
-    "Current date: 2026-10-19",
-    "Working directory: /Users/me/dev/sent",
-    "Primary working directory: /Users/me/dev/sent",
-    "gitStatus: This is the git status at the start of the conversation.",
-    "Git status: clean",
-    "Current branch: main",
-    "Status:",
-    "Recent commits:",
-    "(clean)",
-    "M src/core/read.ts",
-    " M src/core/read.ts",
-    "?? docs/notes.md",
-    "7ece6e8 Add the export audit trail (#161)",
-    "",
-    "   ",
-  ])("matches %j", (line) => {
-    expect(VOLATILE_SYSTEM_LINE_PATTERNS.some((pattern) => pattern.test(line))).toBe(true);
+    ["Today's date is 2026-10-19.", "date"],
+    ["Today's date: 2026-10-19", "date"],
+    ["Current date: 2026-10-19", "date"],
+    ["Working directory: /Users/me/dev/sent", "working directory"],
+    ["Primary working directory: /Users/me/dev/sent", "working directory"],
+    ["gitStatus: This is the git status at the start of the conversation.", "git status"],
+    ["Git status: clean", "git status"],
+    ["Current branch: main", "git status"],
+    ["Status:", "git status"],
+    ["Recent commits:", "git status"],
+    ["(clean)", "git status"],
+    ["M src/core/read.ts", "git status"],
+    [" M src/core/read.ts", "git status"],
+    ["?? docs/notes.md", "git status"],
+    ["7ece6e8 Add the export audit trail (#161)", "git status"],
+    ["", "blank lines"],
+    ["   ", "blank lines"],
+  ])("matches %j, as the %s", (line, name) => {
+    expect(volatileNameOf(line)).toBe(name);
   });
 
   it.each([
@@ -803,6 +863,6 @@ describe("a volatile system-prompt line", () => {
     "M is for model.",
     "Keep changes small, run the tests before you report.",
   ])("does not match the prose line %j", (line) => {
-    expect(VOLATILE_SYSTEM_LINE_PATTERNS.some((pattern) => pattern.test(line))).toBe(false);
+    expect(volatileNameOf(line)).toBeUndefined();
   });
 });

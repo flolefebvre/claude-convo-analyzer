@@ -315,13 +315,9 @@ function NewMessages({
 
 /** The whole request by part: its parameters, system blocks, tool definitions and every message. */
 function RequestView({ whatWasSent }: { whatWasSent: WhatWasSent }) {
-  const { systemBlocks, tools, messages, parameterByName } = whatWasSent.fullRequest;
+  const { systemBlocks, tools, messages } = whatWasSent.fullRequest;
   return (
     <>
-      <section className="sent-section">
-        <h4 className="io-label">Parameters</h4>
-        <JsonTree value={parameterByName} />
-      </section>
       <section className="sent-section">
         <h4 className="io-label">System prompt ({countLabel(systemBlocks.length, "block")})</h4>
         {systemBlocks.map((block, index) => (
