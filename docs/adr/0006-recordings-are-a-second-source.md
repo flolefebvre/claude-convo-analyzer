@@ -2,8 +2,9 @@
 
 ## Status
 
-accepted. Narrows ADR-0001's "transcript files are the single source of truth"
-to Turns.
+superseded by ADR-0007 (the conversation logs are the source of What was sent,
+and the Recorder is retired). Narrowed ADR-0001's "transcript files are the
+single source of truth" to Turns.
 
 ## Context
 

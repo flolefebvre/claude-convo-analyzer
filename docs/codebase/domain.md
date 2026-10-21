@@ -22,7 +22,8 @@ This repo is **single-context**: one `GLOSSARY.md` + `docs/adr/` at the repo roo
 │   ├── 0003-cost-model-and-pricing-policy.md
 │   ├── 0004-refresh-runs-off-the-main-thread.md
 │   ├── 0005-refresh-writes-through-bare-better-sqlite3.md
-│   └── 0006-recordings-are-a-second-source.md
+│   ├── 0006-recordings-are-a-second-source.md
+│   └── 0007-logs-are-the-source-of-what-was-sent.md
 └── src/
 ```
 
