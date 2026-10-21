@@ -69,7 +69,10 @@ per gotcha:
   detection);
 - every **`origin` shape and `queued_command` attachment** of log-format §8,
   duplicate delivery included (`agent-message-logs/`, records addressed by
-  `uuid` through `__tests__/helpers/agent-messages.ts`).
+  `uuid` through `__tests__/helpers/agent-messages.ts`);
+- a resumed Conversation whose copied Turns name an **API request in another
+  session's file**, one held by two files, and one held by none
+  (`resumed-request-logs/`).
 
 Fixtures are committed, tiny, and contain no secrets. They double as executable
 documentation of the log format.

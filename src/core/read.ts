@@ -143,8 +143,9 @@ export type TranscriptMessage = {
   toolCalls: TranscriptToolCall[];
   /**
    * The `api_request` row id this Turn's What was sent is read by: its
-   * API request in the logs (of several, the latest). Null when its file
-   * holds none, and on user Messages.
+   * API request in its own file, else in another Conversation's file (a
+   * resumed or forked session's copied history). Null when no file holds it,
+   * and on user Messages.
    */
   apiRequestId: number | null;
   /** How many Failed attempts preceded this Turn's API request; 0 without any, and on user Messages. */

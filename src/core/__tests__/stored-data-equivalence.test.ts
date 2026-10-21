@@ -12,7 +12,17 @@
 // value the failing assertion reports.
 
 import { createHash } from "node:crypto";
-import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
@@ -206,6 +216,74 @@ describe("stored data equivalence", () => {
       // The two blobs carry the pieces of Injected context their attachments name: CLAUDE.md, and the date.
       sent_message: { rowCount: 15, sha256: "132ab154cc97d01608e9e5ffd1016826fa8b59178bb9f1b3db2ad7cb04c15f2d" },
     });
+  });
+
+  it("stores the pinned rows for the resumed request logs (Turns whose API request is in another Conversation's file)", async () => {
+    copyWithPinnedMtimes(path.join(FIXTURES_DIR, "resumed-request-logs"), logsRoot);
+    await refresh({ logsRoot, dbPath });
+
+    expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
+      project: { rowCount: 1, sha256: "39d8e36d20227daa2cab6248635b86861d0a5bd0a9e19a0cf4c98eb4de3f7141" },
+      conversation: { rowCount: 3, sha256: "0410c860e274d8af6275c0eb2d5158f211ad87e05c4d5c934fbafc1046a8c050" },
+      agent: { rowCount: 3, sha256: "54de0dc33dccb7a3494865dda08c9266aa9d446cd7a42d6b54256f90d471aa5a" },
+      // The child's copied Turns name the requests of the copy's and the parent's files.
+      message: { rowCount: 13, sha256: "574cdaf67403ba6cd0e762cc47ca49ee526c63498f7ef1a3ba558c600514fa8f" },
+      tool_call: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+      pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+      turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+      api_request: { rowCount: 5, sha256: "550cec2c57104b63bef3fe6581b493db8c3993257ccaa18cf9e8fc573e20f0c5" },
+      system_prompt: { rowCount: 1, sha256: "0f7e364790e4ce8c6d0837f9bcc1c05c5b20e0d58615364250247c0885a47532" },
+      tool_set: { rowCount: 1, sha256: "bd38eccd26f4c9604aad98fcff1f9643ab0523b07da230a857569e163247ac0e" },
+      sent_message: { rowCount: 5, sha256: "e7b8ba8a7395036a9c885011145c435f535f212957dcb9f5b24aa330ebc79025" },
+    });
+  });
+});
+
+describe("Turns whose API request is in another file", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(tmpdir(), "cca-cross-file-equivalence-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  const RESUMED_LOG_FOLDER = "-Users-me-dev-resumed";
+
+  /** Copy the resumed request logs to a new logs root under `tmpDir`, named `name`, and return it. */
+  function resumedRequestLogs(name: string): string {
+    const logsRoot = path.join(tmpDir, name);
+    copyWithPinnedMtimes(path.join(FIXTURES_DIR, "resumed-request-logs"), logsRoot);
+    return logsRoot;
+  }
+
+  it("are linked as a cold Refresh parsing the parent first links them, when it parses the child first", async () => {
+    // The fixture's own paths put the child first; a log folder that sorts
+    // first takes the parent and the copy of its first request to the front.
+    const childFirstRoot = resumedRequestLogs("child-first");
+    const parentFirstRoot = resumedRequestLogs("parent-first");
+    const earlyFolder = path.join(parentFirstRoot, "-Users-me-dev-a");
+    mkdirSync(earlyFolder);
+    for (const sessionId of ["sess-resumed-parent", "sess-resumed-copy"]) {
+      renameSync(
+        path.join(parentFirstRoot, RESUMED_LOG_FOLDER, `${sessionId}.jsonl`),
+        path.join(earlyFolder, `${sessionId}.jsonl`),
+      );
+    }
+    await refresh({ logsRoot: childFirstRoot, dbPath: path.join(tmpDir, "child-first.db") });
+    await refresh({ logsRoot: parentFirstRoot, dbPath: path.join(tmpDir, "parent-first.db") });
+
+    const childFirst = crossFileContent(path.join(tmpDir, "child-first.db"), childFirstRoot);
+    expect(childFirst.turnApiRequests).toContainEqual(
+      expect.objectContaining({
+        session_id: "sess-resumed-child",
+        uuid: "ra2",
+        requestSessionId: "sess-resumed-parent",
+      }),
+    );
+    expect(crossFileContent(path.join(tmpDir, "parent-first.db"), parentFirstRoot)).toEqual(childFirst);
   });
 });
 
@@ -451,6 +529,36 @@ describe("a sent message one log labels and another does not", () => {
     expect(await storedAfterAddingTheOther("sess-labelled")).toEqual(cold);
   });
 });
+
+/**
+ * {@link apiRequestContent} of the database at `dbPath`, and the API request
+ * each Turn with a `requestRef` names, keyed by stable fields only — the
+ * Turn's session id and `uuid`, the request's session id, Agent and place in
+ * its file — so it is the same whatever row ids the Refreshes gave.
+ */
+function crossFileContent(dbPath: string, logsRoot: string) {
+  const db = new Database(dbPath, { readonly: true });
+  try {
+    const turnApiRequests = db
+      .prepare(
+        `SELECT "turn_conversation"."session_id", "message"."uuid", "message"."request_ref",
+                "request_conversation"."session_id" AS "requestSessionId",
+                "request_agent"."external_agent_id" AS "requestExternalAgentId",
+                "api_request"."position_in_file" AS "requestPositionInFile"
+           FROM "message"
+           JOIN "conversation" AS "turn_conversation" ON "turn_conversation"."id" = "message"."conversation_id"
+           LEFT JOIN "api_request" ON "api_request"."id" = "message"."api_request_id"
+           LEFT JOIN "conversation" AS "request_conversation" ON "request_conversation"."id" = "api_request"."conversation_id"
+           LEFT JOIN "agent" AS "request_agent" ON "request_agent"."id" = "api_request"."agent_id"
+          WHERE "message"."request_ref" IS NOT NULL
+          ORDER BY "turn_conversation"."session_id", "message"."uuid"`,
+      )
+      .all();
+    return { turnApiRequests, ...apiRequestContent(dbPath, logsRoot) };
+  } finally {
+    db.close();
+  }
+}
 
 /**
  * The request-record tables of the database at `dbPath`, whatever row ids the

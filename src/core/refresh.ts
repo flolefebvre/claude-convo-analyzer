@@ -86,8 +86,8 @@ export type RefreshSummary = {
 /**
  * A stretch of a Refresh, timed on its own: `discovery` (find the files, read
  * the stored rows, delete vanished Conversations, pick what to re-parse),
- * `parse` and `write` (summed over every Conversation), `links` (continued-from)
- * and `stamp` (the parser-version commit mark).
+ * `parse` and `write` (summed over every Conversation), `links` (continued-from,
+ * and the Turns whose API request is in another file) and `stamp` (the parser-version commit mark).
  */
 export type RefreshPhase = "discovery" | "parse" | "write" | "links" | "stamp";
 
@@ -235,7 +235,10 @@ type DiscoveredWithKey = {
  * siblings in their log folder (see `resolveProjectPath`); (2) resolve
  * `continued_from` by looking up each
  * child's first-message `parentUuid` against the persisted `message` rows of ALL
- * conversations — so a skipped (unchanged) parent still resolves; (3) stamp the
+ * conversations — so a skipped (unchanged) parent still resolves — and link
+ * every Turn of the database with a `requestRef` and no API request to the
+ * request of another file it names, if any, reading ids only (log-format §9,
+ * "How they are stored"); (3) stamp the
  * current `parserVersion` on that set — the commit mark that lets a later run
  * skip them — and delete every Project left without a Conversation, and every
  * system prompt and tool set no API request references, and every sent
@@ -410,8 +413,12 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     phaseStart = performance.now();
     statements.beginTransaction();
     // Pass 2 — resolve continued-from over the (re)written conversations,
-    // authoritatively against the persisted message uuids of ALL conversations.
+    // authoritatively against the persisted message uuids of ALL conversations;
+    // then link every Turn of the database whose API request is in another
+    // file — a skipped child's Turns included, whose links a rewritten
+    // parent's delete just nulled.
     resolveContinuedFrom(statements, writtenConversations);
+    statements.updateUnlinkedTurnApiRequests();
     endPhase("links");
 
     // Pass 3 — only NOW are these conversations complete: stamp them, so the
