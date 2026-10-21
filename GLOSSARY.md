@@ -278,8 +278,11 @@ conversation logs record it since Claude Code 2.1.300: the system prompt, the
 tool definitions, every message exactly as sent, and the request parameters
 (model, effort, thinking, maximum output, cache breakpoints). An API request is
 either a Turn's request, which the Turn came from, or a Failed attempt of one.
-Conversations logged by earlier versions have none.
-_Avoid_: exchange, call (clashes with Tool call).
+Conversations logged by earlier versions have none. Its system prompt, its tool
+set and each message it sent are **interned**: stored once under the sha256 of
+their canonical JSON, and shared by every API request that names them.
+_Avoid_: exchange, call (clashes with Tool call); piece, part, blob for what is
+interned.
 
 ### What was sent
 

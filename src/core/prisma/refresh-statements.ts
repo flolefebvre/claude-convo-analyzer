@@ -204,9 +204,10 @@ export function prepareRefreshStatements(db: Database.Database) {
   const deleteProjectsWithoutConversations = db.prepare(
     `DELETE FROM "project" WHERE "id" NOT IN (SELECT "project_id" FROM "conversation")`,
   );
-  // A piece is shared across Conversations, under the hash of its canonical
-  // JSON: two logs may spell it in two key orders, and the smallest spelling
-  // is kept, so what is stored never depends on which log was parsed first.
+  // Each system prompt, tool set and sent message is interned: shared across
+  // Conversations, under the hash of its canonical JSON. Two logs may spell it
+  // in two key orders, and the smallest spelling is kept, so what is stored
+  // never depends on which log was parsed first.
   const insertSystemPrompt = db.prepare(
     `INSERT INTO "system_prompt" ("hash", "blocks_json") VALUES (?, ?)
        ON CONFLICT ("hash") DO UPDATE SET "blocks_json" = "excluded"."blocks_json"
@@ -302,7 +303,7 @@ export function prepareRefreshStatements(db: Database.Database) {
     insertSentMessage: (hash: string, sentMessage: { messageJson: string; injectedContextPiecesJson: string | null }) =>
       void insertSentMessage.run(hash, sentMessage.messageJson, sentMessage.injectedContextPiecesJson),
     /** Delete every system prompt and tool set no API request references any more, and every sent message no tail names. */
-    deleteUnreferencedRequestPieces: () => {
+    deleteUnreferencedInternedValues: () => {
       deleteUnreferencedSystemPrompts.run();
       deleteUnreferencedToolSets.run();
       deleteUnnamedSentMessages.run();

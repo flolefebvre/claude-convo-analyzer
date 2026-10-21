@@ -11,8 +11,8 @@ ADR-0006 added the Recorder because the conversation logs never showed what
 Claude Code sent the API. Since Claude Code 2.1.300 they do: every log file,
 main thread and Sub-agent alike, records each API request exactly — system
 prompt, tools, messages and parameters — as `api-request` records whose
-pieces are stored once under their hash (`docs/conversation-log-format.md`,
-§9). Three facts shape what follows:
+system prompt, tool set and messages are interned — stored once under their
+hash (`docs/conversation-log-format.md`, §9). Three facts shape what follows:
 
 1. **The logs can rebuild the database; Recordings cannot.** A Recording
    holds what nothing else does, so it had to live outside the database
@@ -30,8 +30,8 @@ pieces are stored once under their hash (`docs/conversation-log-format.md`,
 - **The logs are the only source of API requests**, from Claude Code 2.1.300
   on.
 - **Refresh stores them in the database** like everything else parsed from the
-  logs: each piece — system prompt, tool set, message — stored once under its
-  hash, without `safeguards`. The database stays a cache that can be rebuilt
+  logs: each system prompt, tool set and message interned — stored once
+  under its hash — without `safeguards`. The database stays a cache that can be rebuilt
   from the logs.
 - **The Recorder, Recordings, Side requests and Unlogged usage are removed.**
   Cost becomes the logged Turns only.
