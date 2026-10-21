@@ -350,6 +350,14 @@ model SentMessage {
   /// The message as logged, key order and a string `content` kept: what the
   /// model saw. When logs spell the same message two ways, the smallest spelling.
   messageJson String @map("message_json")
+  /// The pieces of Injected context its text blocks hold, as JSON
+  /// (`InjectedContextPiece[]`, `injected-context.ts`): each one's block, its
+  /// span there and its kind — the attachment type, never a label — as the
+  /// attachments of the log file the row was written from name them; NULL
+  /// without any. Written with `messageJson`, which decides first; of two
+  /// writes with the same `messageJson`, a non-NULL value beats NULL, then the
+  /// longer value wins, then the smaller one, so the row never depends on parse order.
+  injectedContextPiecesJson String? @map("injected_context_pieces_json")
 
   @@map("sent_message")
 }

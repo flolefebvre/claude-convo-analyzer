@@ -9,13 +9,15 @@ import { structuredPatch } from "diff";
 
 import { canonicalJson } from "@/core/canonical-json";
 import { readClient } from "@/core/db";
+import type { AttachmentType, InjectedContextPiece } from "@/core/injected-context";
 
 /** A value as parsed from JSON: what a body, or any part of one, is. */
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
 /**
- * What a sent block is: `text`, `tool_use`, `tool_result`, `image`, a
- * `system-reminder` (a text block opening with its tag), else the block's
+ * What a sent block is: `text`, `tool_use`, `tool_result`, `image`,
+ * `injected-context` (a text block opening with a system-reminder tag, any
+ * text of a system message, or a piece of Injected context), else the block's
  * own `type` (`thinking`, `document`, …), or `unknown` without one.
  */
 export type SentBlockKind = string;
@@ -25,10 +27,16 @@ export type SentBlock = { kind: SentBlockKind } & (
   { shownAs: "text"; text: string } | { shownAs: "json"; json: string }
 );
 
-/** One content block of a sent message, with what it is to a reader and its first line. */
-export type SentMessageBlock = SentBlock & {
+/**
+ * What a reader sees as one unit of a sent message: a content block, or one
+ * piece of Injected context from a block that fuses several — its text
+ * exactly as sent — with what it is and its first line.
+ */
+export type SentMessagePart = SentBlock & {
   /**
-   * What the block is: "Injected context" (a system-reminder, or a system
+   * What the part is: a piece of Injected context by its kind ("CLAUDE.md ·
+   * AGENTS.md", "Skill list", "Date", …; see {@link injectedContextLabel}),
+   * "Injected context" when no attachment names it (a system-reminder, a system
    * message's text), "Prompt" (a user's text), "Assistant text", "Thinking",
    * "Image", "Tool call · <name>", "Tool result · <name>" (the call an earlier
    * message of the request made; "Tool result" without one), else its kind.
@@ -37,13 +45,17 @@ export type SentMessageBlock = SentBlock & {
   /**
    * Its first non-blank line — a text's (system-reminder tags left out), a tool
    * result's text, a tool call's input as compact JSON — cut at
-   * {@link SENT_BLOCK_PREVIEW_MAX_CHARS} characters, then "…"; empty for any other block.
+   * {@link SENT_PART_PREVIEW_MAX_CHARS} characters, then "…"; empty for any other part.
    */
   preview: string;
 };
 
-/** One message of an API request: its role, then each content block (a string content is one text block, a missing one none). */
-export type SentMessage = { role: string; blocks: SentMessageBlock[] };
+/**
+ * One message of an API request: its role, then its parts in order — each
+ * content block (a string content is one text block, a missing one none), a
+ * block fusing several pieces of Injected context split into one part each.
+ */
+export type SentMessage = { role: string; parts: SentMessagePart[] };
 
 /** One system block as sent, with the cache breakpoint it carries (`cache_control.type`, plus its `ttl`), if any. */
 export type SentSystemBlock = SentBlock & { cacheControl: string | null };
@@ -243,8 +255,8 @@ export async function getWhatWasSent(
     });
     const messageHashesOf = await messageHashesOfAgentRequests(prisma, row);
     const messageHashes = messageHashesOf(row);
-    const body = await requestBodyOf(prisma, row, messageHashes);
-    const messages = sentMessagesOf(body.messages as (JsonValue | null)[]);
+    const { body, injectedContextPiecesOfMessages } = await requestOf(prisma, row, messageHashes);
+    const messages = sentMessagesOf(body.messages as (JsonValue | null)[], injectedContextPiecesOfMessages);
     const failedAttempts =
       row.messageId === null ? [] : ((await failedAttemptsByMessage(prisma, [row.messageId])).get(row.messageId) ?? []);
     return {
@@ -279,7 +291,7 @@ export async function getRawApiRequest(
 ): Promise<RawApiRequest | null> {
   return withApiRequestRow(apiRequestId, opts.dbPath, async (row, prisma) => {
     const messageHashes = (await messageHashesOfAgentRequests(prisma, row))(row);
-    const body = await requestBodyOf(prisma, row, messageHashes);
+    const { body } = await requestOf(prisma, row, messageHashes);
     const messages = body.messages as (JsonValue | null)[];
     const resolvedMessages = messages.filter((message) => message !== null);
     return {
@@ -456,26 +468,36 @@ type ApiRequestRow = {
  * The body of an API request: its pieces (see {@link requestPiecesOf}),
  * then the messages of `messageHashes` as stored — null for one the database
  * does not hold, or whose hash is unknown — each carrying the `cache_control`
- * its breakpoints set at `["messages", i, "content", j]`.
+ * its breakpoints set at `["messages", i, "content", j]`. Beside it, the
+ * pieces of Injected context of each message, at its index; none for a
+ * message missing.
  */
-async function requestBodyOf(
+async function requestOf(
   prisma: ReadPrisma,
   row: ApiRequestRow,
   messageHashes: MessageHash[],
-): Promise<RequestBody> {
+): Promise<{ body: RequestBody; injectedContextPiecesOfMessages: InjectedContextPiece[][] }> {
   const sentMessageRows = await prisma.sentMessage.findMany({
     where: { hash: { in: [...new Set(messageHashes.filter((hash) => hash !== null))] } },
   });
-  const messageJsonByHash = new Map(
-    sentMessageRows.map((sentMessageRow) => [sentMessageRow.hash, sentMessageRow.messageJson]),
+  const sentMessageRowByHash = new Map(sentMessageRows.map((sentMessageRow) => [sentMessageRow.hash, sentMessageRow]));
+  const sentMessageRowsInOrder = messageHashes.map((hash) =>
+    hash === null ? undefined : sentMessageRowByHash.get(hash),
   );
-  const messages = messageHashes.map((hash) => {
-    const messageJson = hash === null ? undefined : messageJsonByHash.get(hash);
-    return messageJson === undefined ? null : (JSON.parse(messageJson) as JsonValue);
-  });
+  const messages = sentMessageRowsInOrder.map((sentMessageRow) =>
+    sentMessageRow === undefined ? null : (JSON.parse(sentMessageRow.messageJson) as JsonValue),
+  );
   return {
-    ...requestPiecesOf(row),
-    messages: withMessageCacheBreakpoints(messages, JSON.parse(row.cacheBreakpointsJson) as JsonValue),
+    body: {
+      ...requestPiecesOf(row),
+      messages: withMessageCacheBreakpoints(messages, JSON.parse(row.cacheBreakpointsJson) as JsonValue),
+    },
+    // Every column was written by `JSON.stringify` (refresh.ts).
+    injectedContextPiecesOfMessages: sentMessageRowsInOrder.map((sentMessageRow) =>
+      sentMessageRow?.injectedContextPiecesJson == null
+        ? []
+        : (JSON.parse(sentMessageRow.injectedContextPiecesJson) as InjectedContextPiece[]),
+    ),
   };
 }
 
@@ -659,17 +681,32 @@ function lineDiffHunks(previousText: string, text: string): DiffHunk[] {
 }
 
 /**
- * `messages` as sent, in order, each block labelled: a tool result by the
- * tool of the call an earlier message made; null kept for one the logs could
- * not rebuild.
+ * `messages` as sent, in order, each part labelled: a piece of Injected
+ * context by its kind, from `injectedContextPiecesOfMessages` at the message's
+ * index; a tool result by the tool of the call an earlier message made; null
+ * kept for one the logs could not rebuild.
  */
-function sentMessagesOf(messages: (JsonValue | null)[]): (SentMessage | null)[] {
+function sentMessagesOf(
+  messages: (JsonValue | null)[],
+  injectedContextPiecesOfMessages: InjectedContextPiece[][],
+): (SentMessage | null)[] {
   const toolNameByUseId = new Map<string, string>();
-  return messages.map((message) => {
+  return messages.map((message, messageIndex) => {
     if (message === null) return null;
     const role = isPlainObject(message) && typeof message.role === "string" ? message.role : "unknown";
     const blocks = contentBlocksOf(message);
-    const sent = { role, blocks: blocks.map((block) => sentMessageBlock(block, role, toolNameByUseId)) };
+    const injectedContextPieces = injectedContextPiecesOfMessages[messageIndex] ?? [];
+    const sent = {
+      role,
+      parts: blocks.flatMap((block, blockIndex) =>
+        sentMessageParts(
+          block,
+          role,
+          injectedContextPieces.filter((piece) => piece.blockIndex === blockIndex),
+          toolNameByUseId,
+        ),
+      ),
+    };
     for (const block of blocks) {
       if (isPlainObject(block) && block.type === "tool_use" && typeof block.id === "string") {
         toolNameByUseId.set(block.id, typeof block.name === "string" ? block.name : "unnamed");
@@ -686,34 +723,101 @@ function contentBlocksOf(message: unknown): unknown[] {
   return Array.isArray(content) ? content : content === undefined ? [] : [content];
 }
 
-/** How long a sent block's preview gets before it is cut. */
-const SENT_BLOCK_PREVIEW_MAX_CHARS = 120;
+/** How long a sent part's preview gets before it is cut. */
+const SENT_PART_PREVIEW_MAX_CHARS = 120;
 
-/** `block` of a message from `role`, labelled, the tool of a result found in `toolNameByUseId`. */
-function sentMessageBlock(block: unknown, role: string, toolNameByUseId: Map<string, string>): SentMessageBlock {
+/** The kind of every part of Injected context. */
+const INJECTED_CONTEXT_KIND: SentBlockKind = "injected-context";
+
+/** The label of a part of Injected context no attachment names. */
+const INJECTED_CONTEXT_LABEL = "Injected context";
+
+/**
+ * The parts of `block` of a message from `role`, labelled, the tool of a
+ * result found in `toolNameByUseId`: one per piece of `injectedContextPieces`
+ * and per run of text around them, or the block whole without any.
+ */
+function sentMessageParts(
+  block: unknown,
+  role: string,
+  injectedContextPieces: InjectedContextPiece[],
+  toolNameByUseId: Map<string, string>,
+): SentMessagePart[] {
   const sent = sentBlock(block);
+  if (sent.shownAs === "text" && injectedContextPieces.length > 0) {
+    return injectedContextParts(sent.text, injectedContextPieces);
+  }
   const fields = isPlainObject(block) ? block : {};
-  return {
-    ...sent,
-    label: sentBlockLabel(sent, fields, role, toolNameByUseId),
-    preview: sentBlockPreview(sent, fields),
-  };
+  // A system message's text never comes from the person: it is Injected context.
+  const kindOfPart = sent.kind === "text" && role === "system" ? INJECTED_CONTEXT_KIND : sent.kind;
+  const part = { ...sent, kind: kindOfPart };
+  return [
+    { ...part, label: sentPartLabel(part, fields, role, toolNameByUseId), preview: sentPartPreview(part, fields) },
+  ];
 }
 
-/** See {@link SentMessageBlock.label}. */
-function sentBlockLabel(
+/**
+ * The text of a block holding `injectedContextPieces` as one part per piece,
+ * labelled by its kind, and one per non-blank run of text around them,
+ * labelled {@link INJECTED_CONTEXT_LABEL}: each its text exactly as sent.
+ */
+function injectedContextParts(text: string, injectedContextPieces: InjectedContextPiece[]): SentMessagePart[] {
+  const parts: SentMessagePart[] = [];
+  const addPart = (partText: string, label: string) => {
+    const sent: SentBlock = { kind: INJECTED_CONTEXT_KIND, shownAs: "text", text: partText };
+    parts.push({ ...sent, label, preview: sentPartPreview(sent, {}) });
+  };
+  let residueStart = 0;
+  for (const piece of injectedContextPieces.toSorted((a, b) => a.start - b.start)) {
+    const residue = text.slice(residueStart, piece.start);
+    if (residue.trim() !== "") addPart(residue, INJECTED_CONTEXT_LABEL);
+    addPart(text.slice(piece.start, piece.end), injectedContextLabel(piece));
+    residueStart = Math.max(residueStart, piece.end);
+  }
+  const residue = text.slice(residueStart);
+  if (residue.trim() !== "") addPart(residue, INJECTED_CONTEXT_LABEL);
+  return parts;
+}
+
+/** The label of each kind of Injected context that is not its attachment type made readable. */
+const INJECTED_CONTEXT_LABEL_BY_KIND = new Map<AttachmentType, string>([
+  ["skill_listing", "Skill list"],
+  ["agent_listing_delta", "Agent list"],
+  ["mcp_instructions_delta", "MCP server instructions"],
+  ["deferred_tools_delta", "Deferred tools"],
+  ["total_tokens_reminder", "Token budget"],
+  ["edited_text_file", "File changed outside Claude"],
+  ["queued_command", "Queued message"],
+]);
+
+/**
+ * What a piece of Injected context is to a reader: for `instructions`, the
+ * distinct names of its files in order (`CLAUDE.md · AGENTS.md`); else the
+ * label of {@link INJECTED_CONTEXT_LABEL_BY_KIND}, or its attachment type made
+ * readable (`bash_output_audience_note` → "Bash output audience note").
+ */
+function injectedContextLabel(piece: InjectedContextPiece): string {
+  const fileNames = [...new Set((piece.instructionFilePaths ?? []).map((filePath) => filePath.split(/[\\/]/).at(-1)!))];
+  if (piece.kind === "instructions" && fileNames.length > 0) return fileNames.join(" · ");
+  const label = INJECTED_CONTEXT_LABEL_BY_KIND.get(piece.kind);
+  if (label !== undefined) return label;
+  const words = piece.kind.replaceAll("_", " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** See {@link SentMessagePart.label}. */
+function sentPartLabel(
   sent: SentBlock,
   fields: Record<string, unknown>,
   role: string,
   toolNameByUseId: Map<string, string>,
 ): string {
   switch (sent.kind) {
-    case "system-reminder":
-      return "Injected context";
+    case INJECTED_CONTEXT_KIND:
+      return INJECTED_CONTEXT_LABEL;
     case "text":
       if (role === "user") return "Prompt";
-      if (role === "assistant") return "Assistant text";
-      return role === "system" ? "Injected context" : sent.kind;
+      return role === "assistant" ? "Assistant text" : sent.kind;
     case "tool_use":
       return typeof fields.name === "string" ? `Tool call · ${fields.name}` : "Tool call";
     case "tool_result": {
@@ -729,8 +833,8 @@ function sentBlockLabel(
   }
 }
 
-/** See {@link SentMessageBlock.preview}. */
-function sentBlockPreview(sent: SentBlock, fields: Record<string, unknown>): string {
+/** See {@link SentMessagePart.preview}. */
+function sentPartPreview(sent: SentBlock, fields: Record<string, unknown>): string {
   if (sent.shownAs === "text") return previewLineOf(sent.text.replace(SYSTEM_REMINDER_TAG_PATTERN, ""));
   if (sent.kind === "tool_use") return previewLineOf(JSON.stringify(fields.input ?? {}));
   if (sent.kind !== "tool_result") return "";
@@ -745,14 +849,14 @@ function sentBlockPreview(sent: SentBlock, fields: Record<string, unknown>): str
   );
 }
 
-/** The first non-blank line of `text`, trimmed, cut at {@link SENT_BLOCK_PREVIEW_MAX_CHARS} characters then "…"; empty without one. */
+/** The first non-blank line of `text`, trimmed, cut at {@link SENT_PART_PREVIEW_MAX_CHARS} characters then "…"; empty without one. */
 function previewLineOf(text: string): string {
   const line = text
     .split("\n")
     .map((candidate) => candidate.trim())
     .find((candidate) => candidate !== "");
   if (line === undefined) return "";
-  return line.length > SENT_BLOCK_PREVIEW_MAX_CHARS ? `${line.slice(0, SENT_BLOCK_PREVIEW_MAX_CHARS)}…` : line;
+  return line.length > SENT_PART_PREVIEW_MAX_CHARS ? `${line.slice(0, SENT_PART_PREVIEW_MAX_CHARS)}…` : line;
 }
 
 /** The tag opening a system-reminder: context Claude Code injects into a text block. */
@@ -770,7 +874,7 @@ function sentBlock(block: unknown): SentBlock {
         : null;
   if (text !== null) {
     return {
-      kind: text.trimStart().startsWith(SYSTEM_REMINDER_TAG) ? "system-reminder" : "text",
+      kind: text.trimStart().startsWith(SYSTEM_REMINDER_TAG) ? INJECTED_CONTEXT_KIND : "text",
       shownAs: "text",
       text,
     };

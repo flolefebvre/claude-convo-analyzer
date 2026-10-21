@@ -14,8 +14,25 @@ import { sentMessageHash } from "@/core/canonical-json";
 /** A message as an API request sends it; `content` may be a string, blocks, or missing. */
 export type RequestRecordMessage = { role: string; content?: unknown };
 
+/**
+ * An injected-context `attachment` record (log-format §9, "Attachments with
+ * `rendered` text"): its attachment type, the text the model saw as the log
+ * keeps it, the role it was sent under, and for `instructions` the files it
+ * lists.
+ */
+export type RecordedAttachment = {
+  attachmentType: string;
+  rendered: string;
+  renderedRole: "system" | "user";
+  filePaths?: string[];
+  /** Logged after the request's `api-request` record rather than before its blobs. */
+  isLoggedAfterRequest?: true;
+};
+
 /** One API request a written log records, which a Turn of the log answers. */
 export type RecordedRequest = {
+  /** The attachments logged with it, before its blobs unless one says otherwise; none by default. */
+  attachments?: RecordedAttachment[];
   /** The system prompt: its blocks, or one string. */
   system: unknown;
   tools: unknown[];
@@ -35,17 +52,39 @@ const PROJECT_PATH = "/Users/me/dev/sent";
 /** The `params` of a request that names none. */
 const DEFAULT_PARAMETERS = { model: "claude-opus-4-8", max_tokens: 32000 };
 
+/** The `attachment` record of `attachment`, logged at `timestamp`. */
+function attachmentRecord(attachment: RecordedAttachment, sessionId: string, timestamp: string) {
+  const files = attachment.filePaths?.map((filePath) => ({ path: filePath, type: "Project", content: "…" }));
+  return {
+    type: "attachment",
+    sessionId,
+    timestamp,
+    attachment: { type: attachment.attachmentType, ...(files === undefined ? {} : { files }) },
+    rendered: [{ content: attachment.rendered }],
+    renderedRole: attachment.renderedRole,
+  };
+}
+
 /**
- * Write the log of Conversation `sessionId` under `logsRoot`: for each of
- * `requests`, in order, its shape when new, a blob of each of its messages, its
- * `api-request` record — its tail every message it sends, so it stands on its
- * own — and the Turn answering it, one minute after the previous one.
+ * Write the log of Conversation `sessionId` under `logsRoot` — or, with
+ * `subAgentId`, the transcript of that Sub-agent of it: for each of
+ * `requests`, in order, its shape when new, its attachments, a blob of each of
+ * its messages, its `api-request` record — its tail every message it sends, so
+ * it stands on its own — and the Turn answering it, one minute after the
+ * previous one.
  *
  * @example
  * writeRequestRecordsLog(logsRoot, "sess-sent", [{ system: "Answer briefly.", tools: [], messages: [prompt] }]);
  */
-export function writeRequestRecordsLog(logsRoot: string, sessionId: string, requests: RecordedRequest[]): void {
+export function writeRequestRecordsLog(
+  logsRoot: string,
+  sessionId: string,
+  requests: RecordedRequest[],
+  opts: { subAgentId?: string } = {},
+): void {
   const lines: string[] = [];
+  const inFile = (record: Record<string, unknown>) =>
+    JSON.stringify(opts.subAgentId === undefined ? record : { ...record, isSidechain: true, agentId: opts.subAgentId });
   const shapeHashByJson = new Map<string, string>();
   requests.forEach((request, index) => {
     const timestamp = new Date(Date.UTC(2026, 9, 21, 10, index)).toISOString();
@@ -54,14 +93,18 @@ export function writeRequestRecordsLog(logsRoot: string, sessionId: string, requ
     if (shapeHash === undefined) {
       shapeHash = `shape-${shapeHashByJson.size + 1}`;
       shapeHashByJson.set(shapeJson, shapeHash);
-      lines.push(JSON.stringify({ type: "api-request-shape", sessionId, shapeHash, shape: JSON.parse(shapeJson) }));
+      lines.push(inFile({ type: "api-request-shape", sessionId, shapeHash, shape: JSON.parse(shapeJson) }));
+    }
+    const attachments = request.attachments ?? [];
+    for (const attachment of attachments.filter((candidate) => !candidate.isLoggedAfterRequest)) {
+      lines.push(inFile(attachmentRecord(attachment, sessionId, timestamp)));
     }
     for (const message of request.messages) {
-      lines.push(JSON.stringify({ type: "api-request-blob", sessionId, hash: sentMessageHash(message), message }));
+      lines.push(inFile({ type: "api-request-blob", sessionId, hash: sentMessageHash(message), message }));
     }
     const recordId = `req-${index + 1}`;
     lines.push(
-      JSON.stringify({
+      inFile({
         type: "api-request",
         sessionId,
         id: recordId,
@@ -75,8 +118,11 @@ export function writeRequestRecordsLog(logsRoot: string, sessionId: string, requ
         ...(request.sentAt === null ? {} : { timestamp }),
       }),
     );
+    for (const attachment of attachments.filter((candidate) => candidate.isLoggedAfterRequest)) {
+      lines.push(inFile(attachmentRecord(attachment, sessionId, timestamp)));
+    }
     lines.push(
-      JSON.stringify({
+      inFile({
         type: "assistant",
         uuid: `turn-${index + 1}`,
         requestRef: recordId,
@@ -95,6 +141,10 @@ export function writeRequestRecordsLog(logsRoot: string, sessionId: string, requ
     );
   });
   const logFolder = path.join(logsRoot, "-Users-me-dev-sent");
-  mkdirSync(logFolder, { recursive: true });
-  writeFileSync(path.join(logFolder, `${sessionId}.jsonl`), `${lines.join("\n")}\n`);
+  const logPath =
+    opts.subAgentId === undefined
+      ? path.join(logFolder, `${sessionId}.jsonl`)
+      : path.join(logFolder, sessionId, "subagents", `agent-${opts.subAgentId}.jsonl`);
+  mkdirSync(path.dirname(logPath), { recursive: true });
+  writeFileSync(logPath, `${lines.join("\n")}\n`);
 }

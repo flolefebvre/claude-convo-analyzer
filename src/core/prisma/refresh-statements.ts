@@ -217,10 +217,20 @@ export function prepareRefreshStatements(db: Database.Database) {
        ON CONFLICT ("hash") DO UPDATE SET "tools_json" = "excluded"."tools_json"
        WHERE "excluded"."tools_json" < "tool_set"."tools_json"`,
   );
+  // The smallest spelling wins, its pieces with it; on the same spelling, a
+  // non-NULL pieces value beats NULL, then the longer, then the smaller one.
   const insertSentMessage = db.prepare(
-    `INSERT INTO "sent_message" ("hash", "message_json") VALUES (?, ?)
-       ON CONFLICT ("hash") DO UPDATE SET "message_json" = "excluded"."message_json"
-       WHERE "excluded"."message_json" < "sent_message"."message_json"`,
+    `INSERT INTO "sent_message" ("hash", "message_json", "injected_context_pieces_json") VALUES (?, ?, ?)
+       ON CONFLICT ("hash") DO UPDATE SET
+         "message_json" = "excluded"."message_json",
+         "injected_context_pieces_json" = "excluded"."injected_context_pieces_json"
+       WHERE "excluded"."message_json" < "sent_message"."message_json"
+          OR ("excluded"."message_json" = "sent_message"."message_json"
+              AND "excluded"."injected_context_pieces_json" IS NOT NULL
+              AND ("sent_message"."injected_context_pieces_json" IS NULL
+                   OR length("excluded"."injected_context_pieces_json") > length("sent_message"."injected_context_pieces_json")
+                   OR (length("excluded"."injected_context_pieces_json") = length("sent_message"."injected_context_pieces_json")
+                       AND "excluded"."injected_context_pieces_json" < "sent_message"."injected_context_pieces_json")))`,
   );
   const deleteUnreferencedSystemPrompts = db.prepare(
     `DELETE FROM "system_prompt" WHERE NOT EXISTS
@@ -284,8 +294,13 @@ export function prepareRefreshStatements(db: Database.Database) {
     insertSystemPrompt: (hash: string, blocksJson: string) => void insertSystemPrompt.run(hash, blocksJson),
     /** Store a tool set under its hash, keeping the smaller spelling when one already is. */
     insertToolSet: (hash: string, toolsJson: string) => void insertToolSet.run(hash, toolsJson),
-    /** Store a sent message under its hash, keeping the smaller spelling when one already is. */
-    insertSentMessage: (hash: string, messageJson: string) => void insertSentMessage.run(hash, messageJson),
+    /**
+     * Store a sent message under its hash with its pieces of Injected context,
+     * keeping the smaller spelling when one already is, and of one spelling the
+     * pieces that rank first (see `insertSentMessage` above).
+     */
+    insertSentMessage: (hash: string, sentMessage: { messageJson: string; injectedContextPiecesJson: string | null }) =>
+      void insertSentMessage.run(hash, sentMessage.messageJson, sentMessage.injectedContextPiecesJson),
     /** Delete every system prompt and tool set no API request references any more, and every sent message no tail names. */
     deleteUnreferencedRequestPieces: () => {
       deleteUnreferencedSystemPrompts.run();

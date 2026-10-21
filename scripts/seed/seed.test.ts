@@ -140,16 +140,16 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     expect(sent?.toolsDiff?.added.map((tool) => tool.name)).toEqual(["Grep"]);
     // Its new messages: the Turn before it, the injected date change, and the prompt.
     const newMessages = sent?.fullRequest.messages.slice(sent.firstNewMessageIndex);
-    expect(newMessages?.map((message) => [message?.role, message?.blocks[0]?.kind])).toEqual([
+    expect(newMessages?.map((message) => [message?.role, message?.parts[0]?.kind])).toEqual([
       ["assistant", "text"],
-      ["system", "text"],
+      ["system", "injected-context"],
       ["user", "text"],
     ]);
 
     // The first Turn's prompt went out after the CLAUDE.md system-reminder injected into its message.
     const first = view!.messages.find((m) => m.role === "assistant")!;
     const firstSent = await getWhatWasSent(first.apiRequestId!, { dbPath: seed.dbPath });
-    expect(firstSent?.fullRequest.messages[0]?.blocks.map((block) => block.kind)).toEqual(["system-reminder", "text"]);
+    expect(firstSent?.fullRequest.messages[0]?.parts.map((part) => part.kind)).toEqual(["injected-context", "text"]);
 
     // Every message of every Turn's request is rebuilt, from a blob or from the records.
     for (const turn of turns) {
