@@ -20,7 +20,6 @@ export type {
   FailedAttempt,
   JsonValue,
   RawApiRequest,
-  SentBlock,
   SentMessage,
   SentTool,
   WhatWasSent,

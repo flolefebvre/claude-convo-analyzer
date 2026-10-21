@@ -3,7 +3,7 @@
 // 2.1.300+, ADR-0007). The database holds it all: the `api_request`
 // rows of the Agent, whose base chain gives the request's message hashes, and
 // its system prompt, tool set and messages, each stored under its hash. The
-// Raw view reads one API request the same way. Framework-free (ADR-0002).
+// raw JSON reads one API request the same way. Framework-free (ADR-0002).
 
 import { structuredPatch } from "diff";
 
@@ -171,7 +171,7 @@ export type WhatWasSent = {
   };
 };
 
-/** An API request raw (GLOSSARY.md, What was sent), as JSON: what the panel's Raw view shows. Plain and serializable. */
+/** An API request raw (GLOSSARY.md, What was sent), as JSON: what the panel's Raw JSON toggle shows. Plain and serializable. */
 export type RawApiRequest = {
   /** The request body as the logs rebuild it, every message they could not rebuild left out. */
   requestBody: JsonValue;

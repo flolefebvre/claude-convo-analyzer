@@ -5,11 +5,13 @@
 // logs — and the Turn's failed-attempt count and lost time; what it sent is
 // fetched from `GET /api/api-request/<id>` the first time the reader
 // opens it, and kept for every later open. Native `<details>` stays the
-// disclosure, as for tool calls. Under the request's facts, a switch picks the
-// view: Changes (what this request added), Request (all of it, by part) or Raw
-// (its JSON, fetched from the route's `/raw` sibling the first time Raw
-// opens). A message the logs could not rebuild is shown missing at its place,
-// and counted.
+// disclosure, as for tool calls. Under the parameters line, the request reads
+// in the order the model read it: the system prompt, the tools, the earlier
+// messages as a count, then each block new for this Turn, every part one
+// summary line that opens for detail. The "Raw JSON" toggle swaps all of it
+// for the request body, fetched from the route's `/raw` sibling the first
+// time it is pressed. A message the logs could not rebuild is shown missing
+// at its place, and counted.
 //
 // ADR-0002: no core import — the payload comes over the route, its types from
 // the core-free `_lib/transcript`.
@@ -20,18 +22,9 @@ import { useState } from "react";
 
 import { CopyButton } from "@/app/_components/copy-button";
 import { JsonTree } from "@/app/_components/json-tree";
-import { formatClock, formatLatency } from "@/app/_lib/format";
-import type {
-  DiffLine,
-  FailedAttempt,
-  RawApiRequest,
-  SentBlock,
-  SentMessage,
-  SentTool,
-  WhatWasSent,
-} from "@/app/_lib/transcript";
+import { formatBytes, formatClock, formatCompactTokens, formatLatency } from "@/app/_lib/format";
+import type { DiffLine, FailedAttempt, RawApiRequest, SentMessage, SentTool, WhatWasSent } from "@/app/_lib/transcript";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { routes } from "@/generated/routes";
 
 import { type ReadOnFirstOpenState, useReadOnFirstOpen } from "./use-read-on-first-open";
@@ -133,16 +126,33 @@ function countLabel(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
 
-/** The request's facts and failed attempts, then the switch between its three views. */
+/**
+ * The parameters line with its Raw JSON toggle, the failed attempts and the
+ * rebuild gaps, then the request in reading order — or, toggled, its body as JSON.
+ */
 function WhatWasSentView({ whatWasSent, apiRequestId }: { whatWasSent: WhatWasSent; apiRequestId: number }) {
-  // Held here, not in the Raw view, which unmounts with its tab: switching away and back reads nothing again.
+  // Held here, not in the Raw view, which unmounts when toggled off: toggling back reads nothing again.
   const raw = useReadOnFirstOpen<RawApiRequest>(() =>
     callRoute(routes.api["api-request"](String(apiRequestId)).raw.GET()),
   );
+  const [isRawShown, setIsRawShown] = useState(false);
   const { failedAttempts, missingMessageCount, fullRequest } = whatWasSent;
   return (
     <>
-      <Facts whatWasSent={whatWasSent} />
+      <div className="sent-head">
+        <p className="sent-parameters">{parameterLineOf(whatWasSent)}</p>
+        <button
+          type="button"
+          className="io-raw-toggle"
+          aria-pressed={isRawShown}
+          onClick={() => {
+            if (!isRawShown) raw.startReading();
+            setIsRawShown(!isRawShown);
+          }}
+        >
+          Raw JSON
+        </button>
+      </div>
 
       {missingMessageCount > 0 && (
         <p className="sent-line">
@@ -160,80 +170,32 @@ function WhatWasSentView({ whatWasSent, apiRequestId }: { whatWasSent: WhatWasSe
         </section>
       )}
 
-      <Tabs
-        defaultValue="changes"
-        className="sent-views"
-        onValueChange={(view) => {
-          if (view === "raw") raw.startReading();
-        }}
-      >
-        <TabsList aria-label="View of what was sent" className="sent-tab-list">
-          <TabsTrigger value="changes" className="sent-tab">
-            Changes
-          </TabsTrigger>
-          <TabsTrigger value="request" className="sent-tab">
-            Request
-          </TabsTrigger>
-          <TabsTrigger value="raw" className="sent-tab">
-            Raw
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="changes" className="sent-view">
-          <ChangesView whatWasSent={whatWasSent} />
-        </TabsContent>
-        <TabsContent value="request" className="sent-view">
-          <RequestView whatWasSent={whatWasSent} />
-        </TabsContent>
-        <TabsContent value="raw" className="sent-view">
-          <ReadBody state={raw.state} subject="the raw request">
-            {(rawApiRequest) => <RawView rawApiRequest={rawApiRequest} />}
-          </ReadBody>
-        </TabsContent>
-      </Tabs>
+      {isRawShown ? (
+        <ReadBody state={raw.state} subject="the raw request">
+          {(rawApiRequest) => <RawView rawApiRequest={rawApiRequest} />}
+        </ReadBody>
+      ) : (
+        <RequestInReadingOrder whatWasSent={whatWasSent} />
+      )}
     </>
   );
 }
 
-/** When the request was sent (an em dash when the logs miss it) and its parameters, as a key/value grid; the betas as a count that expands to their list. */
-function Facts({ whatWasSent }: { whatWasSent: WhatWasSent }) {
-  const { parameters, sentAt } = whatWasSent;
-  const facts: [string, React.ReactNode][] = [
-    ["sent", formatClock(sentAt) || "—"],
-    ["model", parameters.model],
-    ["max_tokens", parameters.maxTokens],
-    ["thinking", parameters.thinking],
-    ["effort", parameters.effort],
-    [
-      "betas",
-      parameters.betas.length > 0 && (
-        <details className="sent-betas">
-          <summary>
-            <ChevronRight aria-hidden className="chev" />
-            {countLabel(parameters.betas.length, "beta")}
-          </summary>
-          <ul>
-            {parameters.betas.map((beta) => (
-              <li key={beta}>
-                <code>{beta}</code>
-              </li>
-            ))}
-          </ul>
-        </details>
-      ),
-    ],
-  ];
-  return (
-    <dl className="sent-facts">
-      {facts
-        .filter(([, value]) => value !== null && value !== false)
-        .map(([name, value]) => (
-          <div key={name} className="sent-fact">
-            <dt>{name}</dt>
-            <dd>{value}</dd>
-          </div>
-        ))}
-    </dl>
-  );
+/** "claude-opus-5-5 · effort high · max 32K tokens · thinking (adaptive) · 3 cache breakpoints · 2 betas · sent 14:02": each part the request has. */
+function parameterLineOf({ parameters, sentAt }: WhatWasSent): string {
+  const sentClock = formatClock(sentAt);
+  return [
+    parameters.model,
+    parameters.effort !== null && `effort ${parameters.effort}`,
+    parameters.maxTokens !== null && `max ${formatCompactTokens(parameters.maxTokens)} tokens`,
+    // Its text joins its own fields with " · ": bracketed, it stays one part of the line.
+    parameters.thinking !== null && `thinking (${parameters.thinking})`,
+    parameters.cacheBreakpointCount > 0 && countLabel(parameters.cacheBreakpointCount, "cache breakpoint"),
+    parameters.betas.length > 0 && countLabel(parameters.betas.length, "beta"),
+    sentClock !== "" && `sent ${sentClock}`,
+  ]
+    .filter((part) => typeof part === "string")
+    .join(" · ");
 }
 
 /** One failed attempt, as one line: the time it lost when known — an em dash when not, so the line still counts it. */
@@ -242,111 +204,159 @@ function FailedAttemptLine({ attempt }: { attempt: FailedAttempt }) {
 }
 
 /**
- * What this request added: its new messages, then how the system prompt and
- * the tool definitions changed — one "unchanged" line each when they did not.
- * Without a previous request everything is new, so there is nothing to compare.
+ * The request in the order the model read it: the system prompt, the tools,
+ * how many earlier messages it repeated, then each block of the messages new
+ * for this Turn. On the Agent's first request every message is new.
  */
-function ChangesView({ whatWasSent }: { whatWasSent: WhatWasSent }) {
-  const { firstNewMessageIndex, previousApiRequestId, systemPromptDiff, toolsDiff, fullRequest } = whatWasSent;
-  const hasPreviousRequest = previousApiRequestId !== null;
+function RequestInReadingOrder({ whatWasSent }: { whatWasSent: WhatWasSent }) {
+  const { firstNewMessageIndex, previousApiRequestId, fullRequest } = whatWasSent;
   return (
-    <>
-      <NewMessages
-        newMessages={fullRequest.messages.slice(firstNewMessageIndex)}
-        hasPreviousRequest={hasPreviousRequest}
-      />
-
-      {systemPromptDiff ? (
-        <section className="sent-section">
-          <h4 className="io-label">
-            {systemPromptDiff.isVolatileOnly
-              ? "System prompt: only volatile changes (dates, git status, working directory)"
-              : "System prompt changed"}
-          </h4>
-          <Diff hunks={systemPromptDiff.hunks} />
-        </section>
-      ) : (
-        hasPreviousRequest && <p className="sent-line">System prompt: unchanged</p>
-      )}
-
-      {toolsDiff ? (
-        <section className="sent-section">
-          <h4 className="io-label">Tool definitions changed</h4>
-          {toolsDiff.added.length > 0 && <ToolNames label="Added" tools={toolsDiff.added} />}
-          {toolsDiff.removed.length > 0 && <ToolNames label="Removed" tools={toolsDiff.removed} />}
-          {toolsDiff.changed.map((tool) => (
-            <div key={tool.name} className="sent-tool-change">
-              <p className="sent-line">
-                Changed <code>{tool.name}</code>: {tool.changedFields.join(" and ")}
-              </p>
-              <Diff hunks={tool.hunks} />
-            </div>
-          ))}
-        </section>
-      ) : (
-        hasPreviousRequest && <p className="sent-line">Tool definitions: unchanged</p>
-      )}
-    </>
-  );
-}
-
-/** The messages new since the previous API request, under a heading saying what they are new against. */
-function NewMessages({
-  newMessages,
-  hasPreviousRequest,
-}: {
-  newMessages: (SentMessage | null)[];
-  hasPreviousRequest: boolean;
-}) {
-  const messageCount = countLabel(newMessages.length, "message");
-  return (
-    <section className="sent-section">
-      <h4 className="io-label">
-        {hasPreviousRequest
-          ? `New since the previous API request (${messageCount})`
-          : `No earlier API request of this Agent: every message is new (${messageCount})`}
-      </h4>
-      {newMessages.map((message, index) => (
-        <MessageBlocks key={index} message={message} />
+    <div className="sent-rows">
+      <SystemPromptRow whatWasSent={whatWasSent} />
+      <ToolsRow whatWasSent={whatWasSent} />
+      <p className="sent-row-static">
+        {previousApiRequestId === null
+          ? "First request of this Agent"
+          : `${countLabel(firstNewMessageIndex, "earlier message")} · already sent with the previous request`}
+      </p>
+      <h4 className="sent-divider">New for this Turn</h4>
+      {fullRequest.messages.slice(firstNewMessageIndex).map((message, index) => (
+        <NewMessageRows key={index} message={message} />
       ))}
-    </section>
+    </div>
   );
 }
 
-/** The whole request by part: its parameters, system blocks, tool definitions and every message. */
-function RequestView({ whatWasSent }: { whatWasSent: WhatWasSent }) {
-  const { systemBlocks, tools, messages } = whatWasSent.fullRequest;
+/**
+ * The system prompt as one row: its block count and size, and how it changed
+ * since the previous request — a badge for a real change, a muted note naming
+ * what moved for a volatile one. It opens to its blocks in order, each with its
+ * cache breakpoint; a changed one toggles to the diff.
+ */
+function SystemPromptRow({ whatWasSent }: { whatWasSent: WhatWasSent }) {
+  const [isDiffShown, setIsDiffShown] = useState(false);
+  const { systemPromptDiff, fullRequest } = whatWasSent;
+  const { systemBlocks } = fullRequest;
+  const systemText = systemBlocks.map((block) => (block.shownAs === "text" ? block.text : block.json)).join("\n");
   return (
-    <>
-      <section className="sent-section">
-        <h4 className="io-label">System prompt ({countLabel(systemBlocks.length, "block")})</h4>
-        {systemBlocks.map((block, index) => (
-          <div key={index}>
-            <BlockView block={block} />
-            {block.cacheControl && <p className="sent-breakpoint">Cache breakpoint: {block.cacheControl}</p>}
+    <details className="sent-row">
+      <summary>
+        <ChevronRight aria-hidden className="chev" />
+        <span className="sent-row-name">System prompt</span>
+        <span className="sent-row-meta">
+          {countLabel(systemBlocks.length, "block")} · {formatBytes(new TextEncoder().encode(systemText).length)}
+        </span>
+        {systemPromptDiff &&
+          (systemPromptDiff.isVolatileOnly ? (
+            <span className="sent-row-note">volatile only: {listOf(systemPromptDiff.volatileChangeNames)} changed</span>
+          ) : (
+            <span className="sent-badge">changed since previous request</span>
+          ))}
+      </summary>
+      <div className="sent-row-body">
+        {systemPromptDiff && (
+          <div className="sent-row-tools">
+            <button
+              type="button"
+              className="io-raw-toggle"
+              aria-pressed={isDiffShown}
+              onClick={() => setIsDiffShown(!isDiffShown)}
+            >
+              Diff
+            </button>
           </div>
-        ))}
-      </section>
-      <section className="sent-section">
-        <h4 className="io-label">Tools ({countLabel(tools.length, "tool")})</h4>
-        {tools.map((tool) => (
-          <details key={tool.name} className="sent-tool">
-            <summary>
-              <ChevronRight aria-hidden className="chev" />
-              <code>{tool.name}</code>
-            </summary>
-            <pre className="sent-pre">{tool.definitionJson}</pre>
-          </details>
-        ))}
-      </section>
-      <section className="sent-section">
-        <h4 className="io-label">Messages ({countLabel(messages.length, "message")})</h4>
-        {messages.map((message, index) => (
-          <MessageBlocks key={index} message={message} />
-        ))}
-      </section>
-    </>
+        )}
+        {systemPromptDiff && isDiffShown ? (
+          <Diff hunks={systemPromptDiff.hunks} />
+        ) : (
+          systemBlocks.map((block, index) => (
+            <div key={index}>
+              <ClampedText text={block.shownAs === "text" ? block.text : block.json} />
+              {block.cacheControl && <p className="sent-breakpoint">Cache breakpoint: {block.cacheControl}</p>}
+            </div>
+          ))
+        )}
+      </div>
+    </details>
   );
+}
+
+/** "date", "date and git status", "date, working directory and git status". */
+function listOf(names: string[]): string {
+  return names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+}
+
+/**
+ * The tools as one row: their count, and which were added, removed and
+ * changed since the previous request. It opens to their names, each opening
+ * to its definition, and a changed one's diff.
+ */
+function ToolsRow({ whatWasSent }: { whatWasSent: WhatWasSent }) {
+  const { toolsDiff, fullRequest } = whatWasSent;
+  const changedToolByName = new Map((toolsDiff?.changed ?? []).map((tool) => [tool.name, tool]));
+  const addedToolNames = new Set((toolsDiff?.added ?? []).map((tool) => tool.name));
+  return (
+    <details className="sent-row">
+      <summary>
+        <ChevronRight aria-hidden className="chev" />
+        <span className="sent-row-name">Tools</span>
+        <span className="sent-row-meta">{fullRequest.tools.length}</span>
+        {toolsDiff && toolsDiff.added.length > 0 && (
+          <span className="sent-badge">
+            +{toolsDiff.added.length} since previous: {toolNamesOf(toolsDiff.added)}
+          </span>
+        )}
+        {toolsDiff && toolsDiff.removed.length > 0 && (
+          <span className="sent-badge">
+            −{toolsDiff.removed.length}: {toolNamesOf(toolsDiff.removed)}
+          </span>
+        )}
+        {toolsDiff && toolsDiff.changed.length > 0 && (
+          <span className="sent-badge">{toolsDiff.changed.length} changed</span>
+        )}
+      </summary>
+      <div className="sent-row-body">
+        {fullRequest.tools.map((tool) => {
+          const changedTool = changedToolByName.get(tool.name);
+          return (
+            <details key={tool.name} className="sent-tool">
+              <summary>
+                <ChevronRight aria-hidden className="chev" />
+                <code>{tool.name}</code>
+                {addedToolNames.has(tool.name) && <span className="sent-row-note">added</span>}
+                {changedTool && (
+                  <span className="sent-row-note">changed: {changedTool.changedFields.join(" and ")}</span>
+                )}
+              </summary>
+              <pre className="sent-pre">{tool.definitionJson}</pre>
+              {changedTool && <Diff hunks={changedTool.hunks} />}
+            </details>
+          );
+        })}
+      </div>
+    </details>
+  );
+}
+
+function toolNamesOf(tools: SentTool[]): string {
+  return tools.map((tool) => tool.name).join(", ");
+}
+
+/** The rows of one message new for this Turn: one per block, its label and preview, opening to its content; one the logs could not rebuild, as a line saying so. */
+function NewMessageRows({ message }: { message: SentMessage | null }) {
+  if (message === null) return <p className="sent-row-static">A message the logs could not rebuild</p>;
+  return message.blocks.map((block, index) => (
+    <details key={index} className="sent-row">
+      <summary>
+        <ChevronRight aria-hidden className="chev" />
+        <span className={`sent-row-name sent-kind is-${block.kind}`}>{block.label}</span>
+        <span className="sent-row-preview">{block.preview}</span>
+      </summary>
+      <div className="sent-row-body">
+        <ClampedText text={block.shownAs === "text" ? block.text : block.json} />
+      </div>
+    </details>
+  ));
 }
 
 /**
@@ -368,35 +378,6 @@ function RawView({ rawApiRequest }: { rawApiRequest: RawApiRequest }) {
         <CopyButton text={() => JSON.stringify(requestBody, null, 2)} label="Copy JSON" />
       </div>
       <JsonTree value={requestBody} />
-    </div>
-  );
-}
-
-/** A message by its role and blocks; one the logs could not rebuild (null), as a line saying so, at its place. */
-function MessageBlocks({ message }: { message: SentMessage | null }) {
-  if (message === null) {
-    return (
-      <div className="sent-message">
-        <p className="sent-line">A message the logs could not rebuild.</p>
-      </div>
-    );
-  }
-  return (
-    <div className="sent-message">
-      <span className="sent-role">{message.role}</span>
-      {message.blocks.map((block, index) => (
-        <BlockView key={index} block={block} />
-      ))}
-    </div>
-  );
-}
-
-/** A block under its kind label, as plain text: text as sent, any other block as its pretty-printed JSON. */
-function BlockView({ block }: { block: SentBlock }) {
-  return (
-    <div className="sent-block">
-      <span className={`sent-kind is-${block.kind}`}>{block.kind}</span>
-      <ClampedText text={block.shownAs === "text" ? block.text : block.json} />
     </div>
   );
 }
@@ -435,20 +416,6 @@ function ClampedText({ text }: { text: string }) {
         </button>
       )}
     </div>
-  );
-}
-
-function ToolNames({ label, tools }: { label: string; tools: SentTool[] }) {
-  return (
-    <p className="sent-line">
-      {label}:{" "}
-      {tools.map((tool, index) => (
-        <span key={tool.name}>
-          {index > 0 && ", "}
-          <code>{tool.name}</code>
-        </span>
-      ))}
-    </p>
   );
 }
 
