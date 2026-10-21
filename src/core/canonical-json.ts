@@ -1,6 +1,5 @@
-// The one canonical JSON form: what a piece is hashed in, whether a Recording
-// stores it (docs/recording-format.md, "Hashing rule") or the conversation logs
-// do (docs/conversation-log-format.md, §9). Node built-ins only.
+// The one canonical JSON form: what a piece the conversation logs store is
+// hashed in (docs/conversation-log-format.md, §9). Node built-ins only.
 
 import { createHash } from "node:crypto";
 

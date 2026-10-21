@@ -1386,13 +1386,13 @@ function seedToolResultSent(toolUseId: string, result: string): SeedSentMessage 
 }
 
 /**
- * The request records of one seeded log file (log-format §9): a shape is
+ * The writer of one seeded log file's request records (log-format §9): a shape is
  * logged before the first request that sends it, each blob message before the
  * request, and each request starts from the previous one, keeping all its
  * messages. A request that failed is resent as its retry does: the same
  * digest, from it, keeping all its messages and adding none.
  */
-function requestRecorder(g: Gen, sessionId: string, model: string, querySource: string, agentId?: string) {
+function requestRecordWriter(g: Gen, sessionId: string, model: string, querySource: string, agentId?: string) {
   const loggedShapeHashes = new Set<string>();
   let previous: { recordId: string; messageCount: number } | null = null;
   const inFile = (record: Record<string, unknown>) =>
@@ -1514,7 +1514,7 @@ function loggedRequestsConversation(g: Gen, index: number): Conversation {
     ],
     tools: [bash, read, seedToolDefinition("Grep", "Search file contents.", "pattern")],
   };
-  const requests = requestRecorder(g, sessionId, model, "repl_main_thread");
+  const requests = requestRecordWriter(g, sessionId, model, "repl_main_thread");
   const firstPrompt = atLoggedRequestsVersion(
     userPrompt(g, t, cwd, "The invoice list takes eight seconds to load — find out why."),
   );
@@ -1587,7 +1587,7 @@ function loggedRequestsConversation(g: Gen, index: number): Conversation {
   };
 }
 
-/** The Explore sub-agent {@link loggedRequestsConversation} spawns at `ms`, its log recording its two API requests. */
+/** The Explore sub-agent {@link loggedRequestsConversation} spawns at `ms`, its log holding its two API requests. */
 function loggedRequestsSubAgent(
   g: Gen,
   ms: number,
@@ -1605,7 +1605,7 @@ function loggedRequestsSubAgent(
     ],
     tools: [seedToolDefinition("Read", "Read a file.", "file_path")],
   };
-  const requests = requestRecorder(g, sessionId, MODELS[3], "agent:builtin:Explore", agentId);
+  const requests = requestRecordWriter(g, sessionId, MODELS[3], "agent:builtin:Explore", agentId);
   /** The lines of a request sent at `turnMs` with the messages of `tail`, then the Turn answering it. */
   const subTurn = (turnMs: number, tail: SeedSentMessage[], toolUses?: object[]) => {
     const sent = requests.send(turnMs, shape, tail);

@@ -1,6 +1,6 @@
 // The settings file: the user's choices that outlive the server process, kept
-// next to the Recordings rather than in the database, which a Refresh may
-// rebuild. Only the user's own action writes it.
+// in `~/.claude-convo-analyzer/` rather than in the database, which a Refresh
+// may rebuild. Only the user's own action writes it.
 
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import os from "node:os";

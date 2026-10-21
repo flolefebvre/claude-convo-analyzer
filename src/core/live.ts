@@ -136,7 +136,7 @@ export function watchLogs({ logsRoot = defaultLogsRoot() }: { logsRoot?: string 
     // Turbopack cannot resolve this runtime path, so it would trace the whole project into the build. The path
     // lies outside the project by design, so no scoping or include can describe it, and this local-only app never
     // deploys the trace: the per-call opt-out is the accurate answer. It is the same opt-out as the env-root
-    // readers in discovery.ts, db.ts, recording.ts and settings.ts, and the Recorder's cwd in app/_lib/recorder.ts.
+    // readers in discovery.ts, db.ts and settings.ts.
     if (!existsSync(/*turbopackIgnore: true*/ logsRoot)) {
       console.warn(`Live does not watch the logs root ${logsRoot}: it does not exist`);
       return { close: () => {} };

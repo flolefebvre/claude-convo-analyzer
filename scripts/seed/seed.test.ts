@@ -278,7 +278,7 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     expect(readTree(second.logsRoot)).toEqual(files);
   });
 
-  it("writes no Recordings: the seed directory holds the logs, the database and the settings", async () => {
+  it("leaves the seed directory holding only the logs, the database and the settings", async () => {
     const dir = path.join(tmpDir, "seed");
     await seedEnvironment({ dir, now: NOW });
 
