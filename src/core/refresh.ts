@@ -419,7 +419,7 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     // a system prompt or tool set no API request references, and a sent
     // message no tail names: gone, as a cold Refresh would never have stored them.
     statements.deleteProjectsWithoutConversations();
-    statements.deleteUnreferencedRequestPieces();
+    statements.deleteUnreferencedInternedValues();
     statements.commitTransaction();
     endPhase("stamp");
   } finally {

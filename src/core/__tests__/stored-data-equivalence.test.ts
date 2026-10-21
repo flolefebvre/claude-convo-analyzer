@@ -77,7 +77,7 @@ function copyWithPinnedMtimes(fixtureRoot: string, logsRoot: string): void {
 
 /**
  * Fingerprint one table: rows ordered by their primary key (`id`, or a
- * piece's `hash`), every column through SQLite's `quote()` — which keeps
+ * interned row's `hash`), every column through SQLite's `quote()` — which keeps
  * integer, real, text and NULL distinct — one line per row, hashed with
  * sha256. The temp logs root is replaced by a placeholder.
  */
@@ -186,7 +186,7 @@ describe("stored data equivalence", () => {
     });
   });
 
-  it("stores the pinned rows for the logged request logs (request records, Main thread and Sub-agent, each piece once)", async () => {
+  it("stores the pinned rows for the logged request logs (request records, Main thread and Sub-agent, each system prompt, tool set and sent message once)", async () => {
     copyWithPinnedMtimes(path.join(FIXTURES_DIR, "logged-request-logs"), logsRoot);
     await refresh({ logsRoot, dbPath });
 
@@ -285,11 +285,11 @@ describe("a re-parse", () => {
   });
 });
 
-describe("a piece two logs spell in two key orders", () => {
+describe("a tool set two logs spell in two key orders", () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = mkdtempSync(path.join(tmpdir(), "cca-piece-spelling-"));
+    tmpDir = mkdtempSync(path.join(tmpdir(), "cca-tool-set-spelling-"));
   });
 
   afterEach(() => {
@@ -454,7 +454,7 @@ describe("a sent message one log labels and another does not", () => {
 
 /**
  * The request-record tables of the database at `dbPath`, whatever row ids the
- * Refreshes gave: the pieces whole, the requests without their row id and
+ * Refreshes gave: the interned rows whole, the requests without their row id and
  * foreign keys, but whether a Turn answered them, and the `uuid` of the Turn's
  * Message owning one as a Failed attempt.
  */

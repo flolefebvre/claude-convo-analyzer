@@ -814,7 +814,7 @@ export function parseSessionLines(lines: readonly string[]): ParsedSession {
     // Resolved once the whole file is read: a shape need not precede its requests.
     apiRequests: apiRequests.map(({ request, shapeHash }) => ({
       ...request,
-      ...requestShapes.pieceHashesOf(shapeHash),
+      ...requestShapes.systemPromptAndToolSetHashesOf(shapeHash),
     })),
     systemPromptJsonByHash: requestShapes.systemPromptJsonByHash,
     toolSetJsonByHash: requestShapes.toolSetJsonByHash,
@@ -857,16 +857,16 @@ function parseApiRequest(
 /**
  * The `api-request-shape` records of one file, each reduced as it is read to
  * the hashes of its system prompt and tool set — the sha256 of their canonical
- * JSON — with each distinct piece kept once, as logged (the smallest of its spellings).
+ * JSON — with each distinct system prompt and tool set interned once, as logged (the smallest of its spellings).
  */
 function requestShapeLedger() {
-  const pieceHashesByShapeHash = new Map<string, { systemPromptHash: string; toolSetHash: string }>();
+  const systemPromptAndToolSetHashesByShapeHash = new Map<string, { systemPromptHash: string; toolSetHash: string }>();
   const systemPromptJsonByHash = new Map<string, string>();
   const toolSetJsonByHash = new Map<string, string>();
-  /** The hash of `piece`, kept in `jsonByHash` as logged — of two spellings of one piece, the smallest. */
-  const keep = (piece: unknown, jsonByHash: Map<string, string>): string => {
-    const hash = createHash("sha256").update(canonicalJson(piece)).digest("hex");
-    const json = JSON.stringify(piece);
+  /** Intern `value` in `jsonByHash`: its hash, under which it is kept as logged — of two spellings of one value, the smallest. */
+  const intern = (value: unknown, jsonByHash: Map<string, string>): string => {
+    const hash = createHash("sha256").update(canonicalJson(value)).digest("hex");
+    const json = JSON.stringify(value);
     const keptJson = jsonByHash.get(hash);
     if (keptJson === undefined || json < keptJson) jsonByHash.set(hash, json);
     return hash;
@@ -876,15 +876,16 @@ function requestShapeLedger() {
     toolSetJsonByHash,
     add: (record: Record<string, unknown>) => {
       const shapeHash = asString(record.shapeHash);
-      if (shapeHash === null || !isRecord(record.shape) || pieceHashesByShapeHash.has(shapeHash)) return;
-      pieceHashesByShapeHash.set(shapeHash, {
-        systemPromptHash: keep(record.shape.system ?? [], systemPromptJsonByHash),
-        toolSetHash: keep(record.shape.tools ?? [], toolSetJsonByHash),
+      if (shapeHash === null || !isRecord(record.shape) || systemPromptAndToolSetHashesByShapeHash.has(shapeHash))
+        return;
+      systemPromptAndToolSetHashesByShapeHash.set(shapeHash, {
+        systemPromptHash: intern(record.shape.system ?? [], systemPromptJsonByHash),
+        toolSetHash: intern(record.shape.tools ?? [], toolSetJsonByHash),
       });
     },
-    /** The piece hashes of the shape stored under `shapeHash`; both null when the file holds none. */
-    pieceHashesOf: (shapeHash: string | null) =>
-      (shapeHash === null ? undefined : pieceHashesByShapeHash.get(shapeHash)) ?? {
+    /** The system prompt and tool set hashes of the shape stored under `shapeHash`; both null when the file holds none. */
+    systemPromptAndToolSetHashesOf: (shapeHash: string | null) =>
+      (shapeHash === null ? undefined : systemPromptAndToolSetHashesByShapeHash.get(shapeHash)) ?? {
         systemPromptHash: null,
         toolSetHash: null,
       },

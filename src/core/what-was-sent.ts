@@ -195,7 +195,7 @@ export type RawApiRequest = {
 type RequestBody = Record<string, JsonValue>;
 
 /** How the system prompt and the tool definitions changed from `previousBody` to `body`; neither without a previous body. */
-function pieceChanges(
+function systemPromptAndToolsChanges(
   previousBody: RequestBody | null,
   body: RequestBody,
 ): Pick<WhatWasSent, "systemPromptDiff" | "toolsDiff"> {
@@ -251,7 +251,7 @@ export async function getWhatWasSent(
     const previousRow = await prisma.apiRequest.findFirst({
       where: { agentId: row.agentId, positionInFile: { lt: row.positionInFile }, messageId: { not: null } },
       orderBy: { positionInFile: "desc" },
-      include: API_REQUEST_PIECES,
+      include: SYSTEM_PROMPT_AND_TOOL_SET_INCLUDE,
     });
     const messageHashesOf = await messageHashesOfAgentRequests(prisma, row);
     const messageHashes = messageHashesOf(row);
@@ -267,7 +267,7 @@ export async function getWhatWasSent(
       firstNewMessageIndex:
         previousRow === null ? 0 : sharedMessageHashPrefixLength(messageHashes, messageHashesOf(previousRow)),
       missingMessageCount: messages.filter((message) => message === null).length,
-      ...pieceChanges(previousRow === null ? null : requestPiecesOf(previousRow), body),
+      ...systemPromptAndToolsChanges(previousRow === null ? null : bodyWithoutMessagesOf(previousRow), body),
       fullRequest: fullRequestOf(body, messages),
     };
   });
@@ -353,17 +353,17 @@ export async function failedAttemptsByMessage(
   return failedAttemptsByMessageId;
 }
 
-/** The pieces an `api_request` row is read with. */
-const API_REQUEST_PIECES = {
+/** The interned system prompt and tool set an `api_request` row is read with. */
+const SYSTEM_PROMPT_AND_TOOL_SET_INCLUDE = {
   systemPrompt: { select: { blocksJson: true } },
   toolSet: { select: { toolsJson: true } },
 } as const;
 
-/** The `api_request` row `apiRequestId`, with its pieces; null for an unknown one. */
+/** The `api_request` row `apiRequestId`, with its system prompt and tool set; null for an unknown one. */
 function findApiRequestRow(prisma: ReadPrisma, apiRequestId: number) {
   return prisma.apiRequest.findUnique({
     where: { id: apiRequestId },
-    include: API_REQUEST_PIECES,
+    include: SYSTEM_PROMPT_AND_TOOL_SET_INCLUDE,
   });
 }
 
@@ -456,7 +456,7 @@ function sharedMessageHashPrefixLength(messageHashes: MessageHash[], previousMes
   return length;
 }
 
-/** What {@link requestPiecesOf} needs of an `api_request` row. */
+/** What {@link bodyWithoutMessagesOf} needs of an `api_request` row. */
 type ApiRequestRow = {
   parametersJson: string;
   cacheBreakpointsJson: string;
@@ -465,7 +465,7 @@ type ApiRequestRow = {
 };
 
 /**
- * The body of an API request: its pieces (see {@link requestPiecesOf}),
+ * The body of an API request: what its row holds (see {@link bodyWithoutMessagesOf}),
  * then the messages of `messageHashes` as stored — null for one the database
  * does not hold, or whose hash is unknown — each carrying the `cache_control`
  * its breakpoints set at `["messages", i, "content", j]`. Beside it, the
@@ -489,7 +489,7 @@ async function requestOf(
   );
   return {
     body: {
-      ...requestPiecesOf(row),
+      ...bodyWithoutMessagesOf(row),
       messages: withMessageCacheBreakpoints(messages, JSON.parse(row.cacheBreakpointsJson) as JsonValue),
     },
     // Every column was written by `JSON.stringify` (refresh.ts).
@@ -504,10 +504,10 @@ async function requestOf(
 /**
  * The body an API request's row holds without its messages: its
  * parameters, then its system blocks — each carrying the `cache_control` its
- * breakpoints set at `["system", i]` — and its tools; a piece its file lacked
+ * breakpoints set at `["system", i]` — and its tools; a system prompt or tool set its file lacked
  * is left out.
  */
-function requestPiecesOf(row: ApiRequestRow): RequestBody {
+function bodyWithoutMessagesOf(row: ApiRequestRow): RequestBody {
   // Every column was written by `JSON.stringify` (refresh.ts).
   const body = JSON.parse(row.parametersJson) as RequestBody;
   if (row.systemPrompt !== null) {

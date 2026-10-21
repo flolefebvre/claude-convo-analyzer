@@ -190,9 +190,9 @@ function toFtsQuery(rawQuery: string): string | null {
   const chunks: string[] = [];
   // A "..." phrase, or a run of non-space characters.
   for (const m of rawQuery.matchAll(/"([^"]*)"|(\S+)/g)) {
-    const piece = m[1] ?? m[2] ?? "";
-    if (!/[\p{L}\p{N}]/u.test(piece)) continue;
-    chunks.push(`"${piece.replaceAll('"', '""')}"`);
+    const term = m[1] ?? m[2] ?? "";
+    if (!/[\p{L}\p{N}]/u.test(term)) continue;
+    chunks.push(`"${term.replaceAll('"', '""')}"`);
   }
   return chunks.length === 0 ? null : chunks.join(" AND ");
 }

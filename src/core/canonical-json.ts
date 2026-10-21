@@ -1,5 +1,5 @@
-// The one canonical JSON form: what a piece the conversation logs store is
-// hashed in (docs/conversation-log-format.md, §9). Node built-ins only.
+// The one canonical JSON form: what each interned system prompt, tool set and
+// sent message is hashed in (docs/conversation-log-format.md, §9). Node built-ins only.
 
 import { createHash } from "node:crypto";
 
