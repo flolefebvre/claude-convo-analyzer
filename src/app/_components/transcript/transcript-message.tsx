@@ -240,10 +240,10 @@ function AssistantTurn({
         </div>
       )}
 
-      {message.loggedApiRequestId !== null && (
+      {message.apiRequestId !== null && (
         <div className="calls">
           <WhatWasSentDisclosure
-            loggedApiRequestId={message.loggedApiRequestId}
+            apiRequestId={message.apiRequestId}
             failedAttemptCount={message.failedAttemptCount}
             failedAttemptsLostMs={message.failedAttemptsLostMs}
           />

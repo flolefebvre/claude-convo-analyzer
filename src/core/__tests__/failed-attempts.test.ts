@@ -12,7 +12,7 @@ import { describe, expect, it } from "vitest";
 
 import { getConversation, getTranscript, type TranscriptMessage } from "@/core/read";
 import { refresh } from "@/core/refresh";
-import { getLoggedWhatWasSent } from "@/core/what-was-sent";
+import { getWhatWasSent } from "@/core/what-was-sent";
 
 import { seededTempDb } from "./helpers/temp-db";
 
@@ -89,9 +89,9 @@ describe("a Turn's Failed attempts from the logs", () => {
 describe("What was sent from the logs, for a Turn Failed attempts preceded", () => {
   /** What was sent for the `ordinal`-th (1-based) assistant Turn of an Agent. */
   async function whatWasSentForTurn(ordinal: number, agentId?: string) {
-    const loggedApiRequestId = (await turnsOf(agentId))[ordinal - 1]?.loggedApiRequestId;
-    if (loggedApiRequestId == null) throw new Error(`Turn ${ordinal} has no logged API request`);
-    return getLoggedWhatWasSent(loggedApiRequestId, { dbPath: db.dbPath });
+    const apiRequestId = (await turnsOf(agentId))[ordinal - 1]?.apiRequestId;
+    if (apiRequestId == null) throw new Error(`Turn ${ordinal} has no API request`);
+    return getWhatWasSent(apiRequestId, { dbPath: db.dbPath });
   }
 
   it("lists them oldest first, each with when it was sent and the time it lost, and no status or error", async () => {

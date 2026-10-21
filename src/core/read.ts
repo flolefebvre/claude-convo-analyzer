@@ -15,7 +15,7 @@ import { type MessageOrigin, messageOriginSchema } from "@/core/parse";
 import type { Prisma, PrismaClient } from "@/core/prisma/generated/client";
 import { PARSER_VERSION } from "@/core/refresh";
 import { toolCallBodyParts, type ToolCallBodyParts } from "@/core/tool-call-views";
-import { loggedFailedAttemptsByMessage } from "@/core/what-was-sent";
+import { failedAttemptsByMessage } from "@/core/what-was-sent";
 
 export type ConversationSummary = {
   id: string;
@@ -138,11 +138,11 @@ export type TranscriptMessage = {
   /** `tool_use` blocks on this (assistant) turn, in stored order. */
   toolCalls: TranscriptToolCall[];
   /**
-   * The `logged_api_request` row id this Turn's What was sent is read by: its
+   * The `api_request` row id this Turn's What was sent is read by: its
    * API request in the logs (of several, the latest). Null when its file
    * holds none, and on user Messages.
    */
-  loggedApiRequestId: number | null;
+  apiRequestId: number | null;
   /** How many Failed attempts preceded this Turn's API request; 0 without any, and on user Messages. */
   failedAttemptCount: number;
   /**
@@ -1247,8 +1247,8 @@ async function readAgentTranscript(
     rows.map((r) => r.id),
   );
   const assistantMessageIds = rows.filter((r) => r.role === "assistant").map((r) => r.id);
-  const loggedApiRequestIdByMessageId = await turnLoggedApiRequestsByMessage(prisma, assistantMessageIds);
-  const loggedFailedAttemptsByMessageId = await loggedFailedAttemptsByMessage(prisma, assistantMessageIds);
+  const apiRequestIdByMessageId = await turnApiRequestsByMessage(prisma, assistantMessageIds);
+  const failedAttemptsByMessageId = await failedAttemptsByMessage(prisma, assistantMessageIds);
 
   // A Sub-agent's agent id is its external id, so `senderTaskId`/`taskId`
   // resolve against it; a coordinator is the agent that spawned this one.
@@ -1268,8 +1268,8 @@ async function readAgentTranscript(
   return rows.map((r) => {
     const turn = priceTurn(r);
     const origin = readOrigin(r.origin);
-    const loggedFailedAttempts = loggedFailedAttemptsByMessageId.get(r.id) ?? [];
-    const knownLostMs = loggedFailedAttempts.flatMap((attempt) => (attempt.lostMs === null ? [] : [attempt.lostMs]));
+    const failedAttempts = failedAttemptsByMessageId.get(r.id) ?? [];
+    const knownLostMs = failedAttempts.flatMap((attempt) => (attempt.lostMs === null ? [] : [attempt.lostMs]));
     return {
       id: r.id,
       uuid: r.uuid,
@@ -1286,8 +1286,8 @@ async function readAgentTranscript(
       apiErrorMessage: r.apiErrorMessage,
       timestamp: r.timestamp === null ? null : new Date(Number(r.timestamp)).toISOString(),
       toolCalls: toolCallsByMsg.get(r.id) ?? [],
-      loggedApiRequestId: loggedApiRequestIdByMessageId.get(r.id) ?? null,
-      failedAttemptCount: loggedFailedAttempts.length,
+      apiRequestId: apiRequestIdByMessageId.get(r.id) ?? null,
+      failedAttemptCount: failedAttempts.length,
       failedAttemptsLostMs: knownLostMs.length > 0 ? knownLostMs.reduce((total, lostMs) => total + lostMs, 0) : null,
     };
   });
@@ -1295,22 +1295,19 @@ async function readAgentTranscript(
 
 /**
  * Of each Turn among `messageIds` whose log file holds its API request,
- * batched: the `logged_api_request` row id — of several, the latest in file
+ * batched: the `api_request` row id — of several, the latest in file
  * order.
  */
-async function turnLoggedApiRequestsByMessage(
-  prisma: PrismaClient,
-  messageIds: number[],
-): Promise<Map<number, number>> {
-  const loggedApiRequestIdByMessageId = new Map<number, number>();
-  if (messageIds.length === 0) return loggedApiRequestIdByMessageId;
-  const rows = await prisma.loggedApiRequest.findMany({
+async function turnApiRequestsByMessage(prisma: PrismaClient, messageIds: number[]): Promise<Map<number, number>> {
+  const apiRequestIdByMessageId = new Map<number, number>();
+  if (messageIds.length === 0) return apiRequestIdByMessageId;
+  const rows = await prisma.apiRequest.findMany({
     where: { messageId: { in: messageIds } },
     orderBy: [{ positionInFile: "asc" }, { id: "asc" }],
     select: { id: true, messageId: true },
   });
-  for (const row of rows) loggedApiRequestIdByMessageId.set(row.messageId!, row.id);
-  return loggedApiRequestIdByMessageId;
+  for (const row of rows) apiRequestIdByMessageId.set(row.messageId!, row.id);
+  return apiRequestIdByMessageId;
 }
 
 /**

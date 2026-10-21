@@ -30,7 +30,7 @@ const STORED_TABLES = [
   "tool_call",
   "pr_link",
   "turn_duration",
-  "logged_api_request",
+  "api_request",
   "system_prompt",
   "tool_set",
   "sent_message",
@@ -49,7 +49,7 @@ const EMPTY_TABLE_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495
 
 /** The request-record tables of logs written before Claude Code 2.1.300: all empty. */
 const NO_LOGGED_API_REQUESTS = {
-  logged_api_request: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+  api_request: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
   system_prompt: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
   tool_set: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
   sent_message: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
@@ -197,7 +197,7 @@ describe("stored data equivalence", () => {
       tool_call: { rowCount: 3, sha256: "e5f615b5d6290bc0dab75ea171da282d5e176e04be16438fc4d834c227f91b9d" },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
-      logged_api_request: { rowCount: 8, sha256: "dc61f1c84636a85d51fa06c9ec0eedb89cfd56d6301377dbb38257656eb8d3f9" },
+      api_request: { rowCount: 8, sha256: "dc61f1c84636a85d51fa06c9ec0eedb89cfd56d6301377dbb38257656eb8d3f9" },
       // Four system prompts and three tool sets: the Sub-agent shares the Main thread's first one.
       system_prompt: { rowCount: 4, sha256: "179129a51d494cdd6ea7fb72cf50d62900d9163160ed521f850dc233dae050bf" },
       tool_set: { rowCount: 3, sha256: "6b550b32e7738d046dd3c9f444e69eeba02357a973be985eac064674d0326323" },
@@ -229,15 +229,15 @@ describe("a re-parse", () => {
     const coldDbPath = path.join(tmpDir, "cold.db");
     copyWithPinnedMtimes(path.join(FIXTURES_DIR, "logged-request-logs"), logsRoot);
     await refresh({ logsRoot, dbPath: reparsedDbPath });
-    const beforeContent = loggedApiRequestContent(reparsedDbPath, logsRoot);
+    const beforeContent = apiRequestContent(reparsedDbPath, logsRoot);
     const mainLogPath = path.join(logsRoot, "-Users-me-dev-logged", "sess-logged.jsonl");
     writeFileSync(mainLogPath, rewrite(readFileSync(mainLogPath, "utf8").split("\n")).join("\n"));
     await refresh({ logsRoot, dbPath: reparsedDbPath });
     await refresh({ logsRoot, dbPath: coldDbPath });
     return {
       beforeContent,
-      reparsedContent: loggedApiRequestContent(reparsedDbPath, logsRoot),
-      coldContent: loggedApiRequestContent(coldDbPath, logsRoot),
+      reparsedContent: apiRequestContent(reparsedDbPath, logsRoot),
+      coldContent: apiRequestContent(coldDbPath, logsRoot),
     };
   }
 
@@ -382,17 +382,17 @@ describe("a piece two logs spell in two key orders", () => {
  * foreign keys, but whether a Turn answered them, and the `uuid` of the Turn's
  * Message owning one as a Failed attempt.
  */
-function loggedApiRequestContent(dbPath: string, logsRoot: string) {
+function apiRequestContent(dbPath: string, logsRoot: string) {
   const db = new Database(dbPath, { readonly: true });
   try {
     const requests = db
       .prepare(
         `SELECT "record_id", "base_record_id", "kept_message_count", "tail_message_hashes_json", "parameters_json",
                 "cache_breakpoints_json", "query_source", "request_digest", "sent_at", "position_in_file",
-                "system_prompt_hash", "tool_set_hash", "logged_api_request"."message_id" IS NULL AS "isUnanswered",
+                "system_prompt_hash", "tool_set_hash", "api_request"."message_id" IS NULL AS "isUnanswered",
                 "owner"."uuid" AS "failedAttemptOfMessageUuid"
-           FROM "logged_api_request"
-           LEFT JOIN "message" AS "owner" ON "owner"."id" = "logged_api_request"."failed_attempt_of_message_id"
+           FROM "api_request"
+           LEFT JOIN "message" AS "owner" ON "owner"."id" = "api_request"."failed_attempt_of_message_id"
           ORDER BY "record_id"`,
       )
       .all();

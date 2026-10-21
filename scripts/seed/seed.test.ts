@@ -16,7 +16,7 @@ import { PAGE_SIZE } from "@/app/_lib/list-view";
 import { DEFAULT_SORT, sortConversations } from "@/app/_lib/sort";
 import { getToolCallBody, getTranscript, listConversations } from "@/core/read";
 import { readSettings, writeSettings } from "@/core/settings";
-import { getLoggedWhatWasSent } from "@/core/what-was-sent";
+import { getWhatWasSent } from "@/core/what-was-sent";
 
 import { seedEnvironment } from "./environment";
 import {
@@ -119,7 +119,7 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
     const subAgent = view?.tree.children.find((node) => node.agentType === "Explore");
     const subAgentView = await getTranscript(logged!.id, { dbPath: seed.dbPath, agentId: subAgent?.id });
     const turns = [...(view?.messages ?? []), ...(subAgentView?.messages ?? [])].filter((m) => m.role === "assistant");
-    expect(turns.every((turn) => turn.loggedApiRequestId !== null)).toBe(true);
+    expect(turns.every((turn) => turn.apiRequestId !== null)).toBe(true);
     expect(turns).toHaveLength(6);
     // The second Main-thread Turn went through on a retry, after one Failed attempt.
     expect(turns.map((turn) => [turn.failedAttemptCount, turn.failedAttemptsLostMs])).toEqual([
@@ -133,7 +133,7 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
 
     // The third Main-thread Turn: the system prompt and the tools changed since the second.
     const third = view!.messages.filter((m) => m.role === "assistant")[2]!;
-    const sent = await getLoggedWhatWasSent(third.loggedApiRequestId!, { dbPath: seed.dbPath });
+    const sent = await getWhatWasSent(third.apiRequestId!, { dbPath: seed.dbPath });
     expect(sent?.systemPromptDiff?.isVolatileOnly).toBe(false);
     expect(sent?.toolsDiff?.added.map((tool) => tool.name)).toEqual(["Grep"]);
     // Its new messages: the Turn before it, the injected date change, and the prompt.
@@ -146,12 +146,12 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
 
     // The first Turn's prompt went out after the CLAUDE.md system-reminder injected into its message.
     const first = view!.messages.find((m) => m.role === "assistant")!;
-    const firstSent = await getLoggedWhatWasSent(first.loggedApiRequestId!, { dbPath: seed.dbPath });
+    const firstSent = await getWhatWasSent(first.apiRequestId!, { dbPath: seed.dbPath });
     expect(firstSent?.fullRequest.messages[0]?.blocks.map((block) => block.kind)).toEqual(["system-reminder", "text"]);
 
     // Every message of every Turn's request is rebuilt, from a blob or from the records.
     for (const turn of turns) {
-      const turnSent = await getLoggedWhatWasSent(turn.loggedApiRequestId!, { dbPath: seed.dbPath });
+      const turnSent = await getWhatWasSent(turn.apiRequestId!, { dbPath: seed.dbPath });
       expect(turnSent?.missingMessageCount).toBe(0);
     }
   });

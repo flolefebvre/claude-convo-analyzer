@@ -26,7 +26,7 @@ import {
 } from "@/core/read";
 import { searchConversations } from "@/core/search";
 import { getToolCallSamples, getToolStats } from "@/core/tool-stats";
-import { getLoggedRawApiRequest, getLoggedWhatWasSent } from "@/core/what-was-sent";
+import { getRawApiRequest, getWhatWasSent } from "@/core/what-was-sent";
 
 /**
  * The home directory of the user running the app — the folder tree's `~` root.
@@ -157,28 +157,28 @@ export const loadToolCallBody = cache(async (id: number) => {
 });
 
 /**
- * Read what the API request of `logged_api_request` row `loggedApiRequestId`
+ * Read what the API request of `api_request` row `apiRequestId`
  * sent, from the default database. Same request-time gating as
  * {@link loadConversations}; `null` for an unknown row (the Conversation was
  * re-parsed since the page rendered).
  *
- * @example const whatWasSent = await loadLoggedWhatWasSent(message.loggedApiRequestId!);
+ * @example const whatWasSent = await loadWhatWasSent(message.apiRequestId!);
  */
-export const loadLoggedWhatWasSent = cache(async (loggedApiRequestId: number) => {
+export const loadWhatWasSent = cache(async (apiRequestId: number) => {
   await connection();
-  return getLoggedWhatWasSent(loggedApiRequestId);
+  return getWhatWasSent(apiRequestId);
 });
 
 /**
- * Read the API request of `logged_api_request` row `loggedApiRequestId` raw
+ * Read the API request of `api_request` row `apiRequestId` raw
  * (its body as the logs rebuild it so far), from the default database. Gated
- * and `null` like {@link loadLoggedWhatWasSent}.
+ * and `null` like {@link loadWhatWasSent}.
  *
- * @example const rawApiRequest = await loadLoggedRawApiRequest(loggedApiRequestId);
+ * @example const rawApiRequest = await loadRawApiRequest(apiRequestId);
  */
-export const loadLoggedRawApiRequest = cache(async (loggedApiRequestId: number) => {
+export const loadRawApiRequest = cache(async (apiRequestId: number) => {
   await connection();
-  return getLoggedRawApiRequest(loggedApiRequestId);
+  return getRawApiRequest(apiRequestId);
 });
 
 /**

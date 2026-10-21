@@ -55,14 +55,14 @@ model Conversation {
   /// Set when the first message's parentUuid resolves into a prior session (--resume/fork).
   continuedFromConversationId Int? @map("continued_from_conversation_id")
 
-  project           Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  continuedFrom     Conversation?      @relation("ConversationContinuation", fields: [continuedFromConversationId], references: [id], onDelete: SetNull)
-  continuations     Conversation[]     @relation("ConversationContinuation")
-  agents            Agent[]
-  messages          Message[]
-  prLinks           PrLink[]
-  turnDurations     TurnDuration[]
-  loggedApiRequests LoggedApiRequest[]
+  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  continuedFrom Conversation?  @relation("ConversationContinuation", fields: [continuedFromConversationId], references: [id], onDelete: SetNull)
+  continuations Conversation[] @relation("ConversationContinuation")
+  agents        Agent[]
+  messages      Message[]
+  prLinks       PrLink[]
+  turnDurations TurnDuration[]
+  apiRequests   ApiRequest[]
 
   @@index([projectId])
   @@map("conversation")
@@ -93,10 +93,10 @@ model Agent {
   childAgents  Agent[]      @relation("AgentLineage")
 
   /// The Agent-tool message that spawned this sub-agent.
-  spawnedBy         Message?           @relation("AgentSpawn", fields: [spawnedByMessageId], references: [id], onDelete: SetNull)
-  messages          Message[]          @relation("AgentMessages")
-  toolCalls         ToolCall[]
-  loggedApiRequests LoggedApiRequest[]
+  spawnedBy   Message?     @relation("AgentSpawn", fields: [spawnedByMessageId], references: [id], onDelete: SetNull)
+  messages    Message[]    @relation("AgentMessages")
+  toolCalls   ToolCall[]
+  apiRequests ApiRequest[]
 
   @@index([conversationId])
   @@index([parentAgentId])
@@ -161,13 +161,13 @@ model Message {
   /// Record timestamp (epoch ms).
   timestamp BigInt?
 
-  conversation                   Conversation       @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  agent                          Agent              @relation("AgentMessages", fields: [agentId], references: [id], onDelete: Cascade)
-  spawnedAgents                  Agent[]            @relation("AgentSpawn")
-  toolCalls                      ToolCall[]
-  loggedApiRequests              LoggedApiRequest[] @relation("LoggedApiRequestTurn")
-  /// The logged API requests that were this Turn's Failed attempts.
-  failedAttemptLoggedApiRequests LoggedApiRequest[] @relation("LoggedApiRequestFailedAttempt")
+  conversation             Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  agent                    Agent        @relation("AgentMessages", fields: [agentId], references: [id], onDelete: Cascade)
+  spawnedAgents            Agent[]      @relation("AgentSpawn")
+  toolCalls                ToolCall[]
+  apiRequests              ApiRequest[] @relation("ApiRequestTurn")
+  /// The API requests that were this Turn's Failed attempts.
+  failedAttemptApiRequests ApiRequest[] @relation("ApiRequestFailedAttempt")
 
   @@index([conversationId])
   @@index([agentId])
@@ -240,7 +240,7 @@ model TurnDuration {
 /// as Claude Code 2.1.300+ logs it, its system prompt, tool set and messages
 /// each stored once, under their hash, in `system_prompt`, `tool_set` and
 /// `sent_message`.
-model LoggedApiRequest {
+model ApiRequest {
   id                       Int  @id @default(autoincrement())
   conversationId           Int  @map("conversation_id")
   /// The Agent of the log file holding the record.
@@ -285,8 +285,8 @@ model LoggedApiRequest {
 
   conversation           Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   agent                  Agent         @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  message                Message?      @relation("LoggedApiRequestTurn", fields: [messageId], references: [id], onDelete: SetNull)
-  failedAttemptOfMessage Message?      @relation("LoggedApiRequestFailedAttempt", fields: [failedAttemptOfMessageId], references: [id], onDelete: SetNull)
+  message                Message?      @relation("ApiRequestTurn", fields: [messageId], references: [id], onDelete: SetNull)
+  failedAttemptOfMessage Message?      @relation("ApiRequestFailedAttempt", fields: [failedAttemptOfMessageId], references: [id], onDelete: SetNull)
   systemPrompt           SystemPrompt? @relation(fields: [systemPromptHash], references: [hash], onDelete: Restrict)
   toolSet                ToolSet?      @relation(fields: [toolSetHash], references: [hash], onDelete: Restrict)
 
@@ -296,10 +296,10 @@ model LoggedApiRequest {
   @@index([agentId, positionInFile])
   @@index([systemPromptHash])
   @@index([toolSetHash])
-  @@map("logged_api_request")
+  @@map("api_request")
 }
 
-/// One per distinct system prompt a logged API request sent, shared across
+/// One per distinct system prompt an API request sent, shared across
 /// Conversations; the Refresh deletes it once no request references it.
 model SystemPrompt {
   /// The sha256 hex of the blocks' canonical JSON (`canonical-json.ts`): its
@@ -309,12 +309,12 @@ model SystemPrompt {
   /// logs spell the same blocks in two key orders, the smallest spelling.
   blocksJson String @map("blocks_json")
 
-  loggedApiRequests LoggedApiRequest[]
+  apiRequests ApiRequest[]
 
   @@map("system_prompt")
 }
 
-/// One per distinct set of tool definitions a logged API request sent, shared
+/// One per distinct set of tool definitions an API request sent, shared
 /// across Conversations; the Refresh deletes it once no request references it.
 model ToolSet {
   /// The sha256 hex of the definitions' canonical JSON (`canonical-json.ts`):
@@ -324,12 +324,12 @@ model ToolSet {
   /// saw. When logs spell the same set in two key orders, the smallest spelling.
   toolsJson String @map("tools_json")
 
-  loggedApiRequests LoggedApiRequest[]
+  apiRequests ApiRequest[]
 
   @@map("tool_set")
 }
 
-/// One per distinct message a logged API request's `tail` names, shared across
+/// One per distinct message an API request's `tail` names, shared across
 /// Conversations; the Refresh deletes it once no request's tail names it.
 model SentMessage {
   /// The sha256 hex of the message's canonical JSON (`canonical-json.ts`), a

@@ -318,9 +318,9 @@ export type ParsedMessage = {
 
 /**
  * An `api-request` record (log-format §9): one API request the file's Agent
- * sent, as its `logged_api_request` row keeps it.
+ * sent, as its `api_request` row keeps it.
  */
-export type ParsedLoggedApiRequest = {
+export type ParsedApiRequest = {
   /** The record's `id`, which an assistant record's `requestRef` names. */
   recordId: string;
   /** `base`; null when absent (`keep` is then 0). */
@@ -369,7 +369,7 @@ export type ParsedSession = {
   /** `Agent` spawn ledgers keyed by spawned `agentId` (cross-check + linkage). */
   agentSpawns: Map<string, ParsedAgentSpawn>;
   /** The `api-request` records, in file order (log-format §9). */
-  loggedApiRequests: ParsedLoggedApiRequest[];
+  apiRequests: ParsedApiRequest[];
   /** Each distinct system prompt of the file's shapes, as logged (JSON), by the sha256 of its canonical JSON. */
   systemPromptJsonByHash: Map<string, string>;
   /** Each distinct tool set of the file's shapes, as logged (JSON), by the sha256 of its canonical JSON. */
@@ -569,7 +569,7 @@ export function parseSessionLines(lines: readonly string[]): ParsedSession {
   // records for the same turn merge into the existing message (see below).
   const assistantById = new Map<string, ParsedMessage>();
   const deliveries = deliveryLedger();
-  const loggedApiRequests: { request: ParsedLoggedApiRequest; shapeHash: string | null }[] = [];
+  const apiRequests: { request: ParsedApiRequest; shapeHash: string | null }[] = [];
   const requestShapes = requestShapeLedger();
   // Only a file with request records (2.1.300+) has messages to rebuild:
   // the others, most files, skip hashing their records.
@@ -630,10 +630,10 @@ export function parseSessionLines(lines: readonly string[]): ParsedSession {
     }
 
     if (type === "api-request") {
-      const loggedApiRequest = parseLoggedApiRequest(record);
-      if (loggedApiRequest !== null) {
-        loggedApiRequests.push(loggedApiRequest);
-        sentMessages.addTail(loggedApiRequest.request.tailMessageHashes);
+      const apiRequest = parseApiRequest(record);
+      if (apiRequest !== null) {
+        apiRequests.push(apiRequest);
+        sentMessages.addTail(apiRequest.request.tailMessageHashes);
       }
       continue;
     }
@@ -758,7 +758,7 @@ export function parseSessionLines(lines: readonly string[]): ParsedSession {
     turnDurations,
     agentSpawns,
     // Resolved once the whole file is read: a shape need not precede its requests.
-    loggedApiRequests: loggedApiRequests.map(({ request, shapeHash }) => ({
+    apiRequests: apiRequests.map(({ request, shapeHash }) => ({
       ...request,
       ...requestShapes.pieceHashesOf(shapeHash),
     })),
@@ -773,9 +773,9 @@ export function parseSessionLines(lines: readonly string[]): ParsedSession {
  * An `api-request` record as its row keeps it, with the `shapeHash` that
  * locates its system prompt and tool set; null without an `id`.
  */
-function parseLoggedApiRequest(
+function parseApiRequest(
   record: Record<string, unknown>,
-): { request: ParsedLoggedApiRequest; shapeHash: string | null } | null {
+): { request: ParsedApiRequest; shapeHash: string | null } | null {
   const recordId = asString(record.id);
   if (recordId === null) return null;
   const parameters = isRecord(record.params) ? { ...record.params } : {};

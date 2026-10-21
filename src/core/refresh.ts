@@ -52,12 +52,7 @@ import {
   discoverSessions,
   discoverSubAgents,
 } from "@/core/discovery";
-import {
-  type ParsedAgentSpawn,
-  type ParsedLoggedApiRequest,
-  parseSessionLines,
-  type ParsedSession,
-} from "@/core/parse";
+import { type ParsedAgentSpawn, type ParsedApiRequest, parseSessionLines, type ParsedSession } from "@/core/parse";
 import { type MessageRow, prepareRefreshStatements, type RefreshStatements } from "@/core/prisma/refresh-statements";
 import { readFileUnlessVanished, statUnlessVanished } from "@/core/vanished-file";
 
@@ -132,10 +127,10 @@ type RefreshOptions = {
  * 7 — every API request is classified by kind (`api_request.kind`, Side
  *     requests told apart), and keeps its response's usage and model.
  * 8 — the request records Claude Code 2.1.300+ logs are stored
- *     (`logged_api_request`, with each system prompt and tool set once).
+ *     (`api_request`, with each system prompt and tool set once).
  * 9 — so are the messages they sent (`sent_message`, each once).
  * 10 — a request record the next one resent joins the Turn it was a Failed
- *     attempt of (`logged_api_request.failed_attempt_of_message_id`).
+ *     attempt of (`api_request.failed_attempt_of_message_id`).
  */
 export const PARSER_VERSION = 10;
 
@@ -235,7 +230,7 @@ type DiscoveredWithKey = {
  * conversations — so a skipped (unchanged) parent still resolves; (3) stamp the
  * current `parserVersion` on that set — the commit mark that lets a later run
  * skip them — and delete every Project left without a Conversation, and every
- * system prompt and tool set no logged API request references, and every sent
+ * system prompt and tool set no API request references, and every sent
  * message no tail names. Passes 2 and 3 share one final transaction. The
  * sub-agent transcript is the single source of truth for its tokens (GOTCHA 3) — the
  * parent aggregate is a cross-check only.
@@ -416,7 +411,7 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     // and therefore re-parseable (see `UNSTAMPED_PARSER_VERSION`).
     stampParserVersion(statements, writtenConversations);
     // A re-parse or a vanished file can leave a Project with no Conversation,
-    // a system prompt or tool set no logged API request references, and a sent
+    // a system prompt or tool set no API request references, and a sent
     // message no tail names: gone, as a cold Refresh would never have stored them.
     statements.deleteProjectsWithoutConversations();
     statements.deleteUnreferencedRequestPieces();
@@ -663,18 +658,18 @@ function writeAgentMessages(
  * Write one agent's log file's request records (log-format §9): each distinct
  * system prompt, tool set and sent message under its hash, unless already
  * stored, then one
- * `logged_api_request` row per `api-request` record, in file order, joined to
+ * `api_request` row per `api-request` record, in file order, joined to
  * the Turn of that same file whose `requestRef` names it — a `requestRef`
  * naming a request of another file joins nothing.
  */
-function writeLoggedApiRequests(
+function writeApiRequests(
   statements: RefreshStatements,
   parsed: ParsedSession,
   conversationId: number,
   agentId: number,
   messageRowByMsgId: Map<string, number>,
 ): void {
-  if (parsed.loggedApiRequests.length === 0) return;
+  if (parsed.apiRequests.length === 0) return;
   const messageRowIdByRequestRef = new Map<string, number>();
   for (const message of parsed.messages) {
     if (message.requestRef === null || message.messageId === null) continue;
@@ -686,9 +681,9 @@ function writeLoggedApiRequests(
   for (const [hash, blocksJson] of parsed.systemPromptJsonByHash) statements.insertSystemPrompt(hash, blocksJson);
   for (const [hash, toolsJson] of parsed.toolSetJsonByHash) statements.insertToolSet(hash, toolsJson);
   for (const [hash, messageJson] of parsed.sentMessageJsonByHash) statements.insertSentMessage(hash, messageJson);
-  const failedAttemptOfMessageRowIds = failedAttemptOwners(parsed.loggedApiRequests, messageRowIdByRequestRef);
-  parsed.loggedApiRequests.forEach((request, positionInFile) => {
-    statements.insertLoggedApiRequest({
+  const failedAttemptOfMessageRowIds = failedAttemptOwners(parsed.apiRequests, messageRowIdByRequestRef);
+  parsed.apiRequests.forEach((request, positionInFile) => {
+    statements.insertApiRequest({
       conversationId,
       agentId,
       messageId: messageRowIdByRequestRef.get(request.recordId) ?? null,
@@ -719,7 +714,7 @@ function writeLoggedApiRequests(
  * in turn. A chain ending in a request nothing answers belongs to no Turn.
  */
 function failedAttemptOwners(
-  requests: ParsedLoggedApiRequest[],
+  requests: ParsedApiRequest[],
   messageRowIdByRequestRef: Map<string, number>,
 ): (number | null)[] {
   const failedAttemptOfMessageRowIds: (number | null)[] = requests.map(() => null);
@@ -749,7 +744,7 @@ function failedAttemptOwners(
  * Replace one conversation, inside the caller's transaction: delete its prior
  * row (if any), then write it + root agent + messages + tool_calls + logged
  * API requests, then each sub-agent (its own agent row + messages + tool_calls
- * + logged API requests), then pr_links and turn_durations, and return the new
+ * + API requests), then pr_links and turn_durations, and return the new
  * conversation's row id. The conversations that continued from the prior row are re-pointed at the new one. Sub-agent
  * `spawnedByMessageId` is linked via the spawning `Agent` tool_use that produced
  * the matching `agentId` (log-format §4) — in whichever transcript that ledger
@@ -805,7 +800,7 @@ function writeConversation(statements: RefreshStatements, parsedConversation: Pa
 
   const rootByMsgId = writeAgentMessages(statements, parsed, conversationId, rootAgentId);
   writeToolCalls(statements, parsed, rootAgentId, rootByMsgId);
-  writeLoggedApiRequests(statements, parsed, conversationId, rootAgentId, rootByMsgId);
+  writeApiRequests(statements, parsed, conversationId, rootAgentId, rootByMsgId);
 
   // Sub-agents: each transcript is its own agent row (single source of truth
   // for its tokens — the parent aggregate is NOT summed). Linked back to the
@@ -838,7 +833,7 @@ function writeConversation(statements: RefreshStatements, parsedConversation: Pa
 
     const subByMsgId = writeAgentMessages(statements, plan.parsed, conversationId, subAgentId);
     writeToolCalls(statements, plan.parsed, subAgentId, subByMsgId);
-    writeLoggedApiRequests(statements, plan.parsed, conversationId, subAgentId, subByMsgId);
+    writeApiRequests(statements, plan.parsed, conversationId, subAgentId, subByMsgId);
     written.set(plan.agentId, {
       agentRowId: subAgentId,
       parsed: plan.parsed,

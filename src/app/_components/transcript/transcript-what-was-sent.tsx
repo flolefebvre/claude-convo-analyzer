@@ -1,9 +1,9 @@
 "use client";
 
 // The "What was sent" disclosure of one Turn. The page ships only where to
-// read it — the `logged_api_request` row id of the Turn's API request in the
+// read it — the `api_request` row id of the Turn's API request in the
 // logs — and the Turn's failed-attempt count and lost time; what it sent is
-// fetched from `GET /api/logged-api-request/<id>` the first time the reader
+// fetched from `GET /api/api-request/<id>` the first time the reader
 // opens it, and kept for every later open. Native `<details>` stays the
 // disclosure, as for tool calls. Under the request's facts, a switch picks the
 // view: Changes (what this request added), Request (all of it, by part) or Raw
@@ -46,30 +46,30 @@ const BLOCK_CLAMP_CHARS = 2_000;
 
 /**
  * A Turn's "What was sent" `<details>`, fetched on the first open from its API
- * request in the logs, `loggedApiRequestId`; its summary counts the Turn's
+ * request in the logs, `apiRequestId`; its summary counts the Turn's
  * failed attempts and the time they lost, which the page ships.
  *
  * @example
- * {message.loggedApiRequestId !== null && (
+ * {message.apiRequestId !== null && (
  *   <WhatWasSentDisclosure
- *     loggedApiRequestId={message.loggedApiRequestId}
+ *     apiRequestId={message.apiRequestId}
  *     failedAttemptCount={message.failedAttemptCount}
  *     failedAttemptsLostMs={message.failedAttemptsLostMs}
  *   />
  * )}
  */
 export function WhatWasSentDisclosure({
-  loggedApiRequestId,
+  apiRequestId,
   failedAttemptCount,
   failedAttemptsLostMs,
 }: {
-  loggedApiRequestId: number;
+  apiRequestId: number;
   failedAttemptCount: number;
   /** The time the failed attempts lost in all; null when unknown, or without any. */
   failedAttemptsLostMs: number | null;
 }) {
   const { state, onToggle, detailsRef } = useReadOnFirstOpen<WhatWasSent>(() =>
-    callRoute(routes.api["logged-api-request"](String(loggedApiRequestId)).GET()),
+    callRoute(routes.api["api-request"](String(apiRequestId)).GET()),
   );
 
   return (
@@ -86,7 +86,7 @@ export function WhatWasSentDisclosure({
       </summary>
       <div className="call-body sent-body">
         <ReadBody state={state} subject="what was sent">
-          {(whatWasSent) => <WhatWasSentView whatWasSent={whatWasSent} loggedApiRequestId={loggedApiRequestId} />}
+          {(whatWasSent) => <WhatWasSentView whatWasSent={whatWasSent} apiRequestId={apiRequestId} />}
         </ReadBody>
       </div>
     </details>
@@ -134,16 +134,10 @@ function countLabel(count: number, noun: string): string {
 }
 
 /** The request's facts and failed attempts, then the switch between its three views. */
-function WhatWasSentView({
-  whatWasSent,
-  loggedApiRequestId,
-}: {
-  whatWasSent: WhatWasSent;
-  loggedApiRequestId: number;
-}) {
+function WhatWasSentView({ whatWasSent, apiRequestId }: { whatWasSent: WhatWasSent; apiRequestId: number }) {
   // Held here, not in the Raw view, which unmounts with its tab: switching away and back reads nothing again.
   const raw = useReadOnFirstOpen<RawApiRequest>(() =>
-    callRoute(routes.api["logged-api-request"](String(loggedApiRequestId)).raw.GET()),
+    callRoute(routes.api["api-request"](String(apiRequestId)).raw.GET()),
   );
   const { failedAttempts, missingMessageCount, fullRequest } = whatWasSent;
   return (

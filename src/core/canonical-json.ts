@@ -24,7 +24,7 @@ export function canonicalJson(value: unknown): string {
 }
 
 /**
- * The hash a logged API request's `tail` names `message` by
+ * The hash an API request's `tail` names `message` by
  * (docs/conversation-log-format.md §9, step 2): the sha256 hex of its
  * canonical JSON, a string `content` first rewritten as one text block.
  *

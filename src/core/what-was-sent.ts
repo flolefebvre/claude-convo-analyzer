@@ -1,6 +1,6 @@
 // What was sent (GLOSSARY.md): what a Turn's API request actually sent the
 // model, read on demand when the reader opens it, from the logs (Claude Code
-// 2.1.300+, ADR-0007). The database holds it all: the `logged_api_request`
+// 2.1.300+, ADR-0007). The database holds it all: the `api_request`
 // rows of the Agent, whose base chain gives the request's message hashes, and
 // its system prompt, tool set and messages, each stored under its hash. The
 // Raw view reads one API request the same way. Framework-free (ADR-0002).
@@ -200,7 +200,7 @@ async function withReadClient<Result>(
 }
 
 /**
- * What the API request of `logged_api_request` row `loggedApiRequestId` sent,
+ * What the API request of `api_request` row `apiRequestId` sent,
  * from the logs (docs/conversation-log-format.md §9), against the previous
  * API request of the same Agent: the latest earlier one of its file a Turn
  * answered, so an unanswered request, retried since, is skipped. Its messages
@@ -208,28 +208,26 @@ async function withReadClient<Result>(
  * at its place and counted. Null for an unknown row.
  *
  * @example
- * const whatWasSent = await getLoggedWhatWasSent(message.loggedApiRequestId!);
+ * const whatWasSent = await getWhatWasSent(message.apiRequestId!);
  */
-export async function getLoggedWhatWasSent(
-  loggedApiRequestId: number,
+export async function getWhatWasSent(
+  apiRequestId: number,
   opts: { dbPath?: string } = {},
 ): Promise<WhatWasSent | null> {
-  return withLoggedApiRequestRow(loggedApiRequestId, opts.dbPath, async (row, prisma) => {
-    const previousRow = await prisma.loggedApiRequest.findFirst({
+  return withApiRequestRow(apiRequestId, opts.dbPath, async (row, prisma) => {
+    const previousRow = await prisma.apiRequest.findFirst({
       where: { agentId: row.agentId, positionInFile: { lt: row.positionInFile }, messageId: { not: null } },
       orderBy: { positionInFile: "desc" },
-      include: LOGGED_API_REQUEST_PIECES,
+      include: API_REQUEST_PIECES,
     });
     const messageHashesOf = await messageHashesOfAgentRequests(prisma, row);
     const messageHashes = messageHashesOf(row);
-    const body = await loggedRequestBody(prisma, row, messageHashes);
+    const body = await requestBodyOf(prisma, row, messageHashes);
     const messages = (body.messages as (JsonValue | null)[]).map((message) =>
       message === null ? null : sentMessage(message),
     );
     const failedAttempts =
-      row.messageId === null
-        ? []
-        : ((await loggedFailedAttemptsByMessage(prisma, [row.messageId])).get(row.messageId) ?? []);
+      row.messageId === null ? [] : ((await failedAttemptsByMessage(prisma, [row.messageId])).get(row.messageId) ?? []);
     return {
       parameters: sentParameters(body),
       failedAttempts,
@@ -237,14 +235,14 @@ export async function getLoggedWhatWasSent(
       firstNewMessageIndex:
         previousRow === null ? 0 : sharedMessageHashPrefixLength(messageHashes, messageHashesOf(previousRow)),
       missingMessageCount: messages.filter((message) => message === null).length,
-      ...pieceChanges(previousRow === null ? null : loggedRequestPieces(previousRow), body),
+      ...pieceChanges(previousRow === null ? null : requestPiecesOf(previousRow), body),
       fullRequest: fullRequestOf(body, messages),
     };
   });
 }
 
 /**
- * The API request of `logged_api_request` row `loggedApiRequestId` raw: its
+ * The API request of `api_request` row `apiRequestId` raw: its
  * body as the logs rebuild it (docs/conversation-log-format.md §9, step 4) —
  * the parameters, `params.betas` included, then the system prompt, the tools
  * and the messages, each cache breakpoint set at its path — every message it
@@ -253,15 +251,15 @@ export async function getLoggedWhatWasSent(
  * unknown row.
  *
  * @example
- * const rawApiRequest = await getLoggedRawApiRequest(message.loggedApiRequestId!);
+ * const rawApiRequest = await getRawApiRequest(message.apiRequestId!);
  */
-export async function getLoggedRawApiRequest(
-  loggedApiRequestId: number,
+export async function getRawApiRequest(
+  apiRequestId: number,
   opts: { dbPath?: string } = {},
 ): Promise<RawApiRequest | null> {
-  return withLoggedApiRequestRow(loggedApiRequestId, opts.dbPath, async (row, prisma) => {
+  return withApiRequestRow(apiRequestId, opts.dbPath, async (row, prisma) => {
     const messageHashes = (await messageHashesOfAgentRequests(prisma, row))(row);
-    const body = await loggedRequestBody(prisma, row, messageHashes);
+    const body = await requestBodyOf(prisma, row, messageHashes);
     const messages = body.messages as (JsonValue | null)[];
     const resolvedMessages = messages.filter((message) => message !== null);
     return {
@@ -278,21 +276,21 @@ export async function getLoggedRawApiRequest(
  * own request ending it. A Turn without any is absent.
  *
  * @example
- * const failedAttemptsByMessageId = await loggedFailedAttemptsByMessage(prisma, [message.id]);
+ * const failedAttemptsByMessageId = await failedAttemptsByMessage(prisma, [message.id]);
  */
-export async function loggedFailedAttemptsByMessage(
+export async function failedAttemptsByMessage(
   prisma: ReadPrisma,
   messageIds: number[],
 ): Promise<Map<number, FailedAttempt[]>> {
   const failedAttemptsByMessageId = new Map<number, FailedAttempt[]>();
   if (messageIds.length === 0) return failedAttemptsByMessageId;
-  const attemptRows = await prisma.loggedApiRequest.findMany({
+  const attemptRows = await prisma.apiRequest.findMany({
     where: { failedAttemptOfMessageId: { in: messageIds } },
     select: { id: true, failedAttemptOfMessageId: true, sentAt: true, positionInFile: true },
   });
   if (attemptRows.length === 0) return failedAttemptsByMessageId;
   const ownerMessageIds = [...new Set(attemptRows.map((row) => row.failedAttemptOfMessageId!))];
-  const turnRows = await prisma.loggedApiRequest.findMany({
+  const turnRows = await prisma.apiRequest.findMany({
     where: { messageId: { in: ownerMessageIds } },
     select: { id: true, messageId: true, sentAt: true, positionInFile: true },
   });
@@ -323,36 +321,33 @@ export async function loggedFailedAttemptsByMessage(
   return failedAttemptsByMessageId;
 }
 
-/** The pieces a `logged_api_request` row is read with. */
-const LOGGED_API_REQUEST_PIECES = {
+/** The pieces a `api_request` row is read with. */
+const API_REQUEST_PIECES = {
   systemPrompt: { select: { blocksJson: true } },
   toolSet: { select: { toolsJson: true } },
 } as const;
 
-/** The `logged_api_request` row `loggedApiRequestId`, with its pieces; null for an unknown one. */
-function findLoggedApiRequestRow(prisma: ReadPrisma, loggedApiRequestId: number) {
-  return prisma.loggedApiRequest.findUnique({
-    where: { id: loggedApiRequestId },
-    include: LOGGED_API_REQUEST_PIECES,
+/** The `api_request` row `apiRequestId`, with its pieces; null for an unknown one. */
+function findApiRequestRow(prisma: ReadPrisma, apiRequestId: number) {
+  return prisma.apiRequest.findUnique({
+    where: { id: apiRequestId },
+    include: API_REQUEST_PIECES,
   });
 }
 
-/** What `read` makes of `logged_api_request` row `loggedApiRequestId`, read from the database at `dbPath`; null for an unknown row. */
-function withLoggedApiRequestRow<Result>(
-  loggedApiRequestId: number,
+/** What `read` makes of `api_request` row `apiRequestId`, read from the database at `dbPath`; null for an unknown row. */
+function withApiRequestRow<Result>(
+  apiRequestId: number,
   dbPath: string | undefined,
-  read: (
-    row: NonNullable<Awaited<ReturnType<typeof findLoggedApiRequestRow>>>,
-    prisma: ReadPrisma,
-  ) => Promise<Result | null>,
+  read: (row: NonNullable<Awaited<ReturnType<typeof findApiRequestRow>>>, prisma: ReadPrisma) => Promise<Result | null>,
 ): Promise<Result | null> {
   return withReadClient(dbPath, async (prisma) => {
-    const row = await findLoggedApiRequestRow(prisma, loggedApiRequestId);
+    const row = await findApiRequestRow(prisma, apiRequestId);
     return row === null ? null : await read(row, prisma);
   });
 }
 
-/** What the walk of a base chain needs of a `logged_api_request` row. */
+/** What the walk of a base chain needs of a `api_request` row. */
 type MessageChainRow = {
   recordId: string;
   baseRecordId: string | null;
@@ -375,7 +370,7 @@ async function messageHashesOfAgentRequests(
   prisma: ReadPrisma,
   row: { agentId: number; positionInFile: number },
 ): Promise<(request: MessageChainRow) => MessageHash[]> {
-  const agentRequests = await prisma.loggedApiRequest.findMany({
+  const agentRequests = await prisma.apiRequest.findMany({
     where: { agentId: row.agentId, positionInFile: { lte: row.positionInFile } },
     orderBy: { positionInFile: "asc" },
     select: {
@@ -429,8 +424,8 @@ function sharedMessageHashPrefixLength(messageHashes: MessageHash[], previousMes
   return length;
 }
 
-/** What {@link loggedRequestPieces} needs of a `logged_api_request` row. */
-type LoggedApiRequestRow = {
+/** What {@link requestPiecesOf} needs of a `api_request` row. */
+type ApiRequestRow = {
   parametersJson: string;
   cacheBreakpointsJson: string;
   systemPrompt: { blocksJson: string } | null;
@@ -438,14 +433,14 @@ type LoggedApiRequestRow = {
 };
 
 /**
- * The body of a logged API request: its pieces (see {@link loggedRequestPieces}),
+ * The body of an API request: its pieces (see {@link requestPiecesOf}),
  * then the messages of `messageHashes` as stored — null for one the database
  * does not hold, or whose hash is unknown — each carrying the `cache_control`
  * its breakpoints set at `["messages", i, "content", j]`.
  */
-async function loggedRequestBody(
+async function requestBodyOf(
   prisma: ReadPrisma,
-  row: LoggedApiRequestRow,
+  row: ApiRequestRow,
   messageHashes: MessageHash[],
 ): Promise<RequestBody> {
   const sentMessageRows = await prisma.sentMessage.findMany({
@@ -459,18 +454,18 @@ async function loggedRequestBody(
     return messageJson === undefined ? null : (JSON.parse(messageJson) as JsonValue);
   });
   return {
-    ...loggedRequestPieces(row),
+    ...requestPiecesOf(row),
     messages: withMessageCacheBreakpoints(messages, JSON.parse(row.cacheBreakpointsJson) as JsonValue),
   };
 }
 
 /**
- * The body a logged API request's row holds without its messages: its
+ * The body an API request's row holds without its messages: its
  * parameters, then its system blocks — each carrying the `cache_control` its
  * breakpoints set at `["system", i]` — and its tools; a piece its file lacked
  * is left out.
  */
-function loggedRequestPieces(row: LoggedApiRequestRow): RequestBody {
+function requestPiecesOf(row: ApiRequestRow): RequestBody {
   // Every column was written by `JSON.stringify` (refresh.ts).
   const body = JSON.parse(row.parametersJson) as RequestBody;
   if (row.systemPrompt !== null) {
