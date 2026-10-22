@@ -51,7 +51,7 @@ const { channel, createSSE } = initSSE({ transport: createMemoryTransport() });
  * The Registry: `sse.refresh()` is the Handle publishing the Refresh's
  * `progress` (absolute `{ done, total }`, once per committed batch), then its
  * `finished { summary }` or `failed { message }`, each with the `runId` of its
- * Refresh; the outcome also carries its `origin`, the user or Live.
+ * Refresh; the outcome also carries its `origin`, the user, Live or the startup.
  *
  * @example await sse.refresh().progress({ runId, done: 50, total: 2450 });
  */
