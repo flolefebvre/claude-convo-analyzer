@@ -20,6 +20,7 @@ import {
   countConversationsWithOutdatedParserVersion,
   getConversation,
   getDailySpend,
+  getToolCallBodies,
   getToolCallBody,
   getTranscript,
   listConversations,
@@ -141,6 +142,30 @@ export const loadTranscript = cache(
     return getTranscript(id, { agentId, page, anchoredMessage, anchoredCall });
   },
 );
+
+/**
+ * Read one conversation's main thread whole — every rendered message, as one
+ * page — for the Conversation export. Same request-time gating as
+ * {@link loadConversations}; `null` for an unknown session.
+ *
+ * @example const view = await loadWholeTranscript(sessionId);
+ */
+export const loadWholeTranscript = cache(async (id: string) => {
+  await connection();
+  return getTranscript(id, { page: "all" });
+});
+
+/**
+ * Read every Tool call body of one conversation's main thread, keyed by row
+ * id, in one query — for the Conversation export, which inlines them all. Same
+ * request-time gating as {@link loadConversations}; empty for an unknown session.
+ *
+ * @example const bodyByCallId = await loadToolCallBodies(sessionId);
+ */
+export const loadToolCallBodies = cache(async (id: string) => {
+  await connection();
+  return getToolCallBodies(id);
+});
 
 /**
  * Read one Tool call's body (input and stored result) by its row id — for the

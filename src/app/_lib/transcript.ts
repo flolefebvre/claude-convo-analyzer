@@ -5,11 +5,14 @@
 // classification logic lives here so it is unit-tested in the node vitest
 // environment; the route/components are thin renderers over these.
 
-import type { TranscriptAgentNode } from "@/core/read";
+import type { ToolCallBody, TranscriptAgentNode } from "@/core/read";
 import type { ToolCallFact } from "@/core/tool-call-views";
 
 /** A Tool call's body, as core reads it — re-exported so a client leaf can name it without touching core. */
 export type { ToolCallBody } from "@/core/read";
+
+/** What the Conversation export hands the Transcript components: every Tool call's body, read up front by row id. */
+export type TranscriptExport = { toolCallBodyById: ReadonlyMap<number, ToolCallBody> };
 
 /** One display part of a Tool call's body block, as core shapes it — re-exported for the client leaf, like {@link ToolCallBody}. */
 export type { ToolCallFact, ToolCallPart } from "@/core/tool-call-views";

@@ -23,6 +23,7 @@ export function InterAgentMessageRow({
   rootAgentId,
   labels,
   listReturn,
+  linksAreText = false,
 }: {
   message: TranscriptMessage;
   time: string;
@@ -34,6 +35,8 @@ export function InterAgentMessageRow({
   labels: Map<string, AgentLabel>;
   /** The list view this transcript was opened from (`?from=`), carried on links. */
   listReturn?: string;
+  /** True in the Conversation export: the sender is named as plain text. */
+  linksAreText?: boolean;
 }) {
   const origin = message.origin;
   const className = ["prompt", "is-agent", anchor.anchored && "anchored"].filter(Boolean).join(" ");
@@ -51,6 +54,7 @@ export function InterAgentMessageRow({
               rootAgentId={rootAgentId}
               labels={labels}
               listReturn={listReturn}
+              linksAreText={linksAreText}
             />
           </>
         }
@@ -84,16 +88,19 @@ function Sender({
   rootAgentId,
   labels,
   listReturn,
+  linksAreText,
 }: {
   message: TranscriptMessage;
   sessionId: string;
   rootAgentId: string;
   labels: Map<string, AgentLabel>;
   listReturn: string | undefined;
+  linksAreText: boolean;
 }) {
   const origin = message.origin;
   const agentId = origin?.senderAgentId ?? null;
   const label = agentId === null ? undefined : labels.get(agentId);
+  if (label !== undefined && linksAreText) return <AgentName label={label} />;
   if (agentId !== null && label !== undefined) {
     return (
       <PendingLink

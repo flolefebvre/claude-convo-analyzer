@@ -70,6 +70,16 @@ thinking when Claude Code logged one. Your own prompts stay plain text:
 
 ![Transcript view](docs/images/transcript-view.png)
 
+"Export as HTML", under the conversation's title in the agent tree, downloads
+the main thread as one self-contained `.html` file, for someone who doesn't have
+the app: every message across all its pages, with its thinking, costs and every
+tool call's input and stored result, rendered as the Transcript view renders
+them. It needs no JavaScript and opens offline from disk; links back into the
+app read as plain text. What was sent is left out, since it holds your
+CLAUDE.md files, environment and system prompt. Nothing else is scrubbed yet:
+paths, including your home directory, and anything a tool printed — secrets
+included — stay as logged, so read the file before you share it.
+
 The Trends page charts daily spend, stacked by model, over the last 7, 30 or 90
 days or all time, for the selected folder.
 

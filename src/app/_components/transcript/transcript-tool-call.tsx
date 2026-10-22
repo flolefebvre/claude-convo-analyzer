@@ -4,12 +4,19 @@ import type { ComponentProps } from "react";
 
 import { loadToolCallBody } from "@/app/_lib/conversations";
 import { formatTokens } from "@/app/_lib/format";
-import { type AgentLabel, classifyToolCall, findSpawnedNode, toolCallSnippet } from "@/app/_lib/transcript";
+import {
+  type AgentLabel,
+  classifyToolCall,
+  findSpawnedNode,
+  toolCallSnippet,
+  type TranscriptExport,
+} from "@/app/_lib/transcript";
 import { agentHref, callAnchorId, withListReturn } from "@/app/_lib/transcript-url";
 import type { TranscriptToolCall, TranscriptView } from "@/core/read";
 
 import { AgentName, CostFigure, ErrorBadge } from "./transcript-parts";
 import { ToolCallDisclosure } from "./transcript-tool-call-body";
+import { IoBlockFrame, type IoBlockProps, ToolCallBodyBlocks } from "./transcript-tool-call-io";
 
 /** Badge label per visual kind (set in small caps by the CSS). */
 const KIND_LABEL = { agent: "Agent", skill: "Skill", tool: "Tool" } as const;
@@ -21,7 +28,8 @@ const KIND_LABEL = { agent: "Agent", skill: "Skill", tool: "Tool" } as const;
  * the call. Three visual kinds — generic tool, skill load, and Agent call —
  * share the summary shell but differ in the badge: an Agent call correlates to
  * the sub-agent it spawned to show that agent's name (as the tree shows it),
- * exact cost and an "Open transcript" deep-link.
+ * exact cost and an "Open transcript" deep-link. In the Conversation export the
+ * body is inlined from `transcriptExport` and the deep-link is left out.
  */
 export function TranscriptToolCallRow({
   call,
@@ -30,6 +38,7 @@ export function TranscriptToolCallRow({
   labels,
   anchoredCall,
   listReturn,
+  transcriptExport,
 }: {
   call: TranscriptToolCall;
   messageId: number;
@@ -41,6 +50,8 @@ export function TranscriptToolCallRow({
   /** The list view this transcript was opened from (`?from=`), carried on
    *  every link to another transcript. */
   listReturn?: string;
+  /** Set in the Conversation export, which inlines every body. */
+  transcriptExport?: TranscriptExport;
 }) {
   const kind = classifyToolCall(call);
   const snippet = toolCallSnippet(call);
@@ -49,11 +60,17 @@ export function TranscriptToolCallRow({
   // server), with its body read server-side, and the pane's `ScrollToAnchor`
   // scrolls to the `id`.
   const anchored = call.toolUseId !== null && call.toolUseId === anchoredCall;
-  const Disclosure = anchored ? PreloadedToolCallDisclosure : ToolCallDisclosure;
+  const Disclosure =
+    transcriptExport !== undefined
+      ? ExportedToolCallDisclosure
+      : anchored
+        ? PreloadedToolCallDisclosure
+        : ToolCallDisclosure;
   const disclosure = {
     id: call.id,
     anchorId: call.toolUseId === null ? undefined : callAnchorId(call.toolUseId),
     anchored,
+    body: transcriptExport?.toolCallBodyById.get(call.id),
   };
 
   if (kind === "agent") {
@@ -77,7 +94,8 @@ export function TranscriptToolCallRow({
           </summary>
         }
         footer={
-          spawned && (
+          spawned &&
+          transcriptExport === undefined && (
             <Link className="open-agent" href={withListReturn(agentHref(view.sessionId, spawned.id), listReturn)}>
               Open transcript
               <ArrowRight aria-hidden className="size-3.5" />
@@ -118,4 +136,52 @@ export function TranscriptToolCallRow({
 async function PreloadedToolCallDisclosure(props: Omit<ComponentProps<typeof ToolCallDisclosure>, "body">) {
   const body = await loadToolCallBody(props.id);
   return <ToolCallDisclosure {...props} body={body ?? undefined} />;
+}
+
+/**
+ * A Tool call in the Conversation export: a native `<details>` with its body
+ * inlined, so it opens with no script and no request.
+ */
+function ExportedToolCallDisclosure({
+  anchorId,
+  body,
+  summary,
+  footer,
+  labels,
+}: ComponentProps<typeof ToolCallDisclosure>) {
+  return (
+    <details id={anchorId} className="call">
+      {summary}
+      <div className="call-body">
+        {body === undefined ? (
+          // Its row was re-parsed between the transcript read and the bodies read.
+          <p className="call-body-note">
+            This transcript changed while it was exported — export again to see this call.
+          </p>
+        ) : (
+          <ToolCallBodyBlocks body={body} labels={labels} IoBlock={ExportedIoBlock} />
+        )}
+        {footer}
+      </div>
+    </details>
+  );
+}
+
+/** One input/result block of the export, its stored text in a nested `<details>` under the rendered parts. */
+function ExportedIoBlock(props: IoBlockProps) {
+  return (
+    <IoBlockFrame
+      {...props}
+      layOutViews={({ labelView, rawView, partsView }) => (
+        <>
+          {labelView}
+          {partsView}
+          <details className="io-raw">
+            <summary>Raw</summary>
+            {rawView}
+          </details>
+        </>
+      )}
+    />
+  );
 }

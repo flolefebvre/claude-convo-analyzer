@@ -22,6 +22,7 @@ export function TaskNotificationRow({
   anchor,
   sessionId,
   listReturn,
+  linksAreText = false,
 }: {
   message: TranscriptMessage;
   time: string;
@@ -29,6 +30,8 @@ export function TaskNotificationRow({
   sessionId: string;
   /** The list view this transcript was opened from (`?from=`), carried on links. */
   listReturn?: string;
+  /** True in the Conversation export, which leaves the link to the Sub-agent out. */
+  linksAreText?: boolean;
 }) {
   const origin = message.origin;
   const status = origin?.taskStatus;
@@ -49,7 +52,7 @@ export function TaskNotificationRow({
             {status}
           </span>
         ))}
-      {origin?.taskAgentId && (
+      {origin?.taskAgentId && !linksAreText && (
         <Link className="open-agent" href={withListReturn(agentHref(sessionId, origin.taskAgentId), listReturn)}>
           Open transcript
           <ArrowRight aria-hidden className="size-3.5" />

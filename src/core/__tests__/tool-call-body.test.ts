@@ -1,7 +1,7 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { getToolCallBody, getTranscript } from "@/core/read";
+import { getToolCallBodies, getToolCallBody, getTranscript } from "@/core/read";
 
 import { seededTempDb } from "./helpers/temp-db";
 
@@ -87,5 +87,41 @@ describe("getToolCallBody", () => {
     expect(body?.inputJson).toContain("never answered");
     expect(body?.resultText).toBeNull();
     expect(body?.resultCharSize).toBeNull();
+  });
+});
+
+describe("getToolCallBodies", () => {
+  const toolBodyDb = seededTempDb({ prefix: "cca-tool-bodies-", logsRoot: FIXTURES_ROOT });
+  const subAgentDb = seededTempDb({
+    prefix: "cca-tool-bodies-sub-",
+    logsRoot: path.join(import.meta.dirname, "fixtures", "logs"),
+  });
+
+  it("reads every Tool call body of the main thread, keyed by row id", async () => {
+    const view = await getTranscript("sess-toolbody", { dbPath: toolBodyDb.dbPath, page: "all" });
+    const callIds = view?.messages.flatMap((m) => m.toolCalls.map((c) => c.id)) ?? [];
+    expect(callIds.length).toBeGreaterThan(1);
+
+    const bodyByCallId = await getToolCallBodies("sess-toolbody", { dbPath: toolBodyDb.dbPath });
+
+    expect([...bodyByCallId.keys()].sort((a, b) => a - b)).toEqual([...callIds].sort((a, b) => a - b));
+    for (const id of callIds) {
+      expect(bodyByCallId.get(id)).toEqual(await getToolCallBody(id, { dbPath: toolBodyDb.dbPath }));
+    }
+  });
+
+  it("reads only the selected agent's Tool calls", async () => {
+    const main = await getToolCallBodies("sess-sub", { dbPath: subAgentDb.dbPath });
+    const sub = await getToolCallBodies("sess-sub", { dbPath: subAgentDb.dbPath, agentId: "sub1" });
+
+    expect(sub.size).toBe(1);
+    const view = await getTranscript("sess-sub", { dbPath: subAgentDb.dbPath, agentId: "sub1" });
+    const subCall = view?.messages[1]?.toolCalls[0];
+    expect(sub.has(subCall?.id ?? -1)).toBe(true);
+    expect([...main.keys()]).not.toContain(subCall?.id);
+  });
+
+  it("is empty for an unknown session", async () => {
+    expect((await getToolCallBodies("does-not-exist", { dbPath: toolBodyDb.dbPath })).size).toBe(0);
   });
 });

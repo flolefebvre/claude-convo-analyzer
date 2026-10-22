@@ -17,7 +17,8 @@ In order of preference — reach for the next one only when the previous doesn't
    what a Turn's API request sent; the page ships only the summary and the row id, because a server
    component cannot render what nobody has opened yet. The third, `GET /api/disk-usage`, is read each time
    the app bar's Disk usage item opens, never for the first paint: walking a multi-GB logs root must not
-   hold up the page.
+   hold up the page. Apart from these, `GET /api/conversation/[sessionId]/export` is a download, not a read:
+   it fetches the export page from this server and answers it as one self-contained file (ADR-0008).
 4. **Server-Sent Events** for what the server pushes to every open page while it happens — the Refresh's
    progress and outcome on the `refresh` Channel. Channels and their event schemas live in the next-sse
    Registry, `src/app/_lib/sse.ts`; server code publishes through its Handles, and a component subscribes
@@ -29,15 +30,18 @@ In order of preference — reach for the next one only when the previous doesn't
 - Every page lives under `src/app/(with-chrome)/`, the route group whose root layout holds the document
   shell and the shared chrome (skip link, app bar, parser-update banner), and unknown URLs reach its
   `not-found.tsx` through its catch-all, `[...unmatchedPath]`; `src/app/` itself has no layout. A route that
-  needs a different document (no app bar) gets its own group with its own root layout.
+  needs a different document (no app bar) gets its own group with its own root layout: `src/app/(export)/`
+  holds the Conversation export page (ADR-0008), under a layout with only `<html>`, `<body>` and the app's CSS.
 - The app's server actions live in `src/app/actions.ts`; a page that grows its own set moves them to an
   `actions.ts` next to its `page.tsx`.
 - View components live in `src/app/_components/` (the underscore keeps the folder out of routing), grouped
   in a subfolder when a view has several (e.g. `_components/transcript/`). `src/components/ui/` is
   shadcn-vendored only.
 - Server actions and route handlers are written with next-pipe (`actionPipe` / `routePipe`); reach for `pagePipe` when a page needs middlewares (gates, validated search
-  params), not before. The one exception is the SSE route, `src/app/api/sse/route.ts`, which re-exports
-  next-sse's bare handler (`sse.handlers`): a route pipe always answers JSON and cannot stream.
+  params), not before. A route pipe always answers JSON, so two routes are bare handlers: the SSE route,
+  `src/app/api/sse/route.ts`, which re-exports next-sse's handler (`sse.handlers`) because it streams, and the
+  Conversation export's download, `src/app/api/conversation/[sessionId]/export/route.ts`, because it answers
+  an HTML attachment. `pnpm gen` skips both with a warning.
 - Components are server components by default; add `"use client"` only at the leaves that need
   interactivity, not on whole pages.
 - Client components never import `src/core` (ADR-0002). They receive data from server components, call a

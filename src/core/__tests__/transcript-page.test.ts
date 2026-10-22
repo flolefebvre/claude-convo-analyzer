@@ -17,8 +17,9 @@ const PAGE_SIZE = 3;
 describe("getTranscript — Transcript pages", () => {
   const db = seededTempDb({ prefix: "cca-transcript-page-", logsRoot: LOGS_ROOT });
 
-  const read = (opts: { page?: number; anchoredMessage?: string; anchoredCall?: string; pageSize?: number } = {}) =>
-    getTranscript(SESSION, { dbPath: db.dbPath, pageSize: PAGE_SIZE, ...opts });
+  const read = (
+    opts: { page?: number | "all"; anchoredMessage?: string; anchoredCall?: string; pageSize?: number } = {},
+  ) => getTranscript(SESSION, { dbPath: db.dbPath, pageSize: PAGE_SIZE, ...opts });
 
   const uuids = (view: Awaited<ReturnType<typeof read>>) => view?.messages.map((m) => m.uuid);
 
@@ -37,6 +38,15 @@ describe("getTranscript — Transcript pages", () => {
     expect(view?.pageCount).toBe(3);
     expect(view?.pageSize).toBe(PAGE_SIZE);
     expect(uuids(view)).toEqual(["pu0", "pu00", "pa1"]);
+  });
+
+  it("reads the whole transcript as its one page when asked for all of it", async () => {
+    const view = await read({ page: "all" });
+    expect(uuids(view)).toEqual(["pu0", "pu00", "pa1", "pu1", "pa2", "pa3", "pu2", "pa4"]);
+    expect(view?.page).toBe(1);
+    expect(view?.pageCount).toBe(1);
+    expect(view?.pageSize).toBe(8);
+    expect(view?.messageCount).toBe(8);
   });
 
   it("windows the requested page, and the last page holds the remainder", async () => {
