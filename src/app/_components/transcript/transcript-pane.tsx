@@ -2,7 +2,7 @@ import { Fragment } from "react";
 
 import { PendingLink } from "@/app/_components/pending-link";
 import { formatCount, formatModelName } from "@/app/_lib/format";
-import { type AgentLabel, agentLineage, effortSummary } from "@/app/_lib/transcript";
+import { type AgentLabel, agentLineage, effortSummary, type TranscriptExport } from "@/app/_lib/transcript";
 import { agentHref, callAnchorId, messageAnchorId, withListReturn } from "@/app/_lib/transcript-url";
 import type { ConversationFamily } from "@/core/family";
 import type { TranscriptView } from "@/core/read";
@@ -12,7 +12,6 @@ import { ScrollToAnchor } from "./scroll-to-anchor";
 import { TranscriptMessageRow } from "./transcript-message";
 import { TranscriptPager } from "./transcript-pager";
 import { AgentName, CostFigure, PaneHeader, agentLabelText } from "./transcript-parts";
-import type { TranscriptExport } from "./transcript-tool-call";
 
 /**
  * The right pane: the selected agent's transcript, topped by a sticky header

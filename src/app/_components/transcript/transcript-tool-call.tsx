@@ -8,8 +8,8 @@ import {
   type AgentLabel,
   classifyToolCall,
   findSpawnedNode,
-  type ToolCallBody,
   toolCallSnippet,
+  type TranscriptExport,
 } from "@/app/_lib/transcript";
 import { agentHref, callAnchorId, withListReturn } from "@/app/_lib/transcript-url";
 import type { TranscriptToolCall, TranscriptView } from "@/core/read";
@@ -137,9 +137,6 @@ async function PreloadedToolCallDisclosure(props: Omit<ComponentProps<typeof Too
   const body = await loadToolCallBody(props.id);
   return <ToolCallDisclosure {...props} body={body ?? undefined} />;
 }
-
-/** What the Conversation export hands the Transcript: every Tool call's body, read up front by row id. */
-export type TranscriptExport = { toolCallBodyById: ReadonlyMap<number, ToolCallBody> };
 
 /**
  * A Tool call in the Conversation export: a native `<details>` with its body

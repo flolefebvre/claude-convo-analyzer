@@ -81,6 +81,13 @@ describe("exportFileName", () => {
     );
   });
 
+  it("leaves the date out for a Conversation with no start date", () => {
+    expect(exportFileName({ title: "Fix it", sessionId: "0123456789abcdef", startedAt: "" })).toBe("fix-it.html");
+    expect(exportFileName({ title: null, sessionId: "0123456789abcdef", startedAt: "" })).toBe(
+      "conversation-01234567.html",
+    );
+  });
+
   it("falls back to the session id when the title has no ASCII letter or digit", () => {
     expect(exportFileName({ title: "日本語", sessionId: "0123456789abcdef", startedAt })).toBe(
       "conversation-01234567-2026-10-03.html",

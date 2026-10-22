@@ -50,7 +50,7 @@ const MAX_SLUG_LENGTH = 80;
 function titleSlug(title: string): string {
   const slug = title
     .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
@@ -61,7 +61,8 @@ function titleSlug(title: string): string {
  * The export's file name: `<title-slug>-<YYYY-MM-DD>.html`, or
  * `conversation-<first 8 of the session id>-<YYYY-MM-DD>.html` for an untitled
  * Conversation (or one whose title has no ASCII letter or digit). The date is
- * the Conversation's start, in local time. ASCII only, so it needs no encoding
+ * the Conversation's start, in local time, and is left out (with its dash) when
+ * the Conversation has no start date. ASCII only, so it needs no encoding
  * in a `Content-Disposition` header.
  *
  * @example exportFileName({ title: "Fix the login test", sessionId, startedAt }) // "fix-the-login-test-2026-10-03.html"
@@ -77,5 +78,8 @@ export function exportFileName({
 }): string {
   const slug = title === null ? "" : titleSlug(title);
   const name = slug === "" ? `conversation-${sessionId.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 8)}` : slug;
-  return `${name}-${localDayKey(new Date(startedAt))}.html`;
+  const startDate = new Date(startedAt);
+  // A Conversation with no dated message has no start date: its name carries none.
+  if (Number.isNaN(startDate.getTime())) return `${name}.html`;
+  return `${name}-${localDayKey(startDate)}.html`;
 }

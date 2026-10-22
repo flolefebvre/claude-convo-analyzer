@@ -1,14 +1,14 @@
 import { ChevronRight } from "lucide-react";
 
 import { formatClock, formatLatency, formatModelName } from "@/app/_lib/format";
-import { type AgentLabel, parseSlashCommand } from "@/app/_lib/transcript";
+import { type AgentLabel, parseSlashCommand, type TranscriptExport } from "@/app/_lib/transcript";
 import { messageAnchorId } from "@/app/_lib/transcript-url";
 import type { TranscriptMessage, TranscriptView } from "@/core/read";
 
 import { InterAgentMessageRow } from "./transcript-inter-agent-message";
 import { CostFigure, ErrorBadge, type MessageAnchor, MidTurnBadge, RowHead, labelledBy } from "./transcript-parts";
 import { TaskNotificationRow } from "./transcript-task-notification";
-import { type TranscriptExport, TranscriptToolCallRow } from "./transcript-tool-call";
+import { TranscriptToolCallRow } from "./transcript-tool-call";
 import { WhatWasSentDisclosure } from "./transcript-what-was-sent";
 import { TurnMarkdown } from "./turn-markdown";
 

@@ -180,6 +180,7 @@ function TreeNode({
 /** What the Conversation export's header says beyond the title and session id. */
 export type ExportHeaderFacts = {
   projectPath: string;
+  /** ISO, or `""` for a Conversation with no dated message. */
   startedAt: string;
   /** Every model the Conversation ran on, full ids. */
   models: string[];
@@ -189,6 +190,8 @@ export type ExportHeaderFacts = {
 
 /** The Conversation export's header lines: Project path, start, models, and where the file came from. */
 function ExportHeader({ facts }: { facts: ExportHeaderFacts }) {
+  // Empty for a Conversation with no dated message: the row is left out.
+  const startedAtLabel = formatDate(facts.startedAt).absolute;
   return (
     <>
       <dl className="export-facts">
@@ -196,10 +199,12 @@ function ExportHeader({ facts }: { facts: ExportHeaderFacts }) {
           <dt>Project</dt>
           <dd>{facts.projectPath}</dd>
         </div>
-        <div>
-          <dt>Started</dt>
-          <dd>{formatDate(facts.startedAt).absolute}</dd>
-        </div>
+        {startedAtLabel !== "" && (
+          <div>
+            <dt>Started</dt>
+            <dd>{startedAtLabel}</dd>
+          </div>
+        )}
         <div>
           <dt>Models</dt>
           <dd>{facts.models.map(formatModelName).join(", ")}</dd>
