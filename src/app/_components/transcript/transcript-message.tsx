@@ -8,7 +8,7 @@ import type { TranscriptMessage, TranscriptView } from "@/core/read";
 import { InterAgentMessageRow } from "./transcript-inter-agent-message";
 import { CostFigure, ErrorBadge, type MessageAnchor, MidTurnBadge, RowHead, labelledBy } from "./transcript-parts";
 import { TaskNotificationRow } from "./transcript-task-notification";
-import { TranscriptToolCallRow } from "./transcript-tool-call";
+import { type TranscriptExport, TranscriptToolCallRow } from "./transcript-tool-call";
 import { WhatWasSentDisclosure } from "./transcript-what-was-sent";
 import { TurnMarkdown } from "./turn-markdown";
 
@@ -30,6 +30,7 @@ export function TranscriptMessageRow({
   anchoredCall,
   anchoredMessage,
   listReturn,
+  transcriptExport,
 }: {
   message: TranscriptMessage;
   view: TranscriptView;
@@ -50,8 +51,12 @@ export function TranscriptMessageRow({
   /** The list view this transcript was opened from (`?from=`), carried on
    *  every link to another transcript. */
   listReturn?: string;
+  /** Set in the Conversation export: Tool call bodies inlined, links as plain
+   *  text, and no What was sent. */
+  transcriptExport?: TranscriptExport;
 }) {
   const time = formatClock(message.timestamp);
+  const linksAreText = transcriptExport !== undefined;
   // A search result links here as `?msg=<uuid>#msg-<uuid>`: the query
   // highlights the row server-side (a fragment never reaches the server), and
   // the pane's `ScrollToAnchor` scrolls to the id. Same idiom as `?call=`.
@@ -67,6 +72,7 @@ export function TranscriptMessageRow({
         rootAgentId={view.tree.id}
         labels={labels}
         listReturn={listReturn}
+        linksAreText={linksAreText}
       />
     );
   }
@@ -78,6 +84,7 @@ export function TranscriptMessageRow({
         anchor={anchor}
         sessionId={view.sessionId}
         listReturn={listReturn}
+        linksAreText={linksAreText}
       />
     );
   }
@@ -98,6 +105,7 @@ export function TranscriptMessageRow({
       anchoredCall={anchoredCall}
       anchor={anchor}
       listReturn={listReturn}
+      transcriptExport={transcriptExport}
     />
   );
 }
@@ -179,6 +187,7 @@ function AssistantTurn({
   anchoredCall,
   anchor,
   listReturn,
+  transcriptExport,
 }: {
   message: TranscriptMessage;
   time: string;
@@ -190,6 +199,7 @@ function AssistantTurn({
   anchoredCall?: string;
   anchor: MessageAnchor;
   listReturn: string | undefined;
+  transcriptExport: TranscriptExport | undefined;
 }) {
   const text = message.text ?? "";
   const errorOnly = message.isApiError && text.trim() === "";
@@ -238,12 +248,15 @@ function AssistantTurn({
               labels={labels}
               anchoredCall={anchoredCall}
               listReturn={listReturn}
+              transcriptExport={transcriptExport}
             />
           ))}
         </div>
       )}
 
-      {message.apiRequestId !== null && (
+      {/* The export leaves What was sent out: it holds the user's CLAUDE.md
+          files, environment and system prompt. */}
+      {message.apiRequestId !== null && transcriptExport === undefined && (
         <div className="calls">
           <WhatWasSentDisclosure
             apiRequestId={message.apiRequestId}

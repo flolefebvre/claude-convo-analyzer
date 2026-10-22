@@ -22,12 +22,15 @@ export function FamilyBanner({
   parent,
   continuations,
   listReturn,
+  linksAreText = false,
 }: {
   parent: FamilyMember | null;
   continuations: FamilyMember[];
   /** The list view this transcript was opened from (`?from=`), carried on
    *  every link to another transcript. */
   listReturn?: string;
+  /** True in the Conversation export: each member is named as plain text. */
+  linksAreText?: boolean;
 }) {
   if (parent === null && continuations.length === 0) return null;
 
@@ -36,7 +39,7 @@ export function FamilyBanner({
       {parent && (
         <p>
           <span className="family-lead">Continued from</span>
-          <MemberLink member={parent} listReturn={listReturn} />
+          <MemberLink member={parent} listReturn={listReturn} linksAreText={linksAreText} />
         </p>
       )}
       {continuations.length > 0 && (
@@ -47,7 +50,7 @@ export function FamilyBanner({
           <ul>
             {continuations.map((child) => (
               <li key={child.id}>
-                <MemberLink member={child} listReturn={listReturn} />
+                <MemberLink member={child} listReturn={listReturn} linksAreText={linksAreText} />
               </li>
             ))}
           </ul>
@@ -57,8 +60,17 @@ export function FamilyBanner({
   );
 }
 
-/** A family member as a link into its own transcript (main agent). */
-function MemberLink({ member, listReturn }: { member: FamilyMember; listReturn: string | undefined }) {
+/** A family member as a link into its own transcript (main agent), or its plain name. */
+function MemberLink({
+  member,
+  listReturn,
+  linksAreText,
+}: {
+  member: FamilyMember;
+  listReturn: string | undefined;
+  linksAreText: boolean;
+}) {
+  if (linksAreText) return <span title={member.id}>{member.title ?? member.id}</span>;
   return (
     <Link href={withListReturn(agentHref(member.id), listReturn)} title={member.id}>
       {member.title ?? member.id}

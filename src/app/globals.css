@@ -450,8 +450,46 @@ html:has(.tview) {
   text-decoration: none;
   border-radius: 4px;
 }
-.tview .back-link:hover {
+.tview .back-link:hover,
+.tview .export-link:hover {
   color: var(--foreground);
+}
+/* The download of the Conversation export, under the session id. */
+.tview .export-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: var(--text-xs);
+  line-height: 1rem;
+  color: var(--muted-foreground);
+  border-radius: 4px;
+}
+/* The Conversation export's header lines, in the export's tree header. */
+.tview .export-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 8px 0 0;
+  font-size: var(--text-xs);
+}
+.tview .export-facts > div {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+.tview .export-facts dt {
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+.tview .export-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.tview .export-provenance {
+  margin-top: 8px;
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
 }
 .tview .conv-title {
   font-size: var(--text-sm);
@@ -1102,9 +1140,10 @@ html:has(.tview) {
 }
 /* Inputs and results wrap (no sideways scrolling) and stop at a fixed height,
    scrolling inside themselves, so one open call never buries the transcript.
-   A block's stored text is its direct `pre`; a rendered block's `io-view`
-   takes the same cap. */
+   A block's stored text is its direct `pre` (in the export, under its Raw
+   `<details>`); a rendered block's `io-view` takes the same cap. */
 .tview .io-block > pre,
+.tview .io-raw > pre,
 .tview .io-view {
   margin: 0;
   max-height: 22rem;
@@ -1114,6 +1153,7 @@ html:has(.tview) {
   padding: 8px 10px;
 }
 .tview .io-block > pre,
+.tview .io-raw > pre,
 .tview .io-view > .io-raw-part {
   background: var(--muted);
   font-size: var(--text-xs);
@@ -1125,6 +1165,7 @@ html:has(.tview) {
 /* Scroll shadows: a soft edge appears at the top or bottom only while there is
    more to scroll that way (the `local` covers slide away with the content). */
 .tview .io-block > pre:not(.err),
+.tview .io-raw > pre:not(.err),
 .tview .io-view {
   --io-shadow: color-mix(in oklch, var(--foreground) 16%, transparent);
   --io-surface: var(--muted);
@@ -1135,7 +1176,8 @@ html:has(.tview) {
     radial-gradient(farthest-side at 50% 100%, var(--io-shadow), transparent) center bottom / 100% 10px no-repeat,
     var(--io-surface);
 }
-.tview .io-block > pre.err {
+.tview .io-block > pre.err,
+.tview .io-raw > pre.err {
   background: var(--destructive-muted);
   color: var(--destructive-foreground);
 }
@@ -1176,6 +1218,29 @@ html:has(.tview) {
   color: var(--foreground);
 }
 .tview .io-raw-toggle[aria-pressed="true"] {
+  background: var(--muted);
+  color: var(--foreground);
+}
+/* The export's Raw view: a nested <details>, its summary drawn like the Raw button. */
+.tview .io-raw {
+  margin-top: 6px;
+}
+.tview .io-raw > summary {
+  display: inline-block;
+  margin-bottom: 4px;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--muted-foreground);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 6px;
+  cursor: pointer;
+  list-style: none;
+}
+.tview .io-raw > summary::-webkit-details-marker {
+  display: none;
+}
+.tview .io-raw[open] > summary {
   background: var(--muted);
   color: var(--foreground);
 }

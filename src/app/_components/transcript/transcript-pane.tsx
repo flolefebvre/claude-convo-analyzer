@@ -12,6 +12,7 @@ import { ScrollToAnchor } from "./scroll-to-anchor";
 import { TranscriptMessageRow } from "./transcript-message";
 import { TranscriptPager } from "./transcript-pager";
 import { AgentName, CostFigure, PaneHeader, agentLabelText } from "./transcript-parts";
+import type { TranscriptExport } from "./transcript-tool-call";
 
 /**
  * The right pane: the selected agent's transcript, topped by a sticky header
@@ -24,7 +25,8 @@ import { AgentName, CostFigure, PaneHeader, agentLabelText } from "./transcript-
  * reader dropped meta rows for this agent, and the pager when the transcript
  * spans several pages. On the main agent of a conversation that belongs to a
  * continuation family, a one-line banner names the sitting before and the
- * sitting(s) after.
+ * sitting(s) after. The Conversation export renders the same pane over the
+ * whole transcript (`transcriptExport`).
  */
 export function TranscriptPane({
   view,
@@ -33,6 +35,7 @@ export function TranscriptPane({
   anchoredCall,
   anchoredMessage,
   listReturn,
+  transcriptExport,
 }: {
   view: TranscriptView;
   /** Every agent's display name, from `agentLabels(view.tree)`. */
@@ -48,7 +51,11 @@ export function TranscriptPane({
   /** The list view this transcript was opened from (`?from=`), carried on
    *  every link to another transcript. */
   listReturn?: string;
+  /** Set in the Conversation export: every Tool call body inlined, every link
+   *  into the app as plain text, no What was sent. */
+  transcriptExport?: TranscriptExport;
 }) {
+  const linksAreText = transcriptExport !== undefined;
   const lineage = agentLineage(view.tree, view.selectedAgentId);
   const selected = lineage[lineage.length - 1] ?? view.tree;
   const labelOf = (id: string): AgentLabel => labels.get(id) ?? { name: "main", ordinal: null };
@@ -89,12 +96,18 @@ export function TranscriptPane({
                 </span>
               ) : (
                 <>
-                  <PendingLink
-                    href={withListReturn(agentHref(view.sessionId, i === 0 ? undefined : node.id), listReturn)}
-                    title={agentLabelText(label)}
-                  >
-                    <AgentName label={label} />
-                  </PendingLink>
+                  {linksAreText ? (
+                    <span title={agentLabelText(label)}>
+                      <AgentName label={label} />
+                    </span>
+                  ) : (
+                    <PendingLink
+                      href={withListReturn(agentHref(view.sessionId, i === 0 ? undefined : node.id), listReturn)}
+                      title={agentLabelText(label)}
+                    >
+                      <AgentName label={label} />
+                    </PendingLink>
+                  )}
                   <span className="sep" aria-hidden>
                     /
                   </span>
@@ -123,7 +136,12 @@ export function TranscriptPane({
       />
 
       {family && parent === null && (
-        <FamilyBanner parent={family.parent} continuations={family.children} listReturn={listReturn} />
+        <FamilyBanner
+          parent={family.parent}
+          continuations={family.children}
+          listReturn={listReturn}
+          linksAreText={linksAreText}
+        />
       )}
 
       <h2 className="sr-only">{agentLabelText(selectedLabel)} transcript</h2>
@@ -140,6 +158,7 @@ export function TranscriptPane({
             anchoredCall={anchoredCall}
             anchoredMessage={anchoredMessage}
             listReturn={listReturn}
+            transcriptExport={transcriptExport}
           />
         ))}
         {view.metaHiddenCount > 0 && view.page === view.pageCount && (
