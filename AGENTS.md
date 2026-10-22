@@ -30,7 +30,8 @@ src/
   lib/          Shared helpers
 e2e/            Playwright specs, one per route, plus the shared-state ones run after them (docs/codebase/testing.md)
 scripts/        Repo tooling, run with tsx (the gate, seeding fake demo data)
-data/           The local SQLite database (`analyzer.db`); generated, never hand-edit
+data/           The seed environment (`data/seed/`) and scratch databases; generated, never hand-edit.
+                The app's own database lives in ~/.claude-convo-analyzer/
 docs/
   adr/          Architectural decision records
   codebase/     Conventions, one file per area, linked from the AGENTS.md section it governs

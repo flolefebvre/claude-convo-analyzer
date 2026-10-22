@@ -1,7 +1,8 @@
 // `pnpm seed [--now=<ISO>]` — build the seed environment in `data/seed/`: fake
 // Claude Code logs in `data/seed/projects/`, ingested by the real `refresh()`
 // into `data/seed/seed.db`. Each run wipes and rebuilds that directory; the
-// real database (`data/analyzer.db`) and logs are never touched.
+// real database (`~/.claude-convo-analyzer/analyzer.db`) and logs are never
+// touched.
 //
 // The seeded timeline ends at `--now`, the current instant by default. Output
 // is deterministic for a given `--now` only: pin it to reproduce a seed (for

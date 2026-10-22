@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
@@ -7,15 +8,18 @@ import { PrismaClient } from "@/core/prisma/generated/client";
 /**
  * The database the app, `refresh()`, and the reads use when given no path:
  * `CCA_DB_PATH` (empty counts as unset) resolved against the process cwd, else
- * `./data/analyzer.db` (gitignored). Read at call time, so the env is honoured
- * whenever it was set before the call.
+ * `~/.claude-convo-analyzer/analyzer.db`, beside the settings file. Read at call
+ * time, so the env is honoured whenever it was set before the call.
  *
  * @example
  * // CCA_DB_PATH=data/seed/seed.db → "<cwd>/data/seed/seed.db"
  * const dbPath = defaultDbPath();
  */
 export function defaultDbPath(): string {
-  return path.resolve(/*turbopackIgnore: true*/ process.env.CCA_DB_PATH || path.join("data", "analyzer.db"));
+  return path.resolve(
+    /*turbopackIgnore: true*/ process.env.CCA_DB_PATH ||
+      path.join(os.homedir(), ".claude-convo-analyzer", "analyzer.db"),
+  );
 }
 
 /**
@@ -24,8 +28,8 @@ export function defaultDbPath(): string {
  * Resolved cwd-relative (NOT via `import.meta.dirname`, the module's own
  * location): Turbopack sets `import.meta.dirname` to `undefined` in the Next.js
  * server bundle, so a module-relative resolve throws `ERR_INVALID_ARG_TYPE` at
- * load and crashes the server render. cwd-relative is bundler-safe and stays
- * consistent with {@link defaultDbPath} above.
+ * load and crashes the server render. cwd-relative is bundler-safe. Unlike
+ * {@link defaultDbPath}, it names the repo's code, not the user's data.
  */
 const MIGRATIONS_DIR = path.join(process.cwd(), "src", "core", "prisma", "migrations");
 

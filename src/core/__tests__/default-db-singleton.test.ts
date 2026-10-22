@@ -4,7 +4,7 @@
 // binding — which is the behaviour under test.
 
 import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { getPrismaClient } from "@/core/db";
@@ -12,7 +12,7 @@ import { listConversations } from "@/core/read";
 import { refresh } from "@/core/refresh";
 
 const FIXTURES_ROOT = path.join(import.meta.dirname, "fixtures", "logs");
-const UNCONFIGURED_DB = path.join(process.cwd(), "data", "analyzer.db");
+const UNCONFIGURED_DB = path.join(homedir(), ".claude-convo-analyzer", "analyzer.db");
 
 /** Existence and mtime of a file, to show it was left alone. */
 function fingerprint(file: string): string {
@@ -55,7 +55,7 @@ describe("default database configured by CCA_DB_PATH", () => {
     expect(getPrismaClient()).toBe(getPrismaClient());
   });
 
-  it("leaves the unconfigured ./data/analyzer.db untouched", () => {
+  it("leaves the unconfigured ~/.claude-convo-analyzer/analyzer.db untouched", () => {
     expect(fingerprint(UNCONFIGURED_DB)).toBe(unconfiguredBefore);
   });
 });

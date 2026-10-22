@@ -6,8 +6,8 @@ per-conversation token usage and cost — broken down by project, model, skill,
 and sub-agent.
 
 **Everything stays on your machine.** The app only reads `~/.claude/projects`
-and writes a local SQLite file (`./data/analyzer.db`); every path is
-configurable. Nothing is ever sent anywhere.
+and writes a local SQLite file (`~/.claude-convo-analyzer/analyzer.db`); every
+path is configurable. Nothing is ever sent anywhere.
 
 > **About the cost figure:** the cost shown is always _"what these tokens would
 > cost through the public API"_. If you're on a Pro or Max subscription you
@@ -156,8 +156,10 @@ Three environment variables move what the app reads and writes; a relative
 value resolves against the process working directory (the repo root under
 `pnpm`):
 
-- `CCA_DB_PATH` — the SQLite file (default `./data/analyzer.db`), created and
-  migrated on first use.
+- `CCA_DB_PATH` — the SQLite file (default
+  `~/.claude-convo-analyzer/analyzer.db`), created and migrated on first use.
+  An earlier version kept it in `./data/analyzer.db`; that file is no longer
+  used, so delete it by hand if you like.
 - `CCA_LOGS_ROOT` — the logs root that **Refresh** scans (default
   `~/.claude/projects`).
 - `CCA_SETTINGS_PATH` — the settings file that keeps whether **Live** is on
