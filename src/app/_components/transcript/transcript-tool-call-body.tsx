@@ -4,27 +4,21 @@
 // (input and result text) is fetched from `GET /api/tool-call/<id>` the first
 // time the reader opens it, and kept for every later open. The `?call=`
 // anchored call arrives with its body already read server-side, so it lands
-// open and never fetches. Native `<details>` stays the disclosure. Each block
-// renders the parts the server shaped it into; no tool is special-cased here.
+// open and never fetches. Native `<details>` stays the disclosure. The loaded
+// body's markup is shared with the Conversation export
+// (`transcript-tool-call-io.tsx`); a block's "Raw" button is this file's own.
 //
 // ADR-0002: no core import — the body comes over the route, the helpers from
 // the core-free `_lib/transcript`.
 
 import { callRoute } from "@flefebvre/next-pipe/client";
-import { Scissors } from "lucide-react";
-import { useId, useState } from "react";
+import { useState } from "react";
 
-import {
-  prettyToolText,
-  type ToolCallBody,
-  toolCallFactText,
-  type ToolCallPart,
-  truncationNote,
-} from "@/app/_lib/transcript";
+import type { ToolCallBody } from "@/app/_lib/transcript";
 import { Skeleton } from "@/components/ui/skeleton";
 import { routes } from "@/generated/routes";
 
-import { TurnMarkdown } from "./turn-markdown";
+import { IoBlockFrame, type IoBlockProps, ToolCallBodyBlocks } from "./transcript-tool-call-io";
 import { type ReadOnFirstOpenState, useReadOnFirstOpen } from "./use-read-on-first-open";
 
 /**
@@ -101,113 +95,33 @@ function Body({
       return <p className="call-body-note">This transcript changed since the page loaded — reload to see this call.</p>;
     case "failed":
       return <p className="call-body-note">Couldn&rsquo;t load this call — try again.</p>;
-    case "loaded": {
-      const body = state.value;
-      const note = truncationNote(body);
-      return (
-        <>
-          <IoBlock label={labels.input} text={body.inputJson} parts={body.inputParts} />
-          {body.resultText !== null && (
-            <IoBlock label={labels.result} text={body.resultText} parts={body.resultParts ?? []} isError={body.isError}>
-              {note && (
-                <div className="trunc">
-                  <Scissors aria-hidden className="size-3" />
-                  Truncated: {note}
-                </div>
-              )}
-            </IoBlock>
-          )}
-        </>
-      );
-    }
+    case "loaded":
+      return <ToolCallBodyBlocks body={state.value} labels={labels} IoBlock={IoBlock} />;
   }
 }
 
-/**
- * One labelled input/result block, height-capped: its stored `text` (JSON
- * pretty-printed) when its only part is raw, else its rendered `parts` with a
- * "Raw" toggle back to that text.
- */
-function IoBlock({
-  label,
-  text,
-  parts,
-  isError = false,
-  children,
-}: {
-  label: string;
-  /** The block's stored text — what a raw part, and the "Raw" toggle, show. */
-  text: string;
-  parts: ToolCallPart[];
-  isError?: boolean;
-  children?: React.ReactNode;
-}) {
+/** One input/result block whose "Raw" button swaps its rendered parts for its stored text. */
+function IoBlock(props: IoBlockProps) {
   const [isRawShown, setIsRawShown] = useState(false);
-  const labelId = useId();
-  const isRawOnly = parts.every((part) => part.kind === "raw");
-  const rawText = <pre className={isError ? "err" : undefined}>{prettyToolText(text)}</pre>;
-
-  if (isRawOnly) {
-    return (
-      <div role="group" aria-labelledby={labelId} className="io-block">
-        <span id={labelId} className="io-label">
-          {label}
-        </span>
-        {rawText}
-        {children}
-      </div>
-    );
-  }
   return (
-    <div role="group" aria-labelledby={labelId} className="io-block">
-      <div className="io-head">
-        <span id={labelId} className="io-label">
-          {label}
-        </span>
-        <button
-          type="button"
-          className="io-raw-toggle"
-          aria-pressed={isRawShown}
-          onClick={() => setIsRawShown((shown) => !shown)}
-        >
-          Raw
-        </button>
-      </div>
-      {isRawShown ? (
-        rawText
-      ) : (
-        <div className="io-view">
-          {parts.map((part, index) => (
-            <BodyPart key={index} part={part} text={text} />
-          ))}
-        </div>
+    <IoBlockFrame
+      {...props}
+      layOutViews={({ labelView, rawView, partsView }) => (
+        <>
+          <div className="io-head">
+            {labelView}
+            <button
+              type="button"
+              className="io-raw-toggle"
+              aria-pressed={isRawShown}
+              onClick={() => setIsRawShown((shown) => !shown)}
+            >
+              Raw
+            </button>
+          </div>
+          {isRawShown ? rawView : partsView}
+        </>
       )}
-      {children}
-    </div>
+    />
   );
-}
-
-/** One rendered part of a block; a raw part shows the block's stored `text`. */
-function BodyPart({ part, text }: { part: ToolCallPart; text: string }) {
-  switch (part.kind) {
-    case "facts":
-      return (
-        <dl className="io-facts">
-          {part.facts.map((fact) => (
-            <div key={fact.key}>
-              <dt>{fact.key}</dt>
-              <dd>{toolCallFactText(fact)}</dd>
-            </div>
-          ))}
-        </dl>
-      );
-    case "markdown":
-      return (
-        <div className="turn-body">
-          <TurnMarkdown text={part.text} />
-        </div>
-      );
-    case "raw":
-      return <pre className="io-raw-part">{prettyToolText(text)}</pre>;
-  }
 }
