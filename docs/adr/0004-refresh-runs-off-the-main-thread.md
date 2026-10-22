@@ -37,25 +37,27 @@ time: a start while one runs joins it, a start after it settled begins a new
 one, and a failure rejects every waiter and leaves the next start to run
 fresh. A throw in the worker, or an exit before the summary (where an
 out-of-memory crash lands), is such a failure. There is no cancel. At boot,
-Live, when it was left on, starts watching and runs a catch-up Refresh; then,
-when no Conversation is stored or one an older parser produced is, the app
-starts a Refresh of its own, which joins that catch-up when it runs. A change
-Live sees while a Refresh runs does not join it, since
-that run may already have read the file; it queues exactly one more Refresh
+the app first checks the stored data and, when no Conversation is stored or
+one an older parser produced is, starts a Refresh of its own; then Live, when
+it was left on, starts watching and catches up. A change Live sees while a
+Refresh runs does not join it, since that run may already have read the file; it queues exactly one more Refresh
 after it. Live's rules live in `src/core/live.ts`, over the runner. The user's
 choice lives in a settings file next to the Recordings
 (`~/.claude-convo-analyzer/settings.json`, `src/core/settings.ts`), not in the
 database, and only the user's switch writes it. The boot starts are
 `register()` in `src/instrumentation.ts`, which Next runs once per server and
-never during `next build`: it restores Live, then checks the stored data
+never during `next build`. It checks the stored data first
 (`src/app/_lib/startup-refresh.ts`, over a core read), awaiting the check but
-never the Refresh. A failure of either is logged and never stops the server.
+never the Refresh: that check is the main thread's first open of the database,
+so it migrates a fresh file before any worker opens it. Then it restores Live,
+whose catch-up joins the startup Refresh or queues its follow-up after it. A
+failure of either is logged and never stops the server.
 Both go through the published runner, so their runs reach every page. Each
 start tells the runner its origin, the user, Live or the startup, and the page
 shows no success bubble for Live's, unless the user's own click joined that
 run; the startup's gets one, since it lands once per boot. The runner keeps
-the current state: idle, running with the latest `{ done, total }`, or the last summary or
-error. It takes the job as a dependency, so its logic is tested in-process. The
+the current state: idle, running with the latest `{ done, total }`, or the
+last summary or error. It takes the job as a dependency, so its logic is tested in-process. The
 process-wide instance lives in a `globalThis[Symbol.for(…)]` slot, created on
 first use, so a dev re-evaluation joins the running Refresh instead of starting
 a second one.

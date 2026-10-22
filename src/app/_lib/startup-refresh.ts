@@ -1,7 +1,7 @@
 // The Refresh the app starts on its own at startup: core's read of the stored
 // data (framework-free, ADR-0002) composed over the published refresh runner,
 // so its progress and outcome reach every open page like any Refresh's. A
-// Refresh already running (Live's catch-up) is joined by the runner itself.
+// Refresh already running is joined by the runner itself.
 
 import { getPublishedRefreshRunner } from "@/app/_lib/refresh-events";
 import { isStoredDataMissingOrOutdated } from "@/core/read";
