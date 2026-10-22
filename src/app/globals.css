@@ -1225,7 +1225,8 @@ html:has(.tview) {
 .tview .io-raw {
   margin-top: 6px;
 }
-.tview .io-raw > summary {
+/* Under `details.call`, whose summary rule it overrides. */
+.tview details.call details.io-raw > summary {
   display: inline-block;
   margin-bottom: 4px;
   font-size: var(--text-xs);
@@ -1237,10 +1238,11 @@ html:has(.tview) {
   cursor: pointer;
   list-style: none;
 }
-.tview .io-raw > summary::-webkit-details-marker {
-  display: none;
+.tview details.call details.io-raw > summary:hover {
+  background: transparent;
+  color: var(--foreground);
 }
-.tview .io-raw[open] > summary {
+.tview details.call details.io-raw[open] > summary {
   background: var(--muted);
   color: var(--foreground);
 }

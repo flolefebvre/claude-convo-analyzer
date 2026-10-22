@@ -22,7 +22,8 @@ This project uses TDD. The rules that matter here:
 
 - Every route gets an `instant()` spec in `e2e/<route>.spec.ts` (Playwright, with
   `instant` from `@next/playwright`). It asserts what the route's static shell
-  shows. A route ticket begins with that spec failing.
+  shows. A route ticket begins with that spec failing. A route with `instant = false` gets none — the
+  catch-all and the export page.
 - Inside the `instant()` scope, assert three things: the shell content is
   visible (the page header, the controls), the Suspense fallback is visible,
   and the streamed data has count 0. After the scope, assert that the data
