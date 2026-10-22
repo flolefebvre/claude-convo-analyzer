@@ -3,7 +3,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Suspense } from "react";
 
-import "./globals.css";
+import "@/app/globals.css";
 import { AppBar } from "@/app/_components/app-bar";
 import { MeasuredChrome } from "@/app/_components/measured-chrome";
 import { ParserUpdateBanner } from "@/app/_components/parser-update-banner";
@@ -46,8 +46,8 @@ export const viewport: Viewport = {
 const THEME_CHOICE_SCRIPT = `try{var c=localStorage.getItem("theme");document.documentElement.dataset.themeChoice=c==="light"||c==="dark"?c:"system"}catch(e){}`;
 
 // The ROOT layout: the document shell — <html>/<body>, the web fonts, the theme
-// provider — and the chrome every route shares: the skip link, the app bar and
-// the parser-update banner under it.
+// provider — and the chrome every route under it shares: the skip link, the app
+// bar and the parser-update banner under it.
 // Each route renders its own <main id="main"> below the bar (the skip link's
 // target), so that landmark wraps the page content only: the shell's folder
 // sidebar and the transcript's agent tree sit beside it, not inside it.

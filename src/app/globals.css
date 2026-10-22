@@ -7,7 +7,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  /* Geist (variable, self-hosted by next/font in `app/layout.tsx`) is the app
+  /* Geist (variable, self-hosted by next/font in `app/(with-chrome)/layout.tsx`) is the app
      typeface; the system stack only ever shows during the font swap. */
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, monospace;

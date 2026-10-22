@@ -26,6 +26,10 @@ In order of preference — reach for the next one only when the previous doesn't
 
 ## Structure
 
+- Every page lives under `src/app/(with-chrome)/`, the route group whose root layout holds the document
+  shell and the shared chrome (skip link, app bar, parser-update banner), and unknown URLs reach its
+  `not-found.tsx` through its catch-all, `[...unmatchedPath]`; `src/app/` itself has no layout. A route that
+  needs a different document (no app bar) gets its own group with its own root layout.
 - The app's server actions live in `src/app/actions.ts`; a page that grows its own set moves them to an
   `actions.ts` next to its `page.tsx`.
 - View components live in `src/app/_components/` (the underscore keeps the folder out of routing), grouped
