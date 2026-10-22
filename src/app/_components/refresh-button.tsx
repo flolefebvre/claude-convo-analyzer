@@ -22,8 +22,10 @@
 // dismissed; a failure stays until dismissed. A persistent, visually hidden live
 // region announces both. A Refresh Live began gets no success bubble, only its
 // re-render, unless this control's click joined it; its failure shows like any
-// other. The parser-update banner's control only follows the
-// count, so the page gets one bubble and one re-render schedule.
+// other. The one the app began at startup gets its bubble: it is one per boot,
+// and tells the user their data arrived. The parser-update banner's control
+// only follows the count, so the page gets one bubble and one re-render
+// schedule.
 
 import type { Snapshot } from "@flefebvre/next-sse/client";
 import { RefreshCw } from "lucide-react";

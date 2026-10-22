@@ -20,7 +20,7 @@ const refreshProgressSchema = z.object({
 });
 
 /** Who began the Refresh (the runner's `RefreshOrigin`); `satisfies` fails typecheck when core grows one. */
-const refreshOriginSchema = z.enum(["user", "live"]) satisfies z.ZodType<RefreshOrigin>;
+const refreshOriginSchema = z.enum(["user", "live", "startup"]) satisfies z.ZodType<RefreshOrigin>;
 
 const durationMsSchema = z.number().nonnegative();
 
@@ -51,7 +51,7 @@ const { channel, createSSE } = initSSE({ transport: createMemoryTransport() });
  * The Registry: `sse.refresh()` is the Handle publishing the Refresh's
  * `progress` (absolute `{ done, total }`, once per committed batch), then its
  * `finished { summary }` or `failed { message }`, each with the `runId` of its
- * Refresh; the outcome also carries its `origin`, the user or Live.
+ * Refresh; the outcome also carries its `origin`, the user, Live or the startup.
  *
  * @example await sse.refresh().progress({ runId, done: 50, total: 2450 });
  */

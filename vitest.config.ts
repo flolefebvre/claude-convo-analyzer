@@ -11,10 +11,11 @@ export default defineConfig({
   test: {
     // The core is server-side only (Node APIs + native sqlite); no DOM needed.
     environment: "node",
-    // No test reads or writes the machine's real settings file: its default
-    // path points under the temp directory.
+    // No test reads or writes the machine's real settings file or database:
+    // their default paths point under the temp directory.
     env: {
       CCA_SETTINGS_PATH: path.join(os.tmpdir(), "cca-tests-settings", "settings.json"),
+      CCA_DB_PATH: path.join(os.tmpdir(), "cca-tests-db", "analyzer.db"),
     },
     include: ["src/**/*.{test,spec}.ts", "src/**/__tests__/**/*.ts", "scripts/**/*.test.ts"],
     // Shared setup modules under `__tests__/helpers/` declare no tests of their

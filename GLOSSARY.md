@@ -254,7 +254,8 @@ them out.
 
 The action that re-reads the conversation logs from disk and updates the local
 SQLite database, so the UI does not re-parse on every view. The user triggers
-it, or Live does when they change.
+it, Live does when the logs change, and the app does at startup when nothing is
+stored yet or the stored data predates the parser.
 
 At most one Refresh runs at a time. A click starts one, or joins the one already
 running; it outlives the page that started it, and every open page sees its

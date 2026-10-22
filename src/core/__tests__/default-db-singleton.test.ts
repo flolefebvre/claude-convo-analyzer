@@ -3,8 +3,8 @@
 // changed: vitest isolates modules per file, so every case here shares the one
 // binding — which is the behaviour under test.
 
-import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { getPrismaClient } from "@/core/db";
@@ -12,22 +12,19 @@ import { listConversations } from "@/core/read";
 import { refresh } from "@/core/refresh";
 
 const FIXTURES_ROOT = path.join(import.meta.dirname, "fixtures", "logs");
-const UNCONFIGURED_DB = path.join(process.cwd(), "data", "analyzer.db");
-
-/** Existence and mtime of a file, to show it was left alone. */
-function fingerprint(file: string): string {
-  return existsSync(file) ? `mtime:${statSync(file).mtimeMs}` : "absent";
-}
 
 describe("default database configured by CCA_DB_PATH", () => {
   let tmpDir: string;
   let dbPath: string;
-  let unconfiguredBefore: string;
+  let unconfiguredDbPath: string;
 
   beforeAll(() => {
     tmpDir = mkdtempSync(path.join(tmpdir(), "cca-default-db-"));
     dbPath = path.join(tmpDir, "nested", "analyzer.db");
-    unconfiguredBefore = fingerprint(UNCONFIGURED_DB);
+    // The home directory is the test's own, so the real one is never read.
+    vi.stubEnv("HOME", path.join(tmpDir, "home"));
+    vi.stubEnv("USERPROFILE", path.join(tmpDir, "home"));
+    unconfiguredDbPath = path.join(homedir(), ".claude-convo-analyzer", "analyzer.db");
     vi.stubEnv("CCA_DB_PATH", dbPath);
   });
 
@@ -55,7 +52,7 @@ describe("default database configured by CCA_DB_PATH", () => {
     expect(getPrismaClient()).toBe(getPrismaClient());
   });
 
-  it("leaves the unconfigured ./data/analyzer.db untouched", () => {
-    expect(fingerprint(UNCONFIGURED_DB)).toBe(unconfiguredBefore);
+  it("never creates the unconfigured ~/.claude-convo-analyzer/analyzer.db", () => {
+    expect(existsSync(unconfiguredDbPath)).toBe(false);
   });
 });

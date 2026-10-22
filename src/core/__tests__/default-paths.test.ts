@@ -15,14 +15,14 @@ describe("default database path", () => {
     vi.unstubAllEnvs();
   });
 
-  it("is ./data/analyzer.db under the cwd when CCA_DB_PATH is unset", () => {
+  it("is ~/.claude-convo-analyzer/analyzer.db when CCA_DB_PATH is unset", () => {
     vi.stubEnv("CCA_DB_PATH", undefined);
-    expect(defaultDbPath()).toBe(path.join(process.cwd(), "data", "analyzer.db"));
+    expect(defaultDbPath()).toBe(path.join(os.homedir(), ".claude-convo-analyzer", "analyzer.db"));
   });
 
   it("treats an empty CCA_DB_PATH as unset", () => {
     vi.stubEnv("CCA_DB_PATH", "");
-    expect(defaultDbPath()).toBe(path.join(process.cwd(), "data", "analyzer.db"));
+    expect(defaultDbPath()).toBe(path.join(os.homedir(), ".claude-convo-analyzer", "analyzer.db"));
   });
 
   it("is CCA_DB_PATH when it is absolute", () => {

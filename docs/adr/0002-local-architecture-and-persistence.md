@@ -4,7 +4,8 @@
 
 accepted. The Refresh paragraph and the "SSE deferred" consequence are
 superseded by ADR-0004. The Persistence paragraph is amended by ADR-0005: the
-Refresh writes through bare better-sqlite3, not Prisma.
+Refresh writes through bare better-sqlite3, not Prisma. The database file's
+location is amended in place: it lives in the home directory.
 
 ## Context
 
@@ -30,6 +31,11 @@ the `@prisma/adapter-better-sqlite3` driver adapter (synchronous, ideal for a
 local tool). `schema.prisma` and the generated client live under `src/core/`.
 Schema changes use **versioned `prisma migrate`** (the schema will grow as the
 deferred doors open). The database file is **`./data/analyzer.db`**, gitignored.
+_Amended: the database file is `~/.claude-convo-analyzer/analyzer.db`, beside
+the settings file, whatever directory the app starts from; `CCA_DB_PATH`
+overrides it. An app run through `npx` has no meaningful working directory, and
+an old `./data/analyzer.db` is not migrated, since the next Refresh rebuilds
+it from the logs._
 A `globalThis` singleton prevents duplicate clients under dev hot-reload.
 The database runs in **WAL** mode, so readers run beside the one Refresh writer
 instead of blocking on its commits, with **`synchronous=NORMAL`** on the

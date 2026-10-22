@@ -1,12 +1,15 @@
+import os from "node:os";
 import path from "node:path";
 import { defineConfig } from "prisma/config";
 
 // Prisma 7 CLI config, for `prisma migrate` / `prisma generate`. The runtime
 // uses the better-sqlite3 adapter on the path from `defaultDbPath()` in
 // src/core/db.ts; the CLI resolves the same `CCA_DB_PATH` (empty counts as
-// unset) inline, since this file runs outside the app, so a CLI run under a
-// configured env touches the same file the app would.
-const dbPath = path.resolve(process.env.CCA_DB_PATH || path.join("data", "analyzer.db"));
+// unset) and the same home-directory default inline, since this file runs
+// outside the app, so a CLI run touches the same file the app would.
+const dbPath = path.resolve(
+  process.env.CCA_DB_PATH || path.join(os.homedir(), ".claude-convo-analyzer", "analyzer.db"),
+);
 const databaseUrl = process.env.DATABASE_URL ?? `file:${dbPath}`;
 
 export default defineConfig({
