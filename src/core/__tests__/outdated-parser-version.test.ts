@@ -1,8 +1,14 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { createPrismaClient } from "@/core/db";
-import { countConversationsWithOutdatedParserVersion, listConversations } from "@/core/read";
+import {
+  countConversationsWithOutdatedParserVersion,
+  isStoredDataMissingOrOutdated,
+  listConversations,
+} from "@/core/read";
 import { PARSER_VERSION } from "@/core/refresh";
 
 import { seededTempDb } from "./helpers/temp-db";
@@ -37,5 +43,26 @@ describe("countConversationsWithOutdatedParserVersion", () => {
     await setParserVersion(1, 0);
 
     expect(await countConversationsWithOutdatedParserVersion({ dbPath: db.dbPath })).toBe(1);
+  });
+
+  describe("isStoredDataMissingOrOutdated", () => {
+    it("is false right after a full Refresh", async () => {
+      expect(await isStoredDataMissingOrOutdated({ dbPath: db.dbPath })).toBe(false);
+    });
+
+    it("is true when one Conversation an older parser produced is stored", async () => {
+      await setParserVersion(1, PARSER_VERSION - 1);
+
+      expect(await isStoredDataMissingOrOutdated({ dbPath: db.dbPath })).toBe(true);
+    });
+
+    it("is true when no Conversation is stored", async () => {
+      const emptyDir = mkdtempSync(path.join(tmpdir(), "cca-empty-db-"));
+      try {
+        expect(await isStoredDataMissingOrOutdated({ dbPath: path.join(emptyDir, "analyzer.db") })).toBe(true);
+      } finally {
+        rmSync(emptyDir, { recursive: true, force: true });
+      }
+    });
   });
 });

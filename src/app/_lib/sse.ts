@@ -20,7 +20,7 @@ const refreshProgressSchema = z.object({
 });
 
 /** Who began the Refresh (the runner's `RefreshOrigin`); `satisfies` fails typecheck when core grows one. */
-const refreshOriginSchema = z.enum(["user", "live"]) satisfies z.ZodType<RefreshOrigin>;
+const refreshOriginSchema = z.enum(["user", "live", "startup"]) satisfies z.ZodType<RefreshOrigin>;
 
 const durationMsSchema = z.number().nonnegative();
 

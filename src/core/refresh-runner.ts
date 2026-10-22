@@ -26,8 +26,11 @@ export type RefreshJob = (onProgress: (progress: RefreshProgress) => void) => Pr
 /** Which Refresh a state belongs to: opaque, and unique across server processes. */
 export type RefreshRunId = string;
 
-/** Who began a Refresh: the user (a click), or Live (a change it saw, or its catch-up). */
-export type RefreshOrigin = "user" | "live";
+/**
+ * Who began a Refresh: the user (a click), Live (a change it saw, or its
+ * catch-up), or the app at startup (nothing stored, or stored by an older parser).
+ */
+export type RefreshOrigin = "user" | "live" | "startup";
 
 /** Where the runner stands: no Refresh yet, one running, or the last one's outcome. */
 export type RefreshRunState =

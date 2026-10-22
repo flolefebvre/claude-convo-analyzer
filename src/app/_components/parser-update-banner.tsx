@@ -1,7 +1,8 @@
 // The parser-update banner: one slim line under the app bar, on every route,
 // while stored Conversations were produced by an older parser than the current
-// one (or left unstamped by an interrupted Refresh) — until someone clicks
-// Refresh, the app shows their old-parser data. It embeds its own Refresh
+// one (or left unstamped by an interrupted Refresh). The app Refreshes them at
+// startup; the banner is the fallback when that Refresh failed: until someone
+// clicks Refresh, the app shows their old-parser data. It embeds its own Refresh
 // control, which follows the shared run; the page re-renders during the run and
 // at its end (the app bar's control), and then the banner is gone. It never starts a Refresh itself and cannot be dismissed.
 //

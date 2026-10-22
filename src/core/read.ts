@@ -724,6 +724,25 @@ export async function countConversationsWithOutdatedParserVersion(opts: DetailOp
   }
 }
 
+/**
+ * Whether the stored data calls for a Refresh at startup: no Conversation is
+ * stored, or one carries a parser version other than {@link PARSER_VERSION}.
+ *
+ * @example const isRefreshDueAtStartup = await isStoredDataMissingOrOutdated();
+ */
+export async function isStoredDataMissingOrOutdated(opts: DetailOptions = {}): Promise<boolean> {
+  const { prisma, owned } = readClient(opts.dbPath);
+  try {
+    const [storedCount, outdatedCount] = await Promise.all([
+      prisma.conversation.count(),
+      prisma.conversation.count({ where: { parserVersion: { not: PARSER_VERSION } } }),
+    ]);
+    return storedCount === 0 || outdatedCount > 0;
+  } finally {
+    if (owned) await prisma.$disconnect();
+  }
+}
+
 /** One priced model's share of a day (a band of the stack) or of the range. */
 export type DailySpendModel = {
   /** The model string as logged — the band/legend key (never an unpriced one). */
