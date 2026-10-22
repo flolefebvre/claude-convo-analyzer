@@ -508,8 +508,12 @@ type TranscriptOptions = {
   dbPath?: string;
   /** Selected agent (the `?agent=` key: `externalAgentId ?? String(id)`); defaults to main. */
   agentId?: string;
-  /** The 1-based Transcript page asked for (`?page=`), clamped to the pages that exist; wins over the anchors. */
-  page?: number;
+  /**
+   * The 1-based Transcript page asked for (`?page=`), clamped to the pages that exist; wins over the anchors.
+   * `"all"` reads the whole transcript as its one page: `page` and `pageCount` are 1 and `pageSize`
+   * equals `messageCount`, so the view never claims a page it did not window.
+   */
+  page?: number | "all";
   /** A message `uuid` (`?msg=`): with no `page`, the view opens the page holding it. */
   anchoredMessage?: string;
   /** A `tool_use` id (`?call=`): with no `page`, the view opens the page holding its turn. */
@@ -645,23 +649,60 @@ export type ToolCallBody = {
 export async function getToolCallBody(id: number, opts: DetailOptions = {}): Promise<ToolCallBody | null> {
   const { prisma, owned } = readClient(opts.dbPath);
   try {
-    const row = await prisma.toolCall.findUnique({
-      where: { id },
-      select: {
-        name: true,
-        inputJson: true,
-        resultText: true,
-        resultTruncated: true,
-        resultCharSize: true,
-        isError: true,
-      },
-    });
+    const row = await prisma.toolCall.findUnique({ where: { id }, select: TOOL_CALL_BODY_COLUMNS });
     if (row === null) return null;
-    const { name, ...stored } = row;
-    return { ...stored, ...toolCallBodyParts({ name, ...stored }) };
+    return toolCallBodyOf(row);
   } finally {
     // Only a caller-owned (non-default) client is disconnected; the shared
     // default singleton stays open for the next request.
+    if (owned) await prisma.$disconnect();
+  }
+}
+
+/** The stored columns of a `tool_call` row that its {@link ToolCallBody} is shaped from. */
+const TOOL_CALL_BODY_COLUMNS = {
+  name: true,
+  inputJson: true,
+  resultText: true,
+  resultTruncated: true,
+  resultCharSize: true,
+  isError: true,
+} as const;
+
+/** A Tool call's body, from its stored columns and its tool's view. */
+function toolCallBodyOf(row: Prisma.ToolCallGetPayload<{ select: typeof TOOL_CALL_BODY_COLUMNS }>): ToolCallBody {
+  const { name, ...stored } = row;
+  return { ...stored, ...toolCallBodyParts({ name, ...stored }) };
+}
+
+/**
+ * Every Tool call body of one agent's transcript (the main thread unless
+ * `opts.agentId` names another, as in {@link getTranscript}), keyed by row id —
+ * read in one query by the agent, for a view that inlines them all. Empty for
+ * an unknown session.
+ *
+ * @example const bodyByCallId = await getToolCallBodies(view.sessionId, { agentId: view.selectedAgentId });
+ */
+export async function getToolCallBodies(
+  sessionId: string,
+  opts: { agentId?: string; dbPath?: string } = {},
+): Promise<Map<number, ToolCallBody>> {
+  const { prisma, owned } = readClient(opts.dbPath);
+  try {
+    const agents = await prisma.agent.findMany({
+      where: { conversation: { sessionId } },
+      select: { id: true, parentAgentId: true, externalAgentId: true },
+    });
+    const mainAgent = agents.find((a) => a.parentAgentId === null) ?? agents[0];
+    const selected =
+      (opts.agentId === undefined ? undefined : agents.find((a) => agentKey(a) === opts.agentId)) ?? mainAgent;
+    if (selected === undefined) return new Map();
+    const rows = await prisma.toolCall.findMany({
+      where: { agentId: selected.id },
+      select: { id: true, ...TOOL_CALL_BODY_COLUMNS },
+    });
+    return new Map(rows.map(({ id, ...row }) => [id, toolCallBodyOf(row)]));
+  } finally {
     if (owned) await prisma.$disconnect();
   }
 }
@@ -1122,9 +1163,9 @@ function orderedBefore(row: { id: number; timestamp: bigint | null }): Prisma.Me
 
 /**
  * Read the selected agent's Transcript page and the figures of its whole
- * transcript. The page is the explicit `opts.page` when given, else the one
- * holding the `?msg=`/`?call=` anchor, else the first; it is clamped to the
- * pages that exist. Every figure is a batched count/groupBy — the window is the
+ * transcript. The page is the explicit `opts.page` when given (`"all"`: the
+ * whole transcript as one page), else the one holding the `?msg=`/`?call=`
+ * anchor, else the first; it is clamped to the pages that exist. Every figure is a batched count/groupBy — the window is the
  * only full read.
  */
 async function readTranscriptPage(
@@ -1133,7 +1174,6 @@ async function readTranscriptPage(
   agents: AgentRow[],
   opts: TranscriptOptions,
 ): Promise<TranscriptPage> {
-  const pageSize = opts.pageSize ?? TRANSCRIPT_PAGE_SIZE;
   const rendered = renderedMessages(agent.id);
   const [messageCount, turnCount, toolCallCount, effortRows, anchorIndex] = await Promise.all([
     prisma.message.count({ where: rendered }),
@@ -1147,8 +1187,11 @@ async function readTranscriptPage(
     opts.page === undefined ? anchorPosition(prisma, agent.id, opts) : Promise.resolve(undefined),
   ]);
 
-  const pageCount = Math.max(1, Math.ceil(messageCount / pageSize));
-  const requested = opts.page ?? (anchorIndex === undefined ? 1 : Math.floor(anchorIndex / pageSize) + 1);
+  // The whole transcript is one page exactly its size.
+  const pageSize = opts.page === "all" ? messageCount : (opts.pageSize ?? TRANSCRIPT_PAGE_SIZE);
+  const pageCount = Math.max(1, Math.ceil(messageCount / Math.max(1, pageSize)));
+  const requested =
+    opts.page === "all" ? 1 : (opts.page ?? (anchorIndex === undefined ? 1 : Math.floor(anchorIndex / pageSize) + 1));
   const page = Math.min(Math.max(1, requested), pageCount);
 
   const messages = await readAgentTranscript(prisma, agent, agents, { skip: (page - 1) * pageSize, take: pageSize });
