@@ -287,14 +287,19 @@ describe("continuations", () => {
   }
 
   /**
-   * Refresh the family logs as `before` leaves them, apply `change`, then
-   * Refresh again — and cold, into a second database: the continuations of each.
+   * Refresh the fixture root `fixtureRootName` (the family logs by default) as
+   * `before` leaves it, apply `change`, then Refresh again — and cold, into a
+   * second database: the continuations of each.
    */
-  async function changedAndCold(before: (logsRoot: string) => void, change: (logsRoot: string) => void) {
+  async function changedAndCold(
+    before: (logsRoot: string) => void,
+    change: (logsRoot: string) => void,
+    fixtureRootName = "family-logs",
+  ) {
     const logsRoot = path.join(tmpDir, "logs");
     const changedDbPath = path.join(tmpDir, "changed.db");
     const coldDbPath = path.join(tmpDir, "cold.db");
-    copyWithPinnedMtimes(path.join(FIXTURES_DIR, "family-logs"), logsRoot);
+    copyWithPinnedMtimes(path.join(FIXTURES_DIR, fixtureRootName), logsRoot);
     const setAside = path.join(tmpDir, "set-aside");
     mkdirSync(setAside);
     before(logsRoot);
@@ -404,6 +409,104 @@ describe("continuations", () => {
     expect(changedContent).toEqual(coldContent);
     // No record names sess-fam-c any more: it holds all of sess-fam-a's Messages.
     expect(continuedFromOf(coldContent, "sess-fam-c")).toBe("sess-fam-a");
+  });
+
+  describe("of forked Sub-agents", () => {
+    const FORKS_FOLDER = "-Users-me-dev-forks";
+    const FORKS_FIXTURE_ROOT_NAME = "forked-agent-logs";
+
+    /** The path of Sub-agent `agentId`'s log file in sess-forks, under `logsRoot`. */
+    const forkLogPath = (logsRoot: string, agentId: string) =>
+      path.join(logsRoot, FORKS_FOLDER, "sess-forks", "subagents", `agent-${agentId}.jsonl`);
+    /** Where {@link forkLogPath}'s file waits while set aside. */
+    const setAsideForkLogPath = (agentId: string) => path.join(tmpDir, "set-aside", `agent-${agentId}.jsonl`);
+
+    /** The uuids of Sub-agent `agentId`'s Copied Messages in sess-forks, in `content`. */
+    const copiedUuidsOf = (content: ReturnType<typeof continuationContent>, agentId: string) =>
+      (content.messages as { session_id: string; external_agent_id: string | null; uuid: string; is_copied: number }[])
+        .filter((m) => m.session_id === "sess-forks" && m.external_agent_id === agentId && m.is_copied === 1)
+        .map((m) => m.uuid);
+
+    /** The cold Refresh's flags, checked to be the forks' copies, so no comparison below passes on no flags at all. */
+    const expectForksFlagged = (coldContent: ReturnType<typeof continuationContent>) => {
+      expect(copiedUuidsOf(coldContent, "fork-lead")).toEqual([]);
+      expect(copiedUuidsOf(coldContent, "fork-a")).toEqual(["lead-a1", "lead-u1"]);
+      expect(copiedUuidsOf(coldContent, "fork-b")).toEqual([
+        "fork-a-a1",
+        "fork-a-a2",
+        "fork-a-u1",
+        "lead-a1",
+        "lead-u1",
+      ]);
+    };
+
+    it("are stored as the pinned rows for the forked Sub-agent logs", async () => {
+      const logsRoot = path.join(tmpDir, "logs");
+      const dbPath = path.join(tmpDir, "analyzer.db");
+      copyWithPinnedMtimes(path.join(FIXTURES_DIR, FORKS_FIXTURE_ROOT_NAME), logsRoot);
+      await refresh({ logsRoot, dbPath });
+
+      expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
+        project: { rowCount: 1, sha256: "feba540146d17e8b299b85b8b419edb0f24a80e6a19fb1209d37f6936f17c75a" },
+        conversation: { rowCount: 1, sha256: "402056e965f6e0adc66595bd66332c4326921a66a7d7f04a19b15ea7e3bfe8fa" },
+        // fork-a under fork-lead, fork-b under fork-a: each stored under the Sub-agent that spawned it.
+        agent: { rowCount: 4, sha256: "0e6be9848fda36a60537f3fabf3111f9221d64ba38ad1e5446105a23d27f51a9" },
+        // Each fork's copy of its spawner's Messages is flagged.
+        message: { rowCount: 25, sha256: "c25ab69f4bbbaf98d46f2009f9df948691b5f5a9ce1d88955c056d4be127bf0a" },
+        tool_call: { rowCount: 6, sha256: "7dfb3033925770e21d8a8ae88c0de7b0621bc65a5681a84541c4ea1e4d649a66" },
+        pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+        turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+        ...NO_LOGGED_API_REQUESTS,
+        continued_in: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+      });
+    });
+
+    it("are decided as a cold Refresh decides them when the fork of a fork appears later", async () => {
+      const { changedContent, coldContent } = await changedAndCold(
+        (logsRoot) => renameSync(forkLogPath(logsRoot, "fork-b"), setAsideForkLogPath("fork-b")),
+        (logsRoot) => renameSync(setAsideForkLogPath("fork-b"), forkLogPath(logsRoot, "fork-b")),
+        FORKS_FIXTURE_ROOT_NAME,
+      );
+
+      expect(changedContent).toEqual(coldContent);
+      expectForksFlagged(coldContent);
+    });
+
+    it.each(["fork-lead", "fork-a", "fork-b"])(
+      "are decided as a cold Refresh decides them when %s alone is re-parsed",
+      async (agentId) => {
+        const { changedContent, coldContent } = await changedAndCold(
+          () => {},
+          (logsRoot) => appendUserMessage(forkLogPath(logsRoot, agentId), `${agentId}-u-appended`),
+          FORKS_FIXTURE_ROOT_NAME,
+        );
+
+        expect(changedContent).toEqual(coldContent);
+        expectForksFlagged(coldContent);
+      },
+    );
+
+    it("are decided as a cold Refresh decides them when the Conversation is deleted, then added again", async () => {
+      const logsRoot = path.join(tmpDir, "logs");
+      const changedDbPath = path.join(tmpDir, "changed.db");
+      const coldDbPath = path.join(tmpDir, "cold.db");
+      copyWithPinnedMtimes(path.join(FIXTURES_DIR, FORKS_FIXTURE_ROOT_NAME), logsRoot);
+      // The Main thread's file and the folder of its Sub-agents' files, each with where it waits while set aside.
+      const sessionPathPairs = ["sess-forks.jsonl", "sess-forks"].map((name) => ({
+        inLogsRoot: path.join(logsRoot, FORKS_FOLDER, name),
+        setAside: path.join(tmpDir, name),
+      }));
+      await refresh({ logsRoot, dbPath: changedDbPath });
+      for (const { inLogsRoot, setAside } of sessionPathPairs) renameSync(inLogsRoot, setAside);
+      await refresh({ logsRoot, dbPath: changedDbPath });
+      for (const { inLogsRoot, setAside } of sessionPathPairs) renameSync(setAside, inLogsRoot);
+      await refresh({ logsRoot, dbPath: changedDbPath });
+      await refresh({ logsRoot, dbPath: coldDbPath });
+
+      const coldContent = continuationContent(coldDbPath);
+      expect(continuationContent(changedDbPath)).toEqual(coldContent);
+      expectForksFlagged(coldContent);
+    });
   });
 });
 
@@ -776,8 +879,8 @@ function crossFileContent(dbPath: string, logsRoot: string) {
 /**
  * The continuations of the database at `dbPath`, keyed by stable fields only,
  * so they are the same whatever row ids the Refreshes gave: the session each
- * Conversation continues from, and whether each Message of each Agent is a
- * Copied Message.
+ * Conversation continues from, whether each Message of each Agent is a
+ * Copied Message, and the Agent each Sub-agent was spawned by.
  */
 function continuationContent(dbPath: string) {
   const db = new Database(dbPath, { readonly: true });
@@ -799,7 +902,19 @@ function continuationContent(dbPath: string) {
           ORDER BY "conversation"."session_id", "agent"."external_agent_id", "message"."uuid"`,
       )
       .all();
-    return { links, messages };
+    const spawns = db
+      .prepare(
+        `SELECT "conversation"."session_id", "agent"."external_agent_id",
+                "spawner"."external_agent_id" AS "spawnerExternalAgentId",
+                "spawner"."id" IS NOT NULL AS "hasSpawner"
+           FROM "agent"
+           JOIN "conversation" ON "conversation"."id" = "agent"."conversation_id"
+           LEFT JOIN "agent" AS "spawner" ON "spawner"."id" = "agent"."parent_agent_id"
+          WHERE "agent"."external_agent_id" IS NOT NULL
+          ORDER BY "conversation"."session_id", "agent"."external_agent_id"`,
+      )
+      .all();
+    return { links, messages, spawns };
   } finally {
     db.close();
   }
