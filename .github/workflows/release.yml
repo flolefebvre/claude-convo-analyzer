@@ -81,11 +81,9 @@ jobs:
           fi
 
       # The leading ./ makes npm read a file path: `package-tarball/x.tgz` is a GitHub `owner/repo` spec to it.
-      # NODE_AUTH_TOKEN is for the first publish only, and npm skips OIDC while it is set. See docs/codebase/ci.md, "Release".
       - name: Publish to npm
         env:
           KIND: ${{ needs.version.outputs.kind }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           publish_flags=(--provenance --access public)
           if [ "$KIND" = rehearsal ]; then publish_flags+=(--dry-run); fi
