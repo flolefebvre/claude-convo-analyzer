@@ -87,6 +87,27 @@ test.describe("Conversation export (/api/conversation/[sessionId]/export)", () =
     expect(requestedUrls).toEqual([fileUrl]);
   });
 
+  test("opened from disk, follows the OS color scheme", async ({ page }) => {
+    const { filePath } = await downloadExport(page, LONG_TITLE);
+    await page.goto(pathToFileURL(filePath).href);
+    // A color as the sRGB pixel it paints, so the comparison doesn't depend on how the CSS spells it.
+    const pixelOf = (color: string) =>
+      page.evaluate((cssColor) => {
+        const context = document.createElement("canvas").getContext("2d")!;
+        context.fillStyle = cssColor;
+        context.fillRect(0, 0, 1, 1);
+        return [...context.getImageData(0, 0, 1, 1).data];
+      }, color);
+    const bodyBackgroundPixel = async () =>
+      pixelOf(await page.evaluate(() => getComputedStyle(document.body).backgroundColor));
+
+    // `--background` in each theme (globals.css).
+    await page.emulateMedia({ colorScheme: "dark" });
+    expect(await bodyBackgroundPixel()).toEqual(await pixelOf("oklch(0.145 0 0)"));
+    await page.emulateMedia({ colorScheme: "light" });
+    expect(await bodyBackgroundPixel()).toEqual(await pixelOf("oklch(1 0 0)"));
+  });
+
   test("keeps the thinking and leaves What was sent out", async ({ page }) => {
     const { html } = await downloadExport(page, LOGGED_REQUESTS_TITLE);
 

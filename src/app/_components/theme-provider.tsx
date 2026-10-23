@@ -7,7 +7,7 @@
 // server-side way to track the OS theme).
 //
 // Config per issue #9: `attribute="class"` toggles a `.dark` class on <html>,
-// which lines up with globals.css's `@custom-variant dark` + `.dark` tokens;
+// which lines up with globals.css's `dark` variant and the dark tokens under it;
 // `defaultTheme="system"` + `enableSystem` make first load follow the OS. The
 // provider also injects the blocking inline script that sets the class before
 // hydration, so there is no flash of the wrong theme.

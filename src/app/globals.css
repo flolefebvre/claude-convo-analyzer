@@ -2,7 +2,19 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
+/* Dark is next-themes' `.dark` class on <html> in the app, and the OS color
+   scheme in a document whose <html> opts in with `.follows-os-color-scheme`
+   (the Conversation export, which has no theme script). */
+@custom-variant dark {
+  &:is(.dark, .dark *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:is(.follows-os-color-scheme, .follows-os-color-scheme *) {
+      @slot;
+    }
+  }
+}
 
 @theme inline {
   --color-background: var(--background);
@@ -56,7 +68,7 @@
   --color-destructive-foreground: var(--destructive-foreground);
   /* Transcript-view accents: violet for skill loads, blue for sub-agents.
      Wired here so `text-skill`/`bg-skill-muted`/`text-agent`/… utilities generate,
-     exactly like `--cost`. Base values live in `:root`/`.dark` below. */
+     exactly like `--cost`. Base values live in the two `:root` blocks below. */
   --color-skill: var(--skill);
   --color-skill-muted: var(--skill-muted);
   --color-agent: var(--agent);
@@ -178,54 +190,57 @@
   --agent-foreground: oklch(0.5 0.13 250);
 }
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-muted: oklch(0.704 0.191 22.216 / 14%);
-  --destructive-foreground: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.8 0 0);
-  /* Chart bands (dark): the same five hues with lifted lightness, exactly as
+/* The dark tokens, under the `dark` variant's two conditions. */
+:root {
+  @variant dark {
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0);
+    --card-foreground: oklch(0.985 0 0);
+    --popover: oklch(0.205 0 0);
+    --popover-foreground: oklch(0.985 0 0);
+    --primary: oklch(0.922 0 0);
+    --primary-foreground: oklch(0.205 0 0);
+    --secondary: oklch(0.269 0 0);
+    --secondary-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.269 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --accent: oklch(0.269 0 0);
+    --accent-foreground: oklch(0.985 0 0);
+    --destructive: oklch(0.704 0.191 22.216);
+    --destructive-muted: oklch(0.704 0.191 22.216 / 14%);
+    --destructive-foreground: oklch(0.704 0.191 22.216);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.8 0 0);
+    /* Chart bands (dark): the same five hues with lifted lightness, exactly as
      the accents below do, so every band stays legible on the dark base. */
-  --chart-1: oklch(0.72 0.14 45);
-  --chart-2: oklch(0.72 0.13 295);
-  --chart-3: oklch(0.72 0.11 250);
-  --chart-4: oklch(0.79 0.12 85);
-  --chart-5: oklch(0.72 0.09 175);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.8 0 0);
-  /* Lifted lightness + a touch more chroma so the clay reads on the dark base. */
-  --cost: oklch(0.72 0.14 45);
-  --cost-muted: oklch(0.72 0.14 45 / 16%);
-  /* Clay text leans amber, away from the coral of the dark error red. */
-  --cost-foreground: oklch(0.76 0.13 55);
-  /* Transcript accents (dark): lifted lightness so violet/blue read on the dark base. */
-  --skill: oklch(0.72 0.13 295);
-  --skill-muted: oklch(0.72 0.13 295 / 14%);
-  --skill-foreground: oklch(0.72 0.13 295);
-  --agent: oklch(0.72 0.11 250);
-  --agent-muted: oklch(0.72 0.11 250 / 14%);
-  --agent-foreground: oklch(0.72 0.11 250);
+    --chart-1: oklch(0.72 0.14 45);
+    --chart-2: oklch(0.72 0.13 295);
+    --chart-3: oklch(0.72 0.11 250);
+    --chart-4: oklch(0.79 0.12 85);
+    --chart-5: oklch(0.72 0.09 175);
+    --sidebar: oklch(0.205 0 0);
+    --sidebar-foreground: oklch(0.985 0 0);
+    --sidebar-primary: oklch(0.488 0.243 264.376);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.269 0 0);
+    --sidebar-accent-foreground: oklch(0.985 0 0);
+    --sidebar-border: oklch(1 0 0 / 10%);
+    --sidebar-ring: oklch(0.8 0 0);
+    /* Lifted lightness + a touch more chroma so the clay reads on the dark base. */
+    --cost: oklch(0.72 0.14 45);
+    --cost-muted: oklch(0.72 0.14 45 / 16%);
+    /* Clay text leans amber, away from the coral of the dark error red. */
+    --cost-foreground: oklch(0.76 0.13 55);
+    /* Transcript accents (dark): lifted lightness so violet/blue read on the dark base. */
+    --skill: oklch(0.72 0.13 295);
+    --skill-muted: oklch(0.72 0.13 295 / 14%);
+    --skill-foreground: oklch(0.72 0.13 295);
+    --agent: oklch(0.72 0.11 250);
+    --agent-muted: oklch(0.72 0.11 250 / 14%);
+    --agent-foreground: oklch(0.72 0.11 250);
+  }
 }
 
 @layer base {
@@ -324,7 +339,7 @@ body:has([data-link-pending]) #main {
    `docs/prototypes/transcript-view.html`, scoped under `.tview` so the
    prototype's compact class vocabulary (`.tree`, `.node`, `.turn-body`,
    `details.call`, …) does not leak into the rest of the app. Colours come from
-   the shared semantic tokens above, so both themes (`.dark`) read correctly
+   the shared semantic tokens above, so both themes read correctly
    without any per-rule media query. Layout/disclosure rules that Tailwind
    utilities cannot express cleanly (depth-based indent via `--depth`,
    `details[open]` chevron rotation, sticky blurred header) live here as real
