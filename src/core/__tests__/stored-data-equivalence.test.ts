@@ -85,11 +85,15 @@ function copyWithPinnedMtimes(fixtureRoot: string, logsRoot: string): void {
   }
 }
 
+/** A stored path under the temp logs root, once the root is replaced by its placeholder. */
+const PATH_UNDER_LOGS_ROOT = new RegExp(`${LOGS_ROOT_PLACEHOLDER}[^'\\t]*`, "g");
+
 /**
  * Fingerprint one table: rows ordered by their primary key (`id`, or a
  * interned row's `hash`), every column through SQLite's `quote()` — which keeps
  * integer, real, text and NULL distinct — one line per row, hashed with
- * sha256. The temp logs root is replaced by a placeholder.
+ * sha256. The temp logs root is replaced by a placeholder, and the paths below
+ * it are written with `/`, whatever the separator of the OS the suite runs on.
  */
 function fingerprintTable(db: Database.Database, table: StoredTable, logsRoot: string): TableFingerprint {
   const columns = (db.prepare(`PRAGMA table_info("${table}")`).all() as { name: string; pk: number }[]).map((c) => ({
@@ -100,7 +104,13 @@ function fingerprintTable(db: Database.Database, table: StoredTable, logsRoot: s
   const primaryKey = columns.find((column) => column.isPrimaryKey)!.name;
   const rows = db.prepare(`SELECT ${quotedColumns} FROM "${table}" ORDER BY "${primaryKey}"`).raw().all() as string[][];
   const hash = createHash("sha256");
-  for (const row of rows) hash.update(`${row.join("\t").replaceAll(logsRoot, LOGS_ROOT_PLACEHOLDER)}\n`);
+  for (const row of rows) {
+    const line = row
+      .join("\t")
+      .replaceAll(logsRoot, LOGS_ROOT_PLACEHOLDER)
+      .replace(PATH_UNDER_LOGS_ROOT, (storedPath) => storedPath.replaceAll(path.sep, "/"));
+    hash.update(`${line}\n`);
+  }
   return { rowCount: rows.length, sha256: hash.digest("hex") };
 }
 

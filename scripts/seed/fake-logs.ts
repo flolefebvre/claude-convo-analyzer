@@ -1117,9 +1117,9 @@ function longConversation(g: Gen, index: number): Conversation {
 }
 
 /** The name of the log folder Claude Code files a session run in `dir` under:
- *  the path with every `/` and `.` replaced by `-`. */
+ *  the path with every `/`, `\`, `:` and `.` replaced by `-`. */
 function logFolderNameOf(dir: string): string {
-  return dir.replace(/[/.]/g, "-");
+  return dir.replace(/[/\\:.]/g, "-");
 }
 
 /** `line` with its record's `cwd` replaced by `cwd`, or removed when `cwd` is null;
