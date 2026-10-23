@@ -80,13 +80,14 @@ jobs:
             echo "npm $(npm --version)"
           fi
 
+      # The leading ./ makes npm read a file path: `package-tarball/x.tgz` is a GitHub `owner/repo` spec to it.
       - name: Publish to npm
         env:
           KIND: ${{ needs.version.outputs.kind }}
         run: |
           publish_flags=(--provenance --access public)
           if [ "$KIND" = rehearsal ]; then publish_flags+=(--dry-run); fi
-          npm publish package-tarball/*.tgz "${publish_flags[@]}"
+          npm publish ./package-tarball/*.tgz "${publish_flags[@]}"
 
       - name: Create the GitHub release
         if: needs.version.outputs.kind == 'release'
