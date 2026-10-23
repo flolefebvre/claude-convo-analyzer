@@ -1,11 +1,12 @@
-// The launcher's I/O edge, loaded by `bin.ts` once Node is known recent
-// enough. It reads the command line, probes the port, then either serves the
-// packaged app in this very process or hands over to the copy already serving.
-// Serving in-process means stopping the launcher (Ctrl+C, or a kill on Windows,
-// which runs no handler) stops the server with it.
+// The launcher's I/O edge, loaded by `claude-convo-analyzer.ts` once Node is
+// known recent enough. It reads the command line, probes the port, then either
+// serves the packaged app in this very process or hands over to the copy
+// already serving. Serving in-process means stopping the launcher (Ctrl+C, or
+// a kill on Windows, which runs no handler) stops the server with it.
 //
-// Compiled to CommonJS into the package's `bin/`, beside the generated
-// package.json's parent: `<package>/bin/launch.js`, `<package>/app/server.js`.
+// `pnpm package` compiles it to `<package>/bin/launch.js`: one directory below
+// the package root, which holds the generated `package.json` and
+// `app/server.js`. `launch()`'s default root is that parent of `bin/`.
 
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";

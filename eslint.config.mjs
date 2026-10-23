@@ -42,6 +42,25 @@ const eslintConfig = defineConfig([
       ],
     },
   },
+  {
+    // `pnpm package` compiles src/launcher file by file (`transpileModule`), resolving no alias and shipping no package.
+    files: ["src/launcher/**"],
+    ignores: ["src/launcher/**/*.test.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              regex: "^(?!node:|\\./)",
+              message:
+                "src/launcher imports only node: modules and its own files (scripts/package.ts compiles it alone).",
+            },
+          ],
+        },
+      ],
+    },
+  },
 ]);
 
 export default eslintConfig;

@@ -28,7 +28,8 @@ src/
     prisma/     Schema, generated client, and migrations
   generated/    Typed route builders from `pnpm gen`; generated, gitignored, never hand-edit
   launcher/     The npm package's `claude-convo-analyzer` command (ADR-0009): pure decisions, tested beside
-                them, and a thin I/O edge. Compiled to CommonJS by `pnpm package`, run by the user's Node
+                them, and a thin I/O edge. Compiled to CommonJS by `pnpm package`, run by the user's Node.
+                Imports only `node:` and its own files, ESLint enforces it
   lib/          Shared helpers
 e2e/            Playwright specs, one per route, plus the shared-state ones run after them (docs/codebase/testing.md)
 scripts/        Repo tooling, run with tsx (the gate, seeding fake demo data, the npm package and its smoke)
