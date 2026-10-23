@@ -3,7 +3,9 @@
 ## Status
 
 accepted. Amends ADR-0002's Persistence paragraph: Prisma owns the schema,
-the migrations and every read, but not the Refresh write path.
+the migrations and every read, but not the Refresh write path. ADR-0010
+amends the Decision's "each Conversation is still deleted and rewritten"
+paragraph: a changed Conversation is rewritten in place, one Agent's file at a time.
 
 ## Context
 

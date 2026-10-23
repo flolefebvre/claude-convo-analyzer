@@ -6,8 +6,8 @@
 // every statement it runs lives in `prisma/refresh-statements.ts`.
 //
 // ONE CONVERSATION AT A TIME, COMMITTED IN BATCHES: a conversation is parsed,
-// written (delete of its prior row + every insert), then dropped — no run holds
-// more than one parsed conversation. Writes share a transaction until a batch
+// written (its row inserted or updated in place, its changed Agents rewritten),
+// then dropped — no run holds more than one parsed conversation. Writes share a transaction until a batch
 // is full (`MAX_CONVERSATIONS_PER_BATCH`, `MAX_BATCH_DURATION_MS`); each commit
 // is reported through `onProgress`. Readers on other connections (WAL, see
 // `db.ts`) never find a re-parsed conversation missing.
@@ -16,8 +16,12 @@
 // has not changed, re-parses changed/new ones, and drops conversations whose
 // source file disappeared. The change key is a COMPOSITE of the main session
 // file PLUS its sub-agent transcripts (max mtime, summed size) — a sub-agent
-// file changing alone (the main file untouched) still triggers a re-parse,
-// because it has no independent conversation/mtime row of its own.
+// file changing alone (the main file untouched) still triggers a re-parse.
+// Behind that first-level skip, the AGENT'S LOG FILE is the unit of re-parse
+// and rewrite (ADR-0010): each `agent` row keeps its own file's change key, and
+// a changed Conversation re-parses its Main thread, each Sub-agent file that
+// changed, and only what their lineage needs (see `parseConversation`); it
+// rewrites only the Agents whose file changed (see `writeConversation`).
 // The stored `parserVersion` is part of that decision too: rows produced by an
 // older parser are re-parsed once even when their source files are untouched
 // (see `PARSER_VERSION`). It doubles as the COMMIT MARK of a refresh: a
@@ -35,7 +39,7 @@
 // before it is read (a scratch session cleaned up, a worktree removed). Such a
 // file is skipped and counted in `RefreshSummary.vanishedLogFilesSkipped`: a
 // main transcript is treated as gone (its stored row deleted), a sub-agent
-// transcript is left out of its parent. Only ENOENT counts as vanished; any
+// transcript is left out of its Conversation (its stored Agent deleted). Only ENOENT counts as vanished; any
 // other error fails the run (see `vanished-file.ts`).
 //
 // ROLLUP DESIGN (ADR-0001): conversation totals/cost are SUM queries over ALL
@@ -291,9 +295,11 @@ type DiscoveredWithKey = {
  * through `onProgress` as `{ done: 0, total }`.
  *
  * Then three passes over that set only: (1) parse each conversation and write it
- * with its agents/messages/tool_calls/pr_links/turn_durations, deleting its prior
- * row (cascading) in the SAME transaction, so a reader on another connection
- * sees the old version or the new one, never neither; drop the parsed content —
+ * with its agents/messages/tool_calls/pr_links/turn_durations — a stored one in
+ * place, rewriting only the Agents whose own file changed (each `agent` row
+ * keeps its file's change key, ADR-0010) — in ONE transaction, so a reader on
+ * another connection sees the old version or the new one, never neither; drop
+ * the parsed content —
  * memory stays flat however large the logs grow. A transaction holds a batch of
  * conversations; once it commits, report `{ done, total }`, `done` counting the
  * conversations committed so far. Conversations whose records state no `cwd`
@@ -304,7 +310,8 @@ type DiscoveredWithKey = {
  * conversations — so a skipped (unchanged) parent still resolves — and link
  * every Turn of the database with a `requestRef` and no API request to the
  * request of another file it names, if any, reading ids only (log-format §9,
- * "How they are stored"); (3) stamp the
+ * "How they are stored") — a kept Agent's Turns included, whose links a
+ * rewritten Agent's delete just nulled; (3) stamp the
  * current `parserVersion` on that set — the commit mark that lets a later run
  * skip them — and delete every Project left without a Conversation, and every
  * system prompt and tool set no API request references, and every sent

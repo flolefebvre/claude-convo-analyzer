@@ -275,7 +275,10 @@ missed.
 
 A **cold** Refresh is one with nothing stored yet, so every Conversation is
 parsed. A Refresh right after the parser changes costs the same, since every
-Conversation must be re-parsed.
+Conversation must be re-parsed. Otherwise a Refresh reads only what changed: a
+Conversation none of whose log files moved is skipped, and in one that changed,
+only the Agents whose own log file changed are re-parsed and rewritten, the Main
+thread always read (ADR-0010).
 
 ### Live
 
