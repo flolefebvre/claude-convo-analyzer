@@ -687,8 +687,9 @@ on 2,722 Main-thread files (2.1.143–2.1.309), October 2026:
   child's (the parent stopped where it was resumed); in 14 the parent holds
   one more, an in-flight Turn the copy left out. A child is never a subset of
   its parent. 10 more named children hold no Message (resumed, then quit).
-- Sub-agent transcripts are copied too: the same agent file, whole and
-  identical, under both Conversations' `subagents/` (6 pairs).
+- Sub-agent transcripts are not copied: the child's `subagents/agent-<id>.jsonl`
+  is a symlink to the parent's file (6 pairs). Discovery reads regular files
+  only, so the app does not ingest these.
 
 ### The rule
 
@@ -711,8 +712,8 @@ the 14 unnamed pairs on this machine.
 
 A **Copied Message** is a Message in its Agent's leading run of Messages that
 an Agent of the Conversation's parent also holds, matched by `uuid`. Main
-thread and Sub-agents follow the one rule: a copied Sub-agent transcript is
-copied whole. Without a parent, nothing is flagged — an original's Messages,
+thread and Sub-agents follow the one rule: a Sub-agent transcript the child
+holds as a regular file, whole, has all of its Messages flagged. Without a parent, nothing is flagged — an original's Messages,
 held by its copies, are its own.
 
 ### How they are stored

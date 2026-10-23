@@ -26,6 +26,7 @@ CREATE INDEX "continued_in_session_id_idx" ON "continued_in"("session_id");
 CREATE INDEX "conversation_continued_from_conversation_id_idx" ON "conversation"("continued_from_conversation_id");
 
 -- Added in place, not by redefining `message`: that would drop the search
--- triggers on it (20261017010000_search_inter_agent), which an UPDATE of this
--- column leaves alone.
+-- triggers on it. An UPDATE of this column leaves them alone: the search
+-- index's update trigger fires on `id`, `text`, `role` and `kind` only
+-- (`message_fts_update`, 20261027000000_turn_api_request).
 ALTER TABLE "message" ADD COLUMN "is_copied" BOOLEAN NOT NULL DEFAULT false;

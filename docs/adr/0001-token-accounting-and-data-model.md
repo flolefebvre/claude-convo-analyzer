@@ -26,7 +26,7 @@ true` and the same per-turn `usage` shape as the main thread — often on a
 
 ## Decision
 
-Model the domain as thirteen tables:
+Model the domain as twelve tables:
 
 - `project` — one per Project path: the directory its Conversations run in,
   per their records' `cwd` (GLOSSARY.md, Project), not the log folder they are
