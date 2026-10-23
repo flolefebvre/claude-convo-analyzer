@@ -95,6 +95,8 @@ test.describe("Conversation export (/api/conversation/[sessionId]/export)", () =
   test("opened from disk, follows the OS color scheme", async ({ page }) => {
     const { filePath } = await downloadExport(page, LONG_TITLE);
     await page.goto(pathToFileURL(filePath).href);
+    // Native widgets (scrollbars) follow the OS scheme too.
+    expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe("light dark");
     // A color as the sRGB pixel it paints, so the comparison doesn't depend on how the CSS spells it.
     const pixelOf = (color: string) =>
       page.evaluate((cssColor) => {

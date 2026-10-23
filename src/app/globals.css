@@ -15,6 +15,11 @@
     }
   }
 }
+/* The opted-in document's native widgets (scrollbars, the canvas behind the
+   body) follow the OS too; next-themes sets `color-scheme` in the app. */
+.follows-os-color-scheme {
+  color-scheme: light dark;
+}
 
 @theme inline {
   --color-background: var(--background);
