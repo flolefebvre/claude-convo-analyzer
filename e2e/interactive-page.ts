@@ -7,8 +7,8 @@ import type { Page } from "@playwright/test";
  * fallback, and its runtime (`$RC`/`$RV`) reveals completed boundaries in batches, on the next animation
  * frame or 300 ms after the last reveal, which can be after `load`. Until then the page shows the
  * fallback, and `InertLiveToggle`, `IdleRefreshButton` and the search box's `SearchField` look exactly
- * like the controls they stand for, with no handler: a click or a keypress on one is lost, and the
- * reveal replaces it, focus and typed text included. A new fallback that looks like its control needs
+ * like the controls they stand for: a click on the first two has no handler and is lost, and the reveal
+ * replaces any of them, dropping its focus and typed text. A new fallback that looks like its control needs
  * this wait in any spec that acts on that control right after a load.
  *
  * The evidence waited for is the page's subscription to the `refresh` Channel (`/api/sse`):
