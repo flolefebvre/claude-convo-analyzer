@@ -1,7 +1,9 @@
 // Continuations (log-format §10): a resumed or forked session's file starts
 // with a copy of its parent's records, same uuids. A Refresh links it to its
 // parent — the session whose `continued-in` record names it, else the one
-// whose Messages it holds all of — and flags the Messages it copied. Read
+// whose Messages it holds all of — and flags the Messages it copied. A forked
+// Sub-agent's file likewise starts with a copy of its spawning Agent's
+// records, flagged against that Agent. Read
 // back through `listConversations` and `getTranscript`, never SQL.
 
 import { mkdtempSync, rmSync } from "node:fs";
@@ -82,6 +84,32 @@ describe("a cold Refresh of copied sessions", () => {
       own: [],
     });
     expect((await copiedAndOwnUuids(db.dbPath, "sess-fam-a", "fam-helper")).copied).toEqual([]);
+  });
+});
+
+describe("a cold Refresh of forked Sub-agents", () => {
+  const db = seededTempDb({
+    prefix: "cca-forked-agent-",
+    logsRoot: path.join(import.meta.dirname, "fixtures", "forked-agent-logs"),
+  });
+
+  it("flags a fork's copy of its spawning Sub-agent's Messages, and only those", async () => {
+    expect(await copiedAndOwnUuids(db.dbPath, "sess-forks", "fork-a")).toEqual({
+      copied: ["lead-u1", "lead-a1"],
+      own: ["fork-a-a1", "fork-a-a2", "fork-a-a3", "fork-a-a4"],
+    });
+  });
+
+  it("flags a fork of a fork against the fork that spawned it, its copy of the first fork's own Messages included", async () => {
+    expect(await copiedAndOwnUuids(db.dbPath, "sess-forks", "fork-b")).toEqual({
+      copied: ["lead-u1", "lead-a1", "fork-a-a1", "fork-a-a2"],
+      own: ["fork-b-a1", "fork-b-a2"],
+    });
+  });
+
+  it("flags nothing in the Sub-agent that was forked, nor in the Main thread", async () => {
+    expect((await copiedAndOwnUuids(db.dbPath, "sess-forks", "fork-lead")).copied).toEqual([]);
+    expect((await copiedAndOwnUuids(db.dbPath, "sess-forks")).copied).toEqual([]);
   });
 });
 

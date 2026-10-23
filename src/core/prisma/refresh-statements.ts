@@ -244,6 +244,9 @@ export function prepareRefreshStatements(db: Database.Database) {
   const selectSpawningMessageId = db
     .prepare(`SELECT "message_id" FROM "tool_call" WHERE "agent_id" = ? AND "tool_use_id" = ? ORDER BY "id" LIMIT 1`)
     .pluck();
+  const selectHoldingAgentIds = db
+    .prepare(`SELECT DISTINCT "agent_id" FROM "message" WHERE "uuid" = ? AND "conversation_id" = ?`)
+    .pluck();
   const deletePrLinks = db.prepare(`DELETE FROM "pr_link" WHERE "conversation_id" = ?`);
   const deleteTurnDurations = db.prepare(`DELETE FROM "turn_duration" WHERE "conversation_id" = ?`);
   const deleteContinuedIn = db.prepare(`DELETE FROM "continued_in" WHERE "conversation_id" = ?`);
@@ -327,16 +330,22 @@ export function prepareRefreshStatements(db: Database.Database) {
     `UPDATE "message" SET "is_copied" = 0 WHERE "conversation_id" = ? AND "is_copied" = 1`,
   );
   // THE RULE for a Copied Message (log-format §10): in its Agent's leading
-  // run of Messages that an Agent of the parent Conversation holds. Each
-  // Agent's first Message the parent does not hold is found once.
+  // run of Messages that an Agent of the parent Conversation, or the Agent
+  // that spawned it, holds. Each Agent's first Message neither holds is found
+  // once. Without a parent Conversation, `@parentConversationId` is NULL and
+  // matches no Message.
   const updateCopiedMessages = db.prepare(
     `WITH "first_own" AS MATERIALIZED (
        SELECT "agent"."id" AS "agent_id",
               (SELECT "own"."id" FROM "message" AS "own"
                 WHERE "own"."agent_id" = "agent"."id"
-                  AND ("own"."uuid" IS NULL OR NOT EXISTS (
-                    SELECT 1 FROM "message" AS "holding"
-                     WHERE "holding"."uuid" = "own"."uuid" AND "holding"."conversation_id" = @parentConversationId))
+                  AND ("own"."uuid" IS NULL OR (
+                    NOT EXISTS (
+                      SELECT 1 FROM "message" AS "holding"
+                       WHERE "holding"."uuid" = "own"."uuid" AND "holding"."conversation_id" = @parentConversationId)
+                    AND NOT EXISTS (
+                      SELECT 1 FROM "message" AS "holding"
+                       WHERE "holding"."uuid" = "own"."uuid" AND "holding"."agent_id" = "agent"."parent_agent_id")))
                 ORDER BY "own"."id"
                 LIMIT 1) AS "message_id"
          FROM "agent" WHERE "agent"."conversation_id" = @conversationId)
@@ -454,6 +463,9 @@ export function prepareRefreshStatements(db: Database.Database) {
     /** The Message row holding Agent `agentId`'s Tool call `toolUseId`, if any. */
     selectSpawningMessageId: (agentId: number, toolUseId: string) =>
       selectSpawningMessageId.get(agentId, toolUseId) as number | undefined,
+    /** The stored Agents of Conversation `conversationId` holding a Message with `uuid`. */
+    selectHoldingAgentIds: (uuid: string, conversationId: number) =>
+      selectHoldingAgentIds.all(uuid, conversationId) as number[],
     /**
      * Delete a Conversation's `pr_link`, `turn_duration` and `continued_in`
      * rows: what its Main thread's file gives it besides its Agent.
@@ -492,10 +504,13 @@ export function prepareRefreshStatements(db: Database.Database) {
     /** How many of Agent `agentId`'s Messages, from its first, Agent `holdingAgentId` holds a Message with the uuid of. */
     selectSharedLeadingRunLength: (agentId: number, holdingAgentId: number) =>
       selectSharedLeadingRunLength.get({ agentId, holdingAgentId }) as number,
-    /** Flag Conversation `conversationId`'s Copied Messages, as copies of `parentConversationId`'s; none without a parent. */
+    /**
+     * Flag Conversation `conversationId`'s Copied Messages: copies of
+     * `parentConversationId`'s, when it has a parent, and of each Agent's spawning Agent's.
+     */
     updateCopiedMessages: (conversationId: number, parentConversationId: number | null) => {
       clearCopiedMessages.run(conversationId);
-      if (parentConversationId !== null) updateCopiedMessages.run({ conversationId, parentConversationId });
+      updateCopiedMessages.run({ conversationId, parentConversationId });
     },
     /** Stamp `parserVersion` on each of `conversationIds`. */
     updateParserVersion: (conversationIds: number[], parserVersion: number) =>

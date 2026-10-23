@@ -149,7 +149,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 15, sha256: "d79302a905b975c08cfd6c217e6ae3eaa17e44ca45bb318cdfeefa1ae7b0e329" },
-      conversation: { rowCount: 21, sha256: "6caeb032000aba4a436af7a5e1cf75568849c4a03da512eebfb62bb72c234d33" },
+      conversation: { rowCount: 21, sha256: "297ff75cb539a1ba77e58dd3795bce149e4bccadb6c5da8f8269bb5cfeae7490" },
       agent: { rowCount: 35, sha256: "711e9837000a62cb2b2d1958c27c6aaeeeadab1ce7130ef41a5cf54f6ddfda6c" },
       message: { rowCount: 127, sha256: "f062d0ade17ffbd2e026dc923d65bc33e28cc68d1db40ccaa3c03a3f78d03959" },
       tool_call: { rowCount: 34, sha256: "1ebf6ceb68879e5e3dfbb37ddf59dce1699db2145274b17b09453577f97c8512" },
@@ -166,7 +166,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "5d55ed2d1c37a5a354777b7e27dfce7bb9f299e0e7237d17a32956fee0357675" },
-      conversation: { rowCount: 1, sha256: "62122987a98b4afcc5afc7fb968f72faf830d3b7f7c4d4e47a17bde7e0da41c2" },
+      conversation: { rowCount: 1, sha256: "5e7ae4b3055d64143c50f697e6db942e95f3493f3a87b5e63249f6bc271306ab" },
       agent: { rowCount: 2, sha256: "f5aba5caf67fb377381f3a6615b9a5b84ba42ad02870c04d39ae685c7f265e3e" },
       message: { rowCount: 28, sha256: "c0aa023f7b4bc513a093c1d6c99425c9ecee2e8f3b291ac29f2c99cc94ea9aa4" },
       tool_call: { rowCount: 1, sha256: "a7fdb225fda2bff0ca75f88a22789a86cd79a97f5ea4e2f952e1d4559aa8efd9" },
@@ -183,7 +183,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 9, sha256: "e740c951fb2b58e8b13902eea830681396ac5eea03a445a31d6fb998c250a3e1" },
-      conversation: { rowCount: 13, sha256: "03cee29018af63da16443b1569923e63608662deef7e89e3e7673960310d2530" },
+      conversation: { rowCount: 13, sha256: "ed421274f3e2753b92ea12b62affbb00006da080c470d8fade182198c0d09e8d" },
       agent: { rowCount: 13, sha256: "05071b138ea90dac2a6f439c5ffdc80cf4ecde23d204d53599a57202eb17a230" },
       message: { rowCount: 22, sha256: "25a07cc59be5e565459a3225cfefcc2184607786a7a14353071035b07a770c3a" },
       tool_call: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
@@ -200,7 +200,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "c39a0134a2be51dcdd6348bf0657691be4b1d4092d6e1616117c4d0f4f58a771" },
-      conversation: { rowCount: 4, sha256: "567a7a0900563a8b115236e49200a5970605f2e0e6e156a26af4394ec220621c" },
+      conversation: { rowCount: 4, sha256: "aa25305519b786ee57025ba73d6b14ca85a0cb5dba9589563c0618bfec7bdfd7" },
       agent: { rowCount: 5, sha256: "3ad52bfa85815c31aed384550111d7e07207b1d7199175e9df9ca71a8fd41c21" },
       message: { rowCount: 17, sha256: "4a305e6648f6803b653d8c99880557c54a32685c31cb6bb5a73f6351934bbae5" },
       tool_call: { rowCount: 1, sha256: "e331ea30643c19a0602a2759f557187aacaf1729c796a955560799b9c4dbd73f" },
@@ -217,7 +217,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "8b9da1ddb86766f02f4a1ac8d582400f0f6c9e5071156b7b726e7b6d9bf11d31" },
-      conversation: { rowCount: 3, sha256: "73fde948ff3234b7258aa5384354cd4c5f2eb4a0a4ae013955b89a6d420e594d" },
+      conversation: { rowCount: 3, sha256: "4f931f319cb1535eeecb952d3f0ff3c368739c4340b01b99853ce61b8ee5e01b" },
       agent: { rowCount: 4, sha256: "236b6560485fe1af22869e5fa6c5ab02686684a00d3e90c411e2246519b775a9" },
       message: { rowCount: 19, sha256: "d3f9836aa555bd8b3e4a58a94f2bd44df57147a61af50e55170caec43e9259ed" },
       tool_call: { rowCount: 3, sha256: "e5f615b5d6290bc0dab75ea171da282d5e176e04be16438fc4d834c227f91b9d" },
@@ -240,7 +240,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "39d8e36d20227daa2cab6248635b86861d0a5bd0a9e19a0cf4c98eb4de3f7141" },
-      conversation: { rowCount: 4, sha256: "2ec2de6f7843cb06b9373e5177b5ccaa873a7d5f7a83041e8b9185cf6546111c" },
+      conversation: { rowCount: 4, sha256: "89c0f67ae402e3d519c925e554d2217369b341b5eb85ea852a1015a23a1b8a01" },
       agent: { rowCount: 4, sha256: "5133ecce6c7b4babfbe5aaa102ae82698624764ec13272567e76b9a44f527e2a" },
       // The child's copied Turns name the requests of the copy's and the parent's files.
       message: { rowCount: 16, sha256: "0e48a1941588ca86d550b22852047a588add5dd14cbe49ee5379b889a9d6c54e" },
@@ -287,22 +287,31 @@ describe("continuations", () => {
   }
 
   /**
-   * Refresh the family logs as `before` leaves them, apply `change`, then
-   * Refresh again — and cold, into a second database: the continuations of each.
+   * Refresh the fixture root `fixtureRootName` (the family logs by default) as
+   * `before` leaves it, apply `change`, then Refresh again — and cold, into a
+   * second database: the continuations of each.
    */
-  async function changedAndCold(before: (logsRoot: string) => void, change: (logsRoot: string) => void) {
+  async function changedAndCold(
+    before: (logsRoot: string) => void,
+    change: (logsRoot: string) => void,
+    fixtureRootName = "family-logs",
+  ) {
     const logsRoot = path.join(tmpDir, "logs");
     const changedDbPath = path.join(tmpDir, "changed.db");
     const coldDbPath = path.join(tmpDir, "cold.db");
-    copyWithPinnedMtimes(path.join(FIXTURES_DIR, "family-logs"), logsRoot);
+    copyWithPinnedMtimes(path.join(FIXTURES_DIR, fixtureRootName), logsRoot);
     const setAside = path.join(tmpDir, "set-aside");
     mkdirSync(setAside);
     before(logsRoot);
     await refresh({ logsRoot, dbPath: changedDbPath });
     change(logsRoot);
-    await refresh({ logsRoot, dbPath: changedDbPath });
+    const changedSummary = await refresh({ logsRoot, dbPath: changedDbPath });
     await refresh({ logsRoot, dbPath: coldDbPath });
-    return { changedContent: continuationContent(changedDbPath), coldContent: continuationContent(coldDbPath) };
+    return {
+      changedContent: continuationContent(changedDbPath),
+      coldContent: continuationContent(coldDbPath),
+      changedSummary,
+    };
   }
 
   /** Move the log of `sessionId` out of the logs root, keeping it for {@link restoreLog}. */
@@ -333,7 +342,7 @@ describe("continuations", () => {
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 4, sha256: "22e03dd6cdf94d1b50e8c393efeb02e01452e218a539f452ce79dda37d7e9a94" },
       // Each continuation names its parent; sess-orphan, sess-fam-solo and sess-legacy-fork name none.
-      conversation: { rowCount: 10, sha256: "6cc34f1e5be80d9bf582ca276afc714641a39a7e58b60e9ced85359b4351fa5f" },
+      conversation: { rowCount: 10, sha256: "d196ab1d213f20086ff2f5fe8205c9dd69238614c83753baa42d71baca5d10d8" },
       agent: { rowCount: 12, sha256: "02d3ec7fae2b56dab3693127d339937d9654818fa7970c6dd830ddb47d0769c4" },
       // The copies of the parents' Messages, sess-fam-b's copied Sub-agent included, are flagged.
       message: { rowCount: 43, sha256: "1accad12a52ba280e0be3a006249a3daefaaa7077cf86615647ff847c6af8770" },
@@ -404,6 +413,114 @@ describe("continuations", () => {
     expect(changedContent).toEqual(coldContent);
     // No record names sess-fam-c any more: it holds all of sess-fam-a's Messages.
     expect(continuedFromOf(coldContent, "sess-fam-c")).toBe("sess-fam-a");
+  });
+
+  describe("of forked Sub-agents", () => {
+    const FORKS_FOLDER = "-Users-me-dev-forks";
+    const FORKS_FIXTURE_ROOT_NAME = "forked-agent-logs";
+
+    /** The path of Sub-agent `agentId`'s log file in sess-forks, under `logsRoot`. */
+    const forkLogPath = (logsRoot: string, agentId: string) =>
+      path.join(logsRoot, FORKS_FOLDER, "sess-forks", "subagents", `agent-${agentId}.jsonl`);
+    /** Where {@link forkLogPath}'s file waits while set aside. */
+    const setAsideForkLogPath = (agentId: string) => path.join(tmpDir, "set-aside", `agent-${agentId}.jsonl`);
+
+    /** The uuids of Sub-agent `agentId`'s Copied Messages in sess-forks, in `content`. */
+    const copiedUuidsOf = (content: ReturnType<typeof continuationContent>, agentId: string) =>
+      (content.messages as { session_id: string; external_agent_id: string | null; uuid: string; is_copied: number }[])
+        .filter((m) => m.session_id === "sess-forks" && m.external_agent_id === agentId && m.is_copied === 1)
+        .map((m) => m.uuid);
+
+    /** The cold Refresh's flags, checked to be the forks' copies, so no comparison below passes on no flags at all. */
+    const expectForksFlagged = (coldContent: ReturnType<typeof continuationContent>) => {
+      expect(copiedUuidsOf(coldContent, "fork-lead")).toEqual([]);
+      expect(copiedUuidsOf(coldContent, "fork-a")).toEqual(["lead-a1", "lead-u1"]);
+      expect(copiedUuidsOf(coldContent, "fork-b")).toEqual([
+        "fork-a-a1",
+        "fork-a-a2",
+        "fork-a-u1",
+        "lead-a1",
+        "lead-u1",
+      ]);
+    };
+
+    it("are stored as the pinned rows for the forked Sub-agent logs", async () => {
+      const logsRoot = path.join(tmpDir, "logs");
+      const dbPath = path.join(tmpDir, "analyzer.db");
+      copyWithPinnedMtimes(path.join(FIXTURES_DIR, FORKS_FIXTURE_ROOT_NAME), logsRoot);
+      await refresh({ logsRoot, dbPath });
+
+      expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
+        project: { rowCount: 1, sha256: "feba540146d17e8b299b85b8b419edb0f24a80e6a19fb1209d37f6936f17c75a" },
+        conversation: { rowCount: 1, sha256: "c6ea16f33bd46ad627cf17c229509f0b5670b10a9e9a64a4c0187cfe7dfd9687" },
+        // fork-a under fork-lead, fork-b under fork-a: each stored under the Sub-agent that spawned it.
+        agent: { rowCount: 4, sha256: "a4f026fc46ec435fff99e25e5e712dcaad530c883e03f24f42bea5b60a49d4e1" },
+        // Each fork's copy of its spawner's Messages is flagged.
+        message: { rowCount: 25, sha256: "c25ab69f4bbbaf98d46f2009f9df948691b5f5a9ce1d88955c056d4be127bf0a" },
+        tool_call: { rowCount: 6, sha256: "eb6fa55b8ab37a703f86136cd5d228e644e0032e19c3abf12fb9657b4b2158bb" },
+        pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+        turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+        ...NO_LOGGED_API_REQUESTS,
+        continued_in: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+      });
+    });
+
+    // Each fork's spawn ledger is in its spawner's file, which stays unchanged and unread.
+    it.each(["fork-a", "fork-b"])(
+      "are decided as a cold Refresh decides them when %s appears later",
+      async (agentId) => {
+        const { changedContent, coldContent } = await changedAndCold(
+          (logsRoot) => renameSync(forkLogPath(logsRoot, agentId), setAsideForkLogPath(agentId)),
+          (logsRoot) => renameSync(setAsideForkLogPath(agentId), forkLogPath(logsRoot, agentId)),
+          FORKS_FIXTURE_ROOT_NAME,
+        );
+
+        expect(changedContent).toEqual(coldContent);
+        expectForksFlagged(coldContent);
+      },
+    );
+
+    // The Main thread's file, the changed one, and the stored spawner of the changed one: the others stay unread.
+    it.each([
+      { agentId: "fork-lead", logFilesParsed: 2 },
+      { agentId: "fork-a", logFilesParsed: 3 },
+      { agentId: "fork-b", logFilesParsed: 3 },
+    ])(
+      "are decided as a cold Refresh decides them when $agentId alone is re-parsed",
+      async ({ agentId, logFilesParsed }) => {
+        const { changedContent, coldContent, changedSummary } = await changedAndCold(
+          () => {},
+          (logsRoot) => appendUserMessage(forkLogPath(logsRoot, agentId), `${agentId}-u-appended`),
+          FORKS_FIXTURE_ROOT_NAME,
+        );
+
+        expect(changedSummary.logFilesParsed).toBe(logFilesParsed);
+        expect(changedContent).toEqual(coldContent);
+        expectForksFlagged(coldContent);
+      },
+    );
+
+    it("are decided as a cold Refresh decides them when the Conversation is deleted, then added again", async () => {
+      const logsRoot = path.join(tmpDir, "logs");
+      const changedDbPath = path.join(tmpDir, "changed.db");
+      const coldDbPath = path.join(tmpDir, "cold.db");
+      copyWithPinnedMtimes(path.join(FIXTURES_DIR, FORKS_FIXTURE_ROOT_NAME), logsRoot);
+      // The Main thread's file and the folder of its Sub-agents' files, each with where it waits while set aside.
+      const sessionPathPairs = ["sess-forks.jsonl", "sess-forks"].map((name) => ({
+        inLogsRoot: path.join(logsRoot, FORKS_FOLDER, name),
+        setAside: path.join(tmpDir, name),
+      }));
+      await refresh({ logsRoot, dbPath: changedDbPath });
+      for (const { inLogsRoot, setAside } of sessionPathPairs) renameSync(inLogsRoot, setAside);
+      await refresh({ logsRoot, dbPath: changedDbPath });
+      for (const { inLogsRoot, setAside } of sessionPathPairs) renameSync(setAside, inLogsRoot);
+      await refresh({ logsRoot, dbPath: changedDbPath });
+      await refresh({ logsRoot, dbPath: coldDbPath });
+
+      const coldContent = continuationContent(coldDbPath);
+      expect(continuationContent(changedDbPath)).toEqual(coldContent);
+      expectForksFlagged(coldContent);
+    });
   });
 });
 
@@ -776,8 +893,8 @@ function crossFileContent(dbPath: string, logsRoot: string) {
 /**
  * The continuations of the database at `dbPath`, keyed by stable fields only,
  * so they are the same whatever row ids the Refreshes gave: the session each
- * Conversation continues from, and whether each Message of each Agent is a
- * Copied Message.
+ * Conversation continues from, whether each Message of each Agent is a
+ * Copied Message, and the Agent each Sub-agent was spawned by.
  */
 function continuationContent(dbPath: string) {
   const db = new Database(dbPath, { readonly: true });
@@ -799,7 +916,19 @@ function continuationContent(dbPath: string) {
           ORDER BY "conversation"."session_id", "agent"."external_agent_id", "message"."uuid"`,
       )
       .all();
-    return { links, messages };
+    const spawns = db
+      .prepare(
+        `SELECT "conversation"."session_id", "agent"."external_agent_id",
+                "spawner"."external_agent_id" AS "spawnerExternalAgentId",
+                "spawner"."id" IS NOT NULL AS "hasSpawner"
+           FROM "agent"
+           JOIN "conversation" ON "conversation"."id" = "agent"."conversation_id"
+           LEFT JOIN "agent" AS "spawner" ON "spawner"."id" = "agent"."parent_agent_id"
+          WHERE "agent"."external_agent_id" IS NOT NULL
+          ORDER BY "conversation"."session_id", "agent"."external_agent_id"`,
+      )
+      .all();
+    return { links, messages, spawns };
   } finally {
     db.close();
   }

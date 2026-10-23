@@ -180,9 +180,11 @@ which case it lands mid-turn rather than between turns.
 ### Copied Message
 
 A Message a continuation copied from its parent Conversation when it was
-resumed or forked: in its Agent's leading run of Messages that an Agent of the
-parent also holds, by `uuid` (log-format §10). History the continuation
-carries, not work it did; the parent's own Messages are never Copied Messages.
+resumed or forked, or a forked Sub-agent copied from the Agent that spawned it:
+in its Agent's leading run of Messages that an Agent of the parent, or the
+spawning Agent, also holds, by `uuid` (log-format §10). History the copy
+carries, not work it did; the parent's and the spawner's own Messages are
+never Copied Messages.
 _Avoid_: duplicate message, inherited message.
 
 ### Transcript
