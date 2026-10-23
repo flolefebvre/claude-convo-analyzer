@@ -186,8 +186,12 @@ Sub-agent finishes. Measured on 2,528 Sub-agent transcripts, October 2026: all
 16, `worktreeCleanlyRemoved` 11, `worktreePath`…). `agentType` and `toolUseId`
 are set at the spawn and never change.
 
-Before it was read, 2,057 of 2,521 stored Sub-agents (82 %) had no type: a
-background launch's ledger states none.
+Before the meta file was read, 2,057 of 2,521 stored Sub-agents (82 %) had no
+type, because a background launch's ledger states none. Reading it, a cold
+Refresh of the same logs types all 2,523. 35 Sub-agents are named by no ledger
+in any file of their Conversation; 33 of them are linked to their spawning
+Message through the meta file's `toolUseId` (21 nested). The other 2 are
+Main-thread forks, whose meta files have no `toolUseId`.
 
 ### Where a Sub-agent's spawn comes from
 
@@ -202,12 +206,21 @@ The spawner is found in this order:
 1. The Agent whose file holds the ledger naming the Sub-agent: the Main
    thread's, or another Sub-agent's for a nested one.
 2. Without a ledger, the Agent holding the `Agent` call the meta file's
-   `toolUseId` names, and `spawned_by_message_id` the Message holding it.
-   Several Agents can hold it, because a fork copies its spawner's records,
-   that call included (§10). In that case: the Main thread first; never the
-   Sub-agent itself; then the holder no other holder spawned (a holder spawned
-   by another copied the call from it); then the first in discovery order.
+   `toolUseId` names, picked by the holder order below. `spawned_by_message_id`
+   is the Message holding that call.
 3. Without either, the Main thread, with no spawning Message.
+
+**The holder order.** Several Agents of a Conversation can hold the same spawn
+record, because a fork copies its spawner's records (§10). Of the holders:
+
+1. the Main thread first;
+2. never the Sub-agent itself;
+3. then a holder that no other holder spawned (one spawned by another holder
+   copied the record from it);
+4. then the first in discovery order.
+
+Step 2 above applies this order to the `Agent` call. A ledger claimed by
+several files is still settled by the Main thread first, then discovery order.
 
 The `isFork`, `parentAgentId`, `description` and `spawnDepth` keys are not read:
 the ledger and the `Agent` call already give the spawn link.
