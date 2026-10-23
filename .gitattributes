@@ -1,0 +1,3 @@
+# Text files check out with LF everywhere, Windows included: the fixtures' byte
+# sizes are stored and pinned (stored-data-equivalence.test.ts).
+* text=auto eol=lf

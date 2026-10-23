@@ -196,7 +196,7 @@ describe("seedEnvironment", { timeout: 30_000 }, () => {
 
     const projectPaths = new Set((await listConversations({ dbPath: seed.dbPath })).map((c) => c.project.path));
     const worktreesOfRepo = path.join(os.homedir(), "dev", "acme-api", ".claude", "worktrees");
-    expect([...projectPaths].filter((p) => p.startsWith(`${worktreesOfRepo}/`)).sort()).toEqual(
+    expect([...projectPaths].filter((p) => p.startsWith(`${worktreesOfRepo}${path.sep}`)).sort()).toEqual(
       [FAMILY_WORKTREE_PROJECT_PATH, WORKTREE_SWITCH_PROJECT_PATH].sort(),
     );
     expect([...projectPaths].filter((p) => p.startsWith(`${SCRATCH_PARENT_PATH}/`))).toHaveLength(3);
