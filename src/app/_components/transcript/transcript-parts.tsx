@@ -2,7 +2,8 @@
 // turns and tool calls, so an agent's name, an error and a cost read the same
 // wherever they appear.
 
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, ArrowRight } from "lucide-react";
+import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { formatCost } from "@/app/_lib/format";
@@ -61,6 +62,31 @@ export function AgentName({ label }: { label: AgentLabel }) {
       {label.name}
       {label.ordinal !== null && <span className="agent-ordinal"> #{label.ordinal}</span>}
     </>
+  );
+}
+
+/**
+ * The "Open transcript" link to a Sub-agent's Transcript: a route link in the
+ * app, a plain in-file link (`agentSectionHref`) in the Conversation export,
+ * which has no router.
+ *
+ * @example <OpenTranscriptLink href={agentSectionHref(spawned.id)} isInFile />
+ */
+export function OpenTranscriptLink({ href, isInFile }: { href: string; isInFile: boolean }) {
+  const content = (
+    <>
+      Open transcript
+      <ArrowRight aria-hidden className="size-3.5" />
+    </>
+  );
+  return isInFile ? (
+    <a className="open-agent" href={href}>
+      {content}
+    </a>
+  ) : (
+    <Link className="open-agent" href={href}>
+      {content}
+    </Link>
   );
 }
 

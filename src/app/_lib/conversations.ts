@@ -144,20 +144,21 @@ export const loadTranscript = cache(
 );
 
 /**
- * Read one conversation's main thread whole — every rendered message, as one
- * page — for the Conversation export. Same request-time gating as
- * {@link loadConversations}; `null` for an unknown session.
+ * Read one Agent's Transcript whole — every rendered message, as one page —
+ * for the Conversation export. `agentId` selects the Agent as in
+ * {@link loadTranscript} (omitted: the main thread). Same request-time gating
+ * as {@link loadConversations}; `null` for an unknown session.
  *
- * @example const view = await loadWholeTranscript(sessionId);
+ * @example const view = await loadWholeTranscript(sessionId, node.id);
  */
-export const loadWholeTranscript = cache(async (id: string) => {
+export const loadWholeTranscript = cache(async (id: string, agentId?: string) => {
   await connection();
-  return getTranscript(id, { page: "all" });
+  return getTranscript(id, { agentId, page: "all" });
 });
 
 /**
- * Read every Tool call body of one conversation's main thread, keyed by row
- * id, in one query — for the Conversation export, which inlines them all. Same
+ * Read every Tool call body of one conversation — every Agent's — keyed by row
+ * id, in one query, for the Conversation export, which inlines them all. Same
  * request-time gating as {@link loadConversations}; empty for an unknown session.
  *
  * @example const bodyByCallId = await loadToolCallBodies(sessionId);

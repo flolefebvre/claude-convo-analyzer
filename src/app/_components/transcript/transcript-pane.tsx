@@ -1,9 +1,10 @@
+import { ArrowLeft } from "lucide-react";
 import { Fragment } from "react";
 
 import { PendingLink } from "@/app/_components/pending-link";
 import { formatCount, formatModelName } from "@/app/_lib/format";
 import { type AgentLabel, agentLineage, effortSummary, type TranscriptExport } from "@/app/_lib/transcript";
-import { agentHref, callAnchorId, messageAnchorId, withListReturn } from "@/app/_lib/transcript-url";
+import { agentHref, agentSectionHref, callAnchorId, messageAnchorId, withListReturn } from "@/app/_lib/transcript-url";
 import type { ConversationFamily } from "@/core/family";
 import type { TranscriptView } from "@/core/read";
 
@@ -24,8 +25,9 @@ import { AgentName, CostFigure, PaneHeader, agentLabelText } from "./transcript-
  * reader dropped meta rows for this agent, and the pager when the transcript
  * spans several pages. On the main agent of a conversation that belongs to a
  * continuation family, a one-line banner names the sitting before and the
- * sitting(s) after. The Conversation export renders the same pane over the
- * whole transcript (`transcriptExport`).
+ * sitting(s) after. The Conversation export renders the same pane over each
+ * Agent's whole transcript (`transcriptExport`); there a Sub-agent's pane opens
+ * with a link back to the Agent call that spawned it.
  */
 export function TranscriptPane({
   view,
@@ -50,11 +52,12 @@ export function TranscriptPane({
   /** The list view this transcript was opened from (`?from=`), carried on
    *  every link to another transcript. */
   listReturn?: string;
-  /** Set in the Conversation export: every Tool call body inlined, every link
-   *  into the app as plain text, no What was sent. */
+  /** Set in the Conversation export: every Tool call body inlined, agent links
+   *  to their sections of the file, every other link into the app as plain
+   *  text, no What was sent. */
   transcriptExport?: TranscriptExport;
 }) {
-  const linksAreText = transcriptExport !== undefined;
+  const agentLinksAreInFile = transcriptExport !== undefined;
   const lineage = agentLineage(view.tree, view.selectedAgentId);
   const selected = lineage[lineage.length - 1] ?? view.tree;
   const labelOf = (id: string): AgentLabel => labels.get(id) ?? { name: "main", ordinal: null };
@@ -95,10 +98,10 @@ export function TranscriptPane({
                 </span>
               ) : (
                 <>
-                  {linksAreText ? (
-                    <span title={agentLabelText(label)}>
+                  {agentLinksAreInFile ? (
+                    <a href={agentSectionHref(node.id)} title={agentLabelText(label)}>
                       <AgentName label={label} />
-                    </span>
+                    </a>
                   ) : (
                     <PendingLink
                       href={withListReturn(agentHref(view.sessionId, i === 0 ? undefined : node.id), listReturn)}
@@ -139,8 +142,23 @@ export function TranscriptPane({
           parent={family.parent}
           continuations={family.children}
           listReturn={listReturn}
-          linksAreText={linksAreText}
+          // Other Conversations are not in the file.
+          linksAreText={transcriptExport !== undefined}
         />
+      )}
+      {agentLinksAreInFile && parent !== null && (
+        <p className="spawn-back">
+          <a
+            href={
+              selected.spawnedByToolUseId === null
+                ? agentSectionHref(parent.id)
+                : `#${callAnchorId(selected.spawnedByToolUseId)}`
+            }
+          >
+            <ArrowLeft aria-hidden className="size-3.5" />
+            Back to the Agent call in {agentLabelText(labelOf(parent.id))}
+          </a>
+        </p>
       )}
 
       <h2 className="sr-only">{agentLabelText(selectedLabel)} transcript</h2>

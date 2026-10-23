@@ -272,6 +272,16 @@ export function effortSummary(
 }
 
 /**
+ * Every Agent of the tree, depth-first in tree order: the main thread, then
+ * each Sub-agent followed by its own — the Conversation export's sections.
+ *
+ * @example agentsInTreeOrder(view.tree).map((node) => node.id) // ["main-id", "a1", "a1-child", "b1"]
+ */
+export function agentsInTreeOrder(tree: TranscriptAgentNode): TranscriptAgentNode[] {
+  return [tree, ...tree.children.flatMap(agentsInTreeOrder)];
+}
+
+/**
  * The ancestor chain (root → selected) for `selectedId` within the agent `tree`,
  * for the transcript pane's breadcrumb. Returns the path inclusive of both ends,
  * or `[]` when the id is not in the tree.

@@ -71,12 +71,17 @@ thinking when Claude Code logged one. Your own prompts stay plain text:
 ![Transcript view](docs/images/transcript-view.png)
 
 "Export as HTML", under the conversation's title in the agent tree, downloads
-the main thread as one self-contained `.html` file, for someone who doesn't have
-the app: every message across all its pages, with its thinking, costs and every
+the whole conversation as one self-contained `.html` file, for someone who
+doesn't have the app. It has the Transcript view's two panes: the agent tree on
+the left, with every agent's cost and the total, and on the right one agent's
+whole transcript (the main thread first) with its thinking, costs and every
 tool call's input and stored result, rendered as the Transcript view renders
-them. It needs no JavaScript and opens offline from disk, making no request:
-its fonts are embedded, and it follows the reader's light or dark OS setting.
-Links back into the app read as plain text. What was sent is left out, since it
+them. A tree node, an Agent call's "Open transcript" and a sub-agent's link back
+to the call that spawned it switch agents within the file; printed, it shows
+every agent one after another. It needs no JavaScript and opens offline from
+disk, making no request: its fonts are embedded, and it follows the reader's
+light or dark OS setting. Links back into the app, such as to other
+conversations, read as plain text. What was sent is left out, since it
 holds your CLAUDE.md files, environment and system prompt, and your home
 directory reads `~` wherever it appears. Nothing else is scrubbed: anything a
 tool printed — secrets included — stays as logged, so read the file before you

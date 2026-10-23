@@ -1,5 +1,4 @@
-import { ArrowRight, ChevronRight } from "lucide-react";
-import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 import type { ComponentProps } from "react";
 
 import { loadToolCallBody } from "@/app/_lib/conversations";
@@ -11,10 +10,10 @@ import {
   toolCallSnippet,
   type TranscriptExport,
 } from "@/app/_lib/transcript";
-import { agentHref, callAnchorId, withListReturn } from "@/app/_lib/transcript-url";
+import { agentHref, agentSectionHref, callAnchorId, withListReturn } from "@/app/_lib/transcript-url";
 import type { TranscriptToolCall, TranscriptView } from "@/core/read";
 
-import { AgentName, CostFigure, ErrorBadge } from "./transcript-parts";
+import { AgentName, CostFigure, ErrorBadge, OpenTranscriptLink } from "./transcript-parts";
 import { ToolCallDisclosure } from "./transcript-tool-call-body";
 import { IoBlockFrame, type IoBlockProps, ToolCallBodyBlocks } from "./transcript-tool-call-io";
 
@@ -29,7 +28,8 @@ const KIND_LABEL = { agent: "Agent", skill: "Skill", tool: "Tool" } as const;
  * share the summary shell but differ in the badge: an Agent call correlates to
  * the sub-agent it spawned to show that agent's name (as the tree shows it),
  * exact cost and an "Open transcript" deep-link. In the Conversation export the
- * body is inlined from `transcriptExport` and the deep-link is left out.
+ * body is inlined from `transcriptExport` and the deep-link points at the
+ * Sub-agent's section of the file.
  */
 export function TranscriptToolCallRow({
   call,
@@ -94,12 +94,15 @@ export function TranscriptToolCallRow({
           </summary>
         }
         footer={
-          spawned &&
-          transcriptExport === undefined && (
-            <Link className="open-agent" href={withListReturn(agentHref(view.sessionId, spawned.id), listReturn)}>
-              Open transcript
-              <ArrowRight aria-hidden className="size-3.5" />
-            </Link>
+          spawned && (
+            <OpenTranscriptLink
+              href={
+                transcriptExport === undefined
+                  ? withListReturn(agentHref(view.sessionId, spawned.id), listReturn)
+                  : agentSectionHref(spawned.id)
+              }
+              isInFile={transcriptExport !== undefined}
+            />
           )
         }
       />

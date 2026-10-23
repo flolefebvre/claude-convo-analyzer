@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   agentHref,
+  agentSectionHref,
+  agentSectionId,
   messageAnchorId,
   messageHref,
   resolveAgent,
@@ -12,6 +14,18 @@ import {
   transcriptPageHref,
   withListReturn,
 } from "@/app/_lib/transcript-url";
+
+describe("agentSectionId / agentSectionHref", () => {
+  it("names an Agent's section of the Conversation export by its tree key", () => {
+    expect(agentSectionId("a7f3")).toBe("agent-a7f3");
+    expect(agentSectionHref("a7f3")).toBe("#agent-a7f3");
+  });
+
+  it("encodes a tree key with reserved characters in the href only", () => {
+    expect(agentSectionId("a b#c")).toBe("agent-a b#c");
+    expect(agentSectionHref("a b#c")).toBe("#agent-a%20b%23c");
+  });
+});
 
 describe("transcriptPageHref", () => {
   it("sets the page on the agent's link", () => {

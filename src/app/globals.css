@@ -381,6 +381,48 @@ body:has([data-link-pending]) #main {
     transparent calc(var(--tview-tree) + 1px)
   );
 }
+/* The Conversation export (ADR-0008): one section per Agent, each a whole
+   Transcript view of that Agent. With no script in the file, the fragment picks
+   the one shown: the section it targets, or the one holding its target (a
+   `#call-…`/`#msg-…` anchor); with none, the first section — the main thread. */
+.agent-sections {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+.agent-sections > section {
+  display: none;
+}
+.agent-sections > section:is(:target, :has(:target)),
+.agent-sections:not(:has(:target)) > section:first-child {
+  display: flex;
+  flex: 1;
+}
+/* On paper, every Agent's section, each from a new page, the tree only once
+   (the first section's), and nothing sticky. */
+@media print {
+  .agent-sections > section {
+    display: flex;
+  }
+  .agent-sections > section + section {
+    break-before: page;
+  }
+  .agent-sections > section + section .tree {
+    display: none;
+  }
+  .agent-sections > section + section .tview {
+    background: none;
+  }
+  .agent-sections .tview .tree {
+    position: static;
+    max-height: none;
+    overflow: visible;
+    animation: none;
+  }
+  .agent-sections .tview .pane-header {
+    position: static;
+  }
+}
 /* Fragment jumps (`#msg-…`, `#call-…`) and focus scrolls stop below the
    sticky pane header, not under it. */
 html:has(.tview) {
@@ -768,6 +810,29 @@ html:has(.tview) {
 }
 .tview .family-banner a:hover {
   text-decoration-color: currentColor;
+}
+
+/* A Sub-agent's way back to the Agent call that spawned it, where the main
+   thread's continuation banner sits (Conversation export only). */
+.tview .spawn-back {
+  box-sizing: content-box;
+  max-width: var(--tview-col);
+  margin: 0 auto;
+  padding: 14px var(--tview-gutter) 0;
+  font-size: var(--text-ui);
+}
+.tview .spawn-back a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted-foreground);
+  text-decoration: none;
+  border-radius: 2px;
+}
+.tview .spawn-back a:hover {
+  color: var(--foreground);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .tview .transcript {

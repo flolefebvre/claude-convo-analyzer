@@ -51,12 +51,12 @@ export function TranscriptMessageRow({
   /** The list view this transcript was opened from (`?from=`), carried on
    *  every link to another transcript. */
   listReturn?: string;
-  /** Set in the Conversation export: Tool call bodies inlined, links as plain
-   *  text, and no What was sent. */
+  /** Set in the Conversation export: Tool call bodies inlined, agent links to
+   *  their sections of the file, and no What was sent. */
   transcriptExport?: TranscriptExport;
 }) {
   const time = formatClock(message.timestamp);
-  const linksAreText = transcriptExport !== undefined;
+  const agentLinksAreInFile = transcriptExport !== undefined;
   // A search result links here as `?msg=<uuid>#msg-<uuid>`: the query
   // highlights the row server-side (a fragment never reaches the server), and
   // the pane's `ScrollToAnchor` scrolls to the id. Same idiom as `?call=`.
@@ -72,7 +72,7 @@ export function TranscriptMessageRow({
         rootAgentId={view.tree.id}
         labels={labels}
         listReturn={listReturn}
-        linksAreText={linksAreText}
+        agentLinksAreInFile={agentLinksAreInFile}
       />
     );
   }
@@ -83,8 +83,9 @@ export function TranscriptMessageRow({
         time={time}
         anchor={anchor}
         sessionId={view.sessionId}
+        labels={labels}
         listReturn={listReturn}
-        linksAreText={linksAreText}
+        agentLinksAreInFile={agentLinksAreInFile}
       />
     );
   }

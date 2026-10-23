@@ -2,7 +2,7 @@ import { ChevronRight } from "lucide-react";
 
 import { PendingLink } from "@/app/_components/pending-link";
 import type { AgentLabel } from "@/app/_lib/transcript";
-import { agentHref, withListReturn } from "@/app/_lib/transcript-url";
+import { agentHref, agentSectionHref, withListReturn } from "@/app/_lib/transcript-url";
 import type { TranscriptMessage } from "@/core/read";
 
 import { AgentName, type MessageAnchor, MidTurnBadge, RowHead, agentLabelText, labelledBy } from "./transcript-parts";
@@ -23,7 +23,7 @@ export function InterAgentMessageRow({
   rootAgentId,
   labels,
   listReturn,
-  linksAreText = false,
+  agentLinksAreInFile = false,
 }: {
   message: TranscriptMessage;
   time: string;
@@ -35,8 +35,8 @@ export function InterAgentMessageRow({
   labels: Map<string, AgentLabel>;
   /** The list view this transcript was opened from (`?from=`), carried on links. */
   listReturn?: string;
-  /** True in the Conversation export: the sender is named as plain text. */
-  linksAreText?: boolean;
+  /** True in the Conversation export: the sender links to its section of the file. */
+  agentLinksAreInFile?: boolean;
 }) {
   const origin = message.origin;
   const className = ["prompt", "is-agent", anchor.anchored && "anchored"].filter(Boolean).join(" ");
@@ -54,7 +54,7 @@ export function InterAgentMessageRow({
               rootAgentId={rootAgentId}
               labels={labels}
               listReturn={listReturn}
-              linksAreText={linksAreText}
+              agentLinksAreInFile={agentLinksAreInFile}
             />
           </>
         }
@@ -88,19 +88,25 @@ function Sender({
   rootAgentId,
   labels,
   listReturn,
-  linksAreText,
+  agentLinksAreInFile,
 }: {
   message: TranscriptMessage;
   sessionId: string;
   rootAgentId: string;
   labels: Map<string, AgentLabel>;
   listReturn: string | undefined;
-  linksAreText: boolean;
+  agentLinksAreInFile: boolean;
 }) {
   const origin = message.origin;
   const agentId = origin?.senderAgentId ?? null;
   const label = agentId === null ? undefined : labels.get(agentId);
-  if (label !== undefined && linksAreText) return <AgentName label={label} />;
+  if (agentId !== null && label !== undefined && agentLinksAreInFile) {
+    return (
+      <a className="sender-link" href={agentSectionHref(agentId)} title={agentLabelText(label)}>
+        <AgentName label={label} />
+      </a>
+    );
+  }
   if (agentId !== null && label !== undefined) {
     return (
       <PendingLink

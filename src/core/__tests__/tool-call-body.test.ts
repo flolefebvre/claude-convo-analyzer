@@ -97,7 +97,7 @@ describe("getToolCallBodies", () => {
     logsRoot: path.join(import.meta.dirname, "fixtures", "logs"),
   });
 
-  it("reads every Tool call body of the main thread, keyed by row id", async () => {
+  it("reads every Tool call body of a Conversation, keyed by row id", async () => {
     const view = await getTranscript("sess-toolbody", { dbPath: toolBodyDb.dbPath, page: "all" });
     const callIds = view?.messages.flatMap((m) => m.toolCalls.map((c) => c.id)) ?? [];
     expect(callIds.length).toBeGreaterThan(1);
@@ -110,15 +110,20 @@ describe("getToolCallBodies", () => {
     }
   });
 
-  it("reads only the selected agent's Tool calls", async () => {
-    const main = await getToolCallBodies("sess-sub", { dbPath: subAgentDb.dbPath });
-    const sub = await getToolCallBodies("sess-sub", { dbPath: subAgentDb.dbPath, agentId: "sub1" });
+  it("reads the Tool call bodies of every Agent, Sub-agents included", async () => {
+    const bodyByCallId = await getToolCallBodies("sess-sub", { dbPath: subAgentDb.dbPath });
 
-    expect(sub.size).toBe(1);
-    const view = await getTranscript("sess-sub", { dbPath: subAgentDb.dbPath, agentId: "sub1" });
-    const subCall = view?.messages[1]?.toolCalls[0];
-    expect(sub.has(subCall?.id ?? -1)).toBe(true);
-    expect([...main.keys()]).not.toContain(subCall?.id);
+    const callIdsOf = async (agentId?: string) => {
+      const view = await getTranscript("sess-sub", { dbPath: subAgentDb.dbPath, agentId, page: "all" });
+      return view?.messages.flatMap((m) => m.toolCalls.map((c) => c.id)) ?? [];
+    };
+    const mainCallIds = await callIdsOf();
+    const subCallIds = await callIdsOf("sub1");
+    expect(mainCallIds.length).toBeGreaterThan(0);
+    expect(subCallIds.length).toBeGreaterThan(0);
+    expect([...bodyByCallId.keys()].sort((a, b) => a - b)).toEqual(
+      [...mainCallIds, ...subCallIds].sort((a, b) => a - b),
+    );
   });
 
   it("is empty for an unknown session", async () => {

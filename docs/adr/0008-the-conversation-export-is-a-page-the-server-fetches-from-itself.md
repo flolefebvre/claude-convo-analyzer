@@ -19,6 +19,13 @@ the CSS is Tailwind, compiled only by Next's pipeline.
   script: its dark theme follows the OS color scheme). It sets `instant = false` and awaits its data outside any
   `<Suspense>`, so the whole Conversation is in the first HTML response instead
   of streamed chunks that only a script would put in place.
+- **One section per Agent, switched by the fragment.** Each Agent's section
+  (`#agent-<tree key>`, depth-first in tree order, the main thread first) is
+  the Transcript view as it renders that Agent: its own copy of the agent tree,
+  its node marked current, and its whole Transcript. The file's links between
+  Agents are plain `#` links, and the CSS shows the section that is the
+  `:target` or `:has(:target)`, or the first one when nothing is targeted; print
+  shows them all. No script picks the Agent, and no per-Agent CSS is generated.
 - **The download is a route handler that fetches that page from its own
   server**, at the request's origin, then writes the home directory as `~`,
   inlines its stylesheets with the fonts they reference as `data:` URLs, and

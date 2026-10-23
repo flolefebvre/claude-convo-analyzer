@@ -677,29 +677,20 @@ function toolCallBodyOf(row: Prisma.ToolCallGetPayload<{ select: typeof TOOL_CAL
 }
 
 /**
- * Every Tool call body of one agent's transcript (the main thread unless
- * `opts.agentId` names another, as in {@link getTranscript}), keyed by row id —
- * read in one query by the agent, for a view that inlines them all. Empty for
- * an unknown session.
+ * Every Tool call body of one Conversation — every Agent's, the main thread and
+ * its Sub-agents at any depth — keyed by row id, read in one query, for a view
+ * that inlines them all. Empty for an unknown session.
  *
- * @example const bodyByCallId = await getToolCallBodies(view.sessionId, { agentId: view.selectedAgentId });
+ * @example const bodyByCallId = await getToolCallBodies(view.sessionId);
  */
 export async function getToolCallBodies(
   sessionId: string,
-  opts: { agentId?: string; dbPath?: string } = {},
+  opts: DetailOptions = {},
 ): Promise<Map<number, ToolCallBody>> {
   const { prisma, owned } = readClient(opts.dbPath);
   try {
-    const agents = await prisma.agent.findMany({
-      where: { conversation: { sessionId } },
-      select: { id: true, parentAgentId: true, externalAgentId: true },
-    });
-    const mainAgent = agents.find((a) => a.parentAgentId === null) ?? agents[0];
-    const selected =
-      (opts.agentId === undefined ? undefined : agents.find((a) => agentKey(a) === opts.agentId)) ?? mainAgent;
-    if (selected === undefined) return new Map();
     const rows = await prisma.toolCall.findMany({
-      where: { agentId: selected.id },
+      where: { agent: { conversation: { sessionId } } },
       select: { id: true, ...TOOL_CALL_BODY_COLUMNS },
     });
     return new Map(rows.map(({ id, ...row }) => [id, toolCallBodyOf(row)]));
