@@ -238,9 +238,9 @@ async function withReadClient<Result>(
  * from the logs (docs/conversation-log-format.md §9), against the previous
  * API request of the same Agent: the latest earlier one of its file a Turn
  * answered, so an unanswered request, retried since, is skipped; without one,
- * the request of the latest earlier Turn of the Agent that has one, in the
- * transcript order, whichever file holds it (a resumed session's first own
- * request against its copied history's last). Its messages
+ * the request in another file of the latest earlier Turn of the Agent that has
+ * one, in the transcript order (a resumed session's first own request against
+ * its copied history's last). Its messages
  * are rebuilt from the database, a message it could not rebuild kept as null
  * at its place and counted. Null for an unknown row.
  *
@@ -418,8 +418,8 @@ function withApiRequestRow<Result>(
 /**
  * The `api_request` row, with its system prompt and tool set, of the latest
  * Turn of `row`'s Agent that comes before `row`'s own Turn in the transcript
- * order and has one — in whichever file it lives; null when `row` has no Turn
- * of its Agent, or no earlier Turn has one.
+ * order and has one in another file; null when `row` has no Turn of its
+ * Agent, or no earlier Turn has one.
  */
 async function apiRequestOfPreviousTurn(prisma: ReadPrisma, row: { id: number; agentId: number }) {
   const turn = await prisma.message.findFirst({
@@ -429,7 +429,8 @@ async function apiRequestOfPreviousTurn(prisma: ReadPrisma, row: { id: number; a
   });
   if (turn === null) return null;
   const previousTurn = await prisma.message.findFirst({
-    where: { AND: [{ agentId: row.agentId, apiRequestId: { not: null } }, orderedBefore(turn)] },
+    // A request of the row's own Agent found here is later in its file than the row.
+    where: { AND: [{ agentId: row.agentId, apiRequest: { agentId: { not: row.agentId } } }, orderedBefore(turn)] },
     orderBy: REVERSE_TRANSCRIPT_ORDER,
     select: { apiRequest: { include: SYSTEM_PROMPT_AND_TOOL_SET_INCLUDE } },
   });

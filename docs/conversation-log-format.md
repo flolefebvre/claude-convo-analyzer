@@ -511,9 +511,11 @@ What was sent for a Turn compares its request with the latest earlier request
 of the same file that a Turn answered, so an unanswered request retried since
 is never the baseline. For a request found in another file, that is the other
 file's. When the file holds no such request — the first request of a resumed
-session's own file — the baseline is the request of the latest earlier Turn of
-the same Agent, in transcript order, that has one, whichever file holds it: the
-copied history's last, so the comparison shows what changed on resume. Its new
+session's own file — the baseline is the request in another file of the latest
+earlier Turn of the same Agent, in transcript order, that has one: the copied
+history's last, so the comparison shows what changed on resume. A request of
+the file itself found that way is later than this one (its Turn logged first),
+so none of them is ever the baseline. Its new
 messages start after the longest prefix of message hashes the two share, each
 side's rebuilt from its own file; a position whose hash is unknown never
 matches.
