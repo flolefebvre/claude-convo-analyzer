@@ -7,6 +7,7 @@ import {
   prettyToolText,
   agentLabels,
   agentLineage,
+  agentsInTreeOrder,
   classifyToolCall,
   effortSummary,
   findSpawnedNode,
@@ -260,6 +261,21 @@ describe("agentLineage", () => {
 
   it("returns an empty chain for an unknown id", () => {
     expect(agentLineage(tree, "nope")).toEqual([]);
+  });
+});
+
+describe("agentsInTreeOrder", () => {
+  it("lists every Agent depth-first, the main thread first and Sub-agents nested to any depth", () => {
+    const tree = agentNode("1", "", [
+      agentNode("a1", "general-purpose", [agentNode("a2", "Explore", [agentNode("a3", "Plan")])]),
+      agentNode("b1", "Explore"),
+    ]);
+
+    expect(agentsInTreeOrder(tree).map((n) => n.id)).toEqual(["1", "a1", "a2", "a3", "b1"]);
+  });
+
+  it("lists a solo Conversation's main thread alone", () => {
+    expect(agentsInTreeOrder(agentNode("1", "")).map((n) => n.id)).toEqual(["1"]);
   });
 });
 

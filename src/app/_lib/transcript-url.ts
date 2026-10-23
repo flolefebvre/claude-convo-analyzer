@@ -67,6 +67,26 @@ export function callAnchorId(toolUseId: string): string {
 }
 
 /**
+ * The element id of one Agent's section in the Conversation export, from its
+ * tree key (`TranscriptAgentNode.id`).
+ *
+ * @example agentSectionId(node.id) // "agent-a7f3"
+ */
+export function agentSectionId(agentId: string): string {
+  return `agent-${agentId}`;
+}
+
+/**
+ * The in-file link to one Agent's section of the Conversation export — what
+ * the export's agent links point at, with no router in the file.
+ *
+ * @example agentSectionHref(node.id) // "#agent-a7f3"
+ */
+export function agentSectionHref(agentId: string): string {
+  return `#${encodeURIComponent(agentSectionId(agentId))}`;
+}
+
+/**
  * Resolve the anchored message from the raw `?msg=` search param — the message
  * `uuid` a search result points at. Same idiom as {@link resolveCall}: the query
  * param highlights the message server-side, the pane's `ScrollToAnchor` scrolls
