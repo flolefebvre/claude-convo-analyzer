@@ -7,13 +7,15 @@
 // A mutation with nothing to compose calls the core directly (this is a server
 // module); one composed over app state goes through its `_lib` seam. A
 // "use server" module's exports may be imported and called from a "use client"
-// component, but the client never imports core itself (ADR-0002).
+// component, but the client never imports core itself (ADR-0002) — save the
+// import-free path-shape rules of `@/core/project-path`.
 
 import { actionPipe } from "@flefebvre/next-pipe/pipes";
 import { error, success } from "@flefebvre/next-pipe/server";
 import { z } from "zod";
 
 import { favoriteFolder, moveFavoriteFolder, unfavoriteFolder } from "@/core/favorites";
+import { isAbsolutePath } from "@/core/project-path";
 import { getLive, switchLive } from "@/app/_lib/live";
 import { getPublishedRefreshRunner, startOrJoinRefresh } from "@/app/_lib/refresh-events";
 
@@ -56,7 +58,7 @@ export const setLive = actionPipe(liveSwitchSchema).handle(async ({ input }) => 
 
 /** What `setFolderFavorite` reads: the Folder's absolute path, and whether it is to be a favorite. */
 const folderFavoriteSchema = z.object({
-  path: z.string().startsWith("/"),
+  path: z.string().refine(isAbsolutePath),
   isFavorite: z.boolean(),
 });
 
@@ -81,8 +83,8 @@ export const setFolderFavorite = actionPipe(folderFavoriteSchema).handle(async (
 
 /** What `moveFavorite` reads: the favorite's absolute path, and the path of the favorite it goes before, or null for last. */
 const favoriteMoveSchema = z.object({
-  path: z.string().startsWith("/"),
-  before: z.string().startsWith("/").nullable(),
+  path: z.string().refine(isAbsolutePath),
+  before: z.string().refine(isAbsolutePath).nullable(),
 });
 
 /**

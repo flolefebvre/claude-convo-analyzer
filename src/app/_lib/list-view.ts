@@ -22,7 +22,7 @@
 import type { Tokens } from "@/core/cost";
 import type { ConversationSummary } from "@/core/read";
 
-import { type FolderScope, isProjectInFolderScope } from "@/app/_lib/folder-scope";
+import { type FolderScope, isProjectInFolderScope } from "@/core/project-path";
 import { deriveFolderTree, findFolderNode, type FolderNode } from "@/app/_lib/folder-tree";
 import { deriveFolders, type FolderEntry } from "@/app/_lib/folders";
 import { FIRST_PAGE } from "@/app/_lib/search-params";

@@ -1,14 +1,13 @@
 // Render-ready shaping for the continuation-family section of the expanded
 // detail panel (issue #46). Like its sibling `_lib` modules this is pure —
-// React-free, I/O-free, only type-only core imports (ADR-0002) — so the link
+// React-free, I/O-free, its core imports type-only or import-free (ADR-0002) — so the link
 // composition and the labeling rules unit-test in the node environment and the
 // panel component stays a thin renderer.
 
 import type { ConversationFamily } from "@/core/family";
 
-import { isProjectInFolderScope } from "@/app/_lib/folder-scope";
 import { formatDate } from "@/app/_lib/format";
-import { friendlyFolderName } from "@/app/_lib/folders";
+import { friendlyName, isProjectInFolderScope } from "@/core/project-path";
 import { expandHref, type ListLinkContext } from "@/app/_lib/sort";
 
 /** One family member, ready to render as a row of the panel's tree. */
@@ -72,7 +71,7 @@ export function familyView(family: ConversationFamily, ctx: FamilyLinkContext, n
         dateAbsolute: date.absolute,
         costUsd: member.costUsd,
         unpriced: member.unpriced,
-        projectLabel: member.project.path === currentProjectPath ? null : friendlyFolderName(member.project.path),
+        projectLabel: member.project.path === currentProjectPath ? null : friendlyName(member.project.path),
         href: expandHref(
           member.id,
           // Never a toggle: clicking a member always EXPANDS it, even the one

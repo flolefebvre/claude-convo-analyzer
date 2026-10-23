@@ -16,7 +16,8 @@ import type { ToolStat } from "@/core/tool-stats";
 import type { RangeKey } from "@/app/_lib/range";
 import type { SortDir } from "@/app/_lib/sort";
 
-import { type FolderScope, writeFolderScope } from "@/app/_lib/folder-scope";
+import { writeFolderScope } from "@/app/_lib/folder-scope";
+import type { FolderScope } from "@/core/project-path";
 import { firstParam } from "@/app/_lib/search-params";
 
 /** Per-column spec: the comparable value and the direction a fresh click starts at. */

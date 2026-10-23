@@ -12,6 +12,7 @@ import {
   friendlyName,
   isAbsolutePath,
   isPathAtOrBelow,
+  isProjectInFolderScope,
   pathSegments,
   segmentsBelow,
   separatorOf,
@@ -175,5 +176,33 @@ describe("Path shape", () => {
     expect(isAbsolutePath("C:")).toBe(false);
     expect(isAbsolutePath("repo\\src")).toBe(false);
     expect(isAbsolutePath("")).toBe(false);
+  });
+});
+
+describe("isProjectInFolderScope", () => {
+  it("spans the Folder's own path and every path below it", () => {
+    expect(isProjectInFolderScope("/a/b", { folder: "/a/b" })).toBe(true);
+    expect(isProjectInFolderScope("/a/b/c/d", { folder: "/a/b" })).toBe(true);
+    expect(isProjectInFolderScope("C:\\Users\\me\\repo", { folder: "C:\\Users\\me" })).toBe(true);
+    expect(isProjectInFolderScope("C:\\Users\\me\\repo", { folder: "C:\\" })).toBe(true);
+  });
+
+  it("leaves out a sibling that shares the prefix without a separator boundary", () => {
+    expect(isProjectInFolderScope("/a/bc", { folder: "/a/b" })).toBe(false);
+    expect(isProjectInFolderScope("C:\\Users\\meta", { folder: "C:\\Users\\me" })).toBe(false);
+  });
+
+  it("matches paths exactly, case included", () => {
+    expect(isProjectInFolderScope("C:\\users\\me\\repo", { folder: "C:\\Users\\me" })).toBe(false);
+  });
+
+  it("narrows to the Folder's own path for this folder", () => {
+    expect(isProjectInFolderScope("/a/b", { folder: "/a/b", thisFolderOnly: true })).toBe(true);
+    expect(isProjectInFolderScope("/a/b/c", { folder: "/a/b", thisFolderOnly: true })).toBe(false);
+  });
+
+  it("spans every Project when unscoped", () => {
+    expect(isProjectInFolderScope("/x", {})).toBe(true);
+    expect(isProjectInFolderScope("C:\\x", { folder: "" })).toBe(true);
   });
 });

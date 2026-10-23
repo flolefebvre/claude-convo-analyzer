@@ -26,7 +26,8 @@ import { CurrentRefreshButton } from "@/app/_components/current-refresh-button";
 import { Stat, StatSkeleton, StatStrip } from "@/app/_components/stat-strip";
 import { TrendsChart } from "@/app/_components/trends-chart";
 import { loadDailySpend } from "@/app/_lib/conversations";
-import { type FolderScope, resolveFolderScope } from "@/app/_lib/folder-scope";
+import { resolveFolderScope } from "@/app/_lib/folder-scope";
+import type { FolderScope } from "@/core/project-path";
 import {
   formatCompactTokens,
   formatCost,
