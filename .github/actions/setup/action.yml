@@ -14,7 +14,7 @@ runs:
         node-version: 24
         cache: pnpm
 
-    # Also builds better-sqlite3 and generates the Prisma client (postinstall).
+    # Also generates the Prisma client (postinstall).
     - name: Install dependencies
       shell: bash
       run: pnpm install --frozen-lockfile

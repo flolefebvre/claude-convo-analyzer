@@ -1,11 +1,16 @@
 allowBuilds:
   sharp: true
   unrs-resolver: true
-  better-sqlite3: true
   "@prisma/client": true
   "@prisma/engines": true
   prisma: true
   esbuild: true
+  # Prebuilt, with gypfile false, but it still ships binding.gyp, from which pnpm infers a node-gyp build.
+  better-sqlite3: false
+# @prisma/adapter-better-sqlite3 declares better-sqlite3 ^12, and the package build ships
+# one version of each package: remove this once the adapter accepts 13.
+overrides:
+  better-sqlite3: ^13.0.3
 # Published by this project's author, sometimes for a ticket the same day: install the
 # latest rather than fall back to an older version under the 1-day minimum release age.
 minimumReleaseAgeExclude:
