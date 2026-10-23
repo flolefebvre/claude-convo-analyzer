@@ -105,7 +105,9 @@ An autonomous Claude execution within a Conversation. There are two kinds:
   file** at `<sessionId>/subagents/agent-<agentId>.jsonl`, with the same
   per-turn `assistant` Records as a Main thread (marked `isSidechain: true`) —
   including, when it spawns, its own `Agent` calls and spawn ledger, which is
-  where a grandchild's parentage is recorded. The spawning `Agent` call also
+  where a grandchild's parentage is recorded. Its type and spawner come from
+  that spawn ledger, else from the `agent-<agentId>.meta.json` Claude Code
+  writes beside its transcript (log-format §4). The spawning `Agent` call also
   mirrors the sub-agent's _aggregated_ token ledger into its tool result
   (`toolUseResult`) — the same tokens as the transcript, so the transcript is
   the source of truth and the aggregate is only a cross-check. A sub-agent may
