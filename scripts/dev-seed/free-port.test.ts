@@ -5,12 +5,12 @@ import { findFreePort } from "./free-port";
 
 const servers: Server[] = [];
 
-/** Listen on `port` (0: OS-assigned, so tests never collide) on all interfaces and return it. */
-async function occupyPort(port = 0): Promise<number> {
+/** Listen on `port` (0: OS-assigned, so tests never collide) on `host`, else all interfaces, and return it. */
+async function occupyPort(port = 0, host?: string): Promise<number> {
   const server = createServer();
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
-    server.listen(port, () => resolve());
+    server.listen(port, host, () => resolve());
   });
   servers.push(server);
   const address = server.address();
@@ -39,6 +39,14 @@ describe("findFreePort", () => {
 
     expect(found).toBeGreaterThan(taken);
     await expect(occupyPort(found)).resolves.toBe(found);
+  });
+
+  // Only discriminates on macOS, where a wildcard bind succeeds beside a 127.0.0.1 listener;
+  // on Linux the wildcard bind already fails.
+  it("skips a port another process is listening on at 127.0.0.1 only", async () => {
+    const taken = await occupyPort(0, "127.0.0.1");
+
+    expect(await findFreePort(taken)).toBeGreaterThan(taken);
   });
 
   it("throws once it passes 65535 without finding a free port", async () => {

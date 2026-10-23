@@ -2,7 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 import { E2E_PORT } from "./e2e/ports";
 
-const baseURL = `http://localhost:${E2E_PORT}`;
+const baseURL = `http://127.0.0.1:${E2E_PORT}`;
 
 // The specs with side effects on state every open page shares, by their exact paths: Live switched on.
 const SHARED_STATE_SPECS = [/[\\/]e2e[\\/]active-now\.spec\.ts$/];

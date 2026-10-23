@@ -37,7 +37,7 @@ test.describe("Conversation export (/api/conversation/[sessionId]/export)", () =
     expect(html).not.toMatch(/<script/i);
     expect(html).not.toMatch(/<link/i);
     expect(html).toMatch(/<style>/);
-    expect(html).not.toMatch(/https?:\/\/localhost/);
+    expect(html).not.toMatch(/https?:\/\/(localhost|127\.0\.0\.1)/);
     // Every Message across its three Transcript pages, and no pager.
     expect(html.match(/<article\b/g)).toHaveLength(LONG_MESSAGE_COUNT);
     expect(html).toContain(LONG_PAGE_TWO_TEXT);

@@ -127,7 +127,8 @@ pnpm build
 pnpm start
 ```
 
-Then open [http://localhost:3000](http://localhost:3000).
+Then open [http://127.0.0.1:3000](http://127.0.0.1:3000) (loopback only, never
+on your network; `pnpm dev` binds the same way).
 
 On first launch the SQLite database is created and migrated automatically — no
 manual database setup — and the first Refresh, which ingests your conversation
@@ -291,7 +292,7 @@ one step:
 pnpm dev:seed
 ```
 
-It prints `Seeded app: http://localhost:<port>` — the first free port from
+It prints `Seeded app: http://127.0.0.1:<port>` — the first free port from
 3001, or `PORT` when set — so several checkouts can each run their own. Refresh
 in that app re-reads only the seeded logs, and `CCA_SETTINGS_PATH` points at
 `data/seed/settings.json`, so

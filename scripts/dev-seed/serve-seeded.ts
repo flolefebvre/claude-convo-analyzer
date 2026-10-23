@@ -6,7 +6,10 @@
 //
 // The port is `PORT` when set, else the first free one from 3001, so several
 // worktrees can each serve their own seeded app at once. The URL is printed as
-// one `Seeded app: http://localhost:<port>` line before the last command starts.
+// one `Seeded app: http://127.0.0.1:<port>` line before the last command starts.
+// The server commands bind `LOOPBACK_HOST` only, as the packaged launcher does,
+// and the URL names that address rather than `localhost`, which may resolve to
+// `::1` first.
 
 import { type ChildProcess, spawn } from "node:child_process";
 import { createRequire } from "node:module";
@@ -16,6 +19,9 @@ import { seedEnvironment } from "../seed/environment";
 import { findFreePort } from "./free-port";
 
 const FIRST_PORT = 3001;
+
+/** The only address a seeded server binds: IPv4 loopback, never the network. */
+export const LOOPBACK_HOST = "127.0.0.1";
 
 /** `PORT` as a valid TCP port, or `undefined` when unset or empty. */
 function explicitPort(): number | undefined {
@@ -42,7 +48,7 @@ function runNext(args: string[], env: Record<string, string>, onSpawn: (child: C
  * fails ends the run with its code.
  *
  * @example
- * serveSeeded({ commands: (port) => [["dev", "-p", String(port)]] });
+ * serveSeeded({ commands: (port) => [["dev", "-H", LOOPBACK_HOST, "-p", String(port)]] });
  */
 export function serveSeeded(opts: {
   /** Each command's `next` arguments, given the chosen port. */
@@ -80,7 +86,7 @@ async function main({ commands, env = {} }: Parameters<typeof serveSeeded>[0]): 
   const all = commands(port);
   for (const [i, args] of all.entries()) {
     const isServer = i === all.length - 1;
-    if (isServer) console.log(`Seeded app: http://localhost:${port}`);
+    if (isServer) console.log(`Seeded app: http://${LOOPBACK_HOST}:${port}`);
     const code = await runNext(args, seededEnv, (child) => (current = child));
     if (isServer || code !== 0) process.exit(code);
   }

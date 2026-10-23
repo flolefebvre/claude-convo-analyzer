@@ -6,11 +6,14 @@ accepted. The Refresh paragraph and the "SSE deferred" consequence are
 superseded by ADR-0004. The Persistence paragraph is amended by ADR-0005: the
 Refresh writes through bare better-sqlite3, not Prisma. The database file's
 location is amended in place: it lives in the home directory. So is how
-migrations apply: under the write lock, safe for concurrent openers.
+migrations apply: under the write lock, safe for concurrent openers. And so is
+where it listens: loopback only.
 
 ## Context
 
-The app is a single-user, fully local tool. Two constraints shaped the
+The app is a single-user, fully local tool. _Amended: the app is only ever
+bound to loopback (127.0.0.1), by every script that serves it and by the
+launcher, never to the network._ Two constraints shaped the
 architecture: the "find conversations + parse + store" logic must be **isolated
 from the UI** so it can be reused, and viewing must not re-parse the logs every
 time (an explicit goal). The user also asked for **Prisma**.
