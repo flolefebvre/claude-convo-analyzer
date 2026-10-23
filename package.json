@@ -16,7 +16,7 @@
     "dev:seed": "tsx scripts/dev-seed.ts",
     "e2e:server": "tsx scripts/e2e-server.ts",
     "check": "tsx scripts/gate.ts format:check+lint+duplication+typecheck,test:changed",
-    "gate": "tsx scripts/gate.ts format:check+lint+duplication+typecheck,test+build,e2e",
+    "gate": "tsx scripts/gate.ts format:check+lint+duplication+typecheck,test+build,e2e,package,smoke",
     "build": "tsx scripts/build.ts",
     "package": "tsx scripts/package.ts",
     "smoke": "tsx scripts/smoke.ts",
