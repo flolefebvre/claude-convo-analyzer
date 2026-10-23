@@ -16,6 +16,7 @@ function summary(partial: Partial<RefreshSummary> = {}): RefreshSummary {
     conversationsSkipped: partial.conversationsSkipped ?? 0,
     conversationsDeleted: partial.conversationsDeleted ?? 0,
     malformedLinesSkipped: partial.malformedLinesSkipped ?? 0,
+    logFilesParsed: partial.logFilesParsed ?? 0,
     duplicateSessionsSkipped: partial.duplicateSessionsSkipped ?? [],
     vanishedLogFilesSkipped: partial.vanishedLogFilesSkipped ?? 0,
     durationMs: partial.durationMs ?? 0,

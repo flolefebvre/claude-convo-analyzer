@@ -34,6 +34,21 @@ function prepareInsert<Field extends string>(
   return (row) => Number(statement.run(fields.map((field) => toSqlValue(row[field]))).lastInsertRowid);
 }
 
+/**
+ * Prepare one UPDATE of every column of a `table` row, its columns given as
+ * `{ field: "column" }`, and return a function that rewrites the row of id `id`.
+ */
+function prepareUpdate<Field extends string>(
+  db: Database.Database,
+  table: string,
+  columnByField: Record<Field, string>,
+): (id: number, row: InsertRow<Field>) => void {
+  const fields = Object.keys(columnByField) as Field[];
+  const assignments = fields.map((field) => `"${columnByField[field]}" = ?`).join(", ");
+  const statement = db.prepare(`UPDATE "${table}" SET ${assignments} WHERE "id" = ?`);
+  return (id, row) => void statement.run([...fields.map((field) => toSqlValue(row[field])), id]);
+}
+
 const PROJECT_COLUMN_BY_FIELD = { path: "path" } as const;
 
 const CONVERSATION_COLUMN_BY_FIELD = {
@@ -50,13 +65,20 @@ const CONVERSATION_COLUMN_BY_FIELD = {
   continuedFromConversationId: "continued_from_conversation_id",
 } as const;
 
-const AGENT_COLUMN_BY_FIELD = {
-  conversationId: "conversation_id",
+/** The columns of an `agent` row its parent's spawn ledger decides (see `refresh.ts`). */
+const AGENT_LINEAGE_COLUMN_BY_FIELD = {
   parentAgentId: "parent_agent_id",
-  externalAgentId: "external_agent_id",
   spawnedByMessageId: "spawned_by_message_id",
   agentType: "agent_type",
   resolvedModel: "resolved_model",
+} as const;
+
+const AGENT_COLUMN_BY_FIELD = {
+  conversationId: "conversation_id",
+  externalAgentId: "external_agent_id",
+  ...AGENT_LINEAGE_COLUMN_BY_FIELD,
+  sourceMtime: "source_mtime",
+  sourceSize: "source_size",
 } as const;
 
 const MESSAGE_COLUMN_BY_FIELD = {
@@ -158,6 +180,23 @@ export type StoredConversation = {
   parserVersion: number;
 };
 
+/** What re-parsing a changed Conversation needs of one of its stored Agents. */
+export type StoredAgent = {
+  id: number;
+  /** NULL for the Main thread. */
+  externalAgentId: string | null;
+  parentAgentId: number | null;
+  spawnedByMessageId: number | null;
+  agentType: string | null;
+  resolvedModel: string | null;
+  /** NULL: no change key recorded. */
+  sourceMtime: number | null;
+  sourceSize: number | null;
+};
+
+/** An `agent` row's lineage columns, to rewrite in place. */
+export type AgentLineageRow = InsertRow<keyof typeof AGENT_LINEAGE_COLUMN_BY_FIELD>;
+
 /** The statements of one Refresh, prepared once on its connection. */
 export type RefreshStatements = ReturnType<typeof prepareRefreshStatements>;
 
@@ -177,9 +216,20 @@ export function prepareRefreshStatements(db: Database.Database) {
        FROM "conversation"`,
   );
   const deleteConversation = db.prepare(`DELETE FROM "conversation" WHERE "id" = ?`);
-  const selectContinuingConversationIds = db
-    .prepare(`SELECT "id" FROM "conversation" WHERE "continued_from_conversation_id" = ?`)
+  const selectStoredAgents = db.prepare(
+    `SELECT "id", "external_agent_id" AS "externalAgentId", "parent_agent_id" AS "parentAgentId",
+            "spawned_by_message_id" AS "spawnedByMessageId", "agent_type" AS "agentType",
+            "resolved_model" AS "resolvedModel", "source_mtime" AS "sourceMtime", "source_size" AS "sourceSize"
+       FROM "agent" WHERE "conversation_id" = ?`,
+  );
+  const deleteAgent = db.prepare(`DELETE FROM "agent" WHERE "id" = ?`);
+  // Of several Tool calls with the id, the first in file order — as the
+  // Message holding it is the first in file order that does.
+  const selectSpawningMessageId = db
+    .prepare(`SELECT "message_id" FROM "tool_call" WHERE "agent_id" = ? AND "tool_use_id" = ? ORDER BY "id" LIMIT 1`)
     .pluck();
+  const deletePrLinks = db.prepare(`DELETE FROM "pr_link" WHERE "conversation_id" = ?`);
+  const deleteTurnDurations = db.prepare(`DELETE FROM "turn_duration" WHERE "conversation_id" = ?`);
   // The ids go in as one JSON array, so any number of them binds to one parameter.
   const updateContinuedFrom = db.prepare(
     `UPDATE "conversation" SET "continued_from_conversation_id" = ? WHERE "id" IN (SELECT "value" FROM json_each(?))`,
@@ -189,11 +239,13 @@ export function prepareRefreshStatements(db: Database.Database) {
   );
   const selectProjectId = db.prepare(`SELECT "id" FROM "project" WHERE "path" = ?`).pluck();
   // Conversations filed directly in the log folder: `source_path` starts with
-  // `@logFolderPrefix` and holds no further separator after it.
+  // `@logFolderPrefix` and holds no further separator after it. The borrower's
+  // own row, still the previous parse's when it is re-parsed, has no vote.
   const selectBorrowableProjectPath = db
     .prepare(
       `SELECT "project"."path" FROM "conversation" JOIN "project" ON "project"."id" = "conversation"."project_id"
         WHERE "conversation"."project_path_from_records" = 1
+          AND "conversation"."session_id" <> @borrowerSessionId
           AND substr("conversation"."source_path", 1, length(@logFolderPrefix)) = @logFolderPrefix
           AND instr(substr("conversation"."source_path", length(@logFolderPrefix) + 1), @separator) = 0
         GROUP BY "project"."path"
@@ -288,9 +340,18 @@ export function prepareRefreshStatements(db: Database.Database) {
     selectStoredConversations: () => selectStoredConversations.all() as StoredConversation[],
     /** Delete a Conversation; its child rows go with it by cascade. */
     deleteConversation: (conversationId: number) => void deleteConversation.run(conversationId),
-    /** Ids of the Conversations that continue from `conversationId`. */
-    selectContinuingConversationIds: (conversationId: number) =>
-      selectContinuingConversationIds.all(conversationId) as number[],
+    /** Every stored Agent of a Conversation. */
+    selectStoredAgents: (conversationId: number) => selectStoredAgents.all(conversationId) as StoredAgent[],
+    /** Delete an Agent; its Messages, Tool calls and API requests go with it by cascade. */
+    deleteAgent: (agentId: number) => void deleteAgent.run(agentId),
+    /** The Message row holding Agent `agentId`'s Tool call `toolUseId`, if any. */
+    selectSpawningMessageId: (agentId: number, toolUseId: string) =>
+      selectSpawningMessageId.get(agentId, toolUseId) as number | undefined,
+    /** Delete a Conversation's `pr_link` and `turn_duration` rows: what its Main thread's file gives it besides its Agent. */
+    deletePrLinksAndTurnDurations: (conversationId: number) => {
+      deletePrLinks.run(conversationId);
+      deleteTurnDurations.run(conversationId);
+    },
     /** Point each of `conversationIds` at the Conversation they continue from. */
     updateContinuedFrom: (conversationIds: number[], continuedFromConversationId: number) =>
       void updateContinuedFrom.run(continuedFromConversationId, JSON.stringify(conversationIds)),
@@ -302,18 +363,25 @@ export function prepareRefreshStatements(db: Database.Database) {
     /**
      * The Project path most of the Conversations filed in `logFolderPath`
      * state through their own records, ties to the smallest path; undefined
-     * when none of them states one.
+     * when none of them states one. The Conversation `borrowerSessionId` is not counted.
      */
-    selectBorrowableProjectPath: (logFolderPath: string) =>
-      selectBorrowableProjectPath.get({ logFolderPrefix: logFolderPath + path.sep, separator: path.sep }) as
-        string | undefined,
+    selectBorrowableProjectPath: (logFolderPath: string, borrowerSessionId: string) =>
+      selectBorrowableProjectPath.get({
+        logFolderPrefix: logFolderPath + path.sep,
+        separator: path.sep,
+        borrowerSessionId,
+      }) as string | undefined,
     /** Delete every Project no Conversation belongs to any more. */
     deleteProjectsWithoutConversations: () => void deleteProjectsWithoutConversations.run(),
     /** The Conversation owning the first message stored with `uuid`, if any. */
     selectMessageOwner: (uuid: string) => selectMessageOwner.get(uuid) as { id: number; sessionId: string } | undefined,
     insertProject: prepareInsert(db, "project", PROJECT_COLUMN_BY_FIELD),
     insertConversation: prepareInsert(db, "conversation", CONVERSATION_COLUMN_BY_FIELD),
+    /** Rewrite the stored Conversation of row id `id` in place. */
+    updateConversation: prepareUpdate(db, "conversation", CONVERSATION_COLUMN_BY_FIELD),
     insertAgent: prepareInsert(db, "agent", AGENT_COLUMN_BY_FIELD),
+    /** Rewrite the lineage columns of the stored Agent of row id `id` in place. */
+    updateAgentLineage: prepareUpdate(db, "agent", AGENT_LINEAGE_COLUMN_BY_FIELD),
     insertMessage: prepareInsert(db, "message", MESSAGE_COLUMN_BY_FIELD),
     insertToolCall: prepareInsert(db, "tool_call", TOOL_CALL_COLUMN_BY_FIELD),
     insertPrLink: prepareInsert(db, "pr_link", PR_LINK_COLUMN_BY_FIELD),

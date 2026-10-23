@@ -88,6 +88,13 @@ model Agent {
   durationMs    BigInt? @map("duration_ms")
   toolCallCount Int?    @map("tool_call_count")
 
+  /// Its own log file's mtime (epoch ms) when its rows were written: the
+  /// change key that decides whether a Refresh re-parses and rewrites this
+  /// Agent (ADR-0010). NULL: no key recorded, so it is rewritten.
+  sourceMtime BigInt? @map("source_mtime")
+  /// Its own log file's size in bytes when its rows were written (see `sourceMtime`).
+  sourceSize  BigInt? @map("source_size")
+
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   parentAgent  Agent?       @relation("AgentLineage", fields: [parentAgentId], references: [id], onDelete: SetNull)
   childAgents  Agent[]      @relation("AgentLineage")

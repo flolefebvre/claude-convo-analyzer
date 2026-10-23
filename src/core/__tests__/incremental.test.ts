@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -324,9 +324,8 @@ describe("incremental refresh", () => {
     expect(repaired.find((c) => c.id === "sess-child")?.continuedFromId).toBe("sess-origin");
     expect(repaired.find((c) => c.id === "sess-origin")?.continuedFromId).toBeNull();
 
-    // Re-parsing the interrupted run's conversations rewrote them wholesale
-    // (delete + cascade + re-write), including their sub-agent rows — no
-    // duplication anywhere.
+    // Re-parsing the interrupted run's unstamped conversations rewrote every
+    // one of their Agents, sub-agent rows included — no duplication anywhere.
     expect(await rowCounts(dbPath)).toEqual(afterCrash);
 
     // And the repaired state is stamped: the run after it skips everything.
@@ -352,23 +351,36 @@ describe("incremental refresh", () => {
     // conversation was parsed and none skipped...
     expect(second.conversationsParsed).toBe(total);
     expect(second.conversationsSkipped).toBe(0);
+    // ...every log file was read again, its unchanged change key notwithstanding...
+    expect(second.logFilesParsed).toBe(first.logFilesParsed);
+    expect(second.logFilesParsed).toBe(countLogFiles(logsRoot));
 
-    // ...and every conversation row was deleted and re-inserted, so its row id
-    // is brand new while the session set and row counts are unchanged.
-    const after = await conversationRowIds(dbPath);
-    expect([...after.keys()].sort()).toEqual([...before.keys()].sort());
-    for (const [sessionId, id] of after) {
-      expect(id).not.toBe(before.get(sessionId));
-    }
+    // ...each Conversation row was rewritten in place, keeping its id.
+    expect(await conversationRowIds(dbPath)).toEqual(before);
 
-    // Exactly once: the next refresh skips everything again, ids now stable.
+    // Exactly once: the next refresh skips everything again.
     const third = await refresh({ logsRoot, dbPath });
     expect(third.conversationsParsed).toBe(0);
     expect(third.conversationsSkipped).toBe(total);
-    expect(await conversationRowIds(dbPath)).toEqual(after);
+    expect(await conversationRowIds(dbPath)).toEqual(before);
   });
 
-  it("re-parses the parent when only a sub-agent transcript changes", async () => {
+  it("keeps a re-parsed Conversation's row id", async () => {
+    await refresh({ logsRoot, dbPath });
+    const before = await conversationRowIds(dbPath);
+
+    const basicPath = path.join(logsRoot, "-Users-me-dev-demo", "sess-basic.jsonl");
+    const extra =
+      '{"type":"user","uuid":"x-extra","timestamp":"2026-06-20T10:02:00.000Z","cwd":"/Users/me/dev/demo","message":{"role":"user","content":"one more"}}\n';
+    writeFileSync(basicPath, readFileSync(basicPath, "utf8") + extra);
+
+    const second = await refresh({ logsRoot, dbPath });
+
+    expect(second.conversationsParsed).toBe(1);
+    expect(await conversationRowIds(dbPath)).toEqual(before);
+  });
+
+  it("re-parses the Conversation when only a sub-agent transcript changes", async () => {
     await refresh({ logsRoot, dbPath });
     const before = await getConversation("sess-sub", { dbPath });
     expect(before).not.toBeNull();
@@ -383,8 +395,10 @@ describe("incremental refresh", () => {
     touchLater(subPath);
 
     const second = await refresh({ logsRoot, dbPath });
-    // The parent conversation was re-parsed because its composite key changed.
+    // The Conversation was re-parsed because its composite key changed: its
+    // Main thread, and the Sub-agent whose own key changed.
     expect(second.conversationsParsed).toBe(1);
+    expect(second.logFilesParsed).toBe(2);
 
     const after = await getConversation("sess-sub", { dbPath });
     // The extra sub-agent output (11) rolled up; no duplication of prior rows.
@@ -491,6 +505,17 @@ describe("incremental refresh", () => {
     expect(await projectPathOf(dbPath, "sess-a-cwdless")).toBe("/home/dev/acme/api");
   });
 
+  it("does not let a Conversation re-parsed without its cwd borrow the Project it stated before", async () => {
+    writeOneRecordSession(logsRoot, "-home-dev-acme-api", "sess-losing-cwd", "/home/dev/elsewhere");
+    await refresh({ logsRoot, dbPath });
+
+    writeOneRecordSession(logsRoot, "-home-dev-acme-api", "sess-losing-cwd", null);
+    await refresh({ logsRoot, dbPath });
+
+    // No sibling states a cwd: the log folder name, decoded, as a cold Refresh gives.
+    expect(await projectPathOf(dbPath, "sess-losing-cwd")).toBe("/home/dev/acme/api");
+  });
+
   it("leaves no Project without a Conversation once a re-parse or a vanished file empties it", async () => {
     writeOneRecordSession(logsRoot, "-home-dev-app", "sess-moving", "/home/dev/app");
     writeOneRecordSession(logsRoot, "-home-dev-gone", "sess-gone", "/home/dev/gone");
@@ -506,6 +531,11 @@ describe("incremental refresh", () => {
     expect(projectPaths).not.toContain("/home/dev/gone");
   });
 });
+
+/** How many `.jsonl` log files, main or sub-agent, lie under `logsRoot`. */
+function countLogFiles(logsRoot: string): number {
+  return readdirSync(logsRoot, { recursive: true, encoding: "utf8" }).filter((name) => name.endsWith(".jsonl")).length;
+}
 
 /** Plant a one-record session in `logFolderName`, stating `cwd` unless it is null. */
 function writeOneRecordSession(logsRoot: string, logFolderName: string, sessionId: string, cwd: string | null): void {
