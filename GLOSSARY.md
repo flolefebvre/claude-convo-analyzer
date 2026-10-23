@@ -25,9 +25,14 @@ where it did its work.
 
 On disk, Claude Code files each Conversation in a folder under
 `~/.claude/projects/` named after that directory with `/` replaced by `-`
-(e.g. `-Users-me-Documents-dev-pvm2-0` ⇒ `/Users/me/Documents/dev/pvm2.0`).
-That name is lossy (a real `-` or `.` reads the same as `/`), so it is a filing
-detail, not the Project's identity.
+(e.g. `-Users-me-Documents-dev-pvm2-0` ⇒ `/Users/me/Documents/dev/pvm2.0`);
+on native Windows, the drive colon and each `\` become `-` too
+(`C--Users-me-repo` ⇒ `C:\Users\me\repo`). That name is lossy (a real `-` or
+`.` reads the same as a separator), so it is a filing detail, not the Project's
+identity.
+
+A path's separator follows from its shape, not from the machine reading it: a
+path starting with a drive (`C:\`) is `\`-separated, any other `/`-separated.
 
 The **friendly name** of a Project is the last segment of its path (e.g.
 `pvm2.0`), used as the human label in the UI; the full path is shown alongside
@@ -38,6 +43,7 @@ it.
 A node of the **folder tree** the UI navigates by: a directory that is a
 Project's path or contains one. A repo's git worktrees and a scratch directory's
 per-session subdirectories are therefore Folders under it, not peers of it.
+A Windows drive (`C:`) is a Folder too, the top of the paths on it.
 Selecting a Folder **scopes** every view to the Conversations of all the
 Projects at or below it; its cost is theirs summed. A Folder that is itself a
 Project and also has sub-Folders can be narrowed to **this folder** — its own

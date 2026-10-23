@@ -109,8 +109,13 @@ agent. Quoted phrases work too:
 - Some existing Claude Code usage — the app analyzes the logs Claude Code writes
   to `~/.claude/projects`.
 
-> **Platform support:** Tested on macOS and WSL. It has **not** been tested on
-> native Windows and may not work there.
+> **Platform support:** Tested on macOS and WSL; the test suite also runs on
+> native Windows in CI. Logs written by Claude Code on native Windows read as
+> Windows paths (`C:\Users\me\repo`, with the drive as the top folder), whether
+> the app runs on Windows or in WSL with
+> `CCA_LOGS_ROOT=/mnt/c/Users/<you>/.claude/projects`. From WSL, those paths
+> root at their drive rather than at `~`, since the app's home directory is the
+> Linux one.
 
 ## Getting started
 
