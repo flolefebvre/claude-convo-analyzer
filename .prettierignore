@@ -11,6 +11,9 @@ next-env.d.ts
 # Nested git worktrees, carrying their own build output
 .claude/worktrees
 
+# Sub-agent meta files as Claude Code writes them, a malformed one included
+src/core/__tests__/fixtures/**/*.meta.json
+
 # Vendored by shadcn
 src/components/ui
 

@@ -105,13 +105,16 @@ export type DiscoveredSubAgent = {
   agentId: string;
   /** Absolute path to the sub-agent `.jsonl` file. */
   sourcePath: string;
+  /** Absolute path to its `agent-<agentId>.meta.json` beside it; null when there is none. */
+  metaPath: string | null;
 };
 
 /**
  * Discover every sub-agent transcript for one session: the files at
- * `<projectDir>/<sessionId>/subagents/agent-<agentId>.jsonl` (finding #1). The
- * parent sessionId/agentId live in the PATH; the caller already holds the
- * session, so we return only the agentId + path. Missing dirs → empty list.
+ * `<projectDir>/<sessionId>/subagents/agent-<agentId>.jsonl` (finding #1), each
+ * with the meta file beside it, if any, found in the same directory listing.
+ * The parent sessionId/agentId live in the PATH; the caller already holds the
+ * session, so we return only the agentId + paths. Missing dirs → empty list.
  */
 export function discoverSubAgents(projectDir: string, sessionId: string): DiscoveredSubAgent[] {
   const subagentsDir = path.join(projectDir, sessionId, "subagents");
@@ -122,13 +125,21 @@ export function discoverSubAgents(projectDir: string, sessionId: string): Discov
     return []; // no subagents/ dir → no sub-agents (not fatal)
   }
 
+  const metaFileNames = new Set(
+    entries.filter((entry) => entry.isFile() && entry.name.endsWith(".meta.json")).map((entry) => entry.name),
+  );
   const out: DiscoveredSubAgent[] = [];
   for (const entry of entries) {
     if (!entry.isFile()) continue;
     const name = entry.name;
     if (!name.startsWith("agent-") || !name.endsWith(".jsonl")) continue;
     const agentId = name.slice("agent-".length, -".jsonl".length);
-    out.push({ agentId, sourcePath: path.join(subagentsDir, name) });
+    const metaFileName = `agent-${agentId}.meta.json`;
+    out.push({
+      agentId,
+      sourcePath: path.join(subagentsDir, name),
+      metaPath: metaFileNames.has(metaFileName) ? path.join(subagentsDir, metaFileName) : null,
+    });
   }
   return out;
 }

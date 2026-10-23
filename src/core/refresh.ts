@@ -56,7 +56,14 @@ import {
   discoverSessions,
   discoverSubAgents,
 } from "@/core/discovery";
-import { type ParsedAgentSpawn, type ParsedApiRequest, parseSessionLines, type ParsedSession } from "@/core/parse";
+import {
+  type ParsedAgentSpawn,
+  type ParsedApiRequest,
+  parseSessionLines,
+  type ParsedSession,
+  parseSubAgentMeta,
+  type ParsedSubAgentMeta,
+} from "@/core/parse";
 import {
   type AgentLineageRow,
   type ContinuationCandidate,
@@ -166,8 +173,11 @@ type RefreshOptions = {
  *     Claude Code resolves it, not the first (`conversation.title`).
  * 18 — a forked Sub-agent's copy of its spawning Agent's records is flagged
  *     too (`message.is_copied`, log-format §10).
+ * 19 — a Sub-agent whose spawn ledger states no type takes the one its
+ *     `agent-<id>.meta.json` states (`agent.agent_type`), and one no ledger
+ *     names is linked to its spawner by the meta file's `toolUseId`.
  */
-export const PARSER_VERSION = 18;
+export const PARSER_VERSION = 19;
 
 /**
  * The version a conversation carries while it is written but NOT YET COMPLETE:
@@ -206,8 +216,11 @@ type FileChangeKey = {
   sourceSize: number;
 };
 
-/** A Sub-agent's log file, `subagents/agent-<agentId>.jsonl`, with its change key. */
-type SubAgentFile = FileChangeKey & { agentId: string; sourcePath: string };
+/**
+ * A Sub-agent's log file, `subagents/agent-<agentId>.jsonl`, with its change
+ * key, and the path of the meta file beside it (null when there is none).
+ */
+type SubAgentFile = FileChangeKey & { agentId: string; sourcePath: string; metaPath: string | null };
 
 /** A discovered session whose stored conversation is missing or stale. */
 type SessionToReparse = {
@@ -232,6 +245,8 @@ type SubAgentToWrite = {
   stored: StoredAgent | null;
   /** Its parsed log file; null when it is kept without being read. */
   parsed: ParsedSession | null;
+  /** Its parsed meta file, once read (see `metaOf`); undefined until then. */
+  meta: ParsedSubAgentMeta | undefined;
   /** Its stored rows are deleted and written again from `parsed`. */
   isRewritten: boolean;
 };
@@ -615,7 +630,7 @@ function discoverWithKeys(logsRoot: string): DiscoveredWithKey[] {
       const stat = statUnlessVanished(sub.sourcePath);
       if (stat === null) continue;
       const sourceMtime = Math.floor(stat.mtimeMs);
-      subAgentFiles.push({ agentId: sub.agentId, sourcePath: sub.sourcePath, sourceMtime, sourceSize: stat.size });
+      subAgentFiles.push({ ...sub, sourceMtime, sourceSize: stat.size });
       compositeMtime = Math.max(compositeMtime, sourceMtime);
       compositeSize += stat.size;
     }
@@ -632,6 +647,21 @@ function discoverWithKeys(logsRoot: string): DiscoveredWithKey[] {
 function parseSession(sourcePath: string): ParsedSession | null {
   const text = readFileUnlessVanished(sourcePath);
   return text === null ? null : keepStoredToolResults(parseSessionLines(text.split("\n")));
+}
+
+/** A meta file stating nothing: none beside the transcript, or one gone or malformed. */
+const EMPTY_SUB_AGENT_META: ParsedSubAgentMeta = { agentType: null, toolUseId: null };
+
+/**
+ * What `subAgent`'s meta file states (log-format §4), read and parsed on first
+ * use and kept on it: a few hundred bytes, read only for the Sub-agents whose
+ * lineage a Refresh decides.
+ */
+function metaOf(subAgent: SubAgentToWrite): ParsedSubAgentMeta {
+  if (subAgent.meta !== undefined) return subAgent.meta;
+  const text = subAgent.file.metaPath === null ? null : readFileUnlessVanished(subAgent.file.metaPath);
+  subAgent.meta = text === null ? EMPTY_SUB_AGENT_META : parseSubAgentMeta(text);
+  return subAgent.meta;
 }
 
 /**
@@ -669,7 +699,7 @@ function parseConversation(
 
   let subAgents: SubAgentToWrite[] = subAgentFiles.map((file) => {
     const stored = storedSubAgentByAgentId.get(file.agentId) ?? null;
-    return { file, stored, parsed: null, isRewritten: !isStoredFromFileAsIs(stored, file) };
+    return { file, stored, parsed: null, meta: undefined, isRewritten: !isStoredFromFileAsIs(stored, file) };
   });
   const subAgentByRowId = new Map(
     subAgents.flatMap((sub) => (sub.stored === null ? [] : [[sub.stored.id, sub] as const])),
@@ -1135,7 +1165,7 @@ function writeConversation(statements: RefreshStatements, parsedConversation: Pa
       parentAgentId: parentAgentRowId,
       spawnedByMessageId:
         toolUseId === null ? null : (statements.selectSpawningMessageId(parentAgentRowId, toolUseId) ?? null),
-      agentType: plan.spawn?.agentType ?? null,
+      agentType: plan.spawn?.agentType ?? metaOf(subAgent).agentType,
       // A kept Sub-agent left unread kept its spawn, or never had one: its
       // stored model is what its file and that spawn gave (`parseConversation`).
       resolvedModel:
@@ -1197,16 +1227,19 @@ function deleteRewrittenAndRemovedAgents(
 
 /**
  * Whether this run decides `subAgent`'s lineage again: it is written anew, a
- * parsed ledger names it, or its stored parent was read, rewritten or removed.
- * A kept Sub-agent under a parent left unread, and named by no parsed ledger,
- * keeps its stored lineage.
+ * parsed ledger names it, its stored parent was read, rewritten or removed, or
+ * it was stored with neither a type nor a spawning Message and now has a meta
+ * file, which may give it both (log-format §4). A kept Sub-agent under a parent
+ * left unread, and named by no parsed ledger, keeps its stored lineage.
  */
 function isLineageDecidedAgain(
   subAgent: SubAgentToWrite,
   { storedMainThread, subAgents, removedAgentRowIds, spawnLedgerByAgentId }: ParsedConversation,
 ): boolean {
   if (subAgent.isRewritten || spawnLedgerByAgentId.has(subAgent.file.agentId)) return true;
-  const storedParentRowId = subAgent.stored!.parentAgentId;
+  const stored = subAgent.stored!;
+  if (stored.agentType === null && stored.spawnedByMessageId === null && subAgent.file.metaPath !== null) return true;
+  const storedParentRowId = stored.parentAgentId;
   return (
     storedParentRowId === storedMainThread?.id ||
     removedAgentRowIds.includes(storedParentRowId!) ||
