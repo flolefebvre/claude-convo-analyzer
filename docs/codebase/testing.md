@@ -44,6 +44,12 @@ This project uses TDD. The rules that matter here:
   page, and that re-render lands inside other workers' `instant()` scopes and
   breaks them. The `shared-state` project holds no `instant()` check, and a
   failure elsewhere skips it.
+- A spec that acts on a client control right after a load waits for evidence
+  that the control takes input: `gotoInteractive` (`e2e/interactive-page.ts`)
+  in place of `page.goto`, as `e2e/active-now.spec.ts` and `e2e/search.spec.ts`
+  do. Playwright's `load` does not wait for React to reveal the streamed
+  boundaries, and a Suspense fallback that looks like its control is pressed
+  instead of it: the event is lost.
 - The specs run against a production build (`pnpm e2e:server`), because `next dev`
   doesn't prefetch. A dev `instant()` GREEN on a client navigation is not
   evidence that the prefetched shell commits.
