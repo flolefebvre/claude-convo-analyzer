@@ -1,5 +1,5 @@
 // Read API (ADR-0001, ADR-0002). `listConversations()` and `getConversation()`
-// are the stable read seams over the eleven tables written by `refresh()` (the
+// are the stable read seams over the twelve tables written by `refresh()` (the
 // ingest spine, in `refresh.ts`). This module is read-only — it issues SUM
 // queries and prices/assembles summaries, and never writes.
 //
@@ -139,6 +139,8 @@ export type TranscriptMessage = {
   unpriced: boolean;
   isApiError: boolean;
   apiErrorMessage: string | null;
+  /** A Copied Message (GLOSSARY.md): history this continuation copied from its parent, not its own. */
+  isCopied: boolean;
   /** Record timestamp as an ISO string (null when absent). */
   timestamp: string | null;
   /** `tool_use` blocks on this (assistant) turn, in stored order. */
@@ -1286,6 +1288,7 @@ async function readAgentTranscript(
       apiErrorMessage: true,
       timestamp: true,
       apiRequestId: true,
+      isCopied: true,
     },
   });
 
@@ -1332,6 +1335,7 @@ async function readAgentTranscript(
       unpriced: turn.unpriced,
       isApiError: r.isApiError,
       apiErrorMessage: r.apiErrorMessage,
+      isCopied: r.isCopied,
       timestamp: r.timestamp === null ? null : new Date(Number(r.timestamp)).toISOString(),
       toolCalls: toolCallsByMsg.get(r.id) ?? [],
       apiRequestId: r.apiRequestId,

@@ -3,18 +3,19 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPrismaClient } from "@/core/db";
-import { getConversation, listConversations } from "@/core/read";
+import { getConversation, getTranscript, listConversations } from "@/core/read";
 import { refresh } from "@/core/refresh";
+import { writeSessionLog } from "./helpers/session-log";
 
 /**
  * Fault injection for the "interrupted refresh" test: when ARMED, the next
- * lookup of a message's owning Conversation by `uuid`, on the connection
+ * lookup of the Conversations holding a Message `uuid`, on the connection
  * `openRefreshConnection` hands out, throws, then disarms.
  *
- * WHY that lookup: it is the first statement of the continued-from pass
- * (`resolveContinuedFrom` in refresh.ts), which opens the final transaction,
+ * WHY that lookup: it is the first statement of the continuation pass
+ * (`resolveContinuations` in refresh.ts), which opens the final transaction,
  * after every batch of Conversations has committed — and the only statement of
- * a Refresh that reads `message` by `uuid`. Arming it therefore aborts a
+ * a Refresh that looks Conversations up by a Message `uuid`. Arming it therefore aborts a
  * refresh at exactly the hazard window this suite pins: every conversation
  * written, no continuation link resolved, nothing stamped. If a refactor moves
  * that lookup or changes its SQL, this injection stops reproducing the
@@ -39,13 +40,27 @@ vi.mock("@/core/db", async (importOriginal) => {
     openRefreshConnection: (dbPath?: string) =>
       hookStatements(
         actual.openRefreshConnection(dbPath),
-        (sql) => sql.includes('FROM "message" WHERE "uuid" = ?'),
+        (sql) => sql.includes('FROM "message" WHERE "uuid" = @uuid'),
         throwWhenArmed,
       ),
   };
 });
 
 const FIXTURES_ROOT = path.join(import.meta.dirname, "fixtures", "logs");
+
+/**
+ * A new session resuming sess-origin, as Claude Code writes it: a copy of
+ * sess-origin's records, same uuids, then its own. sess-origin's
+ * `continued-in` record names sess-resumed, not this one.
+ */
+const CHILD_OF_ORIGIN_LOG = [
+  '{"type":"ai-title","aiTitle":"Child of origin"}',
+  '{"type":"user","uuid":"orig-u1","timestamp":"2026-06-19T10:00:00.000Z","cwd":"/Users/me/dev/resume","version":"2.1.300","sessionId":"sess-child","message":{"role":"user","content":"start work"}}',
+  '{"type":"assistant","uuid":"orig-a1","parentUuid":"orig-u1","requestId":"oreq-1","timestamp":"2026-06-19T10:00:05.000Z","cwd":"/Users/me/dev/resume","version":"2.1.300","sessionId":"sess-child","message":{"id":"omsg-1","role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"started"}],"usage":{"input_tokens":10,"output_tokens":10,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}}}',
+  '{"type":"user","uuid":"child-u1","parentUuid":"orig-a1","timestamp":"2026-06-20T09:00:00.000Z","cwd":"/Users/me/dev/resume","version":"2.1.300","sessionId":"sess-child","message":{"role":"user","content":"resume from origin"}}',
+  '{"type":"assistant","uuid":"child-a1","parentUuid":"child-u1","requestId":"creq-1","timestamp":"2026-06-20T09:00:05.000Z","cwd":"/Users/me/dev/resume","version":"2.1.300","sessionId":"sess-child","message":{"id":"cmsg-1","role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"continued"}],"usage":{"input_tokens":5,"output_tokens":5,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}}}',
+  "",
+].join("\n");
 
 /** Bump a file's mtime so the (mtime,size) change key differs. */
 function touchLater(filePath: string): void {
@@ -222,9 +237,9 @@ describe("incremental refresh", () => {
 
   it("resolves continued_from to a parent that was SKIPPED on this refresh", async () => {
     // First refresh ingests the parent (sess-origin). On a SECOND refresh a NEW
-    // child appears whose first-message parentUuid points into the parent — but
-    // the parent is UNCHANGED and thus skipped (not re-parsed). The link must
-    // still resolve, authoritatively, against the persisted parent rows.
+    // child appears holding a copy of the parent's records — but the parent is
+    // UNCHANGED and thus skipped (not re-parsed). The link must still resolve,
+    // authoritatively, against the persisted parent rows.
     const resumeDir = path.join(logsRoot, "-Users-me-dev-resume");
     const childPath = path.join(resumeDir, "sess-child.jsonl");
 
@@ -237,16 +252,8 @@ describe("incremental refresh", () => {
     const originBefore = (await listConversations({ dbPath })).find((c) => c.id === "sess-origin");
     expect(originBefore).toBeDefined();
 
-    // A brand-new child resuming from sess-origin's last message (orig-a1).
-    writeFileSync(
-      childPath,
-      [
-        '{"type":"ai-title","aiTitle":"Child of origin"}',
-        '{"type":"user","uuid":"child-u1","parentUuid":"orig-a1","timestamp":"2026-06-20T09:00:00.000Z","cwd":"/Users/me/dev/resume","version":"2.1.180","message":{"role":"user","content":"resume from origin"}}',
-        '{"type":"assistant","uuid":"child-a1","parentUuid":"child-u1","requestId":"creq-1","timestamp":"2026-06-20T09:00:05.000Z","cwd":"/Users/me/dev/resume","version":"2.1.180","message":{"id":"cmsg-1","role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"continued"}],"usage":{"input_tokens":5,"output_tokens":5,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}}}',
-        "",
-      ].join("\n"),
-    );
+    // A brand-new child resuming sess-origin.
+    writeFileSync(childPath, CHILD_OF_ORIGIN_LOG);
 
     const second = await refresh({ logsRoot, dbPath });
     // The parent was skipped (unchanged); only the child was parsed.
@@ -298,15 +305,7 @@ describe("incremental refresh", () => {
     // them and lose `continuedFromConversationId` forever.
     const resumeDir = path.join(logsRoot, "-Users-me-dev-resume");
     rmSync(path.join(resumeDir, "sess-resumed.jsonl"));
-    writeFileSync(
-      path.join(resumeDir, "sess-child.jsonl"),
-      [
-        '{"type":"ai-title","aiTitle":"Child of origin"}',
-        '{"type":"user","uuid":"child-u1","parentUuid":"orig-a1","timestamp":"2026-06-20T09:00:00.000Z","cwd":"/Users/me/dev/resume","version":"2.1.180","message":{"role":"user","content":"resume from origin"}}',
-        '{"type":"assistant","uuid":"child-a1","parentUuid":"child-u1","requestId":"creq-1","timestamp":"2026-06-20T09:00:05.000Z","cwd":"/Users/me/dev/resume","version":"2.1.180","message":{"id":"cmsg-1","role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"continued"}],"usage":{"input_tokens":5,"output_tokens":5,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}}}',
-        "",
-      ].join("\n"),
-    );
+    writeFileSync(path.join(resumeDir, "sess-child.jsonl"), CHILD_OF_ORIGIN_LOG);
 
     crash.armed = true;
     await expect(refresh({ logsRoot, dbPath })).rejects.toThrow("simulated interruption");
@@ -334,51 +333,69 @@ describe("incremental refresh", () => {
     expect(third.conversationsSkipped).toBe(repaired.length);
   });
 
-  it("resolves continued_from to the smallest source path of several Conversations holding the Message, as a cold Refresh does", async () => {
-    // sess-holder-b copies sess-holder-a's records with their uuids; the
-    // continuation's first Message points at a uuid both hold.
-    const folder = path.join(logsRoot, "-Users-me-dev-holders");
-    mkdirSync(folder);
-    const holderAPath = path.join(folder, "sess-holder-a.jsonl");
-    const continuationPath = path.join(folder, "sess-continuation.jsonl");
-    const userRecord = (uuid: string, parentUuid: string | null, minute: number) =>
-      JSON.stringify({
-        type: "user",
-        uuid,
-        parentUuid,
-        timestamp: `2026-06-21T10:${String(minute).padStart(2, "0")}:00.000Z`,
-        cwd: "/Users/me/dev/holders",
-        version: "2.1.180",
-        message: { role: "user", content: `message ${uuid}` },
-      });
-    const lines = (...records: string[]) => records.map((r) => `${r}\n`).join("");
-    const append = (filePath: string, record: string) => {
-      writeFileSync(filePath, readFileSync(filePath, "utf8") + lines(record));
-      touchLater(filePath);
-    };
-    writeFileSync(holderAPath, lines(userRecord("held-u1", null, 0), userRecord("held-u2", "held-u1", 1)));
-    writeFileSync(
-      path.join(folder, "sess-holder-b.jsonl"),
-      lines(userRecord("held-u1", null, 0), userRecord("held-u2", "held-u1", 1), userRecord("copy-u3", "held-u2", 2)),
-    );
-    writeFileSync(continuationPath, lines(userRecord("cont-u1", "held-u2", 3)));
-    const continuedFromId = async (db: string) =>
-      (await listConversations({ dbPath: db })).find((c) => c.id === "sess-continuation")?.continuedFromId;
+  it("resolves continued_from to the smallest source path of several Conversations holding the copied Messages, as a cold Refresh does", async () => {
+    // sess-holder-a and sess-holder-b hold the same Messages, and the
+    // continuation copies them both: of the two, the smallest path is the
+    // original, and the continuation's parent.
+    const holderA = { sessionId: "sess-holder-a", messageUuids: ["held-u1", "held-u2"] };
+    const continuation = { sessionId: "sess-continuation", messageUuids: ["held-u1", "held-u2", "cont-u1"] };
+    const holderAPath = writeSessionLog(logsRoot, holderA);
+    writeSessionLog(logsRoot, { sessionId: "sess-holder-b", messageUuids: ["held-u1", "held-u2"] });
+    const continuationPath = writeSessionLog(logsRoot, continuation);
+    const continuedFromById = async (db: string) =>
+      Object.fromEntries((await listConversations({ dbPath: db })).map((c) => [c.id, c.continuedFromId]));
 
     await refresh({ logsRoot, dbPath });
-    expect(await continuedFromId(dbPath)).toBe("sess-holder-a");
+    expect(await continuedFromById(dbPath)).toMatchObject({
+      "sess-holder-a": null,
+      "sess-holder-b": "sess-holder-a",
+      "sess-continuation": "sess-holder-a",
+    });
 
-    // Re-parse sess-holder-a alone: its Messages now have the highest row ids.
-    append(holderAPath, userRecord("held-u3", "held-u2", 4));
+    // Re-parse sess-holder-a alone: it now holds a Message the others lack,
+    // so it reads as a continuation of sess-holder-b, whose Messages it holds all of.
+    writeSessionLog(logsRoot, { ...holderA, messageUuids: [...holderA.messageUuids, "held-u3"] });
+    touchLater(holderAPath);
     expect((await refresh({ logsRoot, dbPath })).conversationsParsed).toBe(1);
     // Then re-parse the continuation, so its link resolves against those rows.
-    append(continuationPath, userRecord("cont-u2", "cont-u1", 5));
+    writeSessionLog(logsRoot, { ...continuation, messageUuids: [...continuation.messageUuids, "cont-u2"] });
+    touchLater(continuationPath);
     expect((await refresh({ logsRoot, dbPath })).conversationsParsed).toBe(1);
 
-    expect(await continuedFromId(dbPath)).toBe("sess-holder-a");
     const coldDbPath = path.join(tmpDir, "cold.db");
     await refresh({ logsRoot, dbPath: coldDbPath });
-    expect(await continuedFromId(coldDbPath)).toBe("sess-holder-a");
+    expect(await continuedFromById(dbPath)).toEqual(await continuedFromById(coldDbPath));
+    expect(await continuedFromById(coldDbPath)).toMatchObject({
+      "sess-holder-a": "sess-holder-b",
+      "sess-holder-b": null,
+      "sess-continuation": "sess-holder-b",
+    });
+  });
+
+  it("decides a deleted parent's continuation again after an INTERRUPTED refresh, as a cold Refresh does", async () => {
+    // Deleting sess-origin leaves sess-resumed without a parent: its copied
+    // Messages are copies of nothing on disk any more. A run that dies before
+    // deciding that again must leave sess-resumed re-parseable.
+    const resumeDir = path.join(logsRoot, "-Users-me-dev-resume");
+    await refresh({ logsRoot, dbPath });
+    const copiedUuids = async (db: string) =>
+      ((await getTranscript("sess-resumed", { dbPath: db, page: "all" }))?.messages ?? [])
+        .filter((m) => m.isCopied)
+        .map((m) => m.uuid);
+    expect(await copiedUuids(dbPath)).toEqual(["orig-u1", "orig-a1"]);
+
+    rmSync(path.join(resumeDir, "sess-origin.jsonl"));
+    crash.armed = true;
+    await expect(refresh({ logsRoot, dbPath })).rejects.toThrow("simulated interruption");
+    expect(crash.armed).toBe(false);
+
+    const repair = await refresh({ logsRoot, dbPath });
+    expect(repair.conversationsParsed).toBe(1);
+    const coldDbPath = path.join(tmpDir, "cold.db");
+    await refresh({ logsRoot, dbPath: coldDbPath });
+    expect(await copiedUuids(dbPath)).toEqual(await copiedUuids(coldDbPath));
+    expect(await copiedUuids(dbPath)).toEqual([]);
+    expect((await listConversations({ dbPath })).find((c) => c.id === "sess-resumed")?.continuedFromId).toBeNull();
   });
 
   it("re-parses every conversation exactly once after a parser-version bump, then skips again", async () => {

@@ -1,19 +1,22 @@
 // Continuation families (issue #46): the walk over `continued_from` links that
 // turns a set of conversation summaries into the connected component a given
-// conversation belongs to. Every case is exercised through the public core
-// functions over a database seeded by the REAL `refresh()` from fixture logs.
+// conversation belongs to. Every case but the cycle is exercised through the
+// public core functions over a database seeded by the REAL `refresh()` from
+// fixture logs.
 //
 // These fixtures live in their OWN logs root (`fixtures/family-logs`), not the
-// shared one: the family shapes need eight extra sessions, and adding them to
+// shared one: the family shapes need ten extra sessions, and adding them to
 // the shared root both slowed every other refresh-based suite and collided with
-// the corpus assertions of the FTS tests. The root encodes a standalone session,
-// a linear chain, a fork, a cross-project resume, a broken parent link and a
-// pathological cycle.
+// the corpus assertions of the FTS tests. Each continuation copies its parent's
+// records (log-format §10): the root encodes a standalone session, a linear
+// chain, a fork, a cross-project resume, a copy whose original is gone, and an
+// older pair with no `continued-in` record. A cycle cannot come out of copies,
+// so the walk's guard is fed made-up summaries.
 
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { buildFamily, familySizes } from "@/core/family";
+import { buildFamily, type FamilyRow, familySizes } from "@/core/family";
 import { listConversations } from "@/core/read";
 
 import { seededTempDb } from "./helpers/temp-db";
@@ -103,8 +106,8 @@ describe("buildFamily", () => {
 
   it("degrades gracefully when the parent link is broken", async () => {
     const rows = await listConversations({ dbPath: db.dbPath });
-    // sess-orphan resumes a session whose log file is gone, so `refresh()` could
-    // not resolve the link: it stands alone rather than dangling.
+    // sess-orphan copies a session whose log file is gone, so `refresh()` found
+    // no original: it stands alone rather than dangling.
     expect(rows.find((r) => r.id === "sess-orphan")?.continuedFromId).toBeNull();
     expect(buildFamily(rows, "sess-orphan")?.size).toBe(1);
 
@@ -121,12 +124,19 @@ describe("buildFamily", () => {
     expect(buildFamily(rows, "does-not-exist")).toBeNull();
   });
 
-  it("terminates on a cyclic link structure, listing each member once", async () => {
-    const rows = await listConversations({ dbPath: db.dbPath });
-    // The loop fixtures resume EACH OTHER — a shape real logs cannot produce,
-    // guarded against anyway (SetNull deletes plus re-parses).
-    expect(rows.find((r) => r.id === "sess-loop-a")?.continuedFromId).toBe("sess-loop-b");
-    expect(rows.find((r) => r.id === "sess-loop-b")?.continuedFromId).toBe("sess-loop-a");
+  it("terminates on a cyclic link structure, listing each member once", () => {
+    // Two sessions continuing EACH OTHER — a shape copies cannot produce,
+    // guarded against anyway.
+    const loopRow = (id: string, continuedFromId: string): FamilyRow => ({
+      id,
+      title: null,
+      project: { path: "/Users/me/dev/loop" },
+      startedAt: "2026-06-21T14:00:00.000Z",
+      costUsd: 0,
+      unpriced: false,
+      continuedFromId,
+    });
+    const rows = [loopRow("sess-loop-a", "sess-loop-b"), loopRow("sess-loop-b", "sess-loop-a")];
 
     const family = buildFamily(rows, "sess-loop-a");
     expect(family).not.toBeNull();
@@ -148,8 +158,9 @@ describe("familySizes", () => {
     for (const id of ["sess-fam-a", "sess-fam-b", "sess-fam-c", "sess-fam-d", "sess-fam-e"]) {
       expect(sizes.get(id)).toBe(5);
     }
-    expect(sizes.get("sess-loop-a")).toBe(2);
-    expect(sizes.get("sess-loop-b")).toBe(2);
+    expect(sizes.get("sess-legacy-a")).toBe(2);
+    expect(sizes.get("sess-legacy-b")).toBe(2);
+    expect(sizes.get("sess-legacy-fork")).toBe(1);
     expect(sizes.get("sess-fam-solo")).toBe(1);
     expect(sizes.get("sess-orphan")).toBe(1);
     // Every conversation is accounted for exactly once.

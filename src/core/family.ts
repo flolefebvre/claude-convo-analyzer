@@ -1,5 +1,6 @@
 // Continuation families (issue #46). A Conversation's `continued_from` link
-// (set by `refresh()` when a session's first record resumes/forks another) makes
+// (set by `refresh()` when a session copies the records of the one it resumes or
+// forks, log-format §10) makes
 // the sessions of one piece of work a TREE; the family is the whole connected
 // component — walked in BOTH directions, parents and continuations alike.
 //

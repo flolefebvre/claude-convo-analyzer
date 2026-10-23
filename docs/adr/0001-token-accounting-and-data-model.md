@@ -33,12 +33,13 @@ Model the domain as twelve tables:
   filed in.
 - `conversation` — one per top-level `<sessionId>.jsonl`; the user-facing row.
   Carries `title`, `git_branch`, Claude Code `version`, file mtime/size for
-  incremental refresh, and `continued_from_conversation_id` — set when the
-  conversation's first message `parentUuid` resolves (via the message-uuid index
-  built during parsing) to a message in a prior session (a `--resume`/fork);
-  of several Conversations holding a message with that uuid, the one with the
-  smallest `source_path` (plain lexicographic order), as for a request several
-  files hold.
+  incremental refresh, and `continued_from_conversation_id` — the session it
+  was resumed or forked from (a `--resume`/fork). Such a session's file copies
+  its parent's records, uuids included, rather than pointing back into them
+  (amended by issue #284; it first read the first message's `parentUuid`, a
+  shape real logs never produce): the parent is the Conversation whose
+  `continued-in` record names it, else the one whose Main-thread messages it
+  holds all of, ties to the smallest `source_path` (log-format §10).
   Each session file remains an independent row (resumed sessions are genuinely
   new API spend, so totals never double-count); the link only enables a future
   thread view.
@@ -53,7 +54,9 @@ Model the domain as twelve tables:
   `cache_creation_5m`, `cache_creation_1h`, `cache_read` — NULL for user
   messages, which have no usage of their own), `model`, the per-turn
   attribution fields (`attribution_skill` / `_agent` / `_plugin` /
-  `_mcp_server`), `permission_mode`, an API-error flag, and `timestamp`. FK to
+  `_mcp_server`), `permission_mode`, an API-error flag, `timestamp`, and
+  `is_copied` — whether a continuation copied it from its parent (a Copied
+  Message, log-format §10). FK to
   `agent`. Main and sub-agents are parsed identically. Content (text) and
   accounting (tokens) deliberately co-locate here because they describe the
   same turn and share its key — a feature for a small read-mostly analytics DB.
@@ -79,6 +82,9 @@ Model the domain as twelve tables:
   names, once, under that hash, shared across Conversations; a Refresh deletes
   those no tail names any more. A request's whole message list is rebuilt at
   read time from its `base` chain.
+- `continued_in` — one per `continued-in` record of a Conversation's main
+  file: the session it was resumed or forked into (log-format §10), FK to
+  `conversation`.
 
 Token accounting rules:
 

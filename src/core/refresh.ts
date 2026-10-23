@@ -1,5 +1,5 @@
 // Ingest spine (ADR-0001, ADR-0002). `refresh()` discovers top-level session
-// files + their sub-agent transcripts, parses them, and writes ALL eleven
+// files + their sub-agent transcripts, parses them, and writes ALL twelve
 // tables.
 // The read seams (`listConversations()`, `getConversation()`) live in `read.ts`.
 // It writes through a bare better-sqlite3 connection, not Prisma (ADR-0005);
@@ -59,6 +59,7 @@ import {
 import { type ParsedAgentSpawn, type ParsedApiRequest, parseSessionLines, type ParsedSession } from "@/core/parse";
 import {
   type AgentLineageRow,
+  type ContinuationCandidate,
   type ConversationRow,
   type MessageRow,
   prepareRefreshStatements,
@@ -158,8 +159,11 @@ type RefreshOptions = {
  * 15 — each Agent carries its own log file's change key (`agent.source_mtime`,
  *     `agent.source_size`), so a changed Conversation rewrites only the Agents
  *     whose file changed (ADR-0010).
+ * 16 — a continuation is found by the copy of its parent's records it holds
+ *     and the `continued-in` records naming it (`continued_in`), and its
+ *     copied Messages are flagged (`message.is_copied`, log-format §10).
  */
-export const PARSER_VERSION = 15;
+export const PARSER_VERSION = 16;
 
 /**
  * The version a conversation carries while it is written but NOT YET COMPLETE:
@@ -168,7 +172,7 @@ export const PARSER_VERSION = 15;
  *
  * This is what makes an INTERRUPTED refresh recoverable. Stamping the current
  * version at write time left a window — crash after the conversation writes,
- * before `resolveContinuedFrom` — in which rows looked up-to-date to every
+ * before `resolveContinuations` — in which rows looked up-to-date to every
  * later run and were skipped forever, their `continuedFromConversationId`
  * permanently null. Conversations are now stamped only once linking has run
  * for the whole refresh (`stampParserVersion`), so an aborted run leaves them
@@ -263,9 +267,10 @@ type ParsedConversation = {
 type WrittenConversation = {
   /** Row id of the conversation as this run wrote it. */
   conversationId: number;
-  sessionId: string;
-  /** `parentUuid` of its first message: where a resumed session continues from. */
-  firstMessageParentUuid: string | null;
+  /** The `uuid` of its Main thread's first Message: every copy of it, and every copy it is, holds it too. */
+  firstMessageUuid: string | null;
+  /** The sessions its `continued-in` records name. */
+  continuedInSessionIds: string[];
 };
 
 /** How far a Refresh has got: conversations committed out of those it re-parses. */
@@ -305,9 +310,11 @@ type DiscoveredWithKey = {
  * conversations committed so far. Conversations whose records state no `cwd`
  * are written last, in discovery order, as they borrow their Project from the
  * siblings in their log folder (see `resolveProjectPath`); (2) resolve
- * `continued_from` by looking up each
- * child's first-message `parentUuid` against the persisted `message` rows of ALL
- * conversations — so a skipped (unchanged) parent still resolves — and link
+ * the `continued_from` link and Copied Messages of that set and of every stored
+ * Conversation of their families — the ones holding their first Message, the
+ * ones they name or that continue from them, and the continuations of every
+ * deleted Conversation — against the persisted rows of ALL conversations, so
+ * a skipped (unchanged) parent still resolves (see `resolveContinuations`), and link
  * every Turn of the database with a `requestRef` and no API request to the
  * request of another file it names, if any, reading ids only (log-format §9,
  * "How they are stored") — a kept Agent's Turns included, whose links a
@@ -365,12 +372,24 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
       statements.selectStoredConversations().map((row) => [row.sessionId, row]),
     );
 
-    // Delete conversations whose source file is gone (single delete cascades).
+    // A deleted Conversation's continuations lose their parent: pass 2 decides
+    // theirs again. Until it has, they are unstamped, so an interrupted run
+    // leaves them re-parseable; pass 3 stamps them back.
+    const orphanedContinuationIds = new Set<number>();
+    /** Delete a Conversation (its rows go by cascade), setting its continuations aside. */
+    const deleteConversation = (conversationId: number) => {
+      const continuationIds = statements.selectContinuationIds([conversationId]);
+      for (const continuationId of continuationIds) orphanedContinuationIds.add(continuationId);
+      statements.updateParserVersion(continuationIds, UNSTAMPED_PARSER_VERSION);
+      statements.deleteConversation(conversationId);
+    };
+
+    // Delete conversations whose source file is gone.
     const onDisk = new Set(discovered.map((d) => d.session.sessionId));
     statements.beginTransaction();
     for (const [sessionId, row] of storedConversationBySessionId) {
       if (onDisk.has(sessionId)) continue;
-      statements.deleteConversation(row.id);
+      deleteConversation(row.id);
       conversationsDeleted += 1;
     }
     statements.commitTransaction();
@@ -456,7 +475,7 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
         endPhase("parse");
         if (sessionToReparse.priorConversationId === null) return;
         openBatchIfNone();
-        statements.deleteConversation(sessionToReparse.priorConversationId);
+        deleteConversation(sessionToReparse.priorConversationId);
         conversationsDeleted += 1;
         endPhase("write");
         return;
@@ -475,8 +494,8 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
       const currentBatchOpenedAt = openBatchIfNone();
       writtenConversations.push({
         conversationId: writeConversation(statements, parsedConversation),
-        sessionId: parsedConversation.session.sessionId,
-        firstMessageParentUuid: parsedConversation.parsed.messages[0]?.parentUuid ?? null,
+        firstMessageUuid: parsedConversation.parsed.messages[0]?.uuid ?? null,
+        continuedInSessionIds: parsedConversation.parsed.continuedInSessionIds,
       });
       const conversationsInBatch = writtenConversations.length - conversationsParsed;
       const isBatchFull =
@@ -492,19 +511,22 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     // Passes 2 and 3 share one transaction.
     phaseStart = performance.now();
     statements.beginTransaction();
-    // Pass 2 — resolve continued-from over the (re)written conversations,
-    // authoritatively against the persisted message uuids of ALL conversations;
-    // then link every Turn of the database whose API request is in another
-    // file — a skipped child's Turns included, whose links a rewritten
-    // parent's delete just nulled.
-    resolveContinuedFrom(statements, writtenConversations);
+    // Pass 2 — decide the continuations of the (re)written conversations and
+    // of their families, authoritatively against the persisted rows of ALL
+    // conversations; then link every Turn of the database whose API request
+    // is in another file — a skipped child's Turns included, whose links a
+    // rewritten parent's delete just nulled.
+    resolveContinuations(statements, writtenConversations, orphanedContinuationIds);
     statements.updateUnlinkedTurnApiRequests();
     endPhase("links");
 
     // Pass 3 — only NOW are these conversations complete: stamp them, so the
     // next run may skip them. An abort before this point leaves them unstamped
     // and therefore re-parseable (see `UNSTAMPED_PARSER_VERSION`).
-    stampParserVersion(statements, writtenConversations);
+    stampParserVersion(statements, [
+      ...writtenConversations.map((written) => written.conversationId),
+      ...orphanedContinuationIds,
+    ]);
     // A re-parse or a vanished file can leave a Project with no Conversation,
     // a system prompt or tool set no API request references, and a sent
     // message no tail names: gone, as a cold Refresh would never have stored them.
@@ -979,10 +1001,10 @@ function failedAttemptOwners(
  * Write one conversation, inside the caller's transaction, and return its row
  * id. A new one is inserted whole: its row, the Main thread (agent row +
  * messages + tool_calls + API requests), each sub-agent the same way, then
- * pr_links and turn_durations. A stored one is rewritten in place, Agent by
+ * pr_links, turn_durations and continued_in rows. A stored one is rewritten in place, Agent by
  * Agent (ADR-0010): its row updated; each Agent whose file changed, and each
  * Sub-agent whose file is gone, deleted (cascading); each changed Agent written
- * again, the Main thread's pr_links and turn_durations with it; and each kept
+ * again, the Main thread's pr_links, turn_durations and continued_in rows with it; and each kept
  * Sub-agent whose lineage this run decided again (see `isLineageDecidedAgain`)
  * updated in place.
  *
@@ -1017,7 +1039,7 @@ function writeConversation(statements: RefreshStatements, parsedConversation: Pa
     // Not stamped yet — pass 3 does that once this refresh's continuation
     // linking has run (see `UNSTAMPED_PARSER_VERSION`).
     parserVersion: UNSTAMPED_PARSER_VERSION,
-    // Resolved again by pass 2 (`resolveContinuedFrom`).
+    // Resolved again by pass 2 (`resolveContinuations`).
     continuedFromConversationId: null,
   };
   let conversationId: number;
@@ -1105,6 +1127,7 @@ function writeConversation(statements: RefreshStatements, parsedConversation: Pa
       messageCount: turnDuration.messageCount,
     });
   }
+  for (const sessionId of parsed.continuedInSessionIds) statements.insertContinuedIn({ conversationId, sessionId });
   return conversationId;
 }
 
@@ -1112,7 +1135,7 @@ function writeConversation(statements: RefreshStatements, parsedConversation: Pa
  * Delete, from a stored Conversation, each Agent whose file changed or is gone
  * — its Messages, Tool calls and API requests by cascade, which also clears the
  * lineage of its kept children and the API request links of Turns in other
- * files — and, when the Main thread changed, its pr_links and turn_durations.
+ * files — and, when the Main thread changed, its pr_links, turn_durations and continued_in rows.
  */
 function deleteRewrittenAndRemovedAgents(
   statements: RefreshStatements,
@@ -1123,7 +1146,7 @@ function deleteRewrittenAndRemovedAgents(
   for (const sub of subAgents) if (sub.isRewritten && sub.stored !== null) statements.deleteAgent(sub.stored.id);
   if (!isMainThreadRewritten) return;
   if (storedMainThread !== null) statements.deleteAgent(storedMainThread.id);
-  statements.deletePrLinksAndTurnDurations(conversationId);
+  statements.deletePrLinksTurnDurationsAndContinuedIn(conversationId);
 }
 
 /**
@@ -1232,45 +1255,86 @@ function orderParentsFirst(
 }
 
 /**
- * Pass 2: set `continuedFromConversationId` when a conversation's FIRST message's
- * `parentUuid` resolves into a DIFFERENT session (a `--resume`/fork). Resumed
- * sessions stay DISTINCT rows (ADR-0001) — the link only records lineage; tokens
- * are never merged.
+ * Pass 2: decide again the parent (`continuedFromConversationId`) and the
+ * Copied Messages of every Conversation this run may have changed them for —
+ * each written one; each stored one holding a written one's first Message
+ * (every copy of a session, and every session it copies, holds its first
+ * Message); each one a written one's `continued-in` records name, or that
+ * continues from it; and `orphanedContinuationIds`, the continuations of the
+ * Conversations this run deleted. Resumed sessions stay DISTINCT rows
+ * (ADR-0001): the link only records lineage.
  *
- * Resolution is authoritative against the DATABASE, not just the conversations
- * parsed in this run: on an incremental refresh the parent session may be
- * UNCHANGED (and thus skipped, never re-parsed), so its message uuids are absent
- * from any in-memory index — but its rows (with their `uuid`) persist. We look up
- * the owning conversation of each child's `parentUuid` via the `message` table by
- * uuid (a targeted, indexed query — never loading every message into memory), so
- * a skipped parent still resolves. An unresolved/own-session parentUuid leaves
- * the link null.
+ * Every decision reads the DATABASE, never what this run parsed, so a skipped
+ * parent still counts and the outcome is the same in a cold Refresh and an
+ * incremental one, whatever order the files were written in. Lookups are by
+ * indexed uuid or session id: an unrelated Conversation costs a few.
  */
-function resolveContinuedFrom(statements: RefreshStatements, writtenConversations: WrittenConversation[]): void {
-  for (const { conversationId, sessionId, firstMessageParentUuid } of writtenConversations) {
-    if (firstMessageParentUuid === null) continue;
-
-    // Find the conversation that OWNS a persisted message with this uuid.
-    const from = statements.selectMessageOwner(firstMessageParentUuid);
-    if (from === undefined || from.sessionId === sessionId) {
-      continue; // unresolved, or points within the same session.
+function resolveContinuations(
+  statements: RefreshStatements,
+  writtenConversations: WrittenConversation[],
+  orphanedContinuationIds: Set<number>,
+): void {
+  const writtenConversationIds = writtenConversations.map((written) => written.conversationId);
+  const conversationIdsToResolve = new Set([...writtenConversationIds, ...orphanedContinuationIds]);
+  for (const { conversationId, firstMessageUuid } of writtenConversations) {
+    if (firstMessageUuid === null) continue;
+    for (const holder of statements.selectOtherHolders(firstMessageUuid, conversationId)) {
+      conversationIdsToResolve.add(holder.id);
     }
+  }
+  const namedSessionIds = writtenConversations.flatMap((written) => written.continuedInSessionIds);
+  for (const id of statements.selectConversationIdsBySessionId(namedSessionIds)) conversationIdsToResolve.add(id);
+  for (const id of statements.selectContinuationIds(writtenConversationIds)) conversationIdsToResolve.add(id);
 
-    statements.updateContinuedFrom([conversationId], from.id);
+  for (const conversationId of conversationIdsToResolve) {
+    const continuation = statements.selectContinuationCandidate(conversationId);
+    if (continuation === undefined) continue; // deleted by this run
+    const parentId =
+      statements.selectNamingConversationId(continuation.sessionId, continuation.id) ??
+      selectParentByCopy(statements, continuation);
+    statements.updateContinuedFrom(continuation.id, parentId);
+    statements.updateCopiedMessages(continuation.id, parentId);
   }
 }
 
 /**
- * Pass 3: mark this run's conversations as produced by the current parser — the
+ * The parent of `continuation` when no `continued-in` record names it
+ * (log-format §10): of the other Conversations holding its first Message,
+ * those whose Main-thread Messages its Main thread holds all of — not one its
+ * own record names, and, when each holds all of the other's, only one with a
+ * smaller `source_path` — the one sharing the longest leading run of Messages
+ * with it, ties to the smallest `source_path`. Null without one: a near-fork,
+ * where each holds a Message the other lacks, is never guessed.
+ */
+function selectParentByCopy(statements: RefreshStatements, continuation: ContinuationCandidate): number | null {
+  const firstMessageUuid = statements.selectFirstMessageUuid(continuation.mainThreadAgentId);
+  if (firstMessageUuid == null) return null;
+  let parent: { id: number; sharedLeadingRunLength: number } | null = null;
+  // Smallest `source_path` first, so a tie keeps the earlier holder.
+  for (const holder of statements.selectOtherHolders(firstMessageUuid, continuation.id)) {
+    if (statements.isSessionNamed(continuation.id, holder.sessionId)) continue;
+    if (!statements.isEveryMessageHeld(holder.mainThreadAgentId, continuation.mainThreadAgentId)) continue;
+    const isSameMessages = statements.isEveryMessageHeld(continuation.mainThreadAgentId, holder.mainThreadAgentId);
+    if (isSameMessages && holder.sourcePath > continuation.sourcePath) continue;
+    const sharedLeadingRunLength = statements.selectSharedLeadingRunLength(
+      continuation.mainThreadAgentId,
+      holder.mainThreadAgentId,
+    );
+    if (parent === null || sharedLeadingRunLength > parent.sharedLeadingRunLength) {
+      parent = { id: holder.id, sharedLeadingRunLength };
+    }
+  }
+  return parent?.id ?? null;
+}
+
+/**
+ * Pass 3: mark `conversationIds` as produced by the current parser — the
  * commit point that lets a later run SKIP them.
  *
- * One statement scoped to the conversations this run (re)wrote: nothing else in
- * the table is touched, so the incremental cost stays proportional to the work
- * actually done, not to the size of the database.
+ * One statement scoped to the conversations this run (re)wrote or linked
+ * again: nothing else in the table is touched, so the incremental cost stays
+ * proportional to the work actually done, not to the size of the database.
  */
-function stampParserVersion(statements: RefreshStatements, writtenConversations: WrittenConversation[]): void {
-  statements.updateParserVersion(
-    writtenConversations.map((c) => c.conversationId),
-    PARSER_VERSION,
-  );
+function stampParserVersion(statements: RefreshStatements, conversationIds: number[]): void {
+  statements.updateParserVersion(conversationIds, PARSER_VERSION);
 }

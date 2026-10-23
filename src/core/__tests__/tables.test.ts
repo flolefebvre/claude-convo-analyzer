@@ -182,13 +182,14 @@ describe("Slice 4 side tables", () => {
     expect(resumed).toBeDefined();
     if (!origin || !resumed) return;
 
-    // The resumed session's first message parentUuid resolves into sess-origin.
+    // sess-origin's `continued-in` record names the session that copied it.
     expect(resumed.continuedFromId).toBe("sess-origin");
     // The origin started fresh — no continuation.
     expect(origin.continuedFromId).toBeNull();
 
     // Both remain DISTINCT rows; tokens are NOT merged.
     expect(origin.tokens.output).toBe(10);
-    expect(resumed.tokens.output).toBe(20);
+    // The copied Turn still counts in the resumed session's total; #285 will change that.
+    expect(resumed.tokens.output).toBe(30);
   });
 });
