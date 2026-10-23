@@ -640,7 +640,9 @@ function parseSession(sourcePath: string): ParsedSession | null {
  * stored Agent's, and the stored parent of each such stored Sub-agent, so its
  * lineage comes from a parsed ledger; then, until none is left, each kept
  * Sub-agent whose stored spawn is gone (see `hasLostStoredSpawn`), so it falls
- * back to its own dominant model as a cold Refresh's does. Every other
+ * back to its own dominant model as a cold Refresh's does, and each kept one
+ * that may hold a new fork's spawn (see `unreadHoldersOfUnnamedNewFirstMessages`).
+ * Every other
  * Sub-agent is kept without being read. The conversation is null when the main
  * transcript vanished; a vanished sub-agent file is left out — removed, when
  * stored — and counted.
@@ -716,8 +718,18 @@ function parseConversation(
           sub.parsed === null && hasLostStoredSpawn(sub, storedAgentByRowId, readOrRemovedRowIds, spawnLedgerByAgentId),
       ),
     );
-    if (subAgentsWithLostSpawn.size === 0) break;
-    read(subAgentsWithLostSpawn);
+    if (subAgentsWithLostSpawn.size > 0) {
+      read(subAgentsWithLostSpawn);
+    } else {
+      const forkSpawners = unreadHoldersOfUnnamedNewFirstMessages(
+        statements,
+        priorConversationId,
+        subAgents,
+        spawnLedgerByAgentId,
+      );
+      if (forkSpawners.size === 0) break;
+      read(forkSpawners);
+    }
     spawnLedgerByAgentId = indexSpawnLedgers(parsed, subAgents);
   }
 
@@ -736,6 +748,36 @@ function parseConversation(
     },
     vanishedSubAgentFileCount,
   };
+}
+
+/**
+ * The kept, unread Sub-agents of stored Conversation `priorConversationId`
+ * holding the first Message of a new Sub-agent no parsed ledger names: a fork's
+ * file starts with a copy of its spawner's records (log-format §10), so these
+ * may hold its spawn ledger. A new Sub-agent that is no fork costs one indexed
+ * lookup, and reads nothing more.
+ */
+function unreadHoldersOfUnnamedNewFirstMessages(
+  statements: RefreshStatements,
+  priorConversationId: number | null,
+  subAgents: SubAgentToWrite[],
+  spawnLedgerByAgentId: Map<string, SpawnLedgerEntry>,
+): Set<SubAgentToWrite> {
+  const holders = new Set<SubAgentToWrite>();
+  if (priorConversationId === null) return holders;
+  const unreadSubAgentByRowId = new Map(
+    subAgents.flatMap((sub) => (sub.parsed === null && sub.stored !== null ? [[sub.stored.id, sub] as const] : [])),
+  );
+  for (const sub of subAgents) {
+    if (sub.stored !== null || spawnLedgerByAgentId.has(sub.file.agentId)) continue;
+    const firstMessageUuid = sub.parsed?.messages[0]?.uuid;
+    if (firstMessageUuid == null) continue;
+    for (const agentRowId of statements.selectHoldingAgentIds(firstMessageUuid, priorConversationId)) {
+      const holder = unreadSubAgentByRowId.get(agentRowId);
+      if (holder !== undefined) holders.add(holder);
+    }
+  }
+  return holders;
 }
 
 /**

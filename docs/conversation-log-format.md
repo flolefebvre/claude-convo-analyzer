@@ -723,6 +723,11 @@ October 2026:
   `"parentAgentId"`); the app does not read those files.
 - A fork of a fork copies its spawning fork's records, which begin with that
   fork's own copy: the direct spawner holds the whole copied run.
+- The re-written spawn record is the spawner's spawning Turn under a new
+  `uuid`: same `message.id`, `requestId` and `usage` (one fork's holds the
+  spawner's 1,199 output tokens). Matched by `uuid`, it is the fork's first
+  own Message, so each fork still counts its spawner's spawning Turn once —
+  11 Turns on this machine. The rule below leaves it unflagged.
 - A fork the **Main thread** spawns copies nothing: its transcript opens with a
   `fork-context-ref` record (`parentSessionId`, `parentLastUuid`,
   `contextLength`) in place of the copied records (5 files, 2.1.218–2.1.280).
@@ -777,3 +782,8 @@ Conversation's records name or that continues from it, and the continuations
 of every Conversation it deleted. Like the written ones, those continuations
 stay unstamped until the pass commits, so an interrupted run leaves them
 re-parseable. A written Conversation with no copy costs a few indexed lookups.
+
+A fork's flags rest on its stored spawner, so a fork's file that appears
+while its spawner's is unchanged has the stored Sub-agents holding its first
+Message read for their ledgers, as a cold Refresh reads every file; any other
+new Sub-agent costs that one lookup.

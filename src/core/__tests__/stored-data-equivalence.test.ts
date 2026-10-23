@@ -305,9 +305,13 @@ describe("continuations", () => {
     before(logsRoot);
     await refresh({ logsRoot, dbPath: changedDbPath });
     change(logsRoot);
-    await refresh({ logsRoot, dbPath: changedDbPath });
+    const changedSummary = await refresh({ logsRoot, dbPath: changedDbPath });
     await refresh({ logsRoot, dbPath: coldDbPath });
-    return { changedContent: continuationContent(changedDbPath), coldContent: continuationContent(coldDbPath) };
+    return {
+      changedContent: continuationContent(changedDbPath),
+      coldContent: continuationContent(coldDbPath),
+      changedSummary,
+    };
   }
 
   /** Move the log of `sessionId` out of the logs root, keeping it for {@link restoreLog}. */
@@ -448,12 +452,12 @@ describe("continuations", () => {
 
       expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
         project: { rowCount: 1, sha256: "feba540146d17e8b299b85b8b419edb0f24a80e6a19fb1209d37f6936f17c75a" },
-        conversation: { rowCount: 1, sha256: "ef904c46a2569feac628f394afc5270aa7df08e9a065d3b08be8bf3599e83647" },
+        conversation: { rowCount: 1, sha256: "c6ea16f33bd46ad627cf17c229509f0b5670b10a9e9a64a4c0187cfe7dfd9687" },
         // fork-a under fork-lead, fork-b under fork-a: each stored under the Sub-agent that spawned it.
-        agent: { rowCount: 4, sha256: "0e6be9848fda36a60537f3fabf3111f9221d64ba38ad1e5446105a23d27f51a9" },
+        agent: { rowCount: 4, sha256: "a4f026fc46ec435fff99e25e5e712dcaad530c883e03f24f42bea5b60a49d4e1" },
         // Each fork's copy of its spawner's Messages is flagged.
         message: { rowCount: 25, sha256: "c25ab69f4bbbaf98d46f2009f9df948691b5f5a9ce1d88955c056d4be127bf0a" },
-        tool_call: { rowCount: 6, sha256: "7dfb3033925770e21d8a8ae88c0de7b0621bc65a5681a84541c4ea1e4d649a66" },
+        tool_call: { rowCount: 6, sha256: "eb6fa55b8ab37a703f86136cd5d228e644e0032e19c3abf12fb9657b4b2158bb" },
         pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
         turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
         ...NO_LOGGED_API_REQUESTS,
@@ -461,26 +465,36 @@ describe("continuations", () => {
       });
     });
 
-    it("are decided as a cold Refresh decides them when the fork of a fork appears later", async () => {
-      const { changedContent, coldContent } = await changedAndCold(
-        (logsRoot) => renameSync(forkLogPath(logsRoot, "fork-b"), setAsideForkLogPath("fork-b")),
-        (logsRoot) => renameSync(setAsideForkLogPath("fork-b"), forkLogPath(logsRoot, "fork-b")),
-        FORKS_FIXTURE_ROOT_NAME,
-      );
-
-      expect(changedContent).toEqual(coldContent);
-      expectForksFlagged(coldContent);
-    });
-
-    it.each(["fork-lead", "fork-a", "fork-b"])(
-      "are decided as a cold Refresh decides them when %s alone is re-parsed",
+    // Each fork's spawn ledger is in its spawner's file, which stays unchanged and unread.
+    it.each(["fork-a", "fork-b"])(
+      "are decided as a cold Refresh decides them when %s appears later",
       async (agentId) => {
         const { changedContent, coldContent } = await changedAndCold(
+          (logsRoot) => renameSync(forkLogPath(logsRoot, agentId), setAsideForkLogPath(agentId)),
+          (logsRoot) => renameSync(setAsideForkLogPath(agentId), forkLogPath(logsRoot, agentId)),
+          FORKS_FIXTURE_ROOT_NAME,
+        );
+
+        expect(changedContent).toEqual(coldContent);
+        expectForksFlagged(coldContent);
+      },
+    );
+
+    // The Main thread's file, the changed one, and the stored spawner of the changed one: the others stay unread.
+    it.each([
+      { agentId: "fork-lead", logFilesParsed: 2 },
+      { agentId: "fork-a", logFilesParsed: 3 },
+      { agentId: "fork-b", logFilesParsed: 3 },
+    ])(
+      "are decided as a cold Refresh decides them when $agentId alone is re-parsed",
+      async ({ agentId, logFilesParsed }) => {
+        const { changedContent, coldContent, changedSummary } = await changedAndCold(
           () => {},
           (logsRoot) => appendUserMessage(forkLogPath(logsRoot, agentId), `${agentId}-u-appended`),
           FORKS_FIXTURE_ROOT_NAME,
         );
 
+        expect(changedSummary.logFilesParsed).toBe(logFilesParsed);
         expect(changedContent).toEqual(coldContent);
         expectForksFlagged(coldContent);
       },
