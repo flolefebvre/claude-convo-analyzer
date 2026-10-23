@@ -16,11 +16,12 @@ the CSS is Tailwind, compiled only by Next's pipeline.
 
 - **The export is an ordinary page** that renders the whole Conversation with
   the Transcript components, under its own root layout (no app bar, no theme
-  script). It sets `instant = false` and awaits its data outside any
+  script: its dark theme follows the OS color scheme). It sets `instant = false` and awaits its data outside any
   `<Suspense>`, so the whole Conversation is in the first HTML response instead
   of streamed chunks that only a script would put in place.
 - **The download is a route handler that fetches that page from its own
-  server**, at the request's origin, then inlines its stylesheets and fonts and
+  server**, at the request's origin, then writes the home directory as `~`,
+  inlines its stylesheets with the fonts they reference as `data:` URLs, and
   strips every `<script>` and every `<link>`.
 
 ## Considered options
