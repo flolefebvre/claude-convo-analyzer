@@ -191,7 +191,7 @@ function writeManifest() {
     license: manifest.license,
     repository: manifest.repository,
     bin: { "claude-convo-analyzer": "bin/claude-convo-analyzer.js" },
-    engines: { node: ">=20.9" },
+    engines: { node: ">=22" },
     dependencies: { "better-sqlite3": manifest.dependencies["better-sqlite3"] },
   };
   writeFileSync(path.join(packageDir, "package.json"), `${JSON.stringify(publishedManifest, null, 2)}\n`);

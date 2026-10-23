@@ -21,8 +21,9 @@ nothing is ever sent anywhere, so no update check either.
   assembles it, with a generated manifest instead of the repo's, which carries
   dev tooling and a `postinstall` that would fail there.
 - **The native SQLite binding is never shipped.** better-sqlite3 is the
-  package's one dependency, so npm installs the binding built for the user's
-  platform and Node; the app finds it by walking up from its own directory.
+  package's one dependency: npm installs it with its own prebuilt N-API
+  binaries, and it loads the one for the user's platform, so nothing builds on
+  their machine; the app finds it by walking up from its own directory.
 - **A launcher, the package's command,** checks the Node version first, serves
   on `127.0.0.1:4747` (loopback only, a fixed port so bookmarks keep working),
   opens the browser, and turns a second launch into opening the running app,
@@ -38,8 +39,9 @@ nothing is ever sent anywhere, so no update check either.
   the Prisma packages as dependencies, then build or start there): rejected.
   It downloads Next's compiler binaries and far more than the standalone trace
   holds, for every user and every update.
-- **Ship the binding prebuilt for each platform** in the package: rejected. It
-  multiplies the package by every platform and Node ABI, and still misses some.
+- **Ship the binding prebuilt for each platform** in this package: rejected. It
+  multiplies the package by every platform and Node ABI, and still misses some;
+  better-sqlite3 does it upstream, once, for every platform its N-API build covers.
 - **Check for updates at startup**: rejected. It is a request to a third party,
   which the local-only promise rules out.
 
@@ -49,8 +51,8 @@ nothing is ever sent anywhere, so no update check either.
   and names its external aliases; a Next or pnpm upgrade can break it.
   `scripts/package.ts` fails, naming the assumption, when it can tell, and the
   `smoke` stage installs and runs the packed tarball on every change.
-- On a Node older than 20, npm warns that the package needs Node 20.9 or newer
-  (`EBADENGINE`), then usually fails building better-sqlite3, before the
-  launcher can print its own one-line answer; Node 20.0 to 20.8 gets that answer.
+- On a Node older than 22, npm only warns that the package needs Node 22 or
+  newer (`EBADENGINE`) and installs it, since nothing builds at install time;
+  the launcher's version check then refuses with its own one-line answer.
 - Users run whatever version they last fetched until they run `@latest` again;
   the app never tells them a newer one exists.
