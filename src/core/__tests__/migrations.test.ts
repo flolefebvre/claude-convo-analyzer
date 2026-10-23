@@ -1,9 +1,10 @@
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { Worker } from "node:worker_threads";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createPrismaClient, migrationsDir } from "@/core/db";
+import { createPrismaClient, migrationsDir, openRefreshConnection } from "@/core/db";
 
 /** Every committed migration directory (timestamp-prefixed, sorted). */
 function committedMigrations(): string[] {
@@ -11,6 +12,53 @@ function committedMigrations(): string[] {
     .filter((e) => e.isDirectory())
     .map((e) => e.name)
     .sort();
+}
+
+/** Every migration the ledger of the database at `dbPath` records as applied, one entry per row, sorted. */
+function recordedMigrations(dbPath: string): string[] {
+  const db = new Database(dbPath);
+  try {
+    return db.prepare("SELECT migration_name FROM _cca_migrations ORDER BY migration_name").pluck().all() as string[];
+  } finally {
+    db.close();
+  }
+}
+
+// The worker's `.ts` graph uses the `@/` aliases, so it loads through tsx.
+const TSX_EXEC_ARGV = ["--import", "tsx"];
+const WORKER_TIMEOUT_MS = 30_000;
+
+type OpenOutcome = { kind: "opened" } | { kind: "failed"; message: string };
+
+/** Open `dbPath` from `workerCount` worker threads released at the same instant; each worker's outcome. */
+async function openFromRacingWorkers(dbPath: string, workerCount: number): Promise<OpenOutcome[]> {
+  const startSignal = new Int32Array(new SharedArrayBuffer(4));
+  const readies: Promise<void>[] = [];
+  const outcomes: Promise<OpenOutcome>[] = [];
+  const workers = Array.from({ length: workerCount }, () => {
+    const worker = new Worker(new URL("./helpers/open-refresh-connection.worker.ts", import.meta.url), {
+      execArgv: TSX_EXEC_ARGV,
+      workerData: { dbPath, startSignal },
+    });
+    readies.push(new Promise((resolve) => worker.once("message", () => resolve())));
+    outcomes.push(
+      new Promise((resolve, reject) => {
+        worker.on("message", (message: { kind: "ready" } | OpenOutcome) => {
+          if (message.kind !== "ready") resolve(message);
+        });
+        worker.on("error", reject);
+      }),
+    );
+    return worker;
+  });
+  try {
+    await Promise.all(readies);
+    Atomics.store(startSignal, 0, 1);
+    Atomics.notify(startSignal, 0);
+    return await Promise.all(outcomes);
+  } finally {
+    await Promise.all(workers.map((worker) => worker.terminate()));
+  }
 }
 
 describe("migration idempotency", () => {
@@ -30,14 +78,45 @@ describe("migration idempotency", () => {
     const prisma = createPrismaClient(dbPath);
     await prisma.$disconnect();
 
+    expect(recordedMigrations(dbPath)).toEqual(committedMigrations());
+  });
+
+  it(
+    "two connections opening the same fresh database at once both succeed, each migration applied once",
+    async () => {
+      const outcomes = await openFromRacingWorkers(dbPath, 2);
+      expect(outcomes).toEqual([{ kind: "opened" }, { kind: "opened" }]);
+      expect(recordedMigrations(dbPath)).toEqual(committedMigrations());
+    },
+    WORKER_TIMEOUT_MS,
+  );
+
+  it("a migration that fails for its own reason throws at open and is not recorded", () => {
+    const firstMigration = committedMigrations()[0];
+    // A table the first migration creates, already there with another shape:
+    // its `CREATE TABLE` fails, as a broken migration would.
     const db = new Database(dbPath);
+    db.exec(`CREATE TABLE "conversation" ("unrelated" TEXT)`);
+    db.close();
+
+    expect(() => createPrismaClient(dbPath)).toThrow(/already exists/);
+
+    expect(recordedMigrations(dbPath)).not.toContain(firstMigration);
+  });
+
+  it("opening an up-to-date DB takes no write lock: it succeeds while another connection holds one", async () => {
+    const first = createPrismaClient(dbPath);
+    await first.$disconnect();
+
+    const writeLockHolder = new Database(dbPath);
+    writeLockHolder.exec("BEGIN IMMEDIATE");
     try {
-      const rows = db.prepare("SELECT migration_name FROM _cca_migrations ORDER BY migration_name").all() as {
-        migration_name: string;
-      }[];
-      expect(rows.map((r) => r.migration_name)).toEqual(committedMigrations());
+      // Waiting on the held lock would block for the whole lock timeout, then throw.
+      openRefreshConnection(dbPath).close();
+      await createPrismaClient(dbPath).$disconnect();
     } finally {
-      db.close();
+      writeLockHolder.exec("ROLLBACK");
+      writeLockHolder.close();
     }
   });
 
