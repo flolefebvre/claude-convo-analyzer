@@ -12,7 +12,6 @@ import { createRefreshRunner, createWorkerRefreshJob, spawnRefreshWorker } from 
 
 const FIXTURES_ROOT = path.join(import.meta.dirname, "fixtures", "logs");
 const TSX_EXEC_ARGV = ["--import", "tsx"];
-const WORKER_TIMEOUT_MS = 30_000;
 
 /** The production worker-backed job, with its worker loaded through tsx. */
 function tsxWorkerRefreshJob() {
@@ -50,71 +49,55 @@ describe("refresh in a worker", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it(
-    "keeps the main thread ticking while a cold Refresh runs, and resolves to its summary",
-    async () => {
-      const runner = createRefreshRunner(tsxWorkerRefreshJob());
-      let summary;
+  it("keeps the main thread ticking while a cold Refresh runs, and resolves to its summary", async () => {
+    const runner = createRefreshRunner(tsxWorkerRefreshJob());
+    let summary;
 
-      const longestTickGap = await longestTickGapDuring(async () => {
-        summary = await runner.start();
-      });
+    const longestTickGap = await longestTickGapDuring(async () => {
+      summary = await runner.start();
+    });
 
-      expect(summary).toMatchObject({ conversationsParsed: 21, conversationsSkipped: 0 });
-      expect(longestTickGap).toBeLessThanOrEqual(100);
-    },
-    WORKER_TIMEOUT_MS,
-  );
+    expect(summary).toMatchObject({ conversationsParsed: 21, conversationsSkipped: 0 });
+    expect(longestTickGap).toBeLessThanOrEqual(100);
+  });
 
-  it(
-    "relays every progress report of the Refresh, in order",
-    async () => {
-      const refreshInWorker = tsxWorkerRefreshJob();
-      const progressReports: RefreshProgress[] = [];
+  it("relays every progress report of the Refresh, in order", async () => {
+    const refreshInWorker = tsxWorkerRefreshJob();
+    const progressReports: RefreshProgress[] = [];
 
-      const summary = await refreshInWorker((progress) => progressReports.push(progress));
+    const summary = await refreshInWorker((progress) => progressReports.push(progress));
 
-      // The total first, then one report per committed batch, rising to the total.
-      const total = summary.conversationsParsed;
-      expect(progressReports[0]).toEqual({ done: 0, total });
-      expect(progressReports.at(-1)).toEqual({ done: total, total });
-      const doneCounts = progressReports.map((progress) => progress.done);
-      expect(doneCounts).toEqual([...new Set(doneCounts)].sort((a, b) => a - b));
-    },
-    WORKER_TIMEOUT_MS,
-  );
+    // The total first, then one report per committed batch, rising to the total.
+    const total = summary.conversationsParsed;
+    expect(progressReports[0]).toEqual({ done: 0, total });
+    expect(progressReports.at(-1)).toEqual({ done: total, total });
+    const doneCounts = progressReports.map((progress) => progress.done);
+    expect(doneCounts).toEqual([...new Set(doneCounts)].sort((a, b) => a - b));
+  });
 
-  it(
-    "rejects the start with the error a Refresh throws in the worker",
-    async () => {
-      // A directory is no database: opening it throws inside the worker.
-      vi.stubEnv("CCA_DB_PATH", tmpDir);
-      const runner = createRefreshRunner(tsxWorkerRefreshJob());
+  it("rejects the start with the error a Refresh throws in the worker", async () => {
+    // A directory is no database: opening it throws inside the worker.
+    vi.stubEnv("CCA_DB_PATH", tmpDir);
+    const runner = createRefreshRunner(tsxWorkerRefreshJob());
 
-      const failure = await runner.start().catch((error: unknown) => error);
+    const failure = await runner.start().catch((error: unknown) => error);
 
-      expect(failure).toBeInstanceOf(Error);
-      expect((failure as Error).cause).toBeInstanceOf(Error);
-      expect((failure as Error).cause).toMatchObject({ message: expect.stringMatching(/open database/) });
-      expect(runner.state().status).toBe("failed");
-    },
-    WORKER_TIMEOUT_MS,
-  );
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).cause).toBeInstanceOf(Error);
+    expect((failure as Error).cause).toMatchObject({ message: expect.stringMatching(/open database/) });
+    expect(runner.state().status).toBe("failed");
+  });
 
-  it(
-    "rejects the start with the exit code when the worker exits without a summary",
-    async () => {
-      const runner = createRefreshRunner(
-        createWorkerRefreshJob({
-          spawnWorker: () =>
-            new Worker(new URL("./helpers/exit-without-summary.worker.ts", import.meta.url), {
-              execArgv: TSX_EXEC_ARGV,
-            }),
-        }),
-      );
+  it("rejects the start with the exit code when the worker exits without a summary", async () => {
+    const runner = createRefreshRunner(
+      createWorkerRefreshJob({
+        spawnWorker: () =>
+          new Worker(new URL("./helpers/exit-without-summary.worker.ts", import.meta.url), {
+            execArgv: TSX_EXEC_ARGV,
+          }),
+      }),
+    );
 
-      await expect(runner.start()).rejects.toThrow(/exit code 2/);
-    },
-    WORKER_TIMEOUT_MS,
-  );
+    await expect(runner.start()).rejects.toThrow(/exit code 2/);
+  });
 });

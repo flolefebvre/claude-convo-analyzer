@@ -26,7 +26,6 @@ function recordedMigrations(dbPath: string): string[] {
 
 // The worker's `.ts` graph uses the `@/` aliases, so it loads through tsx.
 const TSX_EXEC_ARGV = ["--import", "tsx"];
-const WORKER_TIMEOUT_MS = 30_000;
 
 type OpenOutcome = { kind: "opened" } | { kind: "failed"; message: string };
 
@@ -81,15 +80,11 @@ describe("migration idempotency", () => {
     expect(recordedMigrations(dbPath)).toEqual(committedMigrations());
   });
 
-  it(
-    "two connections opening the same fresh database at once both succeed, each migration applied once",
-    async () => {
-      const outcomes = await openFromRacingWorkers(dbPath, 2);
-      expect(outcomes).toEqual([{ kind: "opened" }, { kind: "opened" }]);
-      expect(recordedMigrations(dbPath)).toEqual(committedMigrations());
-    },
-    WORKER_TIMEOUT_MS,
-  );
+  it("two connections opening the same fresh database at once both succeed, each migration applied once", async () => {
+    const outcomes = await openFromRacingWorkers(dbPath, 2);
+    expect(outcomes).toEqual([{ kind: "opened" }, { kind: "opened" }]);
+    expect(recordedMigrations(dbPath)).toEqual(committedMigrations());
+  });
 
   it("a migration that fails for its own reason throws at open and is not recorded", () => {
     const firstMigration = committedMigrations()[0];

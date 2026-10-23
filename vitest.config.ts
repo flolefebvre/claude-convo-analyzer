@@ -21,6 +21,11 @@ export default defineConfig({
     // Shared setup modules under `__tests__/helpers/` declare no tests of their
     // own — they would fail the "no test suite found" check if collected.
     exclude: ["**/node_modules/**", "**/__tests__/helpers/**"],
+    // A cold Refresh of a fixture root — in a test body or in a `beforeEach` —
+    // sits near the 5 s default on the Windows CI runner. A ceiling, not a
+    // wait: a healthy run is unaffected, a slow one is not reported as failed.
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
     // `--changed` reruns everything when one of these changes. Anchored to the
     // repo root: the default `**` globs skip `.claude/worktrees`. The fixtures
     // are read from disk, not imported, so the module graph can't see them.
