@@ -148,8 +148,8 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 15, sha256: "d79302a905b975c08cfd6c217e6ae3eaa17e44ca45bb318cdfeefa1ae7b0e329" },
-      conversation: { rowCount: 21, sha256: "342421135c4b554049063f8cb885f5094a5b59de0774cf1cf071117b91d1a910" },
-      agent: { rowCount: 35, sha256: "bcf922290517994e489068e748364ff9de40929e4a8ddfbcb68c6f6014836468" },
+      conversation: { rowCount: 21, sha256: "db5a9c0487391fb953402ef510a0d12ac89fbbcfb0fc5e7b009e3f193b574c4b" },
+      agent: { rowCount: 35, sha256: "62ca16e1fa447ccda0b12e85af275f7701abaf76cc33e73e4b6bc1d8a9d9894f" },
       message: { rowCount: 125, sha256: "01907f4c09c77893e69757baeeff97f6f19f6c3e4c6b7ae4fc0307176478d63d" },
       tool_call: { rowCount: 34, sha256: "58586fdaa0ea9e906fd5037c8a3c7809fd2fd1d4602ec6280e34db111716b5f4" },
       pr_link: { rowCount: 1, sha256: "efff4b0f419e7b55d6dc8602b3503e06e81829e6fd868d216679845fa0970d16" },
@@ -164,8 +164,8 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "5d55ed2d1c37a5a354777b7e27dfce7bb9f299e0e7237d17a32956fee0357675" },
-      conversation: { rowCount: 1, sha256: "f2942e83ff99cbf29f6de9d372ae0278124e02ebe389b82dda54dae7d33da45e" },
-      agent: { rowCount: 2, sha256: "9cddce4d56d246718241b05d406551e917f8d9c1d9a116799eb257bc48089a61" },
+      conversation: { rowCount: 1, sha256: "8396812b59326ee1483c390154bea271b2887dab13620d108e320f8f814540bc" },
+      agent: { rowCount: 2, sha256: "f5aba5caf67fb377381f3a6615b9a5b84ba42ad02870c04d39ae685c7f265e3e" },
       message: { rowCount: 28, sha256: "2fa9c58ff794ef88ecd7b625ab2bf49d6a2f6b6b00410ea69c5778bf03dd6d02" },
       tool_call: { rowCount: 1, sha256: "a7fdb225fda2bff0ca75f88a22789a86cd79a97f5ea4e2f952e1d4559aa8efd9" },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
@@ -180,8 +180,8 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 9, sha256: "e740c951fb2b58e8b13902eea830681396ac5eea03a445a31d6fb998c250a3e1" },
-      conversation: { rowCount: 13, sha256: "7b6def0f0d5d90ee99c73cb3011427918201058b98d08644f9239569ef2aa89e" },
-      agent: { rowCount: 13, sha256: "47aa156cd547f0ad4f24ca8d2f27122dfa765f0de80b37a46a3507b22ade253f" },
+      conversation: { rowCount: 13, sha256: "d01ff88bea6e6a216020e2d06b10123ab728c2b0306fb846d218099752a8a880" },
+      agent: { rowCount: 13, sha256: "05071b138ea90dac2a6f439c5ffdc80cf4ecde23d204d53599a57202eb17a230" },
       message: { rowCount: 22, sha256: "ae5d720b605fa95bc37d682fe0ae41fd22eb60c7eb9137668412ee1cc3d97d03" },
       tool_call: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
@@ -196,8 +196,8 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "c39a0134a2be51dcdd6348bf0657691be4b1d4092d6e1616117c4d0f4f58a771" },
-      conversation: { rowCount: 4, sha256: "b9dddf7c5573dd174a2ccb98ff54f2ab9f84f55aacffb0dcc3387d03ba0b6f15" },
-      agent: { rowCount: 5, sha256: "c0938e2f66085f42e8e7e5ee608867bb0974528d74f6dd4ead50afad13e0e8a1" },
+      conversation: { rowCount: 4, sha256: "e400e69c0659f8ed4038fdee99a1ad16b7104dede1e8202b4bfe0b475437c481" },
+      agent: { rowCount: 5, sha256: "3ad52bfa85815c31aed384550111d7e07207b1d7199175e9df9ca71a8fd41c21" },
       message: { rowCount: 17, sha256: "2bd8e8641bea29cd9fe4ece4d7f76bdd359ed9d6fe865cc645e9f012757fc0c5" },
       tool_call: { rowCount: 1, sha256: "e331ea30643c19a0602a2759f557187aacaf1729c796a955560799b9c4dbd73f" },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
@@ -212,8 +212,8 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "8b9da1ddb86766f02f4a1ac8d582400f0f6c9e5071156b7b726e7b6d9bf11d31" },
-      conversation: { rowCount: 3, sha256: "d2dc2e076c24b72a36a645dfe8783bfaab6c6fce99ec64ddafdd8ce7f4fbca90" },
-      agent: { rowCount: 4, sha256: "5183823b6f5d49ed8cedbdc07b0046a87c72ec8ce45a90423a939cc6fe42d620" },
+      conversation: { rowCount: 3, sha256: "275275830b518769e61ec40b8fa6da03fd301fa830fa3cd4954b43d26f61f13f" },
+      agent: { rowCount: 4, sha256: "236b6560485fe1af22869e5fa6c5ab02686684a00d3e90c411e2246519b775a9" },
       message: { rowCount: 19, sha256: "b174c3e84652b0d5f86b9d7ff36afda78c40c46bcd2adf4d9fd48942432493d0" },
       tool_call: { rowCount: 3, sha256: "e5f615b5d6290bc0dab75ea171da282d5e176e04be16438fc4d834c227f91b9d" },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
@@ -234,8 +234,8 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "39d8e36d20227daa2cab6248635b86861d0a5bd0a9e19a0cf4c98eb4de3f7141" },
-      conversation: { rowCount: 4, sha256: "c97ea22a7461d94ed9e5bc0b824280a789db418c12246e31952679b1efcb0dc3" },
-      agent: { rowCount: 4, sha256: "bb8e1c48d6e3458d807a6537e09c4b5143a50a232b71a590a8c099eef584d1ce" },
+      conversation: { rowCount: 4, sha256: "608ecf9ccbb44fdba2bec04cf56b24edf546cbfe0cadb3f581c3970e803771e9" },
+      agent: { rowCount: 4, sha256: "5133ecce6c7b4babfbe5aaa102ae82698624764ec13272567e76b9a44f527e2a" },
       // The child's copied Turns name the requests of the copy's and the parent's files.
       message: { rowCount: 16, sha256: "b8cb71090da850379f240d496d0b7b773a4a104cc4a6b3469af122203640fdaa" },
       tool_call: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },

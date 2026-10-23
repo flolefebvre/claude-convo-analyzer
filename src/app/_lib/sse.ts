@@ -30,6 +30,7 @@ const refreshSummarySchema = z.object({
   conversationsSkipped: z.number().int().nonnegative(),
   conversationsDeleted: z.number().int().nonnegative(),
   malformedLinesSkipped: z.number().int().nonnegative(),
+  logFilesParsed: z.number().int().nonnegative(),
   duplicateSessionsSkipped: z.array(z.object({ sessionId: z.string(), keptPath: z.string(), skippedPath: z.string() })),
   vanishedLogFilesSkipped: z.number().int().nonnegative(),
   durationMs: durationMsSchema,

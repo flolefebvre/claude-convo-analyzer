@@ -59,6 +59,9 @@ describe("message.kind persisted through refresh", () => {
     // down with the column; re-opening re-applies both migrations in order.
     dropSearchIndex(raw);
     raw.exec('ALTER TABLE "message" DROP COLUMN "kind"');
+    // A real pre-`kind` database was written by an older parser too: its Agents
+    // carry no change key of their own, so none is kept on the strength of one.
+    raw.exec('UPDATE "agent" SET "source_mtime" = NULL, "source_size" = NULL');
     const before = raw
       .prepare("SELECT source_mtime AS m FROM conversation WHERE session_id = 'sess-transcript'")
       .get() as { m: bigint | number };

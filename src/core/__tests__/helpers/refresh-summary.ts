@@ -18,6 +18,7 @@ export function refreshSummaryOfRun(conversationsParsed: number): RefreshSummary
     conversationsSkipped: 0,
     conversationsDeleted: 0,
     malformedLinesSkipped: 0,
+    logFilesParsed: 0,
     duplicateSessionsSkipped: [],
     vanishedLogFilesSkipped: 0,
     durationMs: 1,

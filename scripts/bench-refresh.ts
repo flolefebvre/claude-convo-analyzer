@@ -150,6 +150,9 @@ function markLargestMainThreadChanged(dbPath: string): { sourcePath: string; siz
     }
     if (largest === null) return null;
     db.prepare(`UPDATE "conversation" SET "source_mtime" = -1 WHERE "id" = ?`).run(largest.id);
+    db.prepare(
+      `UPDATE "agent" SET "source_mtime" = -1 WHERE "conversation_id" = ? AND "external_agent_id" IS NULL`,
+    ).run(largest.id);
     return { sourcePath: largest.sourcePath, sizeInBytes: largest.sizeInBytes };
   } finally {
     db.close();
