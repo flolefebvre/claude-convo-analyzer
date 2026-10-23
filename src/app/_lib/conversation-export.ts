@@ -110,6 +110,26 @@ export async function selfContainedHtml(
   });
 }
 
+/** What follows a path segment that hasn't ended: a name character, or a dot and then one. */
+const SEGMENT_CONTINUATION = String.raw`[\p{L}\p{N}_-]|\.[\p{L}\p{N}_-]`;
+
+/** A filesystem root (`/`, `C:\`), which has no spelling worth replacing. */
+const FILESYSTEM_ROOT = /^([A-Za-z]:)?[\\/]*$/;
+
+/**
+ * The HTML with every occurrence of the home directory written `~`: its
+ * literal spelling and its JSON-escaped one (backslashes doubled, as a Windows
+ * path reads inside a Tool input), each only where it ends a path segment.
+ *
+ * @example withHomeDirectoryAsTilde("<dd>/home/ann/dev/api</dd>", "/home/ann") // "<dd>~/dev/api</dd>"
+ */
+export function withHomeDirectoryAsTilde(html: string, homeDirectory: string): string {
+  if (FILESYSTEM_ROOT.test(homeDirectory)) return html;
+  const spellings = [...new Set([homeDirectory.replaceAll("\\", "\\\\"), homeDirectory])];
+  const alternatives = spellings.map((spelling) => spelling.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+  return html.replace(new RegExp(`(?:${alternatives})(?!${SEGMENT_CONTINUATION})`, "gu"), "~");
+}
+
 /** The longest title slug a file name carries. */
 const MAX_SLUG_LENGTH = 80;
 

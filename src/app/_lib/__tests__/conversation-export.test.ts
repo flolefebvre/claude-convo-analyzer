@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { exportFileName, selfContainedHtml } from "@/app/_lib/conversation-export";
+import { exportFileName, selfContainedHtml, withHomeDirectoryAsTilde } from "@/app/_lib/conversation-export";
 
 /** The URL the export page is fetched from, which every relative href resolves against. */
 const PAGE_URL = new URL("http://app.test/conversation/abc/export");
@@ -104,6 +104,50 @@ describe("selfContainedHtml", () => {
       '  <a href="#x">x</a></body></html>';
 
     expect(await selfContainedHtml(html, PAGE_URL, resources({}).read)).toBe(html);
+  });
+});
+
+describe("withHomeDirectoryAsTilde", () => {
+  it("writes a POSIX home directory as ~ in text, attributes and JSON alike", () => {
+    const html =
+      '<dd>/home/ann/dev/api</dd><p title="/home/ann">cd /home/ann</p>' +
+      '<pre>{"file_path":"/home/ann/dev/api/src/x.ts"}</pre>';
+
+    expect(withHomeDirectoryAsTilde(html, "/home/ann")).toBe(
+      '<dd>~/dev/api</dd><p title="~">cd ~</p><pre>{"file_path":"~/dev/api/src/x.ts"}</pre>',
+    );
+  });
+
+  it("writes a Windows home directory as ~, literal or JSON-escaped", () => {
+    const html = String.raw`<dd>C:\Users\ann\dev\api</dd><pre>{"file_path":"C:\\Users\\ann\\dev\\api\\x.ts"}</pre>`;
+
+    expect(withHomeDirectoryAsTilde(html, String.raw`C:\Users\ann`)).toBe(
+      String.raw`<dd>~\dev\api</dd><pre>{"file_path":"~\\dev\\api\\x.ts"}</pre>`,
+    );
+  });
+
+  it("leaves a longer name that starts with the home directory's alone", () => {
+    expect(withHomeDirectoryAsTilde("/home/anna/x /home/ann_b /home/ann-c", "/home/ann")).toBe(
+      "/home/anna/x /home/ann_b /home/ann-c",
+    );
+    expect(withHomeDirectoryAsTilde(String.raw`C:\Users\anna\x`, String.raw`C:\Users\ann`)).toBe(
+      String.raw`C:\Users\anna\x`,
+    );
+  });
+
+  it("treats a dot as the end of the home directory only when no name continues after it", () => {
+    expect(withHomeDirectoryAsTilde("It lives in /home/ann. Then /home/ann.bak", "/home/ann")).toBe(
+      "It lives in ~. Then /home/ann.bak",
+    );
+  });
+
+  it("leaves the HTML alone when the home directory is a filesystem root", () => {
+    expect(withHomeDirectoryAsTilde("<p>/ a/b</p>", "/")).toBe("<p>/ a/b</p>");
+    expect(withHomeDirectoryAsTilde("<p>C:\\ x</p>", "C:\\")).toBe("<p>C:\\ x</p>");
+  });
+
+  it("matches the home directory exactly, as a literal", () => {
+    expect(withHomeDirectoryAsTilde("/home/a.n/x /home/axn/x", "/home/a.n")).toBe("~/x /home/axn/x");
   });
 });
 

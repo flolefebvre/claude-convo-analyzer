@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import os from "node:os";
 import { pathToFileURL } from "node:url";
 
 import { expect, test, type Page } from "@playwright/test";
@@ -60,6 +61,10 @@ test.describe("Conversation export (/api/conversation/[sessionId]/export)", () =
     expect(html).not.toContain("sourceMappingURL");
     // Nor the address the handler fetched the page from.
     expect(html).not.toMatch(/https?:\/\/(localhost|127\.0\.0\.1)/);
+    // The home directory, which every seeded Project sits under, reads `~`.
+    expect(html).not.toContain(os.homedir());
+    expect(html).not.toContain(os.homedir().replaceAll("\\", "\\\\"));
+    expect(html).toMatch(/<dd>~[\\/]dev[\\/][\w-]+<\/dd>/);
     // Every Message across its three Transcript pages, and no pager.
     expect(html.match(/<article\b/g)).toHaveLength(LONG_MESSAGE_COUNT);
     expect(html).toContain(LONG_PAGE_TWO_TEXT);
