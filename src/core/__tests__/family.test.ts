@@ -194,7 +194,7 @@ describe("a Conversation's title", () => {
     expect(await titleOf("sess-fam-a")).toBe("Family root");
   });
 
-  it("is the only ai-title of a session titled once", async () => {
-    expect(await titleOf("sess-fam-d")).toBe("Family fork");
+  it("is the only ai-title of an original titled once", async () => {
+    expect(await titleOf("sess-legacy-a")).toBe("Legacy original");
   });
 });
