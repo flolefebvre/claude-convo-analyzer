@@ -6,11 +6,13 @@
 
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { friendlyName } from "@/lib/project-path";
 import { listConversations } from "@/core/read";
 
 import { seededTempDb } from "./helpers/temp-db";
 
 const PROJECT_LOGS_ROOT = path.join(import.meta.dirname, "fixtures", "project-logs");
+const WINDOWS_PROJECT_LOGS_ROOT = path.join(import.meta.dirname, "fixtures", "windows-project-logs");
 
 /** The Project path of every Conversation, by session id. */
 async function projectPathBySessionId(dbPath: string): Promise<Record<string, string>> {
@@ -62,5 +64,46 @@ describe("Project path", () => {
     const byId = await projectPathBySessionId(db.dbPath);
 
     expect(byId["sess-lone-cwdless"]).toBe("/Users/me/dev/lone/wolf");
+  });
+});
+
+// Logs written by Claude Code on native Windows: `cwd` is a Windows path, and
+// the log folder is that path with the drive colon and each `\` turned into `-`.
+// Read the same on every OS the suite runs on.
+describe("Project path from Windows logs", () => {
+  const db = seededTempDb({ prefix: "cca-windows-project-path-", logsRoot: WINDOWS_PROJECT_LOGS_ROOT });
+
+  it("keeps a Windows Project path exactly as its cwd states it, through cd drift", async () => {
+    const byId = await projectPathBySessionId(db.dbPath);
+
+    expect(byId["sess-win-repo"]).toBe("C:\\Users\\me\\repo");
+    expect(friendlyName(byId["sess-win-repo"])).toBe("repo");
+  });
+
+  it("keeps Projects nested under a drive at their own paths", async () => {
+    const byId = await projectPathBySessionId(db.dbPath);
+
+    expect([byId["sess-win-api"], byId["sess-win-web"]]).toEqual(["D:\\work\\tools\\api", "D:\\work\\tools\\web"]);
+  });
+
+  it("keeps Projects whose friendly names collide apart by their paths", async () => {
+    const byId = await projectPathBySessionId(db.dbPath);
+
+    expect([byId["sess-win-a-app"], byId["sess-win-b-app"]]).toEqual([
+      "C:\\Users\\me\\a\\app",
+      "C:\\Users\\me\\b\\app",
+    ]);
+  });
+
+  it("moves a Conversation that switches into a worktree to the worktree root", async () => {
+    const byId = await projectPathBySessionId(db.dbPath);
+
+    expect(byId["sess-win-into-worktree"]).toBe("C:\\Users\\me\\repo\\.claude\\worktrees\\feature");
+  });
+
+  it("decodes a Windows log folder name back to a Windows path when no Conversation filed there states a cwd", async () => {
+    const byId = await projectPathBySessionId(db.dbPath);
+
+    expect(byId["sess-win-solo-cwdless"]).toBe("C:\\Users\\me\\solo");
   });
 });

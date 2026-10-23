@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   folderLabelInScope,
   folderScopeHref,
-  isProjectInFolderScope,
   isSameFolderScope,
   resolveFolderScope,
   resolveLiveFolderScope,
@@ -39,26 +38,6 @@ describe("resolveLiveFolderScope", () => {
   });
 });
 
-describe("isProjectInFolderScope", () => {
-  it("spans the Folder's own path and every path below it", () => {
-    expect(isProjectInFolderScope("/a/b", { folder: "/a/b" })).toBe(true);
-    expect(isProjectInFolderScope("/a/b/c/d", { folder: "/a/b" })).toBe(true);
-  });
-
-  it("leaves out a sibling that shares the prefix without a `/` boundary", () => {
-    expect(isProjectInFolderScope("/a/bc", { folder: "/a/b" })).toBe(false);
-  });
-
-  it("narrows to the Folder's own path for this folder", () => {
-    expect(isProjectInFolderScope("/a/b", { folder: "/a/b", thisFolderOnly: true })).toBe(true);
-    expect(isProjectInFolderScope("/a/b/c", { folder: "/a/b", thisFolderOnly: true })).toBe(false);
-  });
-
-  it("spans every Project when unscoped", () => {
-    expect(isProjectInFolderScope("/x", {})).toBe(true);
-  });
-});
-
 describe("folderLabelInScope", () => {
   it("names a Project by its basename under All folders", () => {
     expect(folderLabelInScope("/home/me/dev/api/.claude/worktrees/spike", {})).toBe("spike");
@@ -79,6 +58,14 @@ describe("folderLabelInScope", () => {
 
   it("falls back to the basename for a Project outside the scope", () => {
     expect(folderLabelInScope("/a/bc", { folder: "/a/b" })).toBe("bc");
+  });
+
+  it("names a Windows Project by its path relative to the selected Folder, `\\`-separated", () => {
+    const worktree = "C:\\Users\\me\\repo\\.claude\\worktrees\\feature";
+    expect(folderLabelInScope(worktree, {})).toBe("feature");
+    expect(folderLabelInScope(worktree, { folder: "C:\\Users\\me\\repo" })).toBe(".claude\\worktrees\\feature");
+    expect(folderLabelInScope(worktree, { folder: "C:\\" })).toBe("Users\\me\\repo\\.claude\\worktrees\\feature");
+    expect(folderLabelInScope("C:\\Users\\me\\repo", { folder: "C:\\Users\\me\\repo" })).toBe("this folder");
   });
 });
 

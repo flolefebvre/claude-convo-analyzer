@@ -5,18 +5,11 @@
 // {@link writeFolderScope}, so the two params always travel together.
 //
 // React-free + I/O-free, so the client sidebar can use it too (it never
-// imports core). The core applies the same rule to its scoped reads.
+// imports core). Which Projects a scope holds is `isProjectInFolderScope` in
+// `@/lib/project-path`, the rule the core's scoped reads apply too.
 
-import { friendlyFolderName } from "@/app/_lib/folders";
 import { firstParam, type ViewSearchParams } from "@/app/_lib/search-params";
-
-/** A Folder scope: All folders when `folder` is absent. */
-export type FolderScope = {
-  /** The selected Folder's absolute path (`?folder=`). */
-  folder?: string;
-  /** True when narrowed to the Folder's own Conversations (`?thisFolder=1`). */
-  thisFolderOnly?: boolean;
-};
+import { type FolderScope, friendlyName, segmentsBelow, separatorOf } from "@/lib/project-path";
 
 /** The one `?thisFolder=` value that narrows the scope. */
 const THIS_FOLDER_ON = "1";
@@ -49,19 +42,6 @@ export function resolveLiveFolderScope(
   });
 }
 
-/**
- * True when a Project at `projectPath` lies in the scope: its path is the
- * Folder's, or — unless narrowed to this folder — below it (`/a/b` holds
- * `/a/b/c` but not `/a/bc`).
- *
- * @example isProjectInFolderScope(row.project.path, scope)
- */
-export function isProjectInFolderScope(projectPath: string, scope: FolderScope): boolean {
-  if (!scope.folder) return true;
-  if (projectPath === scope.folder) return true;
-  return !scope.thisFolderOnly && projectPath.startsWith(`${scope.folder}/`);
-}
-
 /** The folder label of the selected Folder's own Project. */
 const THIS_FOLDER_LABEL = "this folder";
 
@@ -75,10 +55,10 @@ const THIS_FOLDER_LABEL = "this folder";
  * @example folderLabelInScope("/home/me/dev/api/.claude/worktrees/spike", { folder: "/home/me/dev/api" }) // ".claude/worktrees/spike"
  */
 export function folderLabelInScope(projectPath: string, scope: FolderScope): string {
-  if (!scope.folder) return friendlyFolderName(projectPath);
+  if (!scope.folder) return friendlyName(projectPath);
   if (projectPath === scope.folder) return THIS_FOLDER_LABEL;
-  if (isProjectInFolderScope(projectPath, { folder: scope.folder })) return projectPath.slice(scope.folder.length + 1);
-  return friendlyFolderName(projectPath);
+  const below = segmentsBelow(projectPath, scope.folder);
+  return below === null ? friendlyName(projectPath) : below.join(separatorOf(projectPath));
 }
 
 /** True when two scopes name the same Folder, narrowed (or not) the same way. */

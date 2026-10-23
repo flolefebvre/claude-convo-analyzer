@@ -6,6 +6,7 @@
 // React-free + I/O-free so it unit-tests in the node vitest environment; the
 // page/sidebar are thin shells over these.
 
+import { friendlyName, pathSegments, separatorOf } from "@/lib/project-path";
 import type { ConversationSummary } from "@/core/read";
 
 /** One left-sidebar row: a distinct Project, summarized for display + linking. */
@@ -41,7 +42,7 @@ export function deriveFolders(summaries: ConversationSummary[]): FolderEntry[] {
 
   const entries: FolderEntry[] = [...summariesByProjectPath].map(([projectPath, rows]) => ({
     path: projectPath,
-    label: friendlyFolderName(projectPath),
+    label: friendlyName(projectPath),
     count: rows.length,
     costUsd: rows.reduce((sum, r) => sum + r.costUsd, 0),
     tokensTotal: rows.reduce((sum, r) => sum + r.tokens.total, 0),
@@ -89,23 +90,9 @@ function latestActivity(rows: ConversationSummary[]): string {
   return latest;
 }
 
-/**
- * The friendly name for a Project path: its last non-empty `/`-separated
- * segment (basename), or "" if the path has none. Used for the sidebar labels
- * and the table's Folder cell under All folders so both stay consistent.
- */
-export function friendlyFolderName(path: string): string {
-  return pathSegments(path).at(-1) ?? "";
-}
-
-/** Non-empty `/`-separated segments of a path, e.g. "/a/b/" -> ["a", "b"]. */
-function pathSegments(path: string): string[] {
-  return path.split("/").filter((s) => s.length > 0);
-}
-
-/** A path's last `depth` segments joined with "/" (clamped to what exists). */
+/** A path's last `depth` segments joined with its separator (clamped to what exists). */
 function trailingSuffix(path: string, depth: number): string {
-  return pathSegments(path).slice(-depth).join("/");
+  return pathSegments(path).slice(-depth).join(separatorOf(path));
 }
 
 /**

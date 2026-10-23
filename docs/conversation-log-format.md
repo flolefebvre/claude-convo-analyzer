@@ -23,7 +23,9 @@ deliberately did not model** (and where to find it if we ever want it).
 
 - **Folder name** is the project's absolute cwd with `/` replaced by `-`
   (e.g. `-Users-me-Documents-dev-pvm2-0` ⇒ `/Users/me/Documents/dev/pvm2.0`).
-  Note this is lossy/ambiguous in theory (a real `-` vs a `/`), but each
+  On native Windows the cwd is a Windows path, and its drive colon and each `\`
+  are replaced by `-` too (`C--Users-me-repo` ⇒ `C:\Users\me\repo`).
+  Note this is lossy/ambiguous in theory (a real `-` vs a separator), but each
   `assistant`/`user` record also carries an exact `cwd` field, which is the
   authoritative source for the project path. Prefer `cwd` over decoding the
   folder name. A session that enters a git worktree

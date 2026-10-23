@@ -26,7 +26,7 @@ import { EmptyState, EmptyStateLink } from "@/app/_components/empty-state";
 import { LoadingRegion } from "@/app/_components/loading-region";
 import { PageHeader } from "@/app/_components/page-header";
 import { loadSearch } from "@/app/_lib/conversations";
-import { friendlyFolderName } from "@/app/_lib/folders";
+import { friendlyName } from "@/lib/project-path";
 import { formatCount, formatDate } from "@/app/_lib/format";
 import { firstParam } from "@/app/_lib/search-params";
 import { agentHref, messageHref } from "@/app/_lib/transcript-url";
@@ -175,7 +175,7 @@ function ResultCard({ result }: { result: SearchResult }) {
         </span>
       </div>
       <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-        <span title={result.project.path}>{friendlyFolderName(result.project.path)}</span>
+        <span title={result.project.path}>{friendlyName(result.project.path)}</span>
         <span aria-hidden>·</span>
         <span title={date.absolute}>{date.label}</span>
       </div>

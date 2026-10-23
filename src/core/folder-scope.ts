@@ -4,26 +4,7 @@
 // daily spend, the Tools stats and samples) so they all span the same set.
 
 import type { PrismaClient } from "@/core/prisma/generated/client";
-
-/** The scope axes a read accepts — the `?folder=` and `?thisFolder=` values. */
-export type FolderScopeOptions = {
-  /** Scope to the Folder at this absolute path and everything below it; all Projects when omitted. */
-  folder?: string;
-  /** Narrow {@link folder} to its own Project's Conversations (**this folder**). */
-  thisFolderOnly?: boolean;
-};
-
-/**
- * True when a Project at `projectPath` lies in the scope: the path equals the
- * Folder's, or — unless narrowed to this folder — starts with it plus `/`.
- *
- * @example isProjectInFolderScope("/a/b/c", { folder: "/a/b" }) // true
- */
-export function isProjectInFolderScope(projectPath: string, scope: FolderScopeOptions): boolean {
-  if (scope.folder === undefined) return true;
-  if (projectPath === scope.folder) return true;
-  return !scope.thisFolderOnly && projectPath.startsWith(`${scope.folder}/`);
-}
+import { type FolderScope, isProjectInFolderScope } from "@/lib/project-path";
 
 /**
  * The Prisma `where` fragment on a Conversation for a scope: `{}` when
@@ -33,9 +14,9 @@ export function isProjectInFolderScope(projectPath: string, scope: FolderScopeOp
  */
 export async function conversationInFolderScope(
   prisma: Pick<PrismaClient, "project">,
-  scope: FolderScopeOptions,
+  scope: FolderScope,
 ): Promise<{ conversation?: { projectId: { in: number[] } } }> {
-  if (scope.folder === undefined) return {};
+  if (!scope.folder) return {};
   const projects = await prisma.project.findMany({ select: { id: true, path: true } });
   const ids = projects.filter((p) => isProjectInFolderScope(p.path, scope)).map((p) => p.id);
   return { conversation: { projectId: { in: ids } } };

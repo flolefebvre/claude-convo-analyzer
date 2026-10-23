@@ -1,0 +1,2 @@
+{"type":"user","uuid":"wr1","timestamp":"2026-06-22T10:00:00.000Z","cwd":"C:\\Users\\me\\repo","version":"2.1.180","message":{"role":"user","content":"work in the repo"}}
+{"type":"user","uuid":"wr2","parentUuid":"wr1","timestamp":"2026-06-22T10:01:00.000Z","cwd":"C:\\Users\\me\\repo\\src","version":"2.1.180","message":{"role":"user","content":"cd into a subdirectory"}}

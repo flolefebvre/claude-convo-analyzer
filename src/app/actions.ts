@@ -14,6 +14,7 @@ import { error, success } from "@flefebvre/next-pipe/server";
 import { z } from "zod";
 
 import { favoriteFolder, moveFavoriteFolder, unfavoriteFolder } from "@/core/favorites";
+import { isAbsolutePath } from "@/lib/project-path";
 import { getLive, switchLive } from "@/app/_lib/live";
 import { getPublishedRefreshRunner, startOrJoinRefresh } from "@/app/_lib/refresh-events";
 
@@ -56,7 +57,7 @@ export const setLive = actionPipe(liveSwitchSchema).handle(async ({ input }) => 
 
 /** What `setFolderFavorite` reads: the Folder's absolute path, and whether it is to be a favorite. */
 const folderFavoriteSchema = z.object({
-  path: z.string().startsWith("/"),
+  path: z.string().refine(isAbsolutePath),
   isFavorite: z.boolean(),
 });
 
@@ -81,8 +82,8 @@ export const setFolderFavorite = actionPipe(folderFavoriteSchema).handle(async (
 
 /** What `moveFavorite` reads: the favorite's absolute path, and the path of the favorite it goes before, or null for last. */
 const favoriteMoveSchema = z.object({
-  path: z.string().startsWith("/"),
-  before: z.string().startsWith("/").nullable(),
+  path: z.string().refine(isAbsolutePath),
+  before: z.string().refine(isAbsolutePath).nullable(),
 });
 
 /**

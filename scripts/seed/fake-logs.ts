@@ -69,7 +69,7 @@ const PROJECTS: readonly SeedProject[] = [
 export const SEED_FAVORITE_PATHS: readonly string[] = [PROJECTS[0].path, PROJECTS[1].path, PROJECTS[3].path];
 
 /** The git worktree of the first repo that a continuation is resumed in (issue #120). */
-export const FAMILY_WORKTREE_PROJECT_PATH = `${PROJECTS[0].path}/.claude/worktrees/billing-spike`;
+export const FAMILY_WORKTREE_PROJECT_PATH = path.join(PROJECTS[0].path, ".claude", "worktrees", "billing-spike");
 
 /** The scratch directory whose per-session subdirectories each hold one Conversation (issue #120). */
 export const SCRATCH_PARENT_PATH = "/tmp/scratch";
@@ -1117,9 +1117,9 @@ function longConversation(g: Gen, index: number): Conversation {
 }
 
 /** The name of the log folder Claude Code files a session run in `dir` under:
- *  the path with every `/` and `.` replaced by `-`. */
+ *  the path with every `/`, `\`, `:` and `.` replaced by `-`. */
 function logFolderNameOf(dir: string): string {
-  return dir.replace(/[/.]/g, "-");
+  return dir.replace(/[/\\:.]/g, "-");
 }
 
 /** `line` with its record's `cwd` replaced by `cwd`, or removed when `cwd` is null;
@@ -1136,7 +1136,7 @@ function withCwd(line: string, cwd: string | null): string {
 export const WORKTREE_SWITCH_TITLE = "Fix the flaky auth test in a worktree";
 
 /** The worktree {@link WORKTREE_SWITCH_TITLE} moves into, and therefore its Project. */
-export const WORKTREE_SWITCH_PROJECT_PATH = `${PROJECTS[0].path}/.claude/worktrees/fix-auth-flake`;
+export const WORKTREE_SWITCH_PROJECT_PATH = path.join(PROJECTS[0].path, ".claude", "worktrees", "fix-auth-flake");
 
 /** The seeded Conversation whose records state no `cwd` (issue #119). */
 export const CWD_LESS_TITLE = "Recover a session whose records state no cwd";

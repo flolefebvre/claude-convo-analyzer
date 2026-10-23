@@ -25,8 +25,9 @@ import { useEffect, useId, useRef, useState } from "react";
 import { FolderLinkWithStar } from "@/app/_components/favorite-star";
 import { FolderRow, SidebarLeadingSlot, folderCostShare } from "@/app/_components/folder-rows";
 import { SidebarLink } from "@/app/_components/sidebar-link";
-import { isProjectInFolderScope, resolveLiveFolderScope } from "@/app/_lib/folder-scope";
+import { resolveLiveFolderScope } from "@/app/_lib/folder-scope";
 import { type FolderNode, initiallyOpenFolderPaths, openPathsDownToScope } from "@/app/_lib/folder-tree";
+import { isProjectInFolderScope } from "@/lib/project-path";
 import { cn } from "@/lib/utils-cn";
 
 /**

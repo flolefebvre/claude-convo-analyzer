@@ -6,9 +6,9 @@
 // React-free + I/O-free, like its sibling `_lib` modules: the paths are read at
 // the server edge (`loadFavoriteFolderPaths`).
 
-import { isProjectInFolderScope } from "@/app/_lib/folder-scope";
 import type { FolderTotals } from "@/app/_lib/folder-tree";
-import { disambiguateLabels, type FolderEntry, friendlyFolderName } from "@/app/_lib/folders";
+import { disambiguateLabels, type FolderEntry } from "@/app/_lib/folders";
+import { friendlyName, isProjectInFolderScope } from "@/lib/project-path";
 
 /** One row of the Favorites section, with the totals of every Project at or below it. */
 export type FavoriteFolder = FolderTotals & {
@@ -35,7 +35,7 @@ export function deriveFavoriteFolders(favoritePaths: string[], folders: FolderEn
     if (inScope.length === 0) continue;
     favorites.push({
       path: favoritePath,
-      label: favoritePath === home ? HOME_LABEL : friendlyFolderName(favoritePath),
+      label: favoritePath === home ? HOME_LABEL : friendlyName(favoritePath),
       count: inScope.reduce((sum, entry) => sum + entry.count, 0),
       costUsd: inScope.reduce((sum, entry) => sum + entry.costUsd, 0),
       unpriced: inScope.some((entry) => entry.unpriced),

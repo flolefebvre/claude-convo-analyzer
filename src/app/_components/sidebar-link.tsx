@@ -16,7 +16,8 @@
 import { useSearchParams } from "next/navigation";
 
 import { PendingLink } from "@/app/_components/pending-link";
-import { folderScopeHref, isSameFolderScope, resolveLiveFolderScope, type FolderScope } from "@/app/_lib/folder-scope";
+import { folderScopeHref, isSameFolderScope, resolveLiveFolderScope } from "@/app/_lib/folder-scope";
+import type { FolderScope } from "@/lib/project-path";
 import { cn } from "@/lib/utils-cn";
 
 /**

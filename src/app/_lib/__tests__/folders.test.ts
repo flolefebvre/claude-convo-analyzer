@@ -122,6 +122,17 @@ describe("deriveFolders", () => {
     expect(ent["/a/y/app"].label).toBe("a/y/app");
   });
 
+  it("labels a Windows Project by its last `\\`-separated segment, widened with `\\` on a collision", () => {
+    const ent = entryByPath([
+      summary({ id: "a", path: "C:\\Users\\me\\repo", endedAt: TIE_AT }),
+      summary({ id: "b", path: "C:\\Users\\me\\a\\app", endedAt: TIE_AT }),
+      summary({ id: "c", path: "C:\\Users\\me\\b\\app", endedAt: TIE_AT }),
+    ]);
+    expect(ent["C:\\Users\\me\\repo"].label).toBe("repo");
+    expect(ent["C:\\Users\\me\\a\\app"].label).toBe("a\\app");
+    expect(ent["C:\\Users\\me\\b\\app"].label).toBe("b\\app");
+  });
+
   it("sums costUsd and total tokens across each Project's conversations", () => {
     const rows = [
       summary({ id: "a", path: "/p/fA", costUsd: 10, tokens: { total: 100 } }),

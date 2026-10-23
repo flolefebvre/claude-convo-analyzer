@@ -19,6 +19,20 @@ describe("deriveFavoriteFolders", () => {
     ).toEqual(["dev", "~"]);
   });
 
+  it("labels Windows favorites — a Windows home `~`, a drive by its letter — and sums the Projects below them", () => {
+    const folders = deriveFolders([
+      summary({ id: "a", path: "C:\\Users\\me\\repo", costUsd: 2 }),
+      summary({ id: "b", path: "C:\\Users\\meta\\x", costUsd: 3 }),
+    ]);
+
+    expect(
+      deriveFavoriteFolders(["C:\\Users\\me", "C:\\"], folders, "C:\\Users\\me").map((f) => [f.label, f.costUsd]),
+    ).toEqual([
+      ["~", 2],
+      ["C:", 5],
+    ]);
+  });
+
   it("sums every Project at or below a favorite into its totals", () => {
     const folders = deriveFolders([
       summary({ id: "a", path: "/home/me/dev/api", costUsd: 2 }),

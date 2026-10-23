@@ -42,7 +42,8 @@ import {
 import { footerLabelColSpan } from "@/app/_lib/columns";
 import { errorsView } from "@/app/_lib/errors-view";
 import { familyView } from "@/app/_lib/family-view";
-import { type FolderScope, folderLabelInScope, resolveFolderScope } from "@/app/_lib/folder-scope";
+import { folderLabelInScope, resolveFolderScope } from "@/app/_lib/folder-scope";
+import type { FolderScope } from "@/lib/project-path";
 import { type FolderNode, findFolderNode, folderScopeLabel } from "@/app/_lib/folder-tree";
 import { formatCount, formatDate, formatGrandTotalCost, formatTokens } from "@/app/_lib/format";
 import { buildListView } from "@/app/_lib/list-view";

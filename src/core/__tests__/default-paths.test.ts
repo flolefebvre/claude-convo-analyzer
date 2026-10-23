@@ -26,8 +26,9 @@ describe("default database path", () => {
   });
 
   it("is CCA_DB_PATH when it is absolute", () => {
-    vi.stubEnv("CCA_DB_PATH", "/tmp/elsewhere/seed.db");
-    expect(defaultDbPath()).toBe("/tmp/elsewhere/seed.db");
+    const absoluteDbPath = path.join(os.tmpdir(), "elsewhere", "seed.db");
+    vi.stubEnv("CCA_DB_PATH", absoluteDbPath);
+    expect(defaultDbPath()).toBe(absoluteDbPath);
   });
 
   it("resolves a relative CCA_DB_PATH against the cwd", () => {

@@ -162,6 +162,85 @@ describe("deriveFolderTree", () => {
   });
 });
 
+describe("deriveFolderTree on Windows paths", () => {
+  const repo = "C:\\Users\\me\\repo";
+  const worktree = `${repo}\\.claude\\worktrees\\feature`;
+  const paths = [
+    repo,
+    worktree,
+    "C:\\Users\\me\\a\\app",
+    "C:\\Users\\me\\b\\app",
+    "D:\\work\\tools\\api",
+    "D:\\work\\tools\\web",
+  ];
+
+  it("roots each drive as its own Folder, `\\`-separated and compacted below it, when home is not on it", () => {
+    const roots = treeOf(paths);
+
+    expect(roots.map((r) => [r.label, r.path]).sort()).toEqual([
+      ["C:", "C:\\"],
+      ["D:", "D:\\"],
+    ]);
+    expect(shape(roots).sort((a, b) => a.label.localeCompare(b.label))).toEqual([
+      {
+        label: "C:",
+        children: [
+          {
+            label: "Users\\me",
+            children: [
+              { label: "a\\app" },
+              { label: "b\\app" },
+              { label: "repo", children: [{ label: ".claude\\worktrees\\feature" }] },
+            ],
+          },
+        ],
+      },
+      { label: "D:", children: [{ label: "work\\tools", children: [{ label: "api" }, { label: "web" }] }] },
+    ]);
+    expect(nodeAt(roots, "C:\\Users\\me").count).toBe(4);
+    expect(nodeAt(roots, repo).children.map((c) => c.path)).toEqual([worktree]);
+  });
+
+  it("roots a Windows home directory as `~`, and another user's directory beside it", () => {
+    const roots = deriveFolderTree(
+      deriveFolders([...paths, "C:\\Users\\other\\x"].map((path, i) => summary({ id: `s${i}`, path }))),
+      "C:\\Users\\me",
+    );
+
+    expect(roots.map((r) => [r.label, r.path]).sort()).toEqual([
+      ["C:\\Users\\other", "C:\\Users\\other"],
+      ["D:", "D:\\"],
+      ["~", "C:\\Users\\me"],
+    ]);
+    expect(nodeAt(roots, "C:\\Users\\me").count).toBe(4);
+  });
+
+  it("roots a path of neither shape at itself, one row per Project", () => {
+    const unc = ["\\\\wsl.localhost\\Ubuntu\\home\\me\\a", "\\\\wsl.localhost\\Ubuntu\\home\\me\\b"];
+    const roots = deriveFolderTree(
+      deriveFolders([
+        summary({ id: "a1", path: unc[0] }),
+        summary({ id: "a2", path: unc[0] }),
+        summary({ id: "b1", path: unc[1] }),
+      ]),
+      HOME,
+    );
+
+    expect(roots.map((r) => [r.label, r.path, r.count]).sort()).toEqual([
+      [unc[0], unc[0], 2],
+      [unc[1], unc[1], 1],
+    ]);
+  });
+
+  it("opens the path down to a selected Windows Folder", () => {
+    const roots = treeOf(paths);
+
+    expect([...initiallyOpenFolderPaths(roots, { folder: worktree })].sort()).toEqual(
+      ["C:\\", "D:\\", "C:\\Users\\me", repo].sort(),
+    );
+  });
+});
+
 describe("findFolderNode", () => {
   it("finds a Folder under `~` when another root sorts first", () => {
     // Timestamps tie, so `/home/other` sorts before `~` by label.

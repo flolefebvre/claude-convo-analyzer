@@ -139,8 +139,11 @@ type RefreshOptions = {
  * 13 — a Turn names its API request (`message.api_request_id`, from its
  *     `message.request_ref`), in its own file or another's; `api_request`
  *     no longer names its Turn.
+ * 14 — Windows paths are read by their shape: a switch into a worktree under a
+ *     Windows repo is recognised, and a Windows log folder name decodes to a
+ *     Windows path.
  */
-export const PARSER_VERSION = 13;
+export const PARSER_VERSION = 14;
 
 /**
  * The version a conversation carries while it is written but NOT YET COMPLETE:

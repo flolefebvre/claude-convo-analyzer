@@ -6,9 +6,8 @@
 
 import type { ConversationFamily } from "@/core/family";
 
-import { isProjectInFolderScope } from "@/app/_lib/folder-scope";
 import { formatDate } from "@/app/_lib/format";
-import { friendlyFolderName } from "@/app/_lib/folders";
+import { friendlyName, isProjectInFolderScope } from "@/lib/project-path";
 import { expandHref, type ListLinkContext } from "@/app/_lib/sort";
 
 /** One family member, ready to render as a row of the panel's tree. */
@@ -72,7 +71,7 @@ export function familyView(family: ConversationFamily, ctx: FamilyLinkContext, n
         dateAbsolute: date.absolute,
         costUsd: member.costUsd,
         unpriced: member.unpriced,
-        projectLabel: member.project.path === currentProjectPath ? null : friendlyFolderName(member.project.path),
+        projectLabel: member.project.path === currentProjectPath ? null : friendlyName(member.project.path),
         href: expandHref(
           member.id,
           // Never a toggle: clicking a member always EXPANDS it, even the one

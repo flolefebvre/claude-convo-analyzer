@@ -8,7 +8,8 @@
 //
 // React-free + I/O-free so it unit-tests in the node vitest environment.
 
-import { type FolderScope, writeFolderScope } from "@/app/_lib/folder-scope";
+import { writeFolderScope } from "@/app/_lib/folder-scope";
+import type { FolderScope } from "@/lib/project-path";
 import { firstParam } from "@/app/_lib/search-params";
 
 /** The selectable ranges — preset buttons only, no free date inputs. */

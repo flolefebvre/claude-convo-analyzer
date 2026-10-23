@@ -4,16 +4,27 @@
 // `FolderEntry` aggregates of `deriveFolders` (one place sums cost and count).
 //
 // The roots are the home directory, labelled `~`, and for every other path the
-// first directory that leaves home's own path (`/tmp`, `/home/other`); a root
-// always keeps its own row. Below
-// the roots, a directory that is not a Project and holds a single sub-Folder is
-// compacted into it (`dev/mylibs`, `.claude/worktrees`).
+// first directory that leaves home's own path (`/tmp`, `/home/other`,
+// `C:\Users\other`); a root always keeps its own row. A path on another
+// filesystem root than home's — another drive, or a Windows path beside a
+// POSIX home — roots at its drive (`C:`) or `/`. Below the roots, a directory
+// that is not a Project and holds a single sub-Folder is compacted into it
+// (`dev/mylibs`, `.claude\worktrees`), each path keeping its own separator.
 //
 // React-free + I/O-free: the home directory is a parameter, resolved at the
-// server edge, and the client sidebar renders the serialized result.
+// server edge (`os.homedir()`). From WSL that home is the Linux one, and no
+// Windows home is inferred from the logs, so Windows paths root at their drive.
 
-import { type FolderScope, isProjectInFolderScope } from "@/app/_lib/folder-scope";
 import { type FolderEntry, newestFirst } from "@/app/_lib/folders";
+import {
+  childPath,
+  filesystemRootOf,
+  type FolderScope,
+  isProjectInFolderScope,
+  pathSegments,
+  segmentsBelow,
+  separatorOf,
+} from "@/lib/project-path";
 
 /** The Conversation count and summed cost of a set of Projects. */
 export type FolderTotals = {
@@ -64,7 +75,7 @@ export function deriveFolderTree(entries: FolderEntry[], home: string): FolderNo
     for (const name of below) {
       let sub = directory.subdirectoryByName.get(name);
       if (!sub) {
-        sub = emptyDirectory(`${directory.path === "/" ? "" : directory.path}/${name}`);
+        sub = emptyDirectory(childPath(directory.path, name));
         directory.subdirectoryByName.set(name, sub);
       }
       directory = sub;
@@ -85,23 +96,25 @@ function emptyDirectory(path: string): Directory {
  * path — `/tmp` for `/tmp/x`, `/home/other` (a sibling of `~`) for
  * `/home/other/x`. A root is therefore never an ancestor of `~`, so its totals
  * and its scope cover the same Projects. Only a Project at an ancestor of home
- * (or at `/`) roots at its own path.
+ * (or at `/`) roots at its own path, and a path on another filesystem root
+ * than home's roots at that root (`C:\`, labelled `C:`). A path of neither
+ * shape (a UNC path) is its own root, so each such Project keeps its own row.
  */
 function rootOf(projectPath: string, home: string): { rootPath: string; label: string; below: string[] } {
-  if (isProjectInFolderScope(projectPath, { folder: home })) {
-    return { rootPath: home, label: "~", below: segments(projectPath.slice(home.length)) };
+  const belowHome = segmentsBelow(projectPath, home);
+  if (belowHome !== null) return { rootPath: home, label: "~", below: belowHome };
+  const filesystemRoot = filesystemRootOf(projectPath);
+  const fromFilesystemRoot = segmentsBelow(projectPath, filesystemRoot);
+  if (fromFilesystemRoot === null) return { rootPath: projectPath, label: projectPath, below: [] };
+  const homeFromFilesystemRoot = segmentsBelow(home, filesystemRoot);
+  let rootDepth = 0;
+  if (homeFromFilesystemRoot !== null) {
+    const leavesHomeAt = fromFilesystemRoot.findIndex((segment, i) => segment !== homeFromFilesystemRoot[i]);
+    rootDepth = leavesHomeAt === -1 ? fromFilesystemRoot.length : leavesHomeAt + 1;
   }
-  const pathSegments = segments(projectPath);
-  const homeSegments = segments(home);
-  const leavesHomeAt = pathSegments.findIndex((segment, i) => segment !== homeSegments[i]);
-  const rootDepth = leavesHomeAt === -1 ? pathSegments.length : leavesHomeAt + 1;
-  const rootPath = `/${pathSegments.slice(0, rootDepth).join("/")}`;
-  return { rootPath, label: rootPath, below: pathSegments.slice(rootDepth) };
-}
-
-/** Non-empty `/`-separated segments of a path. */
-function segments(path: string): string[] {
-  return path.split("/").filter((s) => s.length > 0);
+  const rootPath = fromFilesystemRoot.slice(0, rootDepth).reduce(childPath, filesystemRoot);
+  const label = rootPath === filesystemRoot ? (pathSegments(rootPath)[0] ?? rootPath) : rootPath;
+  return { rootPath, label, below: fromFilesystemRoot.slice(rootDepth) };
 }
 
 /**
@@ -114,7 +127,7 @@ function folderNode(start: Directory, startLabel: string, isRoot = true): Folder
   let label = startLabel;
   while (!isRoot && directory.project === undefined && directory.subdirectoryByName.size === 1) {
     const [[name, only]] = directory.subdirectoryByName;
-    label = `${label}/${name}`;
+    label = `${label}${separatorOf(directory.path)}${name}`;
     directory = only;
   }
 
