@@ -38,12 +38,11 @@ const appDir = path.join(packageDir, "app");
 const standaloneDir = path.join(repoRoot, ".next", "standalone");
 
 /**
- * Never shipped: better-sqlite3's native binding must match the user's
- * platform and Node, so npm installs it there (the generated manifest's one
- * dependency), and Node finds it by walking up from the app. These are it and
- * its own dependencies.
+ * Never shipped: npm installs better-sqlite3 on the user's machine (the
+ * generated manifest's one dependency), with the prebuilt native binding for
+ * their platform, and Node finds it by walking up from the app.
  */
-const PACKAGES_INSTALLED_BY_NPM = new Set(["better-sqlite3", "bindings", "file-uri-to-path"]);
+const PACKAGES_INSTALLED_BY_NPM = new Set(["better-sqlite3"]);
 
 const manifest = JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf-8")) as {
   name: string;
@@ -192,7 +191,7 @@ function writeManifest() {
     license: manifest.license,
     repository: manifest.repository,
     bin: { "claude-convo-analyzer": "bin/claude-convo-analyzer.js" },
-    engines: { node: ">=20.9" },
+    engines: { node: ">=22" },
     dependencies: { "better-sqlite3": manifest.dependencies["better-sqlite3"] },
   };
   writeFileSync(path.join(packageDir, "package.json"), `${JSON.stringify(publishedManifest, null, 2)}\n`);

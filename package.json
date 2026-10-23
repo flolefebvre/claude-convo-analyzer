@@ -39,7 +39,7 @@
     "@flefebvre/next-sse": "^0.2.0",
     "@prisma/adapter-better-sqlite3": "^7.8.0",
     "@prisma/client": "^7.8.0",
-    "better-sqlite3": "^12.11.1",
+    "better-sqlite3": "^13.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "diff": "^9.0.0",

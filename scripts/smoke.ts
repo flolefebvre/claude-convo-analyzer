@@ -6,6 +6,7 @@
  * `claude-convo-analyzer` command on this machine's Node, against the core's
  * fixture logs and a scratch database and settings file:
  *
+ *   - npm installs it with no deprecation warning;
  *   - the installed package holds no native binding;
  *   - a launch with `--no-open --port` prints the version and the URL, and serves;
  *   - its startup Refresh fills the fresh database, and the Conversations list shows them;
@@ -54,12 +55,25 @@ function shellSafe(arg: string) {
   return process.platform === "win32" && /\s/.test(arg) ? `"${arg}"` : arg;
 }
 
-/** Runs npm with `args` in `cwd`; resolves to its exit code, its output forwarded. */
-function runNpm(args: string[], cwd: string): Promise<number> {
-  const child = spawn("npm", args.map(shellSafe), { cwd, stdio: "inherit", shell: process.platform === "win32" });
+/** Runs npm with `args` in `cwd`; resolves to its exit code and everything it printed, which it also forwards. */
+function runNpm(args: string[], cwd: string): Promise<{ code: number; output: string }> {
+  const child = spawn("npm", args.map(shellSafe), {
+    cwd,
+    stdio: ["ignore", "pipe", "pipe"],
+    shell: process.platform === "win32",
+  });
+  let output = "";
+  child.stdout.on("data", (chunk: Buffer) => {
+    output += chunk.toString();
+    process.stdout.write(chunk);
+  });
+  child.stderr.on("data", (chunk: Buffer) => {
+    output += chunk.toString();
+    process.stderr.write(chunk);
+  });
   return new Promise((resolve) => {
-    child.once("error", () => resolve(1));
-    child.once("close", (code) => resolve(code ?? 1));
+    child.once("error", () => resolve({ code: 1, output }));
+    child.once("close", (code) => resolve({ code: code ?? 1, output }));
   });
 }
 
@@ -141,7 +155,10 @@ async function smoke(workDir: string, cleanups: (() => void | Promise<void>)[]) 
   step(`Install ${tarballPath} with npm into ${workDir}`);
   check(existsSync(tarballPath), `no tarball at ${tarballPath}: run pnpm package first, or pass --tarball <path>`);
   writeFileSync(path.join(workDir, "package.json"), `${JSON.stringify({ name: "smoke", private: true })}\n`);
-  check((await runNpm(["install", "--no-audit", "--no-fund", tarballPath], workDir)) === 0, "npm install failed");
+  const install = await runNpm(["install", "--no-audit", "--no-fund", tarballPath], workDir);
+  check(install.code === 0, "npm install failed");
+  const deprecations = install.output.split(/\r?\n/).filter((line) => /npm warn deprecated/i.test(line));
+  check(deprecations.length === 0, `npm install warned of deprecated packages: ${deprecations.join("; ")}`);
 
   const packageDir = path.join(workDir, "node_modules", packageName);
   const installedManifest = JSON.parse(readFileSync(path.join(packageDir, "package.json"), "utf-8")) as {

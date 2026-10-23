@@ -111,7 +111,7 @@ agent. Quoted phrases work too:
 
 ## Requirements
 
-- [Node.js](https://nodejs.org) 20.9 or newer
+- [Node.js](https://nodejs.org) 22 or newer
 - [pnpm](https://pnpm.io)
 - Some existing Claude Code usage — the app analyzes the logs Claude Code writes
   to `~/.claude/projects`.
@@ -206,7 +206,7 @@ network), and opens that URL in your browser once it is ready; Ctrl+C stops it.
 - Launched again while it runs, it opens the browser on the running app and
   exits. If another program holds the port, it exits with a message naming
   `--port`.
-- It needs Node.js 20.9 or newer, and says so on an older one. It checks for no
+- It needs Node.js 22 or newer, and says so on an older one. It checks for no
   updates and sends nothing anywhere; the version you run shows in the app bar,
   on screens 1536px wide or more.
 - `CCA_DB_PATH`, `CCA_LOGS_ROOT` and `CCA_SETTINGS_PATH` work as above, a
