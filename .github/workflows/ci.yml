@@ -66,6 +66,21 @@ jobs:
       - name: Test
         run: pnpm test --shard ${{ matrix.shard }}/${{ strategy.job-total }}
 
+  # The same stage on Windows, where the app also runs: the whole suite, unsharded.
+  test-windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Test
+        run: pnpm test
+
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -171,7 +186,7 @@ jobs:
   # counts as passing, so this job runs whatever the others did and fails unless every one succeeded.
   ci:
     if: ${{ !cancelled() }}
-    needs: [static, test, build, e2e, package, smoke]
+    needs: [static, test, test-windows, build, e2e, package, smoke]
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
