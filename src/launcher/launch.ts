@@ -10,7 +10,7 @@
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { createServer } from "node:net";
+import { connect, createServer } from "node:net";
 import path from "node:path";
 
 import { browserOpenCommand } from "./browser-command";
@@ -31,6 +31,25 @@ const READY_POLL_INTERVAL_MS = 200;
 
 /** The environment variables naming a path, resolved by the app against its cwd, which `server.js` moves. */
 const PATH_VARIABLES = ["CCA_DB_PATH", "CCA_LOGS_ROOT", "CCA_SETTINGS_PATH"] as const;
+
+/**
+ * Whether a program accepts connections on `port` on loopback. Asked before
+ * binding: on macOS, binding 127.0.0.1 succeeds even while another program
+ * listens on the same port on every interface, and then takes its loopback
+ * traffic.
+ */
+function isAcceptingConnections(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = connect({ port, host: LOOPBACK_HOST, timeout: IDENTITY_TIMEOUT_MS });
+    const settle = (isAccepting: boolean) => {
+      socket.destroy();
+      resolve(isAccepting);
+    };
+    socket.once("connect", () => settle(true));
+    socket.once("error", () => settle(false));
+    socket.once("timeout", () => settle(false));
+  });
+}
 
 /** Whether `port` can be bound on loopback right now; rejects on any error but the port being in use. */
 function isPortBindable(port: number): Promise<boolean> {
@@ -71,6 +90,8 @@ function openBrowser(url: string): Promise<void> {
     const child = spawn(command, args, {
       detached: true,
       stdio: "ignore",
+      // A detached child gets its own console window on Windows; `cmd` needs none.
+      windowsHide: true,
       // `cmd /c start ""` needs its empty title passed as is, not escaped.
       windowsVerbatimArguments: process.platform === "win32",
     });
@@ -116,18 +137,15 @@ export async function launch(packageRoot: string = path.resolve(__dirname, "..")
   const { port, shouldOpenBrowser } = request;
   const url = `http://${LOOPBACK_HOST}:${port}`;
 
-  let isBindable: boolean;
+  let isFree: boolean;
   try {
-    isBindable = await isPortBindable(port);
+    isFree = !(await isAcceptingConnections(port)) && (await isPortBindable(port));
   } catch (error) {
     console.error(`Cannot serve on port ${port} (${(error as NodeJS.ErrnoException).code ?? String(error)}).`);
     process.exitCode = 1;
     return;
   }
-  const holder = classifyPort(
-    { isBindable, identity: isBindable ? undefined : await fetchIdentity(url) },
-    manifest.name,
-  );
+  const holder = classifyPort({ isFree, identity: isFree ? undefined : await fetchIdentity(url) }, manifest.name);
 
   if (holder.kind === "another program") {
     console.error(
