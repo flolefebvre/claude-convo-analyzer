@@ -53,7 +53,12 @@ import {
   discoverSubAgents,
 } from "@/core/discovery";
 import { type ParsedAgentSpawn, type ParsedApiRequest, parseSessionLines, type ParsedSession } from "@/core/parse";
-import { type MessageRow, prepareRefreshStatements, type RefreshStatements } from "@/core/prisma/refresh-statements";
+import {
+  type ConversationRow,
+  type MessageRow,
+  prepareRefreshStatements,
+  type RefreshStatements,
+} from "@/core/prisma/refresh-statements";
 import { readFileUnlessVanished, statUnlessVanished } from "@/core/vanished-file";
 
 /**
@@ -565,7 +570,7 @@ function parseConversation({ session, subAgentPaths, priorConversationId }: Sess
 function resolveProjectPath(statements: RefreshStatements, session: DiscoveredSession, parsed: ParsedSession): string {
   return (
     parsed.projectPath ??
-    statements.selectBorrowableProjectPath(path.dirname(session.sourcePath)) ??
+    statements.selectBorrowableProjectPath(path.dirname(session.sourcePath), session.sessionId) ??
     decodeLogFolderName(session.logFolderName)
   );
 }
@@ -790,11 +795,11 @@ function failedAttemptOwners(
 }
 
 /**
- * Replace one conversation, inside the caller's transaction: delete its prior
- * row (if any), then write it + root agent + messages + tool_calls + API
- * requests, then each sub-agent (its own agent row + messages + tool_calls
- * + API requests), then pr_links and turn_durations, and return the new
- * conversation's row id. The conversations that continued from the prior row are re-pointed at the new one. Sub-agent
+ * Write one conversation, inside the caller's transaction: insert its row, or
+ * rewrite its stored row in place and delete its prior content, then write the
+ * root agent + messages + tool_calls + API requests, then each sub-agent (its
+ * own agent row + messages + tool_calls + API requests), then pr_links and
+ * turn_durations, and return the conversation's row id. Sub-agent
  * `spawnedByMessageId` is linked via the spawning `Agent` tool_use that produced
  * the matching `agentId` (log-format §4) — in whichever transcript that ledger
  * lives, main thread or another sub-agent (see `planSubAgents`);
@@ -806,20 +811,12 @@ function failedAttemptOwners(
 function writeConversation(statements: RefreshStatements, parsedConversation: ParsedConversation): number {
   const { session, parsed, subAgents, priorConversationId } = parsedConversation;
 
-  // The prior row goes in the SAME transaction as its replacement (cascading
-  // to every child table), so a reader on another connection sees the old
-  // version or the new one — never the conversation missing. The delete nulls
-  // the continued-from link of every child (`onDelete: SetNull`), so their ids
-  // are read first and re-pointed at the new row below — a skipped child is
-  // not re-linked by `resolveContinuedFrom`.
-  let continuingConversationIds: number[] = [];
-  if (priorConversationId !== null) {
-    continuingConversationIds = statements.selectContinuingConversationIds(priorConversationId);
-    statements.deleteConversation(priorConversationId);
-  }
+  // A stored Conversation is rewritten in place, in the SAME transaction as
+  // its content, so a reader on another connection sees the old version or the
+  // new one — never the Conversation missing — and its id, which the
+  // Conversations continuing from it name, never changes.
   const projectId = upsertProject(statements, resolveProjectPath(statements, session, parsed));
-
-  const conversationId = statements.insertConversation({
+  const conversationRow: ConversationRow = {
     sessionId: session.sessionId,
     projectId,
     projectPathFromRecords: parsed.projectPath !== null,
@@ -832,10 +829,16 @@ function writeConversation(statements: RefreshStatements, parsedConversation: Pa
     // Not stamped yet — pass 3 does that once this refresh's continuation
     // linking has run (see `UNSTAMPED_PARSER_VERSION`).
     parserVersion: UNSTAMPED_PARSER_VERSION,
+    // Resolved again by pass 2 (`resolveContinuedFrom`).
     continuedFromConversationId: null,
-  });
-  if (continuingConversationIds.length > 0) {
-    statements.updateContinuedFrom(continuingConversationIds, conversationId);
+  };
+  let conversationId: number;
+  if (priorConversationId === null) {
+    conversationId = statements.insertConversation(conversationRow);
+  } else {
+    conversationId = priorConversationId;
+    statements.updateConversation(conversationId, conversationRow);
+    statements.deleteConversationContent(conversationId);
   }
 
   const rootAgentId = statements.insertAgent({

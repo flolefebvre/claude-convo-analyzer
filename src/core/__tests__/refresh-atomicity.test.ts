@@ -12,9 +12,8 @@ import { refresh } from "@/core/refresh";
 
 /**
  * A reader probe on a second connection. When `sessionId` is armed, the moment
- * a Refresh transaction is about to insert its next Conversation row — after
- * any delete of its prior row in the same transaction, before the insert — the
- * probe reads that Conversation's rows through a connection of its own (not the
+ * a Refresh transaction is about to write its next Conversation row — insert
+ * it, or rewrite a stored one in place — the probe reads that Conversation's rows through a connection of its own (not the
  * writer's), records what it saw, then disarms.
  */
 const probe = vi.hoisted(() => ({
@@ -43,7 +42,7 @@ function readTitlesOnSecondConnection(dbPath: string, sessionId: string): (strin
   }
 }
 
-// The Refresh connection, with the probe run before each Conversation insert.
+// The Refresh connection, with the probe run before each Conversation row write.
 vi.mock("@/core/db", async (importOriginal) => {
   const db = await importOriginal<typeof import("@/core/db")>();
   const { hookStatements } = await import("./helpers/refresh-connection");
@@ -52,7 +51,8 @@ vi.mock("@/core/db", async (importOriginal) => {
     openRefreshConnection: (dbPath?: string) =>
       hookStatements(
         db.openRefreshConnection(dbPath),
-        (sql) => sql.startsWith('INSERT INTO "conversation"'),
+        (sql) =>
+          sql.startsWith('INSERT INTO "conversation"') || sql.startsWith('UPDATE "conversation" SET "session_id"'),
         runArmedProbe,
       ),
   };

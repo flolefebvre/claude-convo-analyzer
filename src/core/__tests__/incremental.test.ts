@@ -353,19 +353,29 @@ describe("incremental refresh", () => {
     expect(second.conversationsParsed).toBe(total);
     expect(second.conversationsSkipped).toBe(0);
 
-    // ...and every conversation row was deleted and re-inserted, so its row id
-    // is brand new while the session set and row counts are unchanged.
-    const after = await conversationRowIds(dbPath);
-    expect([...after.keys()].sort()).toEqual([...before.keys()].sort());
-    for (const [sessionId, id] of after) {
-      expect(id).not.toBe(before.get(sessionId));
-    }
+    // ...each Conversation row was rewritten in place, keeping its id.
+    expect(await conversationRowIds(dbPath)).toEqual(before);
 
-    // Exactly once: the next refresh skips everything again, ids now stable.
+    // Exactly once: the next refresh skips everything again.
     const third = await refresh({ logsRoot, dbPath });
     expect(third.conversationsParsed).toBe(0);
     expect(third.conversationsSkipped).toBe(total);
-    expect(await conversationRowIds(dbPath)).toEqual(after);
+    expect(await conversationRowIds(dbPath)).toEqual(before);
+  });
+
+  it("keeps a re-parsed Conversation's row id", async () => {
+    await refresh({ logsRoot, dbPath });
+    const before = await conversationRowIds(dbPath);
+
+    const basicPath = path.join(logsRoot, "-Users-me-dev-demo", "sess-basic.jsonl");
+    const extra =
+      '{"type":"user","uuid":"x-extra","timestamp":"2026-06-20T10:02:00.000Z","cwd":"/Users/me/dev/demo","message":{"role":"user","content":"one more"}}\n';
+    writeFileSync(basicPath, readFileSync(basicPath, "utf8") + extra);
+
+    const second = await refresh({ logsRoot, dbPath });
+
+    expect(second.conversationsParsed).toBe(1);
+    expect(await conversationRowIds(dbPath)).toEqual(before);
   });
 
   it("re-parses the parent when only a sub-agent transcript changes", async () => {
@@ -489,6 +499,17 @@ describe("incremental refresh", () => {
     expect(await projectPathOf(dbPath, "sess-d-cwdless")).toBe("/home/dev/acme-api");
     // Resolved while its log folder had no cwd-bearing Conversation, unchanged since.
     expect(await projectPathOf(dbPath, "sess-a-cwdless")).toBe("/home/dev/acme/api");
+  });
+
+  it("does not let a Conversation re-parsed without its cwd borrow the Project it stated before", async () => {
+    writeOneRecordSession(logsRoot, "-home-dev-acme-api", "sess-losing-cwd", "/home/dev/elsewhere");
+    await refresh({ logsRoot, dbPath });
+
+    writeOneRecordSession(logsRoot, "-home-dev-acme-api", "sess-losing-cwd", null);
+    await refresh({ logsRoot, dbPath });
+
+    // No sibling states a cwd: the log folder name, decoded, as a cold Refresh gives.
+    expect(await projectPathOf(dbPath, "sess-losing-cwd")).toBe("/home/dev/acme/api");
   });
 
   it("leaves no Project without a Conversation once a re-parse or a vanished file empties it", async () => {
