@@ -214,10 +214,15 @@ The spawner is found in this order:
 record, because a fork copies its spawner's records (§10). Of the holders:
 
 1. the Main thread first;
-2. never the Sub-agent itself;
+2. never the Sub-agent itself, nor any of its descendants, because a spawner
+   cannot descend from what it spawned. A fork of the Sub-agent copies the
+   record too;
 3. then a holder that no other holder spawned (one spawned by another holder
    copied the record from it);
 4. then the first in discovery order.
+
+Who spawned whom, for steps 2 and 3, is what the parsed ledgers say, else the
+stored lineage of a Sub-agent the Refresh keeps as it is.
 
 Step 2 above applies this order to the `Agent` call. A ledger claimed by
 several files is still settled by the Main thread first, then discovery order.

@@ -586,11 +586,12 @@ describe("Sub-agents typed or linked by their meta files", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "87e358d6df0ff2d8431ebc48333192a593bcdf98a954f03524498a21d5655677" },
-      conversation: { rowCount: 1, sha256: "3ef3f8836c40123db1cd27fab6b8db14310821220aa71a98fdea98a7aca19785" },
-      // bg, loose and inner typed by their meta files; loose and inner linked by them, inner under bg, not its fork.
-      agent: { rowCount: 8, sha256: "3813f7f4419290a330c47e7d64cb12486a3631a10513ff779f46ae9666ee3263" },
-      message: { rowCount: 30, sha256: "9624e4dc0d4c7eb1f151db2ba03ca843f4df3b25a248a7c95a8fec4c377b7b10" },
-      tool_call: { rowCount: 9, sha256: "3bd792862f8a9f9c2ce1a1e2591bc715ccb0b464667279b19053bdb672028d95" },
+      conversation: { rowCount: 1, sha256: "539ba8db09b8fd0f74c37cc5eaba63af4193978e235fdf23ced9e5a0c59be7cf" },
+      // bg, loose, inner and c-fork typed by their meta files; loose, inner and c-fork linked by them:
+      // inner under bg, not its fork; c-fork under s-spawner, not its own fork.
+      agent: { rowCount: 11, sha256: "2b93136b6fd37035bb9bdb9d27a1216e2d4aa9e1dfeeb9ad9639a8736841ab63" },
+      message: { rowCount: 48, sha256: "da3e8d95593d68a91fb93883591afac0f3cf26fc15767930854cd8a3ae820353" },
+      tool_call: { rowCount: 15, sha256: "f295985a25f659d9f3864305c7b893e8f647bbdb4d519e967dfb6d136111bf28" },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       ...NO_LOGGED_API_REQUESTS,
@@ -634,15 +635,36 @@ describe("Sub-agents typed or linked by their meta files", () => {
     expect(changedLineage).toEqual(coldLineage);
   });
 
-  it.each(["agent-bg.jsonl", "agent-bg-fork.jsonl", "agent-inner.jsonl", "agent-loose.jsonl", "agent-deep.jsonl"])(
-    "are stored as a cold Refresh stores them when %s alone is re-parsed",
-    async (fileName) => {
-      const { changedLineage, coldLineage } = await lineageAfterChangeAndCold(() => appendTo(fileName, "appended"));
+  // No ledger names c-fork: s-spawner holds the Agent call, and c-fork's own fork a copy of it.
+  it.each([["agent-c-fork.jsonl"], ["agent-c-fork.jsonl", "agent-a-fork-of-fork.jsonl"]])(
+    "store a fork no ledger names as a cold Refresh does when %s appears later",
+    async (...fileNames) => {
+      setAside(fileNames);
+      const { changedLineage, coldLineage } = await lineageAfterChangeAndCold(() => restore(fileNames));
 
-      expect(lineageOf(coldLineage, "loose")).toMatchObject({ spawner_external_agent_id: null, agent_type: "Explore" });
+      expect(lineageOf(coldLineage, "c-fork")).toMatchObject({
+        spawner_external_agent_id: "s-spawner",
+        spawning_message_uuid: "sa1",
+      });
       expect(changedLineage).toEqual(coldLineage);
     },
   );
+
+  it.each([
+    "agent-bg.jsonl",
+    "agent-bg-fork.jsonl",
+    "agent-inner.jsonl",
+    "agent-loose.jsonl",
+    "agent-deep.jsonl",
+    "agent-s-spawner.jsonl",
+    "agent-c-fork.jsonl",
+    "agent-a-fork-of-fork.jsonl",
+  ])("are stored as a cold Refresh stores them when %s alone is re-parsed", async (fileName) => {
+    const { changedLineage, coldLineage } = await lineageAfterChangeAndCold(() => appendTo(fileName, "appended"));
+
+    expect(lineageOf(coldLineage, "loose")).toMatchObject({ spawner_external_agent_id: null, agent_type: "Explore" });
+    expect(changedLineage).toEqual(coldLineage);
+  });
 
   // A meta file appearing while no transcript changes waits for its Conversation's next change (log-format §4).
   it.each(["agent-bg.meta.json", "agent-inner.meta.json"])(

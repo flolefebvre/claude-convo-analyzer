@@ -89,8 +89,9 @@ per gotcha:
 - Sub-agents with an **`agent-<id>.meta.json`** beside their transcript: a
   background launch whose ledger states no type, a ledger whose type differs
   from its meta file's, a malformed meta file, and Sub-agents no ledger names,
-  one spawned by the Main thread and one by a Sub-agent whose fork copies the
-  spawning call. Also a nested Sub-agent named by its spawner's ledger
+  one spawned by the Main thread, one by a Sub-agent whose fork copies the
+  spawning call, and a fork whose own fork copies its spawning call. Also a
+  nested Sub-agent named by its spawner's ledger
   (`agent-meta-logs/`, log-format §4);
 - a `Bash` and a `Skill` **`tool_use`** (tool-call capture, CLI/skill
   detection);

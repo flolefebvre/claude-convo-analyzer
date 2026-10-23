@@ -61,4 +61,16 @@ describe("a Sub-agent's meta file", () => {
     expect(inner?.parentId).toBe("bg");
     expect(inner?.node).toMatchObject({ agentType: "general-purpose", spawnedByToolUseId: "toolu-inner" });
   });
+
+  // c-fork, a fork no ledger names, forks a-fork-of-fork, whose file copies c-fork's
+  // copy of s-spawner's Agent call: a spawner never descends from what it spawned.
+  it("links a fork no ledger names to its spawner, not to its own fork holding a copy of the call", async () => {
+    const fork = await treeNodeOf("c-fork");
+    const forkOfFork = await treeNodeOf("a-fork-of-fork");
+
+    expect(fork?.parentId).toBe("s-spawner");
+    expect(fork?.node).toMatchObject({ agentType: "fork", spawnedByToolUseId: "toolu-c" });
+    expect(forkOfFork?.parentId).toBe("c-fork");
+    expect(forkOfFork?.node.spawnedByToolUseId).toBe("toolu-f");
+  });
 });

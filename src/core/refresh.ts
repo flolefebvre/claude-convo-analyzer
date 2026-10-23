@@ -1367,10 +1367,15 @@ function spawnOf(
  * The Agent holding the Agent call `toolUseId` that spawned `subAgent`, by
  * external id (null ⇒ the Main thread), or undefined when no parsed log file
  * holds it. Several may hold it — a fork's file copies its spawner's records,
- * its spawner's Agent calls included (log-format §10) — so, in order: the Main
- * thread when it holds it; never `subAgent` itself; of the Sub-agents holding
- * it, not one a ledger names as spawned by another holder, which copied the
- * call from that spawner; then the first in discovery order.
+ * its spawner's Agent calls included (log-format §10) — so, in order:
+ *   1. the Main thread, when it holds it;
+ *   2. never `subAgent` itself, nor any of its descendants: a spawner cannot
+ *      descend from what it spawned;
+ *   3. of the Sub-agents left, not one spawned by another of them, which
+ *      copied the call from that spawner;
+ *   4. then the first in discovery order.
+ * Who spawned a Sub-agent, for 2 and 3, is what this run's ledgers say, else
+ * the stored lineage of a Sub-agent kept as it is (see `spawnerExternalIdOf`).
  */
 function spawnerOfAgentCall(
   toolUseId: string,
@@ -1380,15 +1385,51 @@ function spawnerOfAgentCall(
   spawnLedgerByAgentId: Map<string, SpawnLedgerEntry>,
 ): { externalAgentId: string | null } | undefined {
   if (holdsToolUse(mainThread, toolUseId)) return { externalAgentId: null };
+  const spawnerIdOf = spawnerExternalIdOf(subAgents, spawnLedgerByAgentId);
+  /** Whether Sub-agent `agentId` is `subAgent` or descends from it. */
+  const isSubAgentOrDescendant = (agentId: string) => {
+    const visited = new Set<string>();
+    for (let id: string | null = agentId; id !== null && !visited.has(id); id = spawnerIdOf(id)) {
+      if (id === subAgent.file.agentId) return true;
+      visited.add(id);
+    }
+    return false;
+  };
   const holderIds = subAgents
-    .filter((sub) => sub !== subAgent && sub.parsed !== null && holdsToolUse(sub.parsed, toolUseId))
-    .map((sub) => sub.file.agentId);
+    .filter((sub) => sub.parsed !== null && holdsToolUse(sub.parsed, toolUseId))
+    .map((sub) => sub.file.agentId)
+    .filter((holderId) => !isSubAgentOrDescendant(holderId));
   const isCopiedFromAnotherHolder = (holderId: string) => {
-    const spawnerId = spawnLedgerByAgentId.get(holderId)?.parentExternalId;
-    return spawnerId != null && spawnerId !== holderId && holderIds.includes(spawnerId);
+    const spawnerId = spawnerIdOf(holderId);
+    return spawnerId !== null && spawnerId !== holderId && holderIds.includes(spawnerId);
   };
   const spawnerId = holderIds.find((holderId) => !isCopiedFromAnotherHolder(holderId)) ?? holderIds[0];
   return spawnerId === undefined ? undefined : { externalAgentId: spawnerId };
+}
+
+/**
+ * A lookup of the external id of the Sub-agent that spawned Sub-agent
+ * `agentId` (null ⇒ the Main thread, or none known): the parsed ledger naming
+ * it, else, for a Sub-agent kept as it is, its stored parent.
+ */
+function spawnerExternalIdOf(
+  subAgents: SubAgentToWrite[],
+  spawnLedgerByAgentId: Map<string, SpawnLedgerEntry>,
+): (agentId: string) => string | null {
+  const externalIdByRowId = new Map(
+    subAgents.flatMap((sub) => (sub.stored === null ? [] : [[sub.stored.id, sub.file.agentId] as const])),
+  );
+  const storedParentRowIdByAgentId = new Map(
+    subAgents.flatMap((sub) =>
+      sub.isRewritten || sub.stored === null ? [] : [[sub.file.agentId, sub.stored.parentAgentId] as const],
+    ),
+  );
+  return (agentId) => {
+    const ledger = spawnLedgerByAgentId.get(agentId);
+    if (ledger !== undefined) return ledger.parentExternalId;
+    const storedParentRowId = storedParentRowIdByAgentId.get(agentId);
+    return storedParentRowId == null ? null : (externalIdByRowId.get(storedParentRowId) ?? null);
+  };
 }
 
 /**
