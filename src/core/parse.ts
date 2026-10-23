@@ -372,7 +372,7 @@ export type ParsedSession = {
   projectPath: string | null;
   gitBranch: string | null;
   ccVersion: string | null;
-  /** Resolved title per finding #7 precedence (custom > ai > first prompt > null). */
+  /** Claude Code's title: the last `custom-title`, else the last `ai-title`, else the first Prompt (log-format §2). */
   title: string | null;
   /** Dominant model = the model with the most OUTPUT tokens (null if none). */
   dominantModel: string | null;
@@ -648,12 +648,14 @@ export function parseSessionLines(lines: readonly string[]): ParsedSession {
 
     const type = record.type;
 
+    // The last title record with a string value wins, an empty one clearing
+    // it; one without is skipped (log-format §2, `ai-title`).
     if (type === "ai-title") {
-      aiTitle ??= asString(record.aiTitle);
+      if (typeof record.aiTitle === "string") aiTitle = asString(record.aiTitle);
       continue;
     }
     if (type === "custom-title") {
-      customTitle ??= asString(record.customTitle);
+      if (typeof record.customTitle === "string") customTitle = asString(record.customTitle);
       continue;
     }
     if (type === "continued-in") {
@@ -804,7 +806,7 @@ export function parseSessionLines(lines: readonly string[]): ParsedSession {
     if (messageId !== null) assistantById.set(messageId, parsed);
   }
 
-  // Title precedence (finding #7): custom > ai > first user prompt > null.
+  // Title precedence (finding #7): the last custom > the last ai > first Prompt > null.
   const title = customTitle ?? aiTitle ?? firstUserText ?? null;
 
   return {

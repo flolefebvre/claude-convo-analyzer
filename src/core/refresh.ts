@@ -162,8 +162,10 @@ type RefreshOptions = {
  * 16 — a continuation is found by the copy of its parent's records it holds
  *     and the `continued-in` records naming it (`continued_in`), and its
  *     copied Messages are flagged (`message.is_copied`, log-format §10).
+ * 17 — the title is the last `custom-title`, else the last `ai-title`, as
+ *     Claude Code resolves it, not the first (`conversation.title`).
  */
-export const PARSER_VERSION = 16;
+export const PARSER_VERSION = 17;
 
 /**
  * The version a conversation carries while it is written but NOT YET COMPLETE:

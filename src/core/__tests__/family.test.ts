@@ -11,7 +11,9 @@
 // records (log-format §10): the root encodes a standalone session, a linear
 // chain, a fork, a cross-project resume, a copy whose original is gone, and an
 // older pair with no `continued-in` record. A cycle cannot come out of copies,
-// so the walk's guard is fed made-up summaries.
+// so the walk's guard is fed made-up summaries. The titles carry the shapes of
+// the last-wins rule: the root is re-titled, the standalone session renamed
+// twice, and sess-fam-b holds only its parent's title, re-appended on resume.
 
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -165,5 +167,34 @@ describe("familySizes", () => {
     expect(sizes.get("sess-orphan")).toBe(1);
     // Every conversation is accounted for exactly once.
     expect(sizes.size).toBe(rows.length);
+  });
+});
+
+describe("a Conversation's title", () => {
+  const db = seededTempDb({ prefix: "cca-famtitle-", logsRoot: FIXTURES_ROOT });
+
+  /** The listed title of the Conversation `sessionId`. */
+  async function titleOf(sessionId: string): Promise<string | null | undefined> {
+    const rows = await listConversations({ dbPath: db.dbPath });
+    return rows.find((r) => r.id === sessionId)?.title;
+  }
+
+  it("is the last ai-title of a session re-titled mid-way", async () => {
+    // sess-fam-a is titled "Plan the work", then "Family root".
+    expect(await titleOf("sess-fam-a")).toBe("Family root");
+  });
+
+  it("is the last custom-title of a session renamed twice, over its ai-title", async () => {
+    expect(await titleOf("sess-fam-solo")).toBe("Solo, renamed");
+  });
+
+  it("is the parent's title for a continuation whose only title is the one Claude Code re-appended on resume", async () => {
+    // sess-fam-b opens with sess-fam-a's current title and has none of its own.
+    expect(await titleOf("sess-fam-b")).toBe("Family root");
+    expect(await titleOf("sess-fam-a")).toBe("Family root");
+  });
+
+  it("is the only ai-title of a session titled once", async () => {
+    expect(await titleOf("sess-fam-d")).toBe("Family fork");
   });
 });

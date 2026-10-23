@@ -36,7 +36,8 @@ model Conversation {
   /// was borrowed from a sibling in its log folder or decoded from the folder name.
   projectPathFromRecords Boolean @default(false) @map("project_path_from_records")
 
-  /// Human-readable name from an `ai-title` record (may be null).
+  /// Claude Code's title: the last `custom-title` record, else the last
+  /// `ai-title`, else the first Prompt (may be null).
   title     String?
   gitBranch String? @map("git_branch")
   /// Claude Code version that produced the session.
