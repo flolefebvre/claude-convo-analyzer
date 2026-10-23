@@ -9,7 +9,8 @@
 
 import { type CostByType, priceSplitByType, resolveModel, type TokenSplit, type Tokens } from "@/core/cost";
 import { readClient } from "@/core/db";
-import { conversationInFolderScope, type FolderScopeOptions } from "@/core/folder-scope";
+import { conversationInFolderScope } from "@/core/folder-scope";
+import type { FolderScope } from "@/core/project-path";
 import { addLocalDays, localDayKey, startOfLocalDay } from "@/core/local-day";
 import { type MessageOrigin, messageOriginSchema } from "@/core/parse";
 import type { Prisma, PrismaClient } from "@/core/prisma/generated/client";
@@ -779,7 +780,7 @@ export type DailySpend = {
   hasApproximate: boolean;
 };
 
-type DailySpendOptions = FolderScopeOptions & {
+type DailySpendOptions = FolderScope & {
   /** Range length in days, ending today (inclusive). All time when omitted. */
   days?: number;
   /** Clock injection point — the instant "today" is derived from. Defaults to now. */

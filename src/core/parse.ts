@@ -21,6 +21,7 @@ import { z } from "zod";
 
 import { canonicalJson } from "@/core/canonical-json";
 import { injectedContextDictionary, type SentTextBlock } from "@/core/injected-context";
+import { childPath, segmentsBelow } from "@/core/project-path";
 
 /** A `tool_use` block lifted out of an assistant message (one `tool_call` row). */
 export type ParsedToolUse = {
@@ -253,18 +254,15 @@ function decodeEntities(s: string): string {
     .replace(/&amp;/g, "&");
 }
 
-/** Where Claude Code puts a repo's git worktrees, relative to the repo. */
-const WORKTREES_DIR = "/.claude/worktrees/";
-
 /**
  * The root of the git worktree of `repo` that `cwd` lies at or under
- * (`<repo>/.claude/worktrees/<name>`), or null when `cwd` is not inside one.
+ * (`<repo>/.claude/worktrees/<name>`, with the repo's separator), or null when
+ * `cwd` is not inside one.
  */
 function worktreeRootOf(repo: string, cwd: string): string | null {
-  const prefix = repo.replace(/\/+$/, "") + WORKTREES_DIR;
-  if (!cwd.startsWith(prefix)) return null;
-  const name = cwd.slice(prefix.length).split("/")[0];
-  return name === undefined || name.length === 0 ? null : prefix + name;
+  const worktreesFolder = childPath(childPath(repo, ".claude"), "worktrees");
+  const name = segmentsBelow(cwd, worktreesFolder)?.[0];
+  return name === undefined ? null : childPath(worktreesFolder, name);
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {

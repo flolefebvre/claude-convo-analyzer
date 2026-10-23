@@ -133,14 +133,22 @@ export function discoverSubAgents(projectDir: string, sessionId: string): Discov
   return out;
 }
 
+/** The log folder name of a Windows path: its drive letter, then `--` for `:\`. */
+const WINDOWS_LOG_FOLDER_NAME = /^([A-Za-z])--/;
+
 /**
- * Decode a dash-encoded log folder name back to an absolute path
- * (`/` ⇐ `-`). Lossy/ambiguous on a real `-` (finding #10) — used only as a
- * last resort when neither a Conversation nor any sibling in its log folder
- * states a `cwd` (see `resolveProjectPath` in refresh.ts).
+ * Decode a dash-encoded log folder name back to an absolute path: a name
+ * starting with a drive letter and `--` to a Windows path (`C:\` ⇐ `C--`,
+ * `\` ⇐ `-`), any other to a POSIX path (`/` ⇐ `-`). Lossy/ambiguous on a real
+ * `-` (finding #10) — used only as a last resort when neither a Conversation
+ * nor any sibling in its log folder states a `cwd` (see `resolveProjectPath` in
+ * refresh.ts). UNC paths (`\\server\share`) are not decoded as Windows paths.
  *
  * @example decodeLogFolderName("-Users-me-dev-acme-api") // "/Users/me/dev/acme/api"
+ * @example decodeLogFolderName("C--Users-me-repo") // "C:\\Users\\me\\repo"
  */
 export function decodeLogFolderName(logFolderName: string): string {
-  return logFolderName.replace(/-/g, "/");
+  const drive = WINDOWS_LOG_FOLDER_NAME.exec(logFolderName)?.[1];
+  if (drive === undefined) return logFolderName.replace(/-/g, "/");
+  return `${drive}:\\${logFolderName.slice(drive.length + 2).replace(/-/g, "\\")}`;
 }

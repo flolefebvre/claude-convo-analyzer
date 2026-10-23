@@ -12,7 +12,8 @@
 // ordinary rows here and are therefore INCLUDED — they are the same friction.
 
 import { readClient } from "@/core/db";
-import { conversationInFolderScope, type FolderScopeOptions } from "@/core/folder-scope";
+import { conversationInFolderScope } from "@/core/folder-scope";
+import type { FolderScope } from "@/core/project-path";
 import type { PrismaClient } from "@/core/prisma/generated/client";
 import { addLocalDays, startOfLocalDay } from "@/core/local-day";
 
@@ -51,7 +52,7 @@ export type ToolStats = {
 };
 
 /** Scope of a tool-analytics read — the same axes as the Trends read. */
-export type ToolStatsOptions = FolderScopeOptions & {
+export type ToolStatsOptions = FolderScope & {
   /** Range length in days, ending today (inclusive). All time when omitted. */
   days?: number;
   /** Clock injection point — the instant "today" is derived from. Defaults to now. */
