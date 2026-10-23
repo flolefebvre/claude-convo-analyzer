@@ -44,6 +44,9 @@ This project uses TDD. The rules that matter here:
   page, and that re-render lands inside other workers' `instant()` scopes and
   breaks them. The `shared-state` project holds no `instant()` check, and a
   failure elsewhere skips it.
+- The other exception: `e2e/server-binding.spec.ts` is about the server, not a
+  route. It checks that the e2e server binds loopback only: refused on this
+  machine's network address, answering on `127.0.0.1`.
 - A spec that acts on a client control right after a load waits for evidence
   that the control takes input: `gotoInteractive` (`e2e/interactive-page.ts`)
   in place of `page.goto`, as `e2e/active-now.spec.ts` and `e2e/search.spec.ts`
