@@ -81,11 +81,22 @@ describe("an API request two files hold", () => {
 });
 
 describe("a resumed Conversation's own Turn", () => {
-  it("has the API request of its own file, against no previous one: its Agent answered none before", async () => {
+  it("has the API request of its own file, against the request of the latest earlier Turn that has one", async () => {
+    const [, parentSecondTurn] = await turnsOf(PARENT_SESSION_ID);
     const childTurns = await turnsOf(CHILD_SESSION_ID);
 
     const whatWasSent = await getWhatWasSent(childTurns[3]!.apiRequestId!, { dbPath: db.dbPath });
     expect(whatWasSent?.fullRequest.messages).toHaveLength(5);
-    expect(whatWasSent?.previousApiRequestId).toBeNull();
+    // The third Turn's request is in no file: the second Turn's, in the parent's file, is the baseline.
+    expect(whatWasSent?.previousApiRequestId).toBe(parentSecondTurn?.apiRequestId);
+  });
+
+  it("shows as new only the messages after the copied history, with an unchanged system prompt and tools", async () => {
+    const childTurns = await turnsOf(CHILD_SESSION_ID);
+
+    const whatWasSent = await getWhatWasSent(childTurns[3]!.apiRequestId!, { dbPath: db.dbPath });
+    expect(whatWasSent?.firstNewMessageIndex).toBe(3);
+    expect(whatWasSent?.systemPromptDiff).toBeNull();
+    expect(whatWasSent?.toolsDiff).toBeNull();
   });
 });
