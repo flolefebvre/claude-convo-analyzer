@@ -112,7 +112,6 @@ agent. Quoted phrases work too:
 ## Requirements
 
 - [Node.js](https://nodejs.org) 22 or newer
-- [pnpm](https://pnpm.io)
 - Some existing Claude Code usage — the app analyzes the logs Claude Code writes
   to `~/.claude/projects`.
 
@@ -125,17 +124,6 @@ agent. Quoted phrases work too:
 > Linux one.
 
 ## Getting started
-
-```bash
-git clone https://github.com/flolefebvre/claude-convo-analyzer.git
-cd claude-convo-analyzer
-pnpm install      # also generates the Prisma client (postinstall)
-pnpm build
-pnpm start
-```
-
-Then open [http://127.0.0.1:3000](http://127.0.0.1:3000) (loopback only, never
-on your network; `pnpm dev` binds the same way).
 
 On first launch the SQLite database is created and migrated automatically — no
 manual database setup — and the first Refresh, which ingests your conversation
@@ -160,15 +148,8 @@ The app never deletes the Claude Code logs. Recordings under
 `~/.claude-convo-analyzer/recordings`, from an earlier version, are no longer
 used; delete them by hand if you like.
 
-For live development instead of a production build:
-
-```bash
-pnpm dev
-```
-
 Three environment variables move what the app reads and writes; a relative
-value resolves against the process working directory (the repo root under
-`pnpm`):
+value resolves against the directory you run it from:
 
 - `CCA_DB_PATH` — the SQLite file (default
   `~/.claude-convo-analyzer/analyzer.db`), created and migrated on first use.
@@ -181,20 +162,7 @@ value resolves against the process working directory (the repo root under
   It sits outside the database, so a Refresh or a deleted database never loses
   them.
 
-```bash
-CCA_DB_PATH=data/demo.db CCA_LOGS_ROOT=/tmp/demo-logs pnpm dev
-```
-
 ### The packaged app
-
-The app is also built as an npm package, run with one `npx` command and no
-clone, pnpm or build on your machine. It is not published to npm yet; until it
-is, build the package from a clone and run its tarball:
-
-```bash
-pnpm package    # prints the tarball's path: dist/claude-convo-analyzer-<version>.tgz
-npx ./dist/claude-convo-analyzer-0.1.0.tgz
-```
 
 The `claude-convo-analyzer` command prints its version, serves the app on
 [http://127.0.0.1:4747](http://127.0.0.1:4747) (loopback only, never on your
@@ -268,60 +236,15 @@ better?"_
 
 Have an idea or a friction pattern you'd like surfaced? Open an issue.
 
-## Development
-
-The validation gate — format check, lint, duplication and typecheck in
-parallel, then test and build in parallel, then the Playwright end-to-end specs,
-then `pnpm package` and `pnpm smoke`, which installs the packed tarball with npm
-outside the repo and drives its launcher; it passed only if the output ends with
-`--gate OK--`. `pnpm check` is the faster
-inner loop: the same static checks, then only the tests affected since
-`origin/main` (`--check OK--`):
-
-```bash
-pnpm check
-pnpm gate
-```
-
-The end-to-end specs need Chromium, installed once with
-`pnpm exec playwright install chromium`.
-
-See [`docs/codebase/testing.md`](docs/codebase/testing.md) for the testing
-approach and fixtures.
-
-For demo data, `pnpm seed` builds a self-contained seed environment in
-`data/seed/`: invented logs in `data/seed/projects/`, ingested into
-`data/seed/seed.db`. Each run wipes and rebuilds that directory; your real
-database and logs are never read or written. To seed and serve the app on it in
-one step:
-
-```bash
-pnpm dev:seed
-```
-
-It prints `Seeded app: http://127.0.0.1:<port>` — the first free port from
-3001, or `PORT` when set — so several checkouts can each run their own. Refresh
-in that app re-reads only the seeded logs, and `CCA_SETTINGS_PATH` points at
-`data/seed/settings.json`, so
-Live starts off with three seeded favorites, and your own settings are never
-touched.
-
-The seeded activity ends now. `pnpm seed` also takes `--now=<ISO>`, and the same
-`--now` always yields the same data, which is what screenshots want; point the
-app at that seed with the two variables above:
-
-```bash
-pnpm seed --now=2026-06-22T17:00:00Z
-CCA_DB_PATH=data/seed/seed.db CCA_LOGS_ROOT=data/seed/projects pnpm dev
-```
-
 ## Was this made with AI?
 
 Yes.
 
-## How to contribute
+## Contributing
 
-Found a bug or have an idea? Open an issue.
+Found a bug or have an idea? Open an issue. Working on the app itself needs
+macOS, Linux or WSL; see
+[CONTRIBUTING.md](https://github.com/flolefebvre/claude-convo-analyzer/blob/main/CONTRIBUTING.md).
 
 ## License
 
