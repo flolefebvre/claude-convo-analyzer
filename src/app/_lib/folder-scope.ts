@@ -5,9 +5,8 @@
 // {@link writeFolderScope}, so the two params always travel together.
 //
 // React-free + I/O-free, so the client sidebar can use it too (it never
-// imports core). Which Projects
-// a scope holds is `isProjectInFolderScope` in `@/lib/project-path`, the rule
-// the core's scoped reads apply too.
+// imports core). Which Projects a scope holds is `isProjectInFolderScope` in
+// `@/lib/project-path`, the rule the core's scoped reads apply too.
 
 import { firstParam, type ViewSearchParams } from "@/app/_lib/search-params";
 import { type FolderScope, friendlyName, segmentsBelow, separatorOf } from "@/lib/project-path";

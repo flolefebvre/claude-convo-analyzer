@@ -215,6 +215,23 @@ describe("deriveFolderTree on Windows paths", () => {
     expect(nodeAt(roots, "C:\\Users\\me").count).toBe(4);
   });
 
+  it("roots a path of neither shape at itself, one row per Project", () => {
+    const unc = ["\\\\wsl.localhost\\Ubuntu\\home\\me\\a", "\\\\wsl.localhost\\Ubuntu\\home\\me\\b"];
+    const roots = deriveFolderTree(
+      deriveFolders([
+        summary({ id: "a1", path: unc[0] }),
+        summary({ id: "a2", path: unc[0] }),
+        summary({ id: "b1", path: unc[1] }),
+      ]),
+      HOME,
+    );
+
+    expect(roots.map((r) => [r.label, r.path, r.count]).sort()).toEqual([
+      [unc[0], unc[0], 2],
+      [unc[1], unc[1], 1],
+    ]);
+  });
+
   it("opens the path down to a selected Windows Folder", () => {
     const roots = treeOf(paths);
 

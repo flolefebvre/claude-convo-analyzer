@@ -17,7 +17,8 @@ This project uses TDD. The rules that matter here:
   named in the vocabulary of `GLOSSARY.md`.
 - Tests of `scripts/` live beside the script they test, as `*.test.ts`
   (e.g. `scripts/seed/seed.test.ts`), and so do the launcher's, beside its
-  pure decisions in `src/launcher/`; its I/O edge is covered by `pnpm smoke`.
+  pure decisions in `src/launcher/`; its I/O edge is covered by `pnpm smoke`;
+  and `src/lib`'s, beside the module (e.g. `src/lib/project-path.test.ts`).
 
 ## End-to-end
 

@@ -97,13 +97,15 @@ function emptyDirectory(path: string): Directory {
  * `/home/other/x`. A root is therefore never an ancestor of `~`, so its totals
  * and its scope cover the same Projects. Only a Project at an ancestor of home
  * (or at `/`) roots at its own path, and a path on another filesystem root
- * than home's roots at that root (`C:\`, labelled `C:`).
+ * than home's roots at that root (`C:\`, labelled `C:`). A path of neither
+ * shape (a UNC path) is its own root, so each such Project keeps its own row.
  */
 function rootOf(projectPath: string, home: string): { rootPath: string; label: string; below: string[] } {
   const belowHome = segmentsBelow(projectPath, home);
   if (belowHome !== null) return { rootPath: home, label: "~", below: belowHome };
   const filesystemRoot = filesystemRootOf(projectPath);
-  const fromFilesystemRoot = segmentsBelow(projectPath, filesystemRoot) ?? [];
+  const fromFilesystemRoot = segmentsBelow(projectPath, filesystemRoot);
+  if (fromFilesystemRoot === null) return { rootPath: projectPath, label: projectPath, below: [] };
   const homeFromFilesystemRoot = segmentsBelow(home, filesystemRoot);
   let rootDepth = 0;
   if (homeFromFilesystemRoot !== null) {
