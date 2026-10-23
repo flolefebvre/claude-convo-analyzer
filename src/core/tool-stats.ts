@@ -13,7 +13,7 @@
 
 import { readClient } from "@/core/db";
 import { conversationInFolderScope } from "@/core/folder-scope";
-import type { FolderScope } from "@/core/project-path";
+import type { FolderScope } from "@/lib/project-path";
 import type { PrismaClient } from "@/core/prisma/generated/client";
 import { addLocalDays, startOfLocalDay } from "@/core/local-day";
 

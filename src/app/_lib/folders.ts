@@ -1,13 +1,12 @@
 // Pure app-zone seam: derive the left sidebar's folder list and scope the
 // conversation table to one Project, built ON TOP of the core's
 // `ConversationSummary[]` (no new core API — respects the core/UI boundary in
-// ADR-0002). Its core touches are a type-only import and the import-free
-// path-shape rules of `@/core/project-path`.
+// ADR-0002). The only core touch is a type-only import, erased at compile time.
 //
 // React-free + I/O-free so it unit-tests in the node vitest environment; the
 // page/sidebar are thin shells over these.
 
-import { friendlyName, pathSegments, separatorOf } from "@/core/project-path";
+import { friendlyName, pathSegments, separatorOf } from "@/lib/project-path";
 import type { ConversationSummary } from "@/core/read";
 
 /** One left-sidebar row: a distinct Project, summarized for display + linking. */

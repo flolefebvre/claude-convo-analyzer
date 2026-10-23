@@ -10,7 +10,7 @@
 import { type CostByType, priceSplitByType, resolveModel, type TokenSplit, type Tokens } from "@/core/cost";
 import { readClient } from "@/core/db";
 import { conversationInFolderScope } from "@/core/folder-scope";
-import type { FolderScope } from "@/core/project-path";
+import type { FolderScope } from "@/lib/project-path";
 import { addLocalDays, localDayKey, startOfLocalDay } from "@/core/local-day";
 import { type MessageOrigin, messageOriginSchema } from "@/core/parse";
 import type { Prisma, PrismaClient } from "@/core/prisma/generated/client";

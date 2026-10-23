@@ -17,7 +17,7 @@ import type { RangeKey } from "@/app/_lib/range";
 import type { SortDir } from "@/app/_lib/sort";
 
 import { writeFolderScope } from "@/app/_lib/folder-scope";
-import type { FolderScope } from "@/core/project-path";
+import type { FolderScope } from "@/lib/project-path";
 import { firstParam } from "@/app/_lib/search-params";
 
 /** Per-column spec: the comparable value and the direction a fresh click starts at. */

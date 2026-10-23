@@ -4,12 +4,13 @@
 // (**this folder**). Every href that carries the scope writes it through
 // {@link writeFolderScope}, so the two params always travel together.
 //
-// React-free + I/O-free, so the client sidebar can use it too. Which Projects
-// a scope holds is `isProjectInFolderScope` in `@/core/project-path`, the rule
+// React-free + I/O-free, so the client sidebar can use it too (it never
+// imports core). Which Projects
+// a scope holds is `isProjectInFolderScope` in `@/lib/project-path`, the rule
 // the core's scoped reads apply too.
 
 import { firstParam, type ViewSearchParams } from "@/app/_lib/search-params";
-import { type FolderScope, friendlyName, segmentsBelow, separatorOf } from "@/core/project-path";
+import { type FolderScope, friendlyName, segmentsBelow, separatorOf } from "@/lib/project-path";
 
 /** The one `?thisFolder=` value that narrows the scope. */
 const THIS_FOLDER_ON = "1";

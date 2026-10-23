@@ -26,7 +26,7 @@ import { FolderLinkWithStar } from "@/app/_components/favorite-star";
 import { FolderRow, SidebarLeadingSlot, folderCostShare } from "@/app/_components/folder-rows";
 import { SidebarLink } from "@/app/_components/sidebar-link";
 import { resolveLiveFolderScope } from "@/app/_lib/folder-scope";
-import { isProjectInFolderScope } from "@/core/project-path";
+import { isProjectInFolderScope } from "@/lib/project-path";
 import { type FolderNode, initiallyOpenFolderPaths, openPathsDownToScope } from "@/app/_lib/folder-tree";
 import { cn } from "@/lib/utils-cn";
 

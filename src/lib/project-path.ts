@@ -6,9 +6,10 @@
 // `C:\`); every other path does not.
 //
 // Paths compare as recorded: exact case, and no `/` ⇄ `\` normalisation within
-// one path. UNC paths (`\\server\share`) read as POSIX paths.
+// one path. UNC paths (`\\server\share`) are out of scope.
 //
-// Import-free, so both the core and the client sidebar use it.
+// Import-free — no `node:` modules, no `@/core` — so any bundle can take it:
+// the core's, the server components' and the client sidebar's.
 
 /** The character a path separates its segments with. */
 export type PathSeparator = "/" | "\\";

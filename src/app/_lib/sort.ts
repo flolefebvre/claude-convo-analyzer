@@ -15,7 +15,7 @@
 import type { ConversationSummary } from "@/core/read";
 
 import { writeFolderScope } from "@/app/_lib/folder-scope";
-import type { FolderScope } from "@/core/project-path";
+import type { FolderScope } from "@/lib/project-path";
 import { FIRST_PAGE, firstParam } from "@/app/_lib/search-params";
 
 export type SortDir = "asc" | "desc";

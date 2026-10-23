@@ -24,7 +24,7 @@ import {
   pathSegments,
   segmentsBelow,
   separatorOf,
-} from "@/core/project-path";
+} from "@/lib/project-path";
 
 /** The Conversation count and summed cost of a set of Projects. */
 export type FolderTotals = {

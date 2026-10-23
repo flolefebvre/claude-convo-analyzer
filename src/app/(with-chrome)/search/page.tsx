@@ -26,7 +26,7 @@ import { EmptyState, EmptyStateLink } from "@/app/_components/empty-state";
 import { LoadingRegion } from "@/app/_components/loading-region";
 import { PageHeader } from "@/app/_components/page-header";
 import { loadSearch } from "@/app/_lib/conversations";
-import { friendlyName } from "@/core/project-path";
+import { friendlyName } from "@/lib/project-path";
 import { formatCount, formatDate } from "@/app/_lib/format";
 import { firstParam } from "@/app/_lib/search-params";
 import { agentHref, messageHref } from "@/app/_lib/transcript-url";

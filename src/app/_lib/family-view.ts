@@ -1,13 +1,13 @@
 // Render-ready shaping for the continuation-family section of the expanded
 // detail panel (issue #46). Like its sibling `_lib` modules this is pure —
-// React-free, I/O-free, its core imports type-only or import-free (ADR-0002) — so the link
+// React-free, I/O-free, only type-only core imports (ADR-0002) — so the link
 // composition and the labeling rules unit-test in the node environment and the
 // panel component stays a thin renderer.
 
 import type { ConversationFamily } from "@/core/family";
 
 import { formatDate } from "@/app/_lib/format";
-import { friendlyName, isProjectInFolderScope } from "@/core/project-path";
+import { friendlyName, isProjectInFolderScope } from "@/lib/project-path";
 import { expandHref, type ListLinkContext } from "@/app/_lib/sort";
 
 /** One family member, ready to render as a row of the panel's tree. */

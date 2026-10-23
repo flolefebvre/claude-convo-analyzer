@@ -8,7 +8,7 @@
 
 import type { FolderTotals } from "@/app/_lib/folder-tree";
 import { disambiguateLabels, type FolderEntry } from "@/app/_lib/folders";
-import { friendlyName, isProjectInFolderScope } from "@/core/project-path";
+import { friendlyName, isProjectInFolderScope } from "@/lib/project-path";
 
 /** One row of the Favorites section, with the totals of every Project at or below it. */
 export type FavoriteFolder = FolderTotals & {

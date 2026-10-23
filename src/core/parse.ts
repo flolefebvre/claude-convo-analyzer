@@ -21,7 +21,7 @@ import { z } from "zod";
 
 import { canonicalJson } from "@/core/canonical-json";
 import { injectedContextDictionary, type SentTextBlock } from "@/core/injected-context";
-import { childPath, segmentsBelow } from "@/core/project-path";
+import { childPath, segmentsBelow } from "@/lib/project-path";
 
 /** A `tool_use` block lifted out of an assistant message (one `tool_call` row). */
 export type ParsedToolUse = {

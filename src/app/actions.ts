@@ -7,15 +7,14 @@
 // A mutation with nothing to compose calls the core directly (this is a server
 // module); one composed over app state goes through its `_lib` seam. A
 // "use server" module's exports may be imported and called from a "use client"
-// component, but the client never imports core itself (ADR-0002) — save the
-// import-free path-shape rules of `@/core/project-path`.
+// component, but the client never imports core itself (ADR-0002).
 
 import { actionPipe } from "@flefebvre/next-pipe/pipes";
 import { error, success } from "@flefebvre/next-pipe/server";
 import { z } from "zod";
 
 import { favoriteFolder, moveFavoriteFolder, unfavoriteFolder } from "@/core/favorites";
-import { isAbsolutePath } from "@/core/project-path";
+import { isAbsolutePath } from "@/lib/project-path";
 import { getLive, switchLive } from "@/app/_lib/live";
 import { getPublishedRefreshRunner, startOrJoinRefresh } from "@/app/_lib/refresh-events";
 

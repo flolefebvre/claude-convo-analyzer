@@ -4,7 +4,7 @@
 // daily spend, the Tools stats and samples) so they all span the same set.
 
 import type { PrismaClient } from "@/core/prisma/generated/client";
-import { type FolderScope, isProjectInFolderScope } from "@/core/project-path";
+import { type FolderScope, isProjectInFolderScope } from "@/lib/project-path";
 
 /**
  * The Prisma `where` fragment on a Conversation for a scope: `{}` when
