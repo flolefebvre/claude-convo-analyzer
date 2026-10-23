@@ -164,8 +164,10 @@ type RefreshOptions = {
  *     copied Messages are flagged (`message.is_copied`, log-format §10).
  * 17 — the title is the last `custom-title`, else the last `ai-title`, as
  *     Claude Code resolves it, not the first (`conversation.title`).
+ * 18 — a forked Sub-agent's copy of its spawning Agent's records is flagged
+ *     too (`message.is_copied`, log-format §10).
  */
-export const PARSER_VERSION = 17;
+export const PARSER_VERSION = 18;
 
 /**
  * The version a conversation carries while it is written but NOT YET COMPLETE:
@@ -1263,8 +1265,10 @@ function orderParentsFirst(
  * (every copy of a session, and every session it copies, holds its first
  * Message); each one a written one's `continued-in` records name, or that
  * continues from it; and `orphanedContinuationIds`, the continuations of the
- * Conversations this run deleted. Resumed sessions stay DISTINCT rows
- * (ADR-0001): the link only records lineage.
+ * Conversations this run deleted. A forked Sub-agent's flags, decided against
+ * its spawning Agent of the same Conversation, are decided again with every
+ * written one: a change to either Agent's file writes it. Resumed sessions
+ * stay DISTINCT rows (ADR-0001): the link only records lineage.
  *
  * Every decision reads the DATABASE, never what this run parsed, so a skipped
  * parent still counts and the outcome is the same in a cold Refresh and an
