@@ -4,6 +4,8 @@ on:
   pull_request:
   push:
     branches: [main]
+  # The release workflow runs these same checks before it publishes.
+  workflow_call:
 
 # Cancel superseded runs, except on main, where every push keeps its run.
 concurrency:
@@ -161,10 +163,16 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  # The packaged app on every OS it supports, from the one tarball `package` packed.
   smoke:
     needs: package
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
 
     steps:
       - name: Checkout repository
@@ -179,7 +187,9 @@ jobs:
           name: package-tarball
           path: package-tarball
 
+      # Bash on every OS, so the glob expands (PowerShell would pass it literally).
       - name: Smoke
+        shell: bash
         run: pnpm smoke --tarball package-tarball/*.tgz
 
   # The one check to require in a branch ruleset: keep this job's name. A skipped required check

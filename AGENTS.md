@@ -32,7 +32,7 @@ src/
                 Imports only `node:` and its own files, ESLint enforces it
   lib/          Shared helpers
 e2e/            Playwright specs, one per route, plus the shared-state ones run after them (docs/codebase/testing.md)
-scripts/        Repo tooling, run with tsx (the gate, seeding fake demo data, the npm package and its smoke)
+scripts/        Repo tooling, run with tsx (the gate, seeding fake demo data, the npm package and its smoke, the release tag check)
 data/           The seed environment (`data/seed/`) and scratch databases; generated, never hand-edit.
                 The app's own database lives in ~/.claude-convo-analyzer/
 dist/           The npm package (`dist/claude-convo-analyzer/`) and its tarball, from `pnpm package`; generated, gitignored

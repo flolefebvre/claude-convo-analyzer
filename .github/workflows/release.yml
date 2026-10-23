@@ -1,0 +1,96 @@
+name: release
+
+# A `v<version>` tag publishes package.json's version; a `v<version>-<pre-release>` tag rehearses it.
+# See docs/codebase/ci.md, "Release".
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  # Before anything is built: the tag must name package.json's version.
+  version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      kind: ${{ steps.classify.outputs.kind }}
+
+    steps:
+      # The full history, for the ancestry check against origin/main.
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Classify the tag
+        id: classify
+        run: pnpm exec tsx scripts/classify-release-tag.ts "$GITHUB_REF_NAME"
+
+      # A release is never cut from a branch; a rehearsal may point anywhere.
+      - name: The tagged commit is on main
+        if: steps.classify.outputs.kind == 'release'
+        run: |
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::$GITHUB_REF_NAME points at $(git rev-parse HEAD), which is not on main: tag a commit of main to release."
+            exit 1
+          fi
+
+  # The same checks as every pull request, the three-OS smoke of the packed tarball included.
+  ci:
+    needs: version
+    uses: ./.github/workflows/ci.yml
+
+  # Publishes the tarball `ci` smoked, never a rebuild.
+  publish:
+    needs: [version, ci]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # gh release create
+      id-token: write # npm trusted publishing and provenance
+
+    steps:
+      - name: Download the package tarball
+        uses: actions/download-artifact@v4
+        with:
+          name: package-tarball
+          path: package-tarball
+
+      # Writes the .npmrc pointing at the registry, which the trusted-publishing exchange needs.
+      # No cache: nothing is installed.
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      # Trusted publishing needs npm 11.5.1 or later.
+      - name: Ensure npm supports trusted publishing
+        run: |
+          npm_version=$(npm --version)
+          echo "npm $npm_version"
+          if [ "$(printf '%s\n' 11.5.1 "$npm_version" | sort -V | head -n 1)" != 11.5.1 ]; then
+            npm install -g npm@latest
+            echo "npm $(npm --version)"
+          fi
+
+      # The leading ./ makes npm read a file path: `package-tarball/x.tgz` is a GitHub `owner/repo` spec to it.
+      - name: Publish to npm
+        env:
+          KIND: ${{ needs.version.outputs.kind }}
+        run: |
+          publish_flags=(--provenance --access public)
+          if [ "$KIND" = rehearsal ]; then publish_flags+=(--dry-run); fi
+          npm publish ./package-tarball/*.tgz "${publish_flags[@]}"
+
+      - name: Create the GitHub release
+        if: needs.version.outputs.kind == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" package-tarball/*.tgz --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes
