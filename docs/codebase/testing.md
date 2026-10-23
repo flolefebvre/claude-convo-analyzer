@@ -83,6 +83,9 @@ per gotcha:
   by a `continued-in` record or, in an older log, by no record, a copy of a
   copy, a copied Sub-agent transcript, and a copy whose original is gone
   (`family-logs/`, log-format §10);
+- a Sub-agent forked by another Sub-agent, and a fork of that fork, each
+  transcript **copying its spawner's records** (`forked-agent-logs/`,
+  log-format §10);
 - a `Bash` and a `Skill` **`tool_use`** (tool-call capture, CLI/skill
   detection);
 - every **`origin` shape and `queued_command` attachment** of log-format §8,

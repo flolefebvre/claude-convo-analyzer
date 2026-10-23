@@ -658,7 +658,7 @@ On `user` records: `turnOrigin` (2.1.278: `human`, `peer`,
 `sdk`, `suggestion_accepted`) and `permissionDecision` (2.1.294:
 `{decision, source, reasonType?}`).
 
-## 10. Continuations: a resumed or forked session copies its parent
+## 10. Continuations: a resumed or forked session copies its parent, a forked Sub-agent its spawner
 
 Resuming a session (`--resume`) or forking it starts a new `<sessionId>.jsonl`
 that **copies** the parent's records up to the resume point: same `uuid`s,
@@ -696,6 +696,39 @@ on 2,722 Main-thread files (2.1.143–2.1.309), October 2026:
   is a symlink to the parent's file (6 pairs). Discovery reads regular files
   only, so the app does not ingest these.
 
+### Forked Sub-agents copy their spawning Agent
+
+A Sub-agent that calls the `Agent` tool with `"subagent_type": "fork"` starts a
+fork whose new `agent-<id>.jsonl` **copies** the spawning Sub-agent's records
+up to the spawn: same `uuid`s, `parentUuid` chain and timestamps, but the
+fork's own `agentId`. Then come a re-written spawn `assistant` record (a new
+`uuid`, holding only this fork's `Agent` call), a synthetic `tool_result`
+("Fork started — processing in background", then a `<fork-boilerplate>` text),
+and the fork's own work. Measured on 2,521 Sub-agent transcripts (2.1.218–2.1.309),
+October 2026:
+
+- 11 forks of 3 spawning Sub-agents, in 3 Conversations (one spawner forked 5
+  times, another 5, a third once; 2.1.278–2.1.300). Each fork's leading run
+  of 9, 10 or 25 Messages is its spawner's — 184 Messages in all — and no
+  other Sub-agent's first Message is held by another Agent of its
+  Conversation.
+- The spawner carries on after the spawn, and so does each fork: every pair,
+  spawner and fork or two sibling forks, is a near-fork, each holding a
+  Message the other lacks. Containment would tell no original.
+- The spawn link tells it: the spawner's `Agent` call and its `toolUseResult`
+  name the fork, so the fork is stored under its spawner (`agent.parent_agent_id`,
+  `spawned_by_message_id` in the spawner), as any Sub-agent is (§4). Sibling
+  forks spawned by one Message share that `spawned_by` Message. Claude Code
+  also writes the relation into `agent-<id>.meta.json` (`"isFork": true`,
+  `"parentAgentId"`); the app does not read those files.
+- A fork of a fork copies its spawning fork's records, which begin with that
+  fork's own copy: the direct spawner holds the whole copied run.
+- A fork the **Main thread** spawns copies nothing: its transcript opens with a
+  `fork-context-ref` record (`parentSessionId`, `parentLastUuid`,
+  `contextLength`) in place of the copied records (5 files, 2.1.218–2.1.280).
+  The rule below flags nothing there; a Main-thread fork that copies records
+  in a later version would be flagged by it unchanged.
+
 ### The rule
 
 A Conversation's **parent** is the Conversation whose `continued-in` record
@@ -716,10 +749,17 @@ other lacks, and no record tells — stays unlinked rather than guessed: 6 of
 the 14 unnamed pairs on this machine.
 
 A **Copied Message** is a Message in its Agent's leading run of Messages that
-an Agent of the Conversation's parent also holds, matched by `uuid`. Main
-thread and Sub-agents follow the one rule: a Sub-agent transcript the child
-holds as a regular file, whole, has all of its Messages flagged. Without a parent, nothing is flagged — an original's Messages,
-held by its copies, are its own.
+an Agent of the Conversation's parent, or the Agent that spawned it, also
+holds, matched by `uuid`. Main thread and Sub-agents follow the one rule: a
+Sub-agent transcript the child holds as a regular file, whole, has all of its
+Messages flagged, and a fork's copy of its spawner's records is flagged
+against its direct spawner, a fork of a fork's included. Without a parent
+Conversation or a spawning Agent holding its first Message, nothing is
+flagged — an original's Messages, held by its copies, are its own, and a
+spawner is never flagged against its forks. Within one Conversation the spawn
+link alone decides: a fork whose spawner's file is gone stays unflagged, and
+two Agents holding the same Messages with no spawn link between them are not
+compared.
 
 ### How they are stored
 
