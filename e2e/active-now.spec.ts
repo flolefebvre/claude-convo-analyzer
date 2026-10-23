@@ -1,13 +1,17 @@
 // Active now (GLOSSARY.md, under Live): the one spec that switches Live and
 // writes under the seeded roots. A Live Refresh re-renders every open page, so
 // `playwright.config.ts` runs this file in its `shared-state` project, after
-// every other spec, never beside an `instant()` scope.
+// every other spec, never beside an `instant()` scope. Each test loads its page
+// with `gotoInteractive`, so the Live toggle and Refresh it presses are the real
+// controls, not their lookalike fallbacks.
 
 import { appendFileSync, readdirSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
+
+import { gotoInteractive } from "./interactive-page";
 
 // The seeded `~/dev/acme-api` repo, whose own Project holds {@link ACTIVE_TITLE}.
 const REPO = path.join(os.homedir(), "dev", "acme-api");
@@ -51,7 +55,7 @@ test.describe("Active now", () => {
   }
 
   test("marks no Conversation while Live is off, even one just changed", async ({ page }) => {
-    await page.goto(repoListPath);
+    await gotoInteractive(page, repoListPath);
     await expect(liveToggle(page)).toHaveAttribute("aria-pressed", "false");
 
     touchActiveLog();
@@ -69,7 +73,7 @@ test.describe("Active now", () => {
   test("keeps the keyboard focus on the Live toggle through a switch, and ignores a second Enter meanwhile", async ({
     page,
   }) => {
-    await page.goto(repoListPath);
+    await gotoInteractive(page, repoListPath);
     await expect(liveToggle(page)).toHaveAttribute("aria-pressed", "false");
 
     // Holds every server action's request until `releaseActions()`, so the switch stays pending meanwhile.
@@ -113,7 +117,7 @@ test.describe("Active now", () => {
   test("marks a Conversation written to while Live is on, until two quiet minutes pass", async ({ page }) => {
     // Before the page loads, so its timers run on the clock the test advances.
     await page.clock.install();
-    await page.goto(repoListPath);
+    await gotoInteractive(page, repoListPath);
     await expect(activeRow(page)).toBeVisible();
     await expect(activeNowMarkers(activeRow(page))).toHaveCount(0);
 
