@@ -256,6 +256,157 @@ describe("stored data equivalence", () => {
   });
 });
 
+describe("continuations", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(tmpdir(), "cca-continuation-equivalence-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  const FAMILY_FOLDER = "-Users-me-dev-family";
+
+  /** The path of session `sessionId`'s log file under `logsRoot`, in `logFolderName`. */
+  const sessionLogPath = (logsRoot: string, sessionId: string, logFolderName = FAMILY_FOLDER) =>
+    path.join(logsRoot, logFolderName, `${sessionId}.jsonl`);
+
+  /** Append one user Message `uuid` to the session log at `logPath`. */
+  function appendUserMessage(logPath: string, uuid: string): void {
+    const record = {
+      type: "user",
+      uuid,
+      timestamp: "2026-06-21T15:00:00.000Z",
+      cwd: "/Users/me/dev/family",
+      version: "2.1.300",
+      message: { role: "user", content: `message ${uuid}` },
+    };
+    writeFileSync(logPath, `${readFileSync(logPath, "utf8")}${JSON.stringify(record)}\n`);
+  }
+
+  /**
+   * Refresh the family logs as `before` leaves them, apply `change`, then
+   * Refresh again — and cold, into a second database: the continuations of each.
+   */
+  async function changedAndCold(before: (logsRoot: string) => void, change: (logsRoot: string) => void) {
+    const logsRoot = path.join(tmpDir, "logs");
+    const changedDbPath = path.join(tmpDir, "changed.db");
+    const coldDbPath = path.join(tmpDir, "cold.db");
+    copyWithPinnedMtimes(path.join(FIXTURES_DIR, "family-logs"), logsRoot);
+    const setAside = path.join(tmpDir, "set-aside");
+    mkdirSync(setAside);
+    before(logsRoot);
+    await refresh({ logsRoot, dbPath: changedDbPath });
+    change(logsRoot);
+    await refresh({ logsRoot, dbPath: changedDbPath });
+    await refresh({ logsRoot, dbPath: coldDbPath });
+    return { changedContent: continuationContent(changedDbPath), coldContent: continuationContent(coldDbPath) };
+  }
+
+  /** Move the log of `sessionId` out of the logs root, keeping it for {@link restoreLog}. */
+  const setLogAside = (logsRoot: string, sessionId: string, logFolderName = FAMILY_FOLDER) =>
+    renameSync(
+      sessionLogPath(logsRoot, sessionId, logFolderName),
+      path.join(tmpDir, "set-aside", `${sessionId}.jsonl`),
+    );
+  /** Move the log of `sessionId` back where {@link setLogAside} took it from. */
+  const restoreLog = (logsRoot: string, sessionId: string, logFolderName = FAMILY_FOLDER) =>
+    renameSync(
+      path.join(tmpDir, "set-aside", `${sessionId}.jsonl`),
+      sessionLogPath(logsRoot, sessionId, logFolderName),
+    );
+
+  /** The session a Conversation continues from, in `content`. */
+  const continuedFromOf = (content: ReturnType<typeof continuationContent>, sessionId: string) =>
+    (content.links as { session_id: string; continuedFromSessionId: string | null }[]).find(
+      (link) => link.session_id === sessionId,
+    )?.continuedFromSessionId;
+
+  it("are stored as the pinned rows for the family logs", async () => {
+    const logsRoot = path.join(tmpDir, "logs");
+    const dbPath = path.join(tmpDir, "analyzer.db");
+    copyWithPinnedMtimes(path.join(FIXTURES_DIR, "family-logs"), logsRoot);
+    await refresh({ logsRoot, dbPath });
+
+    expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
+      project: { rowCount: 4, sha256: "22e03dd6cdf94d1b50e8c393efeb02e01452e218a539f452ce79dda37d7e9a94" },
+      // Each continuation names its parent; sess-orphan, sess-fam-solo and sess-legacy-fork name none.
+      conversation: { rowCount: 10, sha256: "e1587663430abb323578c6470e3f3f48944f4a83bbe14bc22376ffd62c829848" },
+      agent: { rowCount: 12, sha256: "64990f35a62c34e3cfffb7edf41c1b28d3d669bd079875c9d38e7c82d3bd435f" },
+      // The copies of the parents' Messages, sess-fam-b's copied Sub-agent included, are flagged.
+      message: { rowCount: 43, sha256: "1accad12a52ba280e0be3a006249a3daefaaa7077cf86615647ff847c6af8770" },
+      tool_call: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+      pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+      turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+      ...NO_LOGGED_API_REQUESTS,
+      continued_in: { rowCount: 4, sha256: "ec21bb4d85f23ded7081dba5372a4d755020a106cfeb93ab394e71b9e0aff89c" },
+    });
+  });
+
+  it("are decided as a cold Refresh decides them when the parent alone is re-parsed", async () => {
+    const { changedContent, coldContent } = await changedAndCold(
+      () => {},
+      (logsRoot) => appendUserMessage(sessionLogPath(logsRoot, "sess-fam-a"), "fam-a-u2"),
+    );
+
+    expect(changedContent).toEqual(coldContent);
+    expect(continuedFromOf(coldContent, "sess-fam-b")).toBe("sess-fam-a");
+  });
+
+  it("are decided as a cold Refresh decides them when the child is appended to", async () => {
+    const { changedContent, coldContent } = await changedAndCold(
+      () => {},
+      (logsRoot) => appendUserMessage(sessionLogPath(logsRoot, "sess-fam-b"), "fam-b-u2"),
+    );
+
+    expect(changedContent).toEqual(coldContent);
+    expect(continuedFromOf(coldContent, "sess-fam-c")).toBe("sess-fam-b");
+  });
+
+  it("are decided as a cold Refresh decides them when the grandchild appears later", async () => {
+    const { changedContent, coldContent } = await changedAndCold(
+      (logsRoot) => setLogAside(logsRoot, "sess-fam-c"),
+      (logsRoot) => restoreLog(logsRoot, "sess-fam-c"),
+    );
+
+    expect(changedContent).toEqual(coldContent);
+    expect(continuedFromOf(coldContent, "sess-fam-c")).toBe("sess-fam-b");
+  });
+
+  it("are decided as a cold Refresh decides them when an original appears after the copies it holds", async () => {
+    // The record-naming parent of a stored family, and the original of a
+    // stored copy no record names: each makes stored, unchanged Conversations
+    // its continuations, their Copied Messages with them.
+    const { changedContent, coldContent } = await changedAndCold(
+      (logsRoot) => {
+        setLogAside(logsRoot, "sess-fam-a");
+        setLogAside(logsRoot, "sess-legacy-a", "-Users-me-dev-legacy");
+      },
+      (logsRoot) => {
+        restoreLog(logsRoot, "sess-fam-a");
+        restoreLog(logsRoot, "sess-legacy-a", "-Users-me-dev-legacy");
+      },
+    );
+
+    expect(changedContent).toEqual(coldContent);
+    expect(continuedFromOf(coldContent, "sess-fam-b")).toBe("sess-fam-a");
+    expect(continuedFromOf(coldContent, "sess-legacy-b")).toBe("sess-legacy-a");
+  });
+
+  it("are decided as a cold Refresh decides them when the middle sitting is deleted", async () => {
+    const { changedContent, coldContent } = await changedAndCold(
+      () => {},
+      (logsRoot) => rmSync(sessionLogPath(logsRoot, "sess-fam-b"), { recursive: true }),
+    );
+
+    expect(changedContent).toEqual(coldContent);
+    // No record names sess-fam-c any more: it holds all of sess-fam-a's Messages.
+    expect(continuedFromOf(coldContent, "sess-fam-c")).toBe("sess-fam-a");
+  });
+});
+
 describe("Turns whose API request is in another file", () => {
   let tmpDir: string;
 
@@ -617,6 +768,38 @@ function crossFileContent(dbPath: string, logsRoot: string) {
       )
       .all();
     return { turnApiRequests, ...apiRequestContent(dbPath, logsRoot) };
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * The continuations of the database at `dbPath`, keyed by stable fields only,
+ * so they are the same whatever row ids the Refreshes gave: the session each
+ * Conversation continues from, and whether each Message of each Agent is a
+ * Copied Message.
+ */
+function continuationContent(dbPath: string) {
+  const db = new Database(dbPath, { readonly: true });
+  try {
+    const links = db
+      .prepare(
+        `SELECT "conversation"."session_id", "parent"."session_id" AS "continuedFromSessionId"
+           FROM "conversation"
+           LEFT JOIN "conversation" AS "parent" ON "parent"."id" = "conversation"."continued_from_conversation_id"
+          ORDER BY "conversation"."session_id"`,
+      )
+      .all();
+    const messages = db
+      .prepare(
+        `SELECT "conversation"."session_id", "agent"."external_agent_id", "message"."uuid", "message"."is_copied"
+           FROM "message"
+           JOIN "conversation" ON "conversation"."id" = "message"."conversation_id"
+           JOIN "agent" ON "agent"."id" = "message"."agent_id"
+          ORDER BY "conversation"."session_id", "agent"."external_agent_id", "message"."uuid"`,
+      )
+      .all();
+    return { links, messages };
   } finally {
     db.close();
   }

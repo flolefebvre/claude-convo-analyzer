@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPrismaClient } from "@/core/db";
-import { getConversation, listConversations } from "@/core/read";
+import { getConversation, getTranscript, listConversations } from "@/core/read";
 import { refresh } from "@/core/refresh";
 import { writeSessionLog } from "./helpers/session-log";
 
@@ -370,6 +370,32 @@ describe("incremental refresh", () => {
       "sess-holder-b": null,
       "sess-continuation": "sess-holder-b",
     });
+  });
+
+  it("decides a deleted parent's continuation again after an INTERRUPTED refresh, as a cold Refresh does", async () => {
+    // Deleting sess-origin leaves sess-resumed without a parent: its copied
+    // Messages are copies of nothing on disk any more. A run that dies before
+    // deciding that again must leave sess-resumed re-parseable.
+    const resumeDir = path.join(logsRoot, "-Users-me-dev-resume");
+    await refresh({ logsRoot, dbPath });
+    const copiedUuids = async (db: string) =>
+      ((await getTranscript("sess-resumed", { dbPath: db, page: "all" }))?.messages ?? [])
+        .filter((m) => m.isCopied)
+        .map((m) => m.uuid);
+    expect(await copiedUuids(dbPath)).toEqual(["orig-u1", "orig-a1"]);
+
+    rmSync(path.join(resumeDir, "sess-origin.jsonl"));
+    crash.armed = true;
+    await expect(refresh({ logsRoot, dbPath })).rejects.toThrow("simulated interruption");
+    expect(crash.armed).toBe(false);
+
+    const repair = await refresh({ logsRoot, dbPath });
+    expect(repair.conversationsParsed).toBe(1);
+    const coldDbPath = path.join(tmpDir, "cold.db");
+    await refresh({ logsRoot, dbPath: coldDbPath });
+    expect(await copiedUuids(dbPath)).toEqual(await copiedUuids(coldDbPath));
+    expect(await copiedUuids(dbPath)).toEqual([]);
+    expect((await listConversations({ dbPath })).find((c) => c.id === "sess-resumed")?.continuedFromId).toBeNull();
   });
 
   it("re-parses every conversation exactly once after a parser-version bump, then skips again", async () => {
