@@ -1001,10 +1001,10 @@ function failedAttemptOwners(
  * Write one conversation, inside the caller's transaction, and return its row
  * id. A new one is inserted whole: its row, the Main thread (agent row +
  * messages + tool_calls + API requests), each sub-agent the same way, then
- * pr_links and turn_durations. A stored one is rewritten in place, Agent by
+ * pr_links, turn_durations and continued_in rows. A stored one is rewritten in place, Agent by
  * Agent (ADR-0010): its row updated; each Agent whose file changed, and each
  * Sub-agent whose file is gone, deleted (cascading); each changed Agent written
- * again, the Main thread's pr_links and turn_durations with it; and each kept
+ * again, the Main thread's pr_links, turn_durations and continued_in rows with it; and each kept
  * Sub-agent whose lineage this run decided again (see `isLineageDecidedAgain`)
  * updated in place.
  *
@@ -1135,7 +1135,7 @@ function writeConversation(statements: RefreshStatements, parsedConversation: Pa
  * Delete, from a stored Conversation, each Agent whose file changed or is gone
  * — its Messages, Tool calls and API requests by cascade, which also clears the
  * lineage of its kept children and the API request links of Turns in other
- * files — and, when the Main thread changed, its pr_links and turn_durations.
+ * files — and, when the Main thread changed, its pr_links, turn_durations and continued_in rows.
  */
 function deleteRewrittenAndRemovedAgents(
   statements: RefreshStatements,

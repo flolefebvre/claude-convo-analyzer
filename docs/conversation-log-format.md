@@ -1,8 +1,8 @@
 # Claude Code conversation log format (reference)
 
 Empirically reverse-engineered from the logs on this machine (Claude Code
-versions ~2.1.143–2.1.306, June–October 2026: §1–§7 were mapped on
-2.1.145–2.1.185, §8 and §9 on later versions). This is a **reference map** so
+versions ~2.1.143–2.1.309, June–October 2026: §1–§7 were mapped on
+2.1.145–2.1.185, §8–§10 on later versions). This is a **reference map** so
 future work does not have to re-derive the format by re-parsing. It records
 what the files contain, the non-obvious gotchas, and — importantly — **what we
 deliberately did not model** (and where to find it if we ever want it).
@@ -71,6 +71,7 @@ Counts are from the snapshot (across main + sub-agent files combined).
 | `api-request-shape`     | §9     | The system prompt and tools of `api-request`s, stored once under `shapeHash`.                                                                                                                                                                           | **Yes** → `system_prompt`, `tool_set` (§9) |
 | `api-request-blob`      | §9     | One message of `api-request`s, stored once under its hash.                                                                                                                                                                                              | **Yes** → `sent_message` (§9)              |
 | `cost-state`            | §9     | Claude Code's own per-process cost and usage totals.                                                                                                                                                                                                    | **No** (§9)                                |
+| `continued-in`          | §10    | `continuedInSessionId`: the session this one was resumed or forked into, written in the parent's file (2.1.296+).                                                                                                                                       | **Yes** → `continued_in` (§10)             |
 
 ## 3. The `assistant` record (the heart of accounting)
 
@@ -231,8 +232,9 @@ truncated result + size), sub-agent lineage, conversation title, project,
 per-turn attribution & timestamps, git branch, CC version, permission mode,
 api-error flag, PR links, turn durations, each turn's thinking text and
 duration (§3, "Thinking"), each user Message's kind and
-`origin` extras (§8), and each API request's parameters, system prompt, tools
-and messages (§9).
+`origin` extras (§8), each API request's parameters, system prompt, tools
+and messages (§9), and which session a Conversation continues and which of its
+Messages it copied (§10).
 
 ## 7. Refresh implication
 
@@ -246,7 +248,9 @@ keep that property: each is interned, and a Refresh ends by deleting every
 interned value no request references, so a re-parse leaves the database a cold
 Refresh would write. So do a Turn's links to a request in another
 Conversation's file: a Refresh ends by linking every Turn left without one
-(§9, "How they are stored").
+(§9, "How they are stored"). And so do continuations: a Refresh decides again
+the parent and Copied Messages of every Conversation its writes and deletes
+could change (§10, "How they are stored").
 
 ## 8. Who a user message is from: `origin`, and mid-turn delivery
 
@@ -653,3 +657,77 @@ On `user` records: `turnOrigin` (2.1.278: `human`, `peer`,
 `{promptIndex, turnIndex}`), `promptSource` (`typed`, `system`, `queued`,
 `sdk`, `suggestion_accepted`) and `permissionDecision` (2.1.294:
 `{decision, source, reasonType?}`).
+
+## 10. Continuations: a resumed or forked session copies its parent
+
+Resuming a session (`--resume`) or forking it starts a new `<sessionId>.jsonl`
+that **copies** the parent's records up to the resume point: same `uuid`s,
+same `parentUuid` chain, same timestamps. Then come the new session's own
+records. Nothing points back into the parent: the first own Message's
+`parentUuid` never names the last copied one, and of the 65 first Messages
+that carry a `parentUuid`, none names a Message of another session. Measured
+on 2,722 Main-thread files (2.1.143–2.1.309), October 2026:
+
+- 151 files share their first Message's `uuid` with another file, in 76
+  groups: 73 pairs, one chain of three, and two files whose other holder
+  starts elsewhere.
+- The copied records carry the **child's** `sessionId` (7,560 of 7,585), so no
+  field marks a record as a copy. Their `cwd` is mostly the parent's (3,908
+  records), sometimes the child's (1,104).
+- The copy holds only the chain records (`user`, `assistant`, `attachment`,
+  `system`), contiguous. The original interleaves other records (`api-request`,
+  `mode`, `last-prompt`…) in the same stretch: 54 of 55 pairs tell apart this
+  way. A copy usually opens with an `ai-title` (the parent's title, 67 of 71)
+  and an `agent-name`, an original with `mode`/`permission-mode`.
+- Since 2.1.296 the parent's file ends with a `continued-in` record naming the
+  child: `{"type":"continued-in","sessionId":<parent>,"continuedInSessionId":<child>}`.
+  A session resumed twice carries two. 71 files hold one.
+- In the 61 pairs a record names, with both files on disk and the child
+  holding Messages: in 47 the parent's Messages are a strict subset of the
+  child's (the parent stopped where it was resumed); in 14 the parent holds
+  one more, an in-flight Turn the copy left out. A child is never a subset of
+  its parent. 10 more named children hold no Message (resumed, then quit).
+- Sub-agent transcripts are copied too: the same agent file, whole and
+  identical, under both Conversations' `subagents/` (6 pairs).
+
+### The rule
+
+A Conversation's **parent** is the Conversation whose `continued-in` record
+names it — of several, the smallest `source_path`. The record wins even when
+the child holds none of the parent's Messages (a compacted copy, or a child
+that quit before its first Message).
+
+Without a record (logs before 2.1.296), the parent is a Conversation holding
+the child's first Message whose Main-thread Messages the child's Main thread
+holds **all** of, a record of the child naming it excepted. Two holding exactly
+the same Messages — a resume that never continued, where nothing tells the
+original from the copy — take the smallest `source_path` as the original, as
+the cross-file request link of §9 does. Of several candidates, the parent is
+the one sharing the longest leading run of Messages with the child (a
+grandchild copies its parent's own Messages, not only the grandparent's);
+ties go to the smallest `source_path`. A near-fork — each holds a Message the
+other lacks, and no record tells — stays unlinked rather than guessed: 6 of
+the 14 unnamed pairs on this machine.
+
+A **Copied Message** is a Message in its Agent's leading run of Messages that
+an Agent of the Conversation's parent also holds, matched by `uuid`. Main
+thread and Sub-agents follow the one rule: a copied Sub-agent transcript is
+copied whole. Without a parent, nothing is flagged — an original's Messages,
+held by its copies, are its own.
+
+### How they are stored
+
+- **`continued_in`**: one row per `continued-in` record of a Conversation's
+  Main-thread file, the session it names.
+- **`conversation.continued_from_conversation_id`**: the parent, by the rule.
+- **`message.is_copied`**: whether the Message is a Copied Message.
+
+The Refresh decides both in its links pass, from the database alone, so a
+skipped parent counts and the outcome is the same in a cold Refresh and an
+incremental one. It decides them for every Conversation it wrote, every one
+holding a written Conversation's first Message (every copy of a session, and
+every session it copies, holds that Message), every one a written
+Conversation's records name or that continues from it, and the continuations
+of every Conversation it deleted. Like the written ones, those continuations
+stay unstamped until the pass commits, so an interrupted run leaves them
+re-parseable. A written Conversation with no copy costs a few indexed lookups.

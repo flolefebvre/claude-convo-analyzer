@@ -71,8 +71,10 @@ Its human-readable name comes from an `ai-title` Record.
 
 The set of Conversations that make up ONE piece of work spread over several
 sittings. Resuming a session (`--resume`) or forking it starts a **new**
-Conversation whose first Record points back into the previous one: that link is
-the **continued-from** parent pointer. A Conversation can have several
+Conversation that **copies** the previous one's Records up to the resume point
+(its Copied Messages), then continues with its own; the previous one's log
+names it in a `continued-in` Record since Claude Code 2.1.296. That link is the
+**continued-from** parent pointer (log-format §10). A Conversation can have several
 continuations (forks), so the links form a **tree**; the **family** is the whole
 connected component — walked in both directions, parents and continuations
 alike. Its **cumulative total** is the sum of its members' Costs, and is a lower
@@ -173,6 +175,14 @@ A user Message is one of five **kinds**, all sharing `role = user` in the log:
 
 A Prompt or Inter-agent message can arrive **while the Agent is working**, in
 which case it lands mid-turn rather than between turns.
+
+### Copied Message
+
+A Message a continuation copied from its parent Conversation when it was
+resumed or forked: in its Agent's leading run of Messages that an Agent of the
+parent also holds, by `uuid` (log-format §10). History the continuation
+carries, not work it did; the parent's own Messages are never Copied Messages.
+_Avoid_: duplicate message, inherited message.
 
 ### Transcript
 

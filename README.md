@@ -110,7 +110,7 @@ Expand any row for the per-model, per-skill, and per-sub-agent cost breakdown:
 ![Conversation detail](https://raw.githubusercontent.com/flolefebvre/claude-convo-analyzer/main/docs/images/conversation-detail.png)
 
 Work rarely fits in one sitting. When you resume a session (or fork it), Claude
-Code starts a new conversation linked to the previous one — so the app groups
+Code starts a new conversation that copies the previous one — so the app groups
 them into a **continuation family**: rows that belong to one show a badge with
 the family size, and the expanded panel draws the whole family as a tree,
 chronological and indented by fork, with each sitting's date and cost, the one

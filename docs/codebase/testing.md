@@ -79,8 +79,10 @@ per gotcha:
   `toolUseResult` (must count once, from the transcript — never both);
 - an assistant turn with **`attributionSkill`** (per-skill cost is exact);
 - a **`<synthetic>`** / unknown model (priced $0 but flagged);
-- a conversation whose **first message `parentUuid`** resolves into another
-  session (`continued_from`);
+- resumed and forked Conversations that **copy their parent's records**, named
+  by a `continued-in` record or, in an older log, by no record, a copy of a
+  copy, a copied Sub-agent transcript, and a copy whose original is gone
+  (`family-logs/`, log-format §10);
 - a `Bash` and a `Skill` **`tool_use`** (tool-call capture, CLI/skill
   detection);
 - every **`origin` shape and `queued_command` attachment** of log-format §8,
