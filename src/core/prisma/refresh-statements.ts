@@ -325,10 +325,15 @@ export function prepareRefreshStatements(db: Database.Database) {
          LIMIT 1)
       WHERE "api_request_id" IS NULL AND "request_ref" IS NOT NULL`,
   );
-  // `uuid` is not unique: the first message stored with it decides.
+  // `uuid` is not unique: of several Conversations holding a message with it,
+  // the one with the smallest `source_path`, the rule for a request several
+  // files hold. Row ids never decide: they differ between a cold Refresh and
+  // an incremental one.
   const selectMessageOwner = db.prepare(
     `SELECT "id", "session_id" AS "sessionId" FROM "conversation"
-      WHERE "id" = (SELECT "conversation_id" FROM "message" WHERE "uuid" = ? LIMIT 1)`,
+      WHERE "id" IN (SELECT "conversation_id" FROM "message" WHERE "uuid" = ?)
+      ORDER BY "source_path"
+      LIMIT 1`,
   );
 
   return {
@@ -373,7 +378,7 @@ export function prepareRefreshStatements(db: Database.Database) {
       }) as string | undefined,
     /** Delete every Project no Conversation belongs to any more. */
     deleteProjectsWithoutConversations: () => void deleteProjectsWithoutConversations.run(),
-    /** The Conversation owning the first message stored with `uuid`, if any. */
+    /** Of the Conversations holding a message with `uuid`, the one with the smallest `source_path`, if any. */
     selectMessageOwner: (uuid: string) => selectMessageOwner.get(uuid) as { id: number; sessionId: string } | undefined,
     insertProject: prepareInsert(db, "project", PROJECT_COLUMN_BY_FIELD),
     insertConversation: prepareInsert(db, "conversation", CONVERSATION_COLUMN_BY_FIELD),

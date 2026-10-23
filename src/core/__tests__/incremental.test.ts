@@ -334,6 +334,53 @@ describe("incremental refresh", () => {
     expect(third.conversationsSkipped).toBe(repaired.length);
   });
 
+  it("resolves continued_from to the smallest source path of several Conversations holding the Message, as a cold Refresh does", async () => {
+    // sess-holder-b copies sess-holder-a's records with their uuids; the
+    // continuation's first Message points at a uuid both hold.
+    const folder = path.join(logsRoot, "-Users-me-dev-holders");
+    mkdirSync(folder);
+    const holderAPath = path.join(folder, "sess-holder-a.jsonl");
+    const continuationPath = path.join(folder, "sess-continuation.jsonl");
+    const userRecord = (uuid: string, parentUuid: string | null, minute: number) =>
+      JSON.stringify({
+        type: "user",
+        uuid,
+        parentUuid,
+        timestamp: `2026-06-21T10:${String(minute).padStart(2, "0")}:00.000Z`,
+        cwd: "/Users/me/dev/holders",
+        version: "2.1.180",
+        message: { role: "user", content: `message ${uuid}` },
+      });
+    const lines = (...records: string[]) => records.map((r) => `${r}\n`).join("");
+    const append = (filePath: string, record: string) => {
+      writeFileSync(filePath, readFileSync(filePath, "utf8") + lines(record));
+      touchLater(filePath);
+    };
+    writeFileSync(holderAPath, lines(userRecord("held-u1", null, 0), userRecord("held-u2", "held-u1", 1)));
+    writeFileSync(
+      path.join(folder, "sess-holder-b.jsonl"),
+      lines(userRecord("held-u1", null, 0), userRecord("held-u2", "held-u1", 1), userRecord("copy-u3", "held-u2", 2)),
+    );
+    writeFileSync(continuationPath, lines(userRecord("cont-u1", "held-u2", 3)));
+    const continuedFromId = async (db: string) =>
+      (await listConversations({ dbPath: db })).find((c) => c.id === "sess-continuation")?.continuedFromId;
+
+    await refresh({ logsRoot, dbPath });
+    expect(await continuedFromId(dbPath)).toBe("sess-holder-a");
+
+    // Re-parse sess-holder-a alone: its Messages now have the highest row ids.
+    append(holderAPath, userRecord("held-u3", "held-u2", 4));
+    expect((await refresh({ logsRoot, dbPath })).conversationsParsed).toBe(1);
+    // Then re-parse the continuation, so its link resolves against those rows.
+    append(continuationPath, userRecord("cont-u2", "cont-u1", 5));
+    expect((await refresh({ logsRoot, dbPath })).conversationsParsed).toBe(1);
+
+    expect(await continuedFromId(dbPath)).toBe("sess-holder-a");
+    const coldDbPath = path.join(tmpDir, "cold.db");
+    await refresh({ logsRoot, dbPath: coldDbPath });
+    expect(await continuedFromId(coldDbPath)).toBe("sess-holder-a");
+  });
+
   it("re-parses every conversation exactly once after a parser-version bump, then skips again", async () => {
     const first = await refresh({ logsRoot, dbPath });
     const total = first.conversationsParsed;

@@ -35,7 +35,10 @@ Model the domain as twelve tables:
   Carries `title`, `git_branch`, Claude Code `version`, file mtime/size for
   incremental refresh, and `continued_from_conversation_id` — set when the
   conversation's first message `parentUuid` resolves (via the message-uuid index
-  built during parsing) to a message in a prior session (a `--resume`/fork).
+  built during parsing) to a message in a prior session (a `--resume`/fork);
+  of several Conversations holding a message with that uuid, the one with the
+  smallest `source_path` (plain lexicographic order), as for a request several
+  files hold.
   Each session file remains an independent row (resumed sessions are genuinely
   new API spend, so totals never double-count); the link only enables a future
   thread view.
