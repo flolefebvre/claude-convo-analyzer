@@ -6,7 +6,7 @@
  * `claude-convo-analyzer` command on this machine's Node, against the core's
  * fixture logs and a scratch database and settings file:
  *
- *   - npm installs it warning of no deprecated package;
+ *   - npm installs it with no deprecation warning;
  *   - the installed package holds no native binding;
  *   - a launch with `--no-open --port` prints the version and the URL, and serves;
  *   - its startup Refresh fills the fresh database, and the Conversations list shows them;
