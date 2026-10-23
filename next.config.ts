@@ -1,6 +1,19 @@
 import type { NextConfig } from "next";
 
+// `pnpm package` builds the npm package from Next's standalone output
+// (scripts/package.ts); every other build stays a regular one, which `next
+// start` serves.
+const isPackageBuild = process.env.NPM_PACKAGE_BUILD === "1";
+
 const nextConfig: NextConfig = {
+  ...(isPackageBuild && {
+    output: "standalone",
+    // The migrations are read from disk at the first open of a database (src/core/db.ts).
+    outputFileTracingIncludes: { "**": ["src/core/prisma/migrations/**"] },
+    // sharp, Next's optional image optimizer, and its dependencies: native, and
+    // unused (no `next/image`).
+    outputFileTracingExcludes: { "**": ["**/node_modules/{sharp,@img,detect-libc,semver}/**"] },
+  }),
   // Native module (better-sqlite3) + Prisma client must use native require,
   // never the Server Components bundler (ADR-0002). The core only runs
   // server-side.

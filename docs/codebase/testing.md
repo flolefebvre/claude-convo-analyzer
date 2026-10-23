@@ -16,7 +16,8 @@ This project uses TDD. The rules that matter here:
 - Tests live in `src/core/__tests__/`, one `.test.ts` file per behavior area,
   named in the vocabulary of `GLOSSARY.md`.
 - Tests of `scripts/` live beside the script they test, as `*.test.ts`
-  (e.g. `scripts/seed/seed.test.ts`).
+  (e.g. `scripts/seed/seed.test.ts`), and so do the launcher's, beside its
+  pure decisions in `src/launcher/`; its I/O edge is covered by `pnpm smoke`.
 
 ## End-to-end
 

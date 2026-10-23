@@ -27,15 +27,18 @@ src/
     __tests__/  Vitest suite and its sanitized JSONL fixtures
     prisma/     Schema, generated client, and migrations
   generated/    Typed route builders from `pnpm gen`; generated, gitignored, never hand-edit
+  launcher/     The npm package's `claude-convo-analyzer` command (ADR-0009): pure decisions, tested beside
+                them, and a thin I/O edge. Compiled to CommonJS by `pnpm package`, run by the user's Node.
+                Imports only `node:` and its own files, ESLint enforces it
   lib/          Shared helpers
 e2e/            Playwright specs, one per route, plus the shared-state ones run after them (docs/codebase/testing.md)
-scripts/        Repo tooling, run with tsx (the gate, seeding fake demo data)
+scripts/        Repo tooling, run with tsx (the gate, seeding fake demo data, the npm package and its smoke)
 data/           The seed environment (`data/seed/`) and scratch databases; generated, never hand-edit.
                 The app's own database lives in ~/.claude-convo-analyzer/
+dist/           The npm package (`dist/claude-convo-analyzer/`) and its tarball, from `pnpm package`; generated, gitignored
 docs/
   adr/          Architectural decision records
   codebase/     Conventions, one file per area, linked from the AGENTS.md section it governs
-public/         Static assets served at the root
 ```
 
 ## Commands
@@ -48,7 +51,7 @@ pnpm dev:seed      Seed, then run next dev on it; prints `Seeded app: http://loc
 pnpm e2e:server    Seed, then next build with the testing API exposed and next start on it ($PORT, as dev:seed) — what pnpm e2e serves
 pnpm bench:refresh Cold Refresh of $CCA_LOGS_ROOT (default ~/.claude/projects) into a scratch DB; prints phase split, peak live heap (forced GC before each sample) and where it was, longest stall. Not in check/gate/CI
 pnpm check         Format check, lint, duplication, typecheck, then the tests affected since $CHECK_BASE (default origin/main) — the inner loop
-pnpm gate          Format check, lint, duplication, typecheck, then test and build, then e2e — the full check
+pnpm gate          Format check, lint, duplication, typecheck, then test and build, then e2e, then package and smoke — the full check
 pnpm format        Prettier, rewriting files in place
 pnpm format:check  Prettier in check mode (fails on unformatted files)
 pnpm lint          ESLint (includes the core boundary, ADR-0002)
@@ -59,6 +62,8 @@ pnpm test:changed  Vitest, once, only the tests affected since $CHECK_BASE (defa
 pnpm test:watch    Vitest in watch mode
 pnpm build         next build; fails on any Turbopack warning (scripts/build.ts)
 pnpm e2e           Playwright instant-navigation specs against its own e2e:server on :3123 (or $E2E_PORT)
+pnpm package       Standalone next build, assembled into the npm package in dist/claude-convo-analyzer/, packed beside it; prints the tarball's path
+pnpm smoke         npm-installs the packed tarball (or --tarball <path>) in a temp directory and drives its launcher on fixture logs
 ```
 
 ## Verification

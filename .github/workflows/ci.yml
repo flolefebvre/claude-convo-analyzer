@@ -123,11 +123,55 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
+  # Packs once; `smoke` installs that tarball, as a release would publish it.
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Package
+        run: pnpm package
+
+      - name: Upload the package tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-tarball
+          path: dist/*.tgz
+          if-no-files-found: error
+          retention-days: 7
+
+  smoke:
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Download the package tarball
+        uses: actions/download-artifact@v4
+        with:
+          name: package-tarball
+          path: package-tarball
+
+      - name: Smoke
+        run: pnpm smoke --tarball package-tarball/*.tgz
+
   # The one check to require in a branch ruleset: keep this job's name. A skipped required check
   # counts as passing, so this job runs whatever the others did and fails unless every one succeeded.
   ci:
     if: ${{ !cancelled() }}
-    needs: [static, test, build, e2e]
+    needs: [static, test, build, e2e, package, smoke]
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
