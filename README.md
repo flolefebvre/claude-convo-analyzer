@@ -172,6 +172,33 @@ value resolves against the process working directory (the repo root under
 CCA_DB_PATH=data/demo.db CCA_LOGS_ROOT=/tmp/demo-logs pnpm dev
 ```
 
+### The packaged app
+
+The app is also built as an npm package, run with one `npx` command and no
+clone, pnpm or build on your machine. It is not published to npm yet; until it
+is, build the package from a clone and run its tarball:
+
+```bash
+pnpm package    # prints the tarball's path: dist/claude-convo-analyzer-<version>.tgz
+npx ./dist/claude-convo-analyzer-0.1.0.tgz
+```
+
+The `claude-convo-analyzer` command prints its version, serves the app on
+[http://127.0.0.1:4747](http://127.0.0.1:4747) (loopback only, never on your
+network), and opens that URL in your browser once it is ready; Ctrl+C stops it.
+
+- `--port <number>`, or the `PORT` environment variable, serves on another
+  port; the default stays 4747, so a bookmark keeps working.
+- `--no-open` skips opening the browser.
+- Launched again while it runs, it opens the browser on the running app and
+  exits. If another program holds the port, it exits with a message naming
+  `--port`.
+- It needs Node.js 20.9 or newer, and says so on an older one. It checks for no
+  updates and sends nothing anywhere; the version you run shows in the app bar,
+  on screens 1536px wide or more.
+- `CCA_DB_PATH`, `CCA_LOGS_ROOT` and `CCA_SETTINGS_PATH` work as above, a
+  relative value resolving against the directory you run it from.
+
 ## What was sent
 
 Since Claude Code 2.1.300 the logs record each request Claude Code sends, and
@@ -231,8 +258,10 @@ Have an idea or a friction pattern you'd like surfaced? Open an issue.
 ## Development
 
 The validation gate — format check, lint, duplication and typecheck in
-parallel, then test and build in parallel, then the Playwright end-to-end specs;
-it passed only if the output ends with `--gate OK--`. `pnpm check` is the faster
+parallel, then test and build in parallel, then the Playwright end-to-end specs,
+then `pnpm package` and `pnpm smoke`, which installs the packed tarball with npm
+outside the repo and drives its launcher; it passed only if the output ends with
+`--gate OK--`. `pnpm check` is the faster
 inner loop: the same static checks, then only the tests affected since
 `origin/main` (`--check OK--`):
 
