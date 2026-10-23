@@ -234,14 +234,14 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "39d8e36d20227daa2cab6248635b86861d0a5bd0a9e19a0cf4c98eb4de3f7141" },
-      conversation: { rowCount: 3, sha256: "a0d76a59eddf1f5f6d58e7c40f7ba55381a160072eb241580d5bec9d748cf432" },
-      agent: { rowCount: 3, sha256: "54de0dc33dccb7a3494865dda08c9266aa9d446cd7a42d6b54256f90d471aa5a" },
+      conversation: { rowCount: 4, sha256: "c97ea22a7461d94ed9e5bc0b824280a789db418c12246e31952679b1efcb0dc3" },
+      agent: { rowCount: 4, sha256: "bb8e1c48d6e3458d807a6537e09c4b5143a50a232b71a590a8c099eef584d1ce" },
       // The child's copied Turns name the requests of the copy's and the parent's files.
-      message: { rowCount: 13, sha256: "574cdaf67403ba6cd0e762cc47ca49ee526c63498f7ef1a3ba558c600514fa8f" },
+      message: { rowCount: 16, sha256: "b8cb71090da850379f240d496d0b7b773a4a104cc4a6b3469af122203640fdaa" },
       tool_call: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
-      api_request: { rowCount: 5, sha256: "550cec2c57104b63bef3fe6581b493db8c3993257ccaa18cf9e8fc573e20f0c5" },
+      api_request: { rowCount: 7, sha256: "602aaa25ea9dd2816613a1f081b7df94f30494eedecc1af51b465a62f657cfa1" },
       system_prompt: { rowCount: 1, sha256: "0f7e364790e4ce8c6d0837f9bcc1c05c5b20e0d58615364250247c0885a47532" },
       tool_set: { rowCount: 1, sha256: "bd38eccd26f4c9604aad98fcff1f9643ab0523b07da230a857569e163247ac0e" },
       sent_message: { rowCount: 5, sha256: "e7b8ba8a7395036a9c885011145c435f535f212957dcb9f5b24aa330ebc79025" },

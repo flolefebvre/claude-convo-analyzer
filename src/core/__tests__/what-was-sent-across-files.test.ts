@@ -12,12 +12,19 @@ import { getRawApiRequest, getWhatWasSent } from "@/core/what-was-sent";
 import { seededTempDb } from "./helpers/temp-db";
 
 const LOGS_ROOT = path.join(import.meta.dirname, "fixtures", "resumed-request-logs");
-/** Two Turns, the second one's API request preceded by a Failed attempt. */
+/**
+ * Two Turns, the second one's API request (`preq-2`) preceded by a Failed
+ * attempt. `preq-2` keeps its three messages from that attempt (`keep: 3`, no
+ * tail), so only a walk of the parent's own base chain knows them: what the
+ * child's own Turn is compared against.
+ */
 const PARENT_SESSION_ID = "sess-resumed-parent";
 /** A fork holding a copy of the parent's first API request record, and its Turn. */
 const COPY_SESSION_ID = "sess-resumed-copy";
 /** The parent's two Turns copied, a Turn whose API request no file holds, then a Turn of its own. */
 const CHILD_SESSION_ID = "sess-resumed-child";
+/** Two API requests whose Turns the transcript shows in swapped order: the second request's Turn first. */
+const SWAPPED_SESSION_ID = "sess-resumed-swapped";
 
 const db = seededTempDb({ prefix: "cca-what-was-sent-across-files-", logsRoot: LOGS_ROOT });
 
@@ -81,11 +88,32 @@ describe("an API request two files hold", () => {
 });
 
 describe("a resumed Conversation's own Turn", () => {
-  it("has the API request of its own file, against no previous one: its Agent answered none before", async () => {
+  it("has the API request of its own file, against the request of the latest earlier Turn that has one", async () => {
+    const [, parentSecondTurn] = await turnsOf(PARENT_SESSION_ID);
     const childTurns = await turnsOf(CHILD_SESSION_ID);
 
     const whatWasSent = await getWhatWasSent(childTurns[3]!.apiRequestId!, { dbPath: db.dbPath });
     expect(whatWasSent?.fullRequest.messages).toHaveLength(5);
+    // The third Turn's request is in no file: the second Turn's, in the parent's file, is the baseline.
+    expect(whatWasSent?.previousApiRequestId).toBe(parentSecondTurn?.apiRequestId);
+  });
+
+  it("shows as new only the messages after the copied history, with an unchanged system prompt and tools", async () => {
+    const childTurns = await turnsOf(CHILD_SESSION_ID);
+
+    const whatWasSent = await getWhatWasSent(childTurns[3]!.apiRequestId!, { dbPath: db.dbPath });
+    expect(whatWasSent?.firstNewMessageIndex).toBe(3);
+    expect(whatWasSent?.systemPromptDiff).toBeNull();
+    expect(whatWasSent?.toolsDiff).toBeNull();
+  });
+});
+
+describe("a Conversation's first API request, its Turn shown after the next request's", () => {
+  it("is against no previous one, never against its own file's later request", async () => {
+    const [secondRequestTurn, firstRequestTurn] = await turnsOf(SWAPPED_SESSION_ID);
+
+    expect(secondRequestTurn?.apiRequestId).toEqual(expect.any(Number));
+    const whatWasSent = await getWhatWasSent(firstRequestTurn!.apiRequestId!, { dbPath: db.dbPath });
     expect(whatWasSent?.previousApiRequestId).toBeNull();
   });
 });

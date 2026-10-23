@@ -10,6 +10,7 @@ import { structuredPatch } from "diff";
 import { canonicalJson } from "@/core/canonical-json";
 import { readClient } from "@/core/db";
 import type { AttachmentType, InjectedContextPiece } from "@/core/injected-context";
+import { orderedBefore, REVERSE_TRANSCRIPT_ORDER, TRANSCRIPT_ORDER } from "@/core/transcript-order";
 
 /** A value as parsed from JSON: what a body, or any part of one, is. */
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
@@ -236,7 +237,10 @@ async function withReadClient<Result>(
  * What the API request of `api_request` row `apiRequestId` sent,
  * from the logs (docs/conversation-log-format.md §9), against the previous
  * API request of the same Agent: the latest earlier one of its file a Turn
- * answered, so an unanswered request, retried since, is skipped. Its messages
+ * answered, so an unanswered request, retried since, is skipped; without one,
+ * the request in another file of the latest earlier Turn of the Agent that has
+ * one, in the transcript order (a resumed session's first own request against
+ * its copied history's last). Its messages
  * are rebuilt from the database, a message it could not rebuild kept as null
  * at its place and counted. Null for an unknown row.
  *
@@ -248,13 +252,19 @@ export async function getWhatWasSent(
   opts: { dbPath?: string } = {},
 ): Promise<WhatWasSent | null> {
   return withApiRequestRow(apiRequestId, opts.dbPath, async (row, prisma) => {
-    const previousRow = await prisma.apiRequest.findFirst({
-      where: { agentId: row.agentId, positionInFile: { lt: row.positionInFile }, turns: { some: {} } },
-      orderBy: { positionInFile: "desc" },
-      include: SYSTEM_PROMPT_AND_TOOL_SET_INCLUDE,
-    });
+    const previousRow =
+      (await prisma.apiRequest.findFirst({
+        where: { agentId: row.agentId, positionInFile: { lt: row.positionInFile }, turns: { some: {} } },
+        orderBy: { positionInFile: "desc" },
+        include: SYSTEM_PROMPT_AND_TOOL_SET_INCLUDE,
+      })) ?? (await apiRequestOfPreviousTurn(prisma, row));
     const messageHashesOf = await messageHashesOfAgentRequests(prisma, row);
     const messageHashes = messageHashesOf(row);
+    // A previous request of another file walks its own Agent's base chain.
+    const messageHashesOfPrevious =
+      previousRow === null || previousRow.agentId === row.agentId
+        ? messageHashesOf
+        : await messageHashesOfAgentRequests(prisma, previousRow);
     const { body, injectedContextPiecesOfMessages } = await requestOf(prisma, row, messageHashes);
     const messages = sentMessagesOf(body.messages as (JsonValue | null)[], injectedContextPiecesOfMessages);
     const failedAttempts = (await failedAttemptsByApiRequest(prisma, [row])).get(row.id) ?? [];
@@ -264,7 +274,7 @@ export async function getWhatWasSent(
       failedAttempts,
       previousApiRequestId: previousRow?.id ?? null,
       firstNewMessageIndex:
-        previousRow === null ? 0 : sharedMessageHashPrefixLength(messageHashes, messageHashesOf(previousRow)),
+        previousRow === null ? 0 : sharedMessageHashPrefixLength(messageHashes, messageHashesOfPrevious(previousRow)),
       missingMessageCount: messages.filter((message) => message === null).length,
       ...systemPromptAndToolsChanges(previousRow === null ? null : bodyWithoutMessagesOf(previousRow), body),
       fullRequest: fullRequestOf(body, messages),
@@ -403,6 +413,28 @@ function withApiRequestRow<Result>(
     const row = await findApiRequestRow(prisma, apiRequestId);
     return row === null ? null : await read(row, prisma);
   });
+}
+
+/**
+ * The `api_request` row, with its system prompt and tool set, of the latest
+ * Turn of `row`'s Agent that comes before `row`'s own Turn in the transcript
+ * order and has one in another file; null when `row` has no Turn of its
+ * Agent, or no earlier Turn has one.
+ */
+async function apiRequestOfPreviousTurn(prisma: ReadPrisma, row: { id: number; agentId: number }) {
+  const turn = await prisma.message.findFirst({
+    where: { agentId: row.agentId, apiRequestId: row.id },
+    orderBy: TRANSCRIPT_ORDER,
+    select: { id: true, timestamp: true },
+  });
+  if (turn === null) return null;
+  const previousTurn = await prisma.message.findFirst({
+    // A request of the row's own Agent found here is later in its file than the row.
+    where: { AND: [{ agentId: row.agentId, apiRequest: { agentId: { not: row.agentId } } }, orderedBefore(turn)] },
+    orderBy: REVERSE_TRANSCRIPT_ORDER,
+    select: { apiRequest: { include: SYSTEM_PROMPT_AND_TOOL_SET_INCLUDE } },
+  });
+  return previousTurn?.apiRequest ?? null;
 }
 
 /** What the walk of a base chain needs of an `api_request` row. */
