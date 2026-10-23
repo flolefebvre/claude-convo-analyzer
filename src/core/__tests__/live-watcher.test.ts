@@ -8,8 +8,6 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type LiveWatcher, watchLogs } from "@/core/live";
 
-const CHANGE_TIMEOUT_MS = 10_000;
-
 describe("Live's watcher over the logs", () => {
   let tmpDir: string;
   let logsRoot: string;
@@ -34,20 +32,16 @@ describe("Live's watcher over the logs", () => {
     });
   }
 
-  it(
-    "reports a change when a log file is appended to, in a log folder",
-    async () => {
-      const logFolder = path.join(logsRoot, "-home-me-repo");
-      mkdirSync(logFolder, { recursive: true });
-      writeFileSync(path.join(logFolder, "sess-a.jsonl"), "{}\n");
+  it("reports a change when a log file is appended to, in a log folder", async () => {
+    const logFolder = path.join(logsRoot, "-home-me-repo");
+    mkdirSync(logFolder, { recursive: true });
+    writeFileSync(path.join(logFolder, "sess-a.jsonl"), "{}\n");
 
-      const firstChange = watchForFirstChange();
-      appendFileSync(path.join(logFolder, "sess-a.jsonl"), "{}\n");
+    const firstChange = watchForFirstChange();
+    appendFileSync(path.join(logFolder, "sess-a.jsonl"), "{}\n");
 
-      await expect(firstChange).resolves.toBeUndefined();
-    },
-    CHANGE_TIMEOUT_MS,
-  );
+    await expect(firstChange).resolves.toBeUndefined();
+  });
 
   it("skips a missing logs root with one warning, and watches nothing", () => {
     const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
