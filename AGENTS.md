@@ -103,7 +103,7 @@ Always reach for documentation rather than working from memory. Prioritize the f
 
 An exported symbol should have a one-line JSDoc comment, and an `@example` where one is applicable — a call the caller could actually write. Write as though what you just changed had always been that way. Assume the reader knows everything you know, and write only what that leaves out.
 
-Before handing over an issue's change, reread `README.md` and update it when the change adds, removes or alters something a user sees or runs — a page, a feature, a command, an environment variable, a requirement.
+Before handing over an issue's change, reread `README.md` and update it when the change adds, removes or alters something a user sees or runs — a page, a feature, a command, an environment variable, a requirement — and `CONTRIBUTING.md` when it alters how a contributor sets up, checks, seeds or packages the app.
 
 ## Language
 
