@@ -247,6 +247,13 @@ export function prepareRefreshStatements(db: Database.Database) {
   const selectHoldingAgentIds = db
     .prepare(`SELECT DISTINCT "agent_id" FROM "message" WHERE "uuid" = ? AND "conversation_id" = ?`)
     .pluck();
+  // Through the `agent_id` index: `tool_use_id` has none of its own.
+  const selectToolUseHoldingAgentIds = db
+    .prepare(
+      `SELECT DISTINCT "agent_id" FROM "tool_call"
+        WHERE "agent_id" IN (SELECT "value" FROM json_each(?)) AND "tool_use_id" = ?`,
+    )
+    .pluck();
   const deletePrLinks = db.prepare(`DELETE FROM "pr_link" WHERE "conversation_id" = ?`);
   const deleteTurnDurations = db.prepare(`DELETE FROM "turn_duration" WHERE "conversation_id" = ?`);
   const deleteContinuedIn = db.prepare(`DELETE FROM "continued_in" WHERE "conversation_id" = ?`);
@@ -466,6 +473,9 @@ export function prepareRefreshStatements(db: Database.Database) {
     /** The stored Agents of Conversation `conversationId` holding a Message with `uuid`. */
     selectHoldingAgentIds: (uuid: string, conversationId: number) =>
       selectHoldingAgentIds.all(uuid, conversationId) as number[],
+    /** Of the stored Agents `agentIds`, those holding a Tool call `toolUseId`. */
+    selectToolUseHoldingAgentIds: (toolUseId: string, agentIds: number[]) =>
+      selectToolUseHoldingAgentIds.all(JSON.stringify(agentIds), toolUseId) as number[],
     /**
      * Delete a Conversation's `pr_link`, `turn_duration` and `continued_in`
      * rows: what its Main thread's file gives it besides its Agent.

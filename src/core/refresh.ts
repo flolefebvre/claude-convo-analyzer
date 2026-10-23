@@ -282,6 +282,12 @@ type ParsedConversation = {
   priorConversationId: number | null;
 };
 
+/** What deciding a Sub-agent's lineage looks at (see `isLineageDecidedAgain`). */
+type SubAgentLineageContext = Pick<
+  ParsedConversation,
+  "storedMainThread" | "subAgents" | "removedAgentRowIds" | "spawnLedgerByAgentId"
+>;
+
 /** What linking and stamping need of a conversation this run has written. */
 type WrittenConversation = {
   /** Row id of the conversation as this run wrote it. */
@@ -671,9 +677,9 @@ function metaOf(subAgent: SubAgentToWrite): ParsedSubAgentMeta {
  * lineage comes from a parsed ledger; then, until none is left, each kept
  * Sub-agent whose stored spawn is gone (see `hasLostStoredSpawn`), so it falls
  * back to its own dominant model as a cold Refresh's does, and each kept one
- * that may hold a new fork's spawn (see `unreadHoldersOfUnnamedNewFirstMessages`).
- * Every other
- * Sub-agent is kept without being read. The conversation is null when the main
+ * that may hold a new fork's spawn (see `unreadHoldersOfUnnamedNewFirstMessages`)
+ * or the Agent call a meta file names (see `unreadHoldersOfMetaSpawnCalls`).
+ * Every other Sub-agent is kept without being read. The conversation is null when the main
  * transcript vanished; a vanished sub-agent file is left out — removed, when
  * stored — and counted.
  */
@@ -757,8 +763,14 @@ function parseConversation(
         subAgents,
         spawnLedgerByAgentId,
       );
-      if (forkSpawners.size === 0) break;
-      read(forkSpawners);
+      if (forkSpawners.size > 0) {
+        read(forkSpawners);
+      } else {
+        const lineage = { storedMainThread, subAgents, removedAgentRowIds, spawnLedgerByAgentId };
+        const spawnCallHolders = unreadHoldersOfMetaSpawnCalls(statements, parsed, lineage);
+        if (spawnCallHolders.size === 0) break;
+        read(spawnCallHolders);
+      }
     }
     spawnLedgerByAgentId = indexSpawnLedgers(parsed, subAgents);
   }
@@ -808,6 +820,44 @@ function unreadHoldersOfUnnamedNewFirstMessages(
     }
   }
   return holders;
+}
+
+/**
+ * The kept, unread Sub-agents holding the Agent call that spawned a Sub-agent
+ * whose lineage this run decides, no parsed ledger names, and whose meta file
+ * names a call the Main thread does not hold (log-format §4): its spawner is
+ * among them, and reading them makes it, and its ledger if any, known as a cold
+ * Refresh knows them (see `spawnerOfAgentCall`). One indexed lookup per such
+ * Sub-agent, rare: nearly every spawn is named by a ledger.
+ */
+function unreadHoldersOfMetaSpawnCalls(
+  statements: RefreshStatements,
+  mainThread: ParsedSession,
+  lineage: SubAgentLineageContext,
+): Set<SubAgentToWrite> {
+  const holders = new Set<SubAgentToWrite>();
+  const unreadSubAgentByRowId = new Map(
+    lineage.subAgents.flatMap((sub) =>
+      sub.parsed === null && sub.stored !== null ? [[sub.stored.id, sub] as const] : [],
+    ),
+  );
+  if (unreadSubAgentByRowId.size === 0) return holders;
+  const unreadRowIds = [...unreadSubAgentByRowId.keys()];
+  for (const sub of lineage.subAgents) {
+    if (lineage.spawnLedgerByAgentId.has(sub.file.agentId) || !isLineageDecidedAgain(sub, lineage)) continue;
+    const toolUseId = metaOf(sub).toolUseId;
+    if (toolUseId === null || holdsToolUse(mainThread, toolUseId)) continue;
+    for (const agentRowId of statements.selectToolUseHoldingAgentIds(toolUseId, unreadRowIds)) {
+      const holder = unreadSubAgentByRowId.get(agentRowId)!;
+      if (holder !== sub) holders.add(holder);
+    }
+  }
+  return holders;
+}
+
+/** Whether `parsed` holds a `tool_use` with id `toolUseId`. */
+function holdsToolUse(parsed: ParsedSession, toolUseId: string): boolean {
+  return parsed.messages.some((message) => message.toolUses.some((toolUse) => toolUse.toolUseId === toolUseId));
 }
 
 /**
@@ -1088,7 +1138,9 @@ function failedAttemptOwners(
  * in whichever log file it lives, main thread or another sub-agent (see
  * `orderParentsFirst`): its parent, its `spawnedByMessageId` (the parent's
  * Message holding the spawning `Agent` tool_use), its `agentType` and
- * `resolvedModel`; without a ledger, the Main thread and its own dominant model.
+ * `resolvedModel`; its meta file fills in what the ledger leaves out, and
+ * without a ledger names the Agent call whose holder is its parent (see
+ * `spawnOf`); without either, the Main thread and its own dominant model.
  *
  * A new conversation's rows go in this exact order, so a fresh database gets
  * the same row ids on every run (`stored-data-equivalence.test.ts` pins them).
@@ -1152,24 +1204,25 @@ function writeConversation(statements: RefreshStatements, parsedConversation: Pa
   const subAgentByAgentId = new Map(subAgents.map((sub) => [sub.file.agentId, sub]));
   const isDecidedAgain = (sub: SubAgentToWrite) => isLineageDecidedAgain(sub, parsedConversation);
   const plans = orderParentsFirst(
-    subAgents.filter(isDecidedAgain).map((sub) => sub.file.agentId),
-    parsedConversation.spawnLedgerByAgentId,
+    new Map(
+      subAgents.filter(isDecidedAgain).map((sub) => [sub.file.agentId, spawnOf(sub, parsedConversation)] as const),
+    ),
     new Set(subAgents.filter((sub) => !isDecidedAgain(sub)).map((sub) => sub.file.agentId)),
   );
   for (const plan of plans) {
     const subAgent = subAgentByAgentId.get(plan.agentId)!;
     const parentAgentRowId =
       plan.parentExternalId === null ? mainThreadRowId : agentRowIdByAgentId.get(plan.parentExternalId)!;
-    const toolUseId = plan.spawn?.toolUseId ?? null;
+    const toolUseId = plan.spawn.toolUseId;
     const lineage: AgentLineageRow = {
       parentAgentId: parentAgentRowId,
       spawnedByMessageId:
         toolUseId === null ? null : (statements.selectSpawningMessageId(parentAgentRowId, toolUseId) ?? null),
-      agentType: plan.spawn?.agentType ?? metaOf(subAgent).agentType,
+      agentType: plan.spawn.agentType,
       // A kept Sub-agent left unread kept its spawn, or never had one: its
       // stored model is what its file and that spawn gave (`parseConversation`).
       resolvedModel:
-        plan.spawn?.resolvedModel ??
+        plan.spawn.resolvedModel ??
         (subAgent.parsed === null ? subAgent.stored!.resolvedModel : subAgent.parsed.dominantModel),
     };
     if (!subAgent.isRewritten) {
@@ -1234,7 +1287,7 @@ function deleteRewrittenAndRemovedAgents(
  */
 function isLineageDecidedAgain(
   subAgent: SubAgentToWrite,
-  { storedMainThread, subAgents, removedAgentRowIds, spawnLedgerByAgentId }: ParsedConversation,
+  { storedMainThread, subAgents, removedAgentRowIds, spawnLedgerByAgentId }: SubAgentLineageContext,
 ): boolean {
   if (subAgent.isRewritten || spawnLedgerByAgentId.has(subAgent.file.agentId)) return true;
   const stored = subAgent.stored!;
@@ -1259,13 +1312,84 @@ function writeAgentContent(
   writeApiRequests(statements, parsed, conversationId, agentRowId, messageRowByMsgId);
 }
 
+/**
+ * A Sub-agent's spawn, each field from the ledger naming it when the ledger
+ * states it, else from its meta file (log-format §4).
+ */
+type SubAgentSpawn = {
+  /** External id of the spawning Sub-agent; null ⇒ the Main thread, or no spawner found. */
+  parentExternalId: string | null;
+  /** The `tool_use_id` of the spawning Agent call; null when no spawner holds one. */
+  toolUseId: string | null;
+  agentType: string | null;
+  /** The ledger's; a meta file's is never read (the transcript's dominant model is exact). */
+  resolvedModel: string | null;
+};
+
 /** One sub-agent resolved to its true parent, in write order. */
 type SubAgentPlan = {
   agentId: string;
   /** External id of the spawning SUB-agent; null ⇒ spawned by the main thread. */
   parentExternalId: string | null;
-  spawn: ParsedAgentSpawn | undefined;
+  spawn: SubAgentSpawn;
 };
+
+/**
+ * `subAgent`'s spawn: the ledger naming it, its type and Agent call filled in
+ * from its meta file where the ledger states none; without a ledger, the meta
+ * file's type, and the Agent holding the call the meta file names as its
+ * spawner (see `spawnerOfAgentCall`); without either, no spawner and no type.
+ * The meta file is read only when the ledger leaves a field to fill.
+ */
+function spawnOf(
+  subAgent: SubAgentToWrite,
+  { parsed, subAgents, spawnLedgerByAgentId }: ParsedConversation,
+): SubAgentSpawn {
+  const ledger = spawnLedgerByAgentId.get(subAgent.file.agentId);
+  if (ledger !== undefined) {
+    const { toolUseId, agentType, resolvedModel } = ledger.spawn;
+    return {
+      parentExternalId: ledger.parentExternalId,
+      toolUseId: toolUseId ?? metaOf(subAgent).toolUseId,
+      agentType: agentType ?? metaOf(subAgent).agentType,
+      resolvedModel,
+    };
+  }
+  const { agentType, toolUseId } = metaOf(subAgent);
+  const spawner =
+    toolUseId === null ? undefined : spawnerOfAgentCall(toolUseId, subAgent, parsed, subAgents, spawnLedgerByAgentId);
+  return spawner === undefined
+    ? { parentExternalId: null, toolUseId: null, agentType, resolvedModel: null }
+    : { parentExternalId: spawner.externalAgentId, toolUseId, agentType, resolvedModel: null };
+}
+
+/**
+ * The Agent holding the Agent call `toolUseId` that spawned `subAgent`, by
+ * external id (null ⇒ the Main thread), or undefined when no parsed log file
+ * holds it. Several may hold it — a fork's file copies its spawner's records,
+ * its spawner's Agent calls included (log-format §10) — so, in order: the Main
+ * thread when it holds it; never `subAgent` itself; of the Sub-agents holding
+ * it, not one a ledger names as spawned by another holder, which copied the
+ * call from that spawner; then the first in discovery order.
+ */
+function spawnerOfAgentCall(
+  toolUseId: string,
+  subAgent: SubAgentToWrite,
+  mainThread: ParsedSession,
+  subAgents: SubAgentToWrite[],
+  spawnLedgerByAgentId: Map<string, SpawnLedgerEntry>,
+): { externalAgentId: string | null } | undefined {
+  if (holdsToolUse(mainThread, toolUseId)) return { externalAgentId: null };
+  const holderIds = subAgents
+    .filter((sub) => sub !== subAgent && sub.parsed !== null && holdsToolUse(sub.parsed, toolUseId))
+    .map((sub) => sub.file.agentId);
+  const isCopiedFromAnotherHolder = (holderId: string) => {
+    const spawnerId = spawnLedgerByAgentId.get(holderId)?.parentExternalId;
+    return spawnerId != null && spawnerId !== holderId && holderIds.includes(spawnerId);
+  };
+  const spawnerId = holderIds.find((holderId) => !isCopiedFromAnotherHolder(holderId)) ?? holderIds[0];
+  return spawnerId === undefined ? undefined : { externalAgentId: spawnerId };
+}
 
 /**
  * Index the spawn ledgers of the Main thread and of every parsed Sub-agent by
@@ -1290,24 +1414,24 @@ function indexSpawnLedgers(root: ParsedSession, subAgents: SubAgentToWrite[]): M
 }
 
 /**
- * Resolve each of `pendingAgentIds` to its true parent by its ledger, and
- * order them PARENTS-FIRST: a child comes after its parent, so the parent's row
- * and message rows exist when the child is written. A parent in
- * `settledAgentIds` — a kept Sub-agent whose lineage stays — is already there.
+ * Resolve each Sub-agent of `pendingSpawnByAgentId` to its true parent by its
+ * spawn (see `spawnOf`), and order them PARENTS-FIRST: a child comes after its
+ * parent, so the parent's row and message rows exist when the child is written.
+ * A parent in `settledAgentIds` — a kept Sub-agent whose lineage stays — is
+ * already there.
  *
- * Unresolvable parentage — no ledger anywhere, or a ledger CYCLE — falls back
+ * Unresolvable parentage — no spawner found, or a spawn CYCLE — falls back
  * to the main thread, matching the defensive nesting in `buildAgentTree`
  * (read.ts). The leftover pass is what makes a cycle terminate instead of
  * looping forever.
  */
 function orderParentsFirst(
-  pendingAgentIds: string[],
-  spawnLedgerByAgentId: Map<string, SpawnLedgerEntry>,
+  pendingSpawnByAgentId: Map<string, SubAgentSpawn>,
   settledAgentIds: Set<string>,
 ): SubAgentPlan[] {
   const ordered: SubAgentPlan[] = [];
   const emitted = new Set(settledAgentIds);
-  const pending = [...pendingAgentIds];
+  const pending = [...pendingSpawnByAgentId.keys()];
 
   // Repeatedly emit every sub-agent whose parent is the main thread or has
   // already been emitted, until a full sweep makes no progress.
@@ -1316,10 +1440,10 @@ function orderParentsFirst(
     for (let i = pending.length - 1; i >= 0; i -= 1) {
       const agentId = pending[i];
       if (agentId === undefined) continue;
-      const entry = spawnLedgerByAgentId.get(agentId);
-      const parentExternalId = entry?.parentExternalId ?? null;
+      const spawn = pendingSpawnByAgentId.get(agentId)!;
+      const parentExternalId = spawn.parentExternalId;
       if (parentExternalId !== null && !emitted.has(parentExternalId)) continue;
-      ordered.push({ agentId, parentExternalId, spawn: entry?.spawn });
+      ordered.push({ agentId, parentExternalId, spawn });
       emitted.add(agentId);
       pending.splice(i, 1);
       progress = true;
@@ -1328,7 +1452,7 @@ function orderParentsFirst(
 
   // Leftovers: a cycle → attach under the main thread.
   for (const agentId of pending) {
-    ordered.push({ agentId, parentExternalId: null, spawn: spawnLedgerByAgentId.get(agentId)?.spawn });
+    ordered.push({ agentId, parentExternalId: null, spawn: pendingSpawnByAgentId.get(agentId)! });
   }
   return ordered;
 }

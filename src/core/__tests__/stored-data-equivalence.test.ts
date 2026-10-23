@@ -524,6 +524,142 @@ describe("continuations", () => {
   });
 });
 
+describe("Sub-agents typed or linked by their meta files", () => {
+  let tmpDir: string;
+  let logsRoot: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(tmpdir(), "cca-sub-agent-meta-equivalence-"));
+    logsRoot = path.join(tmpDir, "logs");
+    copyWithPinnedMtimes(path.join(FIXTURES_DIR, "agent-meta-logs"), logsRoot);
+    mkdirSync(path.join(tmpDir, "set-aside"));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  /** The path of sess-meta's file `fileName` under the logs root: its Main thread's, or one in `subagents/`. */
+  const metaLogPath = (fileName: string) =>
+    fileName === "sess-meta.jsonl"
+      ? path.join(logsRoot, "-Users-me-dev-meta", fileName)
+      : path.join(logsRoot, "-Users-me-dev-meta", "sess-meta", "subagents", fileName);
+  /** Move each of `fileNames` out of the logs root, or back into it. */
+  const setAside = (fileNames: string[]) => {
+    for (const fileName of fileNames) renameSync(metaLogPath(fileName), path.join(tmpDir, "set-aside", fileName));
+  };
+  const restore = (fileNames: string[]) => {
+    for (const fileName of fileNames) renameSync(path.join(tmpDir, "set-aside", fileName), metaLogPath(fileName));
+  };
+  /** Append one user Message `uuid` to sess-meta's file `fileName`. */
+  const appendTo = (fileName: string, uuid: string) => {
+    const record = {
+      type: "user",
+      uuid,
+      timestamp: "2026-06-21T15:00:00.000Z",
+      message: { role: "user", content: uuid },
+    };
+    writeFileSync(metaLogPath(fileName), `${readFileSync(metaLogPath(fileName), "utf8")}${JSON.stringify(record)}\n`);
+  };
+
+  /**
+   * Refresh the logs root, apply `change`, Refresh it again, then Refresh it
+   * cold into a second database: the lineage of each, and the second run's summary.
+   */
+  async function lineageAfterChangeAndCold(change: () => void) {
+    const changedDbPath = path.join(tmpDir, "changed.db");
+    await refresh({ logsRoot, dbPath: changedDbPath });
+    change();
+    const changedSummary = await refresh({ logsRoot, dbPath: changedDbPath });
+    const coldDbPath = path.join(tmpDir, "cold.db");
+    await refresh({ logsRoot, dbPath: coldDbPath });
+    return { changedLineage: lineageContent(changedDbPath), coldLineage: lineageContent(coldDbPath), changedSummary };
+  }
+
+  /** The stored lineage of sess-meta's Sub-agent `agentId`, in `lineage`. */
+  const lineageOf = (lineage: ReturnType<typeof lineageContent>, agentId: string) =>
+    lineage.find((agent) => agent.external_agent_id === agentId);
+
+  it("are stored as the pinned rows for the meta file logs", async () => {
+    const dbPath = path.join(tmpDir, "analyzer.db");
+    await refresh({ logsRoot, dbPath });
+
+    expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
+      project: { rowCount: 1, sha256: "87e358d6df0ff2d8431ebc48333192a593bcdf98a954f03524498a21d5655677" },
+      conversation: { rowCount: 1, sha256: "3ef3f8836c40123db1cd27fab6b8db14310821220aa71a98fdea98a7aca19785" },
+      // bg, loose and inner typed by their meta files; loose and inner linked by them, inner under bg, not its fork.
+      agent: { rowCount: 8, sha256: "3813f7f4419290a330c47e7d64cb12486a3631a10513ff779f46ae9666ee3263" },
+      message: { rowCount: 30, sha256: "9624e4dc0d4c7eb1f151db2ba03ca843f4df3b25a248a7c95a8fec4c377b7b10" },
+      tool_call: { rowCount: 9, sha256: "3bd792862f8a9f9c2ce1a1e2591bc715ccb0b464667279b19053bdb672028d95" },
+      pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+      turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+      ...NO_LOGGED_API_REQUESTS,
+      continued_in: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+    });
+  });
+
+  // fg's ledger names deep; fg's file is unchanged, so only a lookup of the Agent call deep's meta file names finds it.
+  it("store a nested Sub-agent whose file appears after its spawner's ledger was stored as a cold Refresh does", async () => {
+    setAside(["agent-deep.jsonl", "agent-deep.meta.json"]);
+    const { changedLineage, coldLineage, changedSummary } = await lineageAfterChangeAndCold(() =>
+      restore(["agent-deep.jsonl", "agent-deep.meta.json"]),
+    );
+
+    // The Main thread, deep, fg, which holds the Agent call, and loose, whose
+    // stored spawn no ledger makes (see `hasLostStoredSpawn`): not a cold re-parse.
+    expect(changedSummary.logFilesParsed).toBe(4);
+    expect(lineageOf(coldLineage, "deep")).toMatchObject({
+      spawner_external_agent_id: "fg",
+      spawning_message_uuid: "fga1",
+      agent_type: "Plan",
+      resolved_model: "claude-sonnet-4-6",
+    });
+    expect(changedLineage).toEqual(coldLineage);
+  });
+
+  // No ledger names inner: bg holds the Agent call, and bg-fork a copy of it.
+  it("store a Sub-agent no ledger names whose file appears later as a cold Refresh does", async () => {
+    setAside(["agent-inner.jsonl"]);
+    const { changedLineage, coldLineage, changedSummary } = await lineageAfterChangeAndCold(() =>
+      restore(["agent-inner.jsonl"]),
+    );
+
+    // The Main thread, inner, bg and bg-fork, which hold the Agent call, and loose (see above).
+    expect(changedSummary.logFilesParsed).toBe(5);
+    expect(lineageOf(coldLineage, "inner")).toMatchObject({
+      spawner_external_agent_id: "bg",
+      spawning_message_uuid: "bga1",
+      agent_type: "general-purpose",
+    });
+    expect(changedLineage).toEqual(coldLineage);
+  });
+
+  it.each(["agent-bg.jsonl", "agent-bg-fork.jsonl", "agent-inner.jsonl", "agent-loose.jsonl", "agent-deep.jsonl"])(
+    "are stored as a cold Refresh stores them when %s alone is re-parsed",
+    async (fileName) => {
+      const { changedLineage, coldLineage } = await lineageAfterChangeAndCold(() => appendTo(fileName, "appended"));
+
+      expect(lineageOf(coldLineage, "loose")).toMatchObject({ spawner_external_agent_id: null, agent_type: "Explore" });
+      expect(changedLineage).toEqual(coldLineage);
+    },
+  );
+
+  // A meta file appearing while no transcript changes waits for its Conversation's next change (log-format §4).
+  it.each(["agent-bg.meta.json", "agent-inner.meta.json"])(
+    "are stored as a cold Refresh stores them when %s appears with a change to the Main thread",
+    async (fileName) => {
+      setAside([fileName]);
+      const { changedLineage, coldLineage } = await lineageAfterChangeAndCold(() => {
+        restore([fileName]);
+        appendTo("sess-meta.jsonl", "appended");
+      });
+
+      expect(lineageOf(coldLineage, "bg")).toMatchObject({ agent_type: "Explore" });
+      expect(changedLineage).toEqual(coldLineage);
+    },
+  );
+});
+
 describe("Turns whose API request is in another file", () => {
   let tmpDir: string;
 
@@ -885,6 +1021,34 @@ function crossFileContent(dbPath: string, logsRoot: string) {
       )
       .all();
     return { turnApiRequests, ...apiRequestContent(dbPath, logsRoot) };
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * The lineage of every Sub-agent of the database at `dbPath`, keyed by stable
+ * fields only, so it is the same whatever row ids the Refreshes gave: the Agent
+ * that spawned it, the `uuid` of the Message holding its spawning Agent call,
+ * its type and its resolved model.
+ */
+function lineageContent(dbPath: string) {
+  const db = new Database(dbPath, { readonly: true });
+  try {
+    return db
+      .prepare(
+        `SELECT "conversation"."session_id", "agent"."external_agent_id",
+                "spawner"."external_agent_id" AS "spawner_external_agent_id",
+                "spawning_message"."uuid" AS "spawning_message_uuid",
+                "agent"."agent_type", "agent"."resolved_model"
+           FROM "agent"
+           JOIN "conversation" ON "conversation"."id" = "agent"."conversation_id"
+           LEFT JOIN "agent" AS "spawner" ON "spawner"."id" = "agent"."parent_agent_id"
+           LEFT JOIN "message" AS "spawning_message" ON "spawning_message"."id" = "agent"."spawned_by_message_id"
+          WHERE "agent"."external_agent_id" IS NOT NULL
+          ORDER BY "conversation"."session_id", "agent"."external_agent_id"`,
+      )
+      .all() as { external_agent_id: string }[];
   } finally {
     db.close();
   }
