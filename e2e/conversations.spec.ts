@@ -4,7 +4,7 @@ import path from "node:path";
 import { instant } from "@next/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { type RouteShell, expectData, expectInstantLoad } from "./route-shell";
+import { type RouteShell, expectData, expectInstantLoad, runningVersion } from "./route-shell";
 
 // A seeded conversation title (`scripts/seed/fake-logs.ts`).
 const TITLE = "Split the billing service out of the monolith";
@@ -83,6 +83,21 @@ test.describe("Conversations (/)", () => {
       await expect(page.getByText(TITLE, { exact: true })).toHaveCount(0);
     });
     await expectData(page, conversations);
+  });
+
+  test.describe("from 1536px wide", () => {
+    test.use({ viewport: { width: 1536, height: 900 } });
+
+    test("shows the running version in the static shell", async ({ page, baseURL }) => {
+      await instant(
+        page,
+        async () => {
+          await page.goto("/");
+          await expect(runningVersion(page)).toBeVisible();
+        },
+        { baseURL },
+      );
+    });
   });
 });
 

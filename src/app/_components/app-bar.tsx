@@ -22,6 +22,9 @@
 //             counts (a running Refresh's "12,450 / 12,450"), about 466 at six.
 //             So a running Refresh's label says only how far it is, its noun in
 //             its screen-reader label.
+// The running version (`v0.1.0`, 33px) sits between the theme toggle and Disk
+// usage from 1536px only: at 1280px the idle bar has 46px to spare, less than a
+// running Refresh's five-digit label takes, so below 1536px it is hidden.
 // The tabs always end flush on the bar's bottom border, where the active tab's
 // clay underline sits.
 //
@@ -43,6 +46,7 @@ import { IdleRefreshButton } from "@/app/_components/refresh-button";
 import { SearchBox } from "@/app/_components/search-box";
 import { SectionNav, SectionTabs } from "@/app/_components/section-nav";
 import { ThemeToggle } from "@/app/_components/theme-toggle";
+import { APP_VERSION } from "@/lib/app-identity";
 
 /**
  * The global header (`<header>` landmark) with the app's navigation and
@@ -61,6 +65,7 @@ export function AppBar() {
         <SearchBox className="order-4 w-full md:order-2 md:w-60 lg:order-3 lg:ml-auto lg:shrink-0" />
         <div className="order-2 flex items-center gap-1.5 sm:gap-2 md:order-3 lg:order-4">
           <ThemeToggle />
+          <RunningVersion />
           <DiskUsageItem />
           <Suspense fallback={<InertLiveToggle />}>
             <CurrentLiveToggle />
@@ -76,6 +81,15 @@ export function AppBar() {
 
 /** The tabs' slot in the reordered row: last and full width until desktop. */
 const TABS_CLASS = "order-5 -ml-2.5 w-full lg:order-2 lg:w-auto lg:self-stretch";
+
+/** The version the app runs, as `v0.1.0`, small and muted; only from 1536px (see the header comment). */
+function RunningVersion() {
+  return (
+    <span title="Running version" className="text-xs text-muted-foreground tabular-nums max-2xl:hidden">
+      v{APP_VERSION}
+    </span>
+  );
+}
 
 /** The app's mark and name, linking home. Not a heading: each page owns its h1. */
 function Brand({ className }: { className?: string }) {

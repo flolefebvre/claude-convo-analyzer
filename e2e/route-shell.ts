@@ -1,6 +1,8 @@
 import { instant } from "@next/playwright";
 import { expect, type Locator, type Page } from "@playwright/test";
 
+import { version as APP_VERSION } from "../package.json";
+
 /** What a route's `instant()` spec locates: the shell content, its Suspense fallbacks, and the streamed data. */
 export type RouteShell = {
   /** Content the static shell renders (the page header, the controls). */
@@ -11,13 +13,18 @@ export type RouteShell = {
   data: (page: Page) => Locator[];
 };
 
+/** The app bar's running version, `v` and the root package.json's `version`. */
+export const runningVersion = (page: Page) => page.getByRole("banner").getByText(`v${APP_VERSION}`, { exact: true });
+
 /**
  * Asserts the shell and its fallbacks are visible and the streamed data is not; call inside `instant()`.
- * Every route's shell also has the app bar's Disk usage item and its Live and Refresh controls.
+ * Every route's shell also has the app bar's running version, its Disk usage item and its Live and Refresh controls.
  *
  * @example await expectShell(page, tools);
  */
 export async function expectShell(page: Page, route: RouteShell) {
+  // Hidden below 1536px, so only attached at the default viewport; `conversations.spec.ts` sees it shown.
+  await expect(runningVersion(page)).toBeAttached();
   await expect(page.getByRole("banner").getByRole("button", { name: "Disk usage" })).toBeVisible();
   await expect(page.getByRole("banner").getByRole("button", { name: "Live", pressed: false })).toBeVisible();
   await expect(page.getByRole("banner").getByRole("button", { name: "Refresh" })).toBeVisible();
