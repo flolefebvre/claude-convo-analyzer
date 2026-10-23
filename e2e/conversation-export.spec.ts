@@ -140,6 +140,20 @@ test.describe("Conversation export (/api/conversation/[sessionId]/export)", () =
     await expect(mainSection).toBeVisible();
     await expect(planSection).toBeHidden();
 
+    // A Sub-agent's status message names its sender, and its task notification opens its transcript, in the file.
+    const senderLink = mainSection.getByRole("article").filter({ hasText: "Indexing is done" }).getByRole("link");
+    const notificationLink = mainSection
+      .getByRole("article", { name: /Agent "rewrite ranking" finished/ })
+      .getByRole("link", { name: "Open transcript" });
+    await expect(senderLink).toHaveAttribute("href", /^#agent-/);
+    await expect(notificationLink).toHaveAttribute("href", /^#agent-/);
+    const senderHref = (await senderLink.getAttribute("href"))!;
+    await senderLink.click();
+    await expect(page.locator(`section[id="${decodeURIComponent(senderHref.slice(1))}"]`)).toBeVisible();
+    await expect(mainSection).toBeHidden();
+    await page.goBack();
+    await expect(mainSection).toBeVisible();
+
     await planNodeIn(mainSection).click();
     await expect(planSection).toBeVisible();
     await expect(mainSection).toBeHidden();
