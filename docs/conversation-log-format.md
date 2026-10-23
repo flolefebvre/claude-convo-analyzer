@@ -19,6 +19,7 @@ deliberately did not model** (and where to find it if we ever want it).
       <sessionId>/
           subagents/
               agent-<agentId>.jsonl           ← one full transcript per sub-agent
+              agent-<agentId>.meta.json       ← its spawn, as Claude Code states it (§4)
 ```
 
 - **Folder name** is the project's absolute cwd with `/` replaced by `-`
@@ -170,6 +171,74 @@ Its `status` is one of two values:
   `resolvedModel`, `isAsync`, `outputFile`, `canReadOutputFile`, and no
   `agentType`, totals or hand-back. The hand-back arrives later as an
   Inter-agent message.
+
+A spawn interrupted before its result, or still running, has no ledger at all.
+
+### The meta file: `agent-<agentId>.meta.json`
+
+Beside each Sub-agent transcript Claude Code writes one JSON object, at the
+spawn (before the transcript has content), and may rewrite it when the
+Sub-agent finishes. Measured on 2,528 Sub-agent transcripts, October 2026: all
+2,528 have one. Its keys, by how many files hold them: `agentType` 2,528,
+`description` 2,528, `toolUseId` 2,526, `spawnDepth` 2,341, `requestShape`
+1,255 (`background` 1,247, `foreground` 8), `model` 700, `parentAgentId` 283,
+`isFork` 16; then keys written at completion (`finished` 556, `stoppedByUser`
+16, `worktreeCleanlyRemoved` 11, `worktreePath`…). `agentType` and `toolUseId`
+are set at the spawn and never change.
+
+Before the meta file was read, 2,057 of 2,521 stored Sub-agents (82 %) had no
+type, because a background launch's ledger states none. Reading it, a cold
+Refresh of the same logs types all 2,523. 35 Sub-agents are named by no ledger
+in any file of their Conversation; 33 of them are linked to their spawning
+Message through the meta file's `toolUseId` (21 nested). The other 2 are
+Main-thread forks, whose meta files have no `toolUseId`.
+
+### Where a Sub-agent's spawn comes from
+
+Two sources, per field: the **ledger** naming the Sub-agent, when it states a
+non-null value, else the **meta file**. The type is the ledger's `agentType`,
+else the meta file's. The resolved model is the ledger's, else the
+transcript's dominant model (the meta file's `model` is not read). A malformed
+meta file states nothing, and the Refresh goes on.
+
+The spawner is found in this order:
+
+1. The Agent whose file holds the ledger naming the Sub-agent: the Main
+   thread's, or another Sub-agent's for a nested one.
+2. Without a ledger, the Agent holding the `Agent` call the meta file's
+   `toolUseId` names, picked by the holder order below. `spawned_by_message_id`
+   is the Message holding that call.
+3. Without either, the Main thread, with no spawning Message.
+
+**The holder order.** Several Agents of a Conversation can hold the same spawn
+record, because a fork copies its spawner's records (§10). Of the holders:
+
+1. the Main thread first;
+2. never the Sub-agent itself, nor any of its descendants, because a spawner
+   cannot descend from what it spawned. A fork of the Sub-agent copies the
+   record too;
+3. then a holder that no other holder spawned (one spawned by another holder
+   copied the record from it);
+4. then the first in discovery order.
+
+Who spawned whom, for steps 2 and 3, is what the parsed ledgers say, else the
+stored lineage of a Sub-agent the Refresh keeps as it is.
+
+Step 2 above applies this order to the `Agent` call. A ledger claimed by
+several files is still settled by the Main thread first, then discovery order.
+
+The `isFork`, `parentAgentId`, `description` and `spawnDepth` keys are not read:
+the ledger and the `Agent` call already give the spawn link.
+
+An incremental Refresh reaches the same rows as a cold one. A new Sub-agent
+named by no parsed ledger has the stored Sub-agents holding its meta file's
+`Agent` call read, one indexed lookup. This also covers a nested Sub-agent whose
+file appears after its spawner's ledger was stored. A stored Sub-agent with
+neither a type nor a spawning Message that now has a meta file has its
+lineage decided again. A meta file is not part of the change key (ADR-0010):
+one that appears while no transcript of its Conversation changes waits for that
+Conversation's next change. Claude Code writes the meta file before the
+transcript, so this shape practically never happens.
 
 ### GOTCHA 3 — sub-agent tokens are recorded twice; count them once
 
@@ -720,7 +789,7 @@ October 2026:
   `spawned_by_message_id` in the spawner), as any Sub-agent is (§4). Sibling
   forks spawned by one Message share that `spawned_by` Message. Claude Code
   also writes the relation into `agent-<id>.meta.json` (`"isFork": true`,
-  `"parentAgentId"`); the app does not read those files.
+  `"parentAgentId"`); the app does not read those two keys (§4).
 - A fork of a fork copies its spawning fork's records, which begin with that
   fork's own copy: the direct spawner holds the whole copied run.
 - The re-written spawn record is the spawner's spawning Turn under a new

@@ -149,7 +149,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 15, sha256: "d79302a905b975c08cfd6c217e6ae3eaa17e44ca45bb318cdfeefa1ae7b0e329" },
-      conversation: { rowCount: 21, sha256: "297ff75cb539a1ba77e58dd3795bce149e4bccadb6c5da8f8269bb5cfeae7490" },
+      conversation: { rowCount: 21, sha256: "059da97c1f23f7d64d7b06f18712b8d9748390d9bd60b65f5ad7fdea9b82b67c" },
       agent: { rowCount: 35, sha256: "711e9837000a62cb2b2d1958c27c6aaeeeadab1ce7130ef41a5cf54f6ddfda6c" },
       message: { rowCount: 127, sha256: "f062d0ade17ffbd2e026dc923d65bc33e28cc68d1db40ccaa3c03a3f78d03959" },
       tool_call: { rowCount: 34, sha256: "1ebf6ceb68879e5e3dfbb37ddf59dce1699db2145274b17b09453577f97c8512" },
@@ -166,7 +166,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "5d55ed2d1c37a5a354777b7e27dfce7bb9f299e0e7237d17a32956fee0357675" },
-      conversation: { rowCount: 1, sha256: "5e7ae4b3055d64143c50f697e6db942e95f3493f3a87b5e63249f6bc271306ab" },
+      conversation: { rowCount: 1, sha256: "866cbd8ef4ad20689f49090cfd2bdbbffbfa9afc2181530ac29fe35c30475a2d" },
       agent: { rowCount: 2, sha256: "f5aba5caf67fb377381f3a6615b9a5b84ba42ad02870c04d39ae685c7f265e3e" },
       message: { rowCount: 28, sha256: "c0aa023f7b4bc513a093c1d6c99425c9ecee2e8f3b291ac29f2c99cc94ea9aa4" },
       tool_call: { rowCount: 1, sha256: "a7fdb225fda2bff0ca75f88a22789a86cd79a97f5ea4e2f952e1d4559aa8efd9" },
@@ -183,7 +183,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 9, sha256: "e740c951fb2b58e8b13902eea830681396ac5eea03a445a31d6fb998c250a3e1" },
-      conversation: { rowCount: 13, sha256: "ed421274f3e2753b92ea12b62affbb00006da080c470d8fade182198c0d09e8d" },
+      conversation: { rowCount: 13, sha256: "2464bcc8613ed68c318e06a8010747299fc309adccbb8fa317df55d2e1582ca0" },
       agent: { rowCount: 13, sha256: "05071b138ea90dac2a6f439c5ffdc80cf4ecde23d204d53599a57202eb17a230" },
       message: { rowCount: 22, sha256: "25a07cc59be5e565459a3225cfefcc2184607786a7a14353071035b07a770c3a" },
       tool_call: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
@@ -200,7 +200,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "c39a0134a2be51dcdd6348bf0657691be4b1d4092d6e1616117c4d0f4f58a771" },
-      conversation: { rowCount: 4, sha256: "aa25305519b786ee57025ba73d6b14ca85a0cb5dba9589563c0618bfec7bdfd7" },
+      conversation: { rowCount: 4, sha256: "bf0b3a757b7f0a867ef11d37ab5d625708c9f4cdd77bda56ddbc8ba6d8b7e860" },
       agent: { rowCount: 5, sha256: "3ad52bfa85815c31aed384550111d7e07207b1d7199175e9df9ca71a8fd41c21" },
       message: { rowCount: 17, sha256: "4a305e6648f6803b653d8c99880557c54a32685c31cb6bb5a73f6351934bbae5" },
       tool_call: { rowCount: 1, sha256: "e331ea30643c19a0602a2759f557187aacaf1729c796a955560799b9c4dbd73f" },
@@ -217,7 +217,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "8b9da1ddb86766f02f4a1ac8d582400f0f6c9e5071156b7b726e7b6d9bf11d31" },
-      conversation: { rowCount: 3, sha256: "4f931f319cb1535eeecb952d3f0ff3c368739c4340b01b99853ce61b8ee5e01b" },
+      conversation: { rowCount: 3, sha256: "66da8302de3ea8e8afc78fb63ca8461aa7dd26d3515cac39e8496755d36d4ca9" },
       agent: { rowCount: 4, sha256: "236b6560485fe1af22869e5fa6c5ab02686684a00d3e90c411e2246519b775a9" },
       message: { rowCount: 19, sha256: "d3f9836aa555bd8b3e4a58a94f2bd44df57147a61af50e55170caec43e9259ed" },
       tool_call: { rowCount: 3, sha256: "e5f615b5d6290bc0dab75ea171da282d5e176e04be16438fc4d834c227f91b9d" },
@@ -240,7 +240,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "39d8e36d20227daa2cab6248635b86861d0a5bd0a9e19a0cf4c98eb4de3f7141" },
-      conversation: { rowCount: 4, sha256: "89c0f67ae402e3d519c925e554d2217369b341b5eb85ea852a1015a23a1b8a01" },
+      conversation: { rowCount: 4, sha256: "b904c7037c477ca0dcafbf8f81b0dd9283f17d347060f30f9c763f91f8b20672" },
       agent: { rowCount: 4, sha256: "5133ecce6c7b4babfbe5aaa102ae82698624764ec13272567e76b9a44f527e2a" },
       // The child's copied Turns name the requests of the copy's and the parent's files.
       message: { rowCount: 16, sha256: "0e48a1941588ca86d550b22852047a588add5dd14cbe49ee5379b889a9d6c54e" },
@@ -342,7 +342,7 @@ describe("continuations", () => {
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 4, sha256: "22e03dd6cdf94d1b50e8c393efeb02e01452e218a539f452ce79dda37d7e9a94" },
       // Each continuation names its parent; sess-orphan, sess-fam-solo and sess-legacy-fork name none.
-      conversation: { rowCount: 10, sha256: "d196ab1d213f20086ff2f5fe8205c9dd69238614c83753baa42d71baca5d10d8" },
+      conversation: { rowCount: 10, sha256: "b842345f468dca45be08595f86d0a446f5d7e858a41e6586241f2ab2ddc951ce" },
       agent: { rowCount: 12, sha256: "02d3ec7fae2b56dab3693127d339937d9654818fa7970c6dd830ddb47d0769c4" },
       // The copies of the parents' Messages, sess-fam-b's copied Sub-agent included, are flagged.
       message: { rowCount: 43, sha256: "1accad12a52ba280e0be3a006249a3daefaaa7077cf86615647ff847c6af8770" },
@@ -452,7 +452,7 @@ describe("continuations", () => {
 
       expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
         project: { rowCount: 1, sha256: "feba540146d17e8b299b85b8b419edb0f24a80e6a19fb1209d37f6936f17c75a" },
-        conversation: { rowCount: 1, sha256: "c6ea16f33bd46ad627cf17c229509f0b5670b10a9e9a64a4c0187cfe7dfd9687" },
+        conversation: { rowCount: 1, sha256: "7fefcbc6307e8bea43affd54778cd5a2382be3e301dfb4da7af9359a35dcec45" },
         // fork-a under fork-lead, fork-b under fork-a: each stored under the Sub-agent that spawned it.
         agent: { rowCount: 4, sha256: "a4f026fc46ec435fff99e25e5e712dcaad530c883e03f24f42bea5b60a49d4e1" },
         // Each fork's copy of its spawner's Messages is flagged.
@@ -522,6 +522,164 @@ describe("continuations", () => {
       expectForksFlagged(coldContent);
     });
   });
+});
+
+describe("Sub-agents typed or linked by their meta files", () => {
+  let tmpDir: string;
+  let logsRoot: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(tmpdir(), "cca-sub-agent-meta-equivalence-"));
+    logsRoot = path.join(tmpDir, "logs");
+    copyWithPinnedMtimes(path.join(FIXTURES_DIR, "agent-meta-logs"), logsRoot);
+    mkdirSync(path.join(tmpDir, "set-aside"));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  /** The path of sess-meta's file `fileName` under the logs root: its Main thread's, or one in `subagents/`. */
+  const metaLogPath = (fileName: string) =>
+    fileName === "sess-meta.jsonl"
+      ? path.join(logsRoot, "-Users-me-dev-meta", fileName)
+      : path.join(logsRoot, "-Users-me-dev-meta", "sess-meta", "subagents", fileName);
+  /** Move each of `fileNames` out of the logs root, or back into it. */
+  const setAside = (fileNames: string[]) => {
+    for (const fileName of fileNames) renameSync(metaLogPath(fileName), path.join(tmpDir, "set-aside", fileName));
+  };
+  const restore = (fileNames: string[]) => {
+    for (const fileName of fileNames) renameSync(path.join(tmpDir, "set-aside", fileName), metaLogPath(fileName));
+  };
+  /** Append one user Message `uuid` to sess-meta's file `fileName`. */
+  const appendTo = (fileName: string, uuid: string) => {
+    const record = {
+      type: "user",
+      uuid,
+      timestamp: "2026-06-21T15:00:00.000Z",
+      message: { role: "user", content: uuid },
+    };
+    writeFileSync(metaLogPath(fileName), `${readFileSync(metaLogPath(fileName), "utf8")}${JSON.stringify(record)}\n`);
+  };
+
+  /**
+   * Refresh the logs root, apply `change`, Refresh it again, then Refresh it
+   * cold into a second database: the lineage of each, and the second run's summary.
+   */
+  async function lineageAfterChangeAndCold(change: () => void) {
+    const changedDbPath = path.join(tmpDir, "changed.db");
+    await refresh({ logsRoot, dbPath: changedDbPath });
+    change();
+    const changedSummary = await refresh({ logsRoot, dbPath: changedDbPath });
+    const coldDbPath = path.join(tmpDir, "cold.db");
+    await refresh({ logsRoot, dbPath: coldDbPath });
+    return { changedLineage: lineageContent(changedDbPath), coldLineage: lineageContent(coldDbPath), changedSummary };
+  }
+
+  /** The stored lineage of sess-meta's Sub-agent `agentId`, in `lineage`. */
+  const lineageOf = (lineage: ReturnType<typeof lineageContent>, agentId: string) =>
+    lineage.find((agent) => agent.external_agent_id === agentId);
+
+  it("are stored as the pinned rows for the meta file logs", async () => {
+    const dbPath = path.join(tmpDir, "analyzer.db");
+    await refresh({ logsRoot, dbPath });
+
+    expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
+      project: { rowCount: 1, sha256: "87e358d6df0ff2d8431ebc48333192a593bcdf98a954f03524498a21d5655677" },
+      conversation: { rowCount: 1, sha256: "539ba8db09b8fd0f74c37cc5eaba63af4193978e235fdf23ced9e5a0c59be7cf" },
+      // bg, loose, inner and c-fork typed by their meta files; loose, inner and c-fork linked by them:
+      // inner under bg, not its fork; c-fork under s-spawner, not its own fork.
+      agent: { rowCount: 11, sha256: "2b93136b6fd37035bb9bdb9d27a1216e2d4aa9e1dfeeb9ad9639a8736841ab63" },
+      message: { rowCount: 48, sha256: "da3e8d95593d68a91fb93883591afac0f3cf26fc15767930854cd8a3ae820353" },
+      tool_call: { rowCount: 15, sha256: "f295985a25f659d9f3864305c7b893e8f647bbdb4d519e967dfb6d136111bf28" },
+      pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+      turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+      ...NO_LOGGED_API_REQUESTS,
+      continued_in: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+    });
+  });
+
+  // fg's ledger names deep; fg's file is unchanged, so only a lookup of the Agent call deep's meta file names finds it.
+  it("store a nested Sub-agent whose file appears after its spawner's ledger was stored as a cold Refresh does", async () => {
+    setAside(["agent-deep.jsonl", "agent-deep.meta.json"]);
+    const { changedLineage, coldLineage, changedSummary } = await lineageAfterChangeAndCold(() =>
+      restore(["agent-deep.jsonl", "agent-deep.meta.json"]),
+    );
+
+    // The Main thread, deep, fg, which holds the Agent call, and loose, whose
+    // stored spawn no ledger makes (see `hasLostStoredSpawn`): not a cold re-parse.
+    expect(changedSummary.logFilesParsed).toBe(4);
+    expect(lineageOf(coldLineage, "deep")).toMatchObject({
+      spawner_external_agent_id: "fg",
+      spawning_message_uuid: "fga1",
+      agent_type: "Plan",
+      resolved_model: "claude-sonnet-4-6",
+    });
+    expect(changedLineage).toEqual(coldLineage);
+  });
+
+  // No ledger names inner: bg holds the Agent call, and bg-fork a copy of it.
+  it("store a Sub-agent no ledger names whose file appears later as a cold Refresh does", async () => {
+    setAside(["agent-inner.jsonl"]);
+    const { changedLineage, coldLineage, changedSummary } = await lineageAfterChangeAndCold(() =>
+      restore(["agent-inner.jsonl"]),
+    );
+
+    // The Main thread, inner, bg and bg-fork, which hold the Agent call, and loose (see above).
+    expect(changedSummary.logFilesParsed).toBe(5);
+    expect(lineageOf(coldLineage, "inner")).toMatchObject({
+      spawner_external_agent_id: "bg",
+      spawning_message_uuid: "bga1",
+      agent_type: "general-purpose",
+    });
+    expect(changedLineage).toEqual(coldLineage);
+  });
+
+  // No ledger names c-fork: s-spawner holds the Agent call, and c-fork's own fork a copy of it.
+  it.each([["agent-c-fork.jsonl"], ["agent-c-fork.jsonl", "agent-a-fork-of-fork.jsonl"]])(
+    "store a fork no ledger names as a cold Refresh does when %s appears later",
+    async (...fileNames) => {
+      setAside(fileNames);
+      const { changedLineage, coldLineage } = await lineageAfterChangeAndCold(() => restore(fileNames));
+
+      expect(lineageOf(coldLineage, "c-fork")).toMatchObject({
+        spawner_external_agent_id: "s-spawner",
+        spawning_message_uuid: "sa1",
+      });
+      expect(changedLineage).toEqual(coldLineage);
+    },
+  );
+
+  it.each([
+    "agent-bg.jsonl",
+    "agent-bg-fork.jsonl",
+    "agent-inner.jsonl",
+    "agent-loose.jsonl",
+    "agent-deep.jsonl",
+    "agent-s-spawner.jsonl",
+    "agent-c-fork.jsonl",
+    "agent-a-fork-of-fork.jsonl",
+  ])("are stored as a cold Refresh stores them when %s alone is re-parsed", async (fileName) => {
+    const { changedLineage, coldLineage } = await lineageAfterChangeAndCold(() => appendTo(fileName, "appended"));
+
+    expect(lineageOf(coldLineage, "loose")).toMatchObject({ spawner_external_agent_id: null, agent_type: "Explore" });
+    expect(changedLineage).toEqual(coldLineage);
+  });
+
+  // A meta file appearing while no transcript changes waits for its Conversation's next change (log-format §4).
+  it.each(["agent-bg.meta.json", "agent-inner.meta.json"])(
+    "are stored as a cold Refresh stores them when %s appears with a change to the Main thread",
+    async (fileName) => {
+      setAside([fileName]);
+      const { changedLineage, coldLineage } = await lineageAfterChangeAndCold(() => {
+        restore([fileName]);
+        appendTo("sess-meta.jsonl", "appended");
+      });
+
+      expect(lineageOf(coldLineage, "bg")).toMatchObject({ agent_type: "Explore" });
+      expect(changedLineage).toEqual(coldLineage);
+    },
+  );
 });
 
 describe("Turns whose API request is in another file", () => {
@@ -885,6 +1043,34 @@ function crossFileContent(dbPath: string, logsRoot: string) {
       )
       .all();
     return { turnApiRequests, ...apiRequestContent(dbPath, logsRoot) };
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * The lineage of every Sub-agent of the database at `dbPath`, keyed by stable
+ * fields only, so it is the same whatever row ids the Refreshes gave: the Agent
+ * that spawned it, the `uuid` of the Message holding its spawning Agent call,
+ * its type and its resolved model.
+ */
+function lineageContent(dbPath: string) {
+  const db = new Database(dbPath, { readonly: true });
+  try {
+    return db
+      .prepare(
+        `SELECT "conversation"."session_id", "agent"."external_agent_id",
+                "spawner"."external_agent_id" AS "spawner_external_agent_id",
+                "spawning_message"."uuid" AS "spawning_message_uuid",
+                "agent"."agent_type", "agent"."resolved_model"
+           FROM "agent"
+           JOIN "conversation" ON "conversation"."id" = "agent"."conversation_id"
+           LEFT JOIN "agent" AS "spawner" ON "spawner"."id" = "agent"."parent_agent_id"
+           LEFT JOIN "message" AS "spawning_message" ON "spawning_message"."id" = "agent"."spawned_by_message_id"
+          WHERE "agent"."external_agent_id" IS NOT NULL
+          ORDER BY "conversation"."session_id", "agent"."external_agent_id"`,
+      )
+      .all() as { external_agent_id: string }[];
   } finally {
     db.close();
   }

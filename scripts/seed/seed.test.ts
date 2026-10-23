@@ -243,6 +243,36 @@ describe("seedEnvironment", () => {
     expect(coordinator.every((m) => m.origin?.senderAgentId === main?.tree.id && m.origin?.midTurn)).toBe(true);
   });
 
+  it("seeds a background Sub-agent whose type only its meta file states", async () => {
+    const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
+
+    const convo = (await listConversations({ dbPath: seed.dbPath })).find((c) => c.title === AGENT_MESSAGES_TITLE);
+    const main = await getTranscript(convo?.id ?? "", { dbPath: seed.dbPath });
+    const worker = main?.tree.children[0];
+    const spawn = main?.messages.flatMap((m) => m.toolCalls).find((tc) => tc.toolUseId === worker?.spawnedByToolUseId);
+    const spawnBody = await getToolCallBody(spawn?.id ?? -1, { dbPath: seed.dbPath });
+
+    expect(spawnBody?.resultText).toContain('"status":"async_launched"');
+    expect(spawnBody?.resultText).not.toContain('"agentType"');
+    expect(worker?.agentType).toMatch(/.+/);
+  });
+
+  it("writes a meta file beside each Sub-agent transcript, dated at its spawn", async () => {
+    const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
+
+    const metaFiles = Object.entries(readTree(seed.logsRoot)).filter(([file]) => file.endsWith(".meta.json"));
+    expect(metaFiles).toHaveLength(seed.generated.subAgents);
+    for (const [file, text] of metaFiles) {
+      const transcript = readFileSync(path.join(seed.logsRoot, file.replace(/\.meta\.json$/, ".jsonl")), "utf8");
+      const firstRecord = JSON.parse(transcript.split("\n")[0]!) as { timestamp: string };
+      expect(JSON.parse(text)).toMatchObject({ agentType: expect.any(String), toolUseId: expect.any(String) });
+      expect({ file, mtime: mtimeOf(path.join(seed.logsRoot, file)) }).toEqual({
+        file,
+        mtime: Date.parse(firstRecord.timestamp),
+      });
+    }
+  });
+
   it("seeds a Conversation whose main agent spans three Transcript pages, a known prompt on the second", async () => {
     const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
 
@@ -286,7 +316,7 @@ describe("seedEnvironment", () => {
   it("dates each log file at its latest record, as if written then", async () => {
     const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
 
-    const logs = Object.entries(readTree(seed.logsRoot));
+    const logs = Object.entries(readTree(seed.logsRoot)).filter(([file]) => file.endsWith(".jsonl"));
     expect(logs).toHaveLength(seed.generated.conversations + seed.generated.subAgents);
     for (const [file, text] of logs) {
       const timestamps = text
@@ -307,7 +337,8 @@ describe("seedEnvironment", () => {
     const second = await seedEnvironment({ dir: path.join(tmpDir, "second"), now: NOW });
 
     const files = readTree(first.logsRoot);
-    expect(Object.keys(files)).toHaveLength(first.generated.conversations + first.generated.subAgents);
+    // A log per Conversation and per Sub-agent, and a meta file beside each Sub-agent's.
+    expect(Object.keys(files)).toHaveLength(first.generated.conversations + 2 * first.generated.subAgents);
     expect(readTree(second.logsRoot)).toEqual(files);
   });
 

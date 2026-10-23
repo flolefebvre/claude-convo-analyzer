@@ -268,8 +268,20 @@ function makeUsage(g: Gen, scale: number): Usage {
   };
 }
 
-/** A sub-agent's transcript: its id, and its JSONL records in file order. */
-export type SubAgent = { agentId: string; lines: string[] };
+/**
+ * What Claude Code writes into `agent-<id>.meta.json` at a sub-agent's spawn
+ * (log-format §4): `requestShape` only on a background launch.
+ */
+type SubAgentMeta = {
+  agentType: string;
+  description: string;
+  toolUseId: string;
+  spawnDepth: number;
+  requestShape?: "background";
+};
+
+/** A sub-agent's transcript: its id, its JSONL records in file order, and its meta file. */
+export type SubAgent = { agentId: string; lines: string[]; meta: SubAgentMeta };
 
 // ── API errors (issue #47) ──────────────────────────────────────────────────
 // Turns the API itself failed on: the log marks them `isApiErrorMessage` with
@@ -519,6 +531,9 @@ function toolResultText(g: Gen, kind: (typeof TOOL_KINDS)[number], isError: bool
  * last one only reply, so each later Turn answers a tool result and the
  * sub-agent ends on its reply, as in a real sub-agent's transcript.
  * `agentType` pins its type; the type is still drawn, so the stream stays the same.
+ * `isBackground: true` launches it in the background: its ledger is an
+ * `async_launched` one, which states no type (log-format §4); the completed
+ * ledger's figures are still drawn, so the stream stays the same.
  */
 function spawnSubAgent(
   g: Gen,
@@ -528,10 +543,12 @@ function spawnSubAgent(
     canFail = true,
     stopsOnlyAtItsLastTurn = false,
     agentType: pinnedAgentType,
+    isBackground = false,
   }: {
     canFail?: boolean;
     stopsOnlyAtItsLastTurn?: boolean;
     agentType?: (typeof SUBAGENT_TYPES)[number];
+    isBackground?: boolean;
   } = {},
 ): { toolUse: object; ledgerResult: object; sub: SubAgent } {
   const agentId = g.uid("agent").replace("agent-", "");
@@ -595,13 +612,19 @@ function spawnSubAgent(
     }
   }
 
+  const description = SUBAGENT_DESCRIPTIONS[agentType];
   const toolUse = {
     type: "tool_use",
     id: toolUseId,
     name: "Agent",
-    input: { subagent_type: agentType, description: SUBAGENT_DESCRIPTIONS[agentType], prompt },
+    input: {
+      subagent_type: agentType,
+      description,
+      prompt,
+      ...(isBackground ? { run_in_background: true } : {}),
+    },
   };
-  const ledgerResult = {
+  const completedLedgerResult = {
     agentId,
     agentType,
     status: "completed",
@@ -612,7 +635,26 @@ function spawnSubAgent(
     totalDurationMs: g.int(8_000, 60_000),
     usage: makeUsage(g, 0.6),
   };
-  return { toolUse, ledgerResult, sub: { agentId, lines: subLines } };
+  const ledgerResult = isBackground
+    ? {
+        isAsync: true,
+        status: "async_launched",
+        agentId,
+        description,
+        resolvedModel: subModel,
+        prompt,
+        outputFile: `/tmp/claude/tasks/${agentId}.output`,
+        canReadOutputFile: true,
+      }
+    : completedLedgerResult;
+  const meta: SubAgentMeta = {
+    agentType,
+    description,
+    toolUseId,
+    spawnDepth: 1,
+    ...(isBackground ? { requestShape: "background" as const } : {}),
+  };
+  return { toolUse, ledgerResult, sub: { agentId, lines: subLines, meta } };
 }
 
 /** Where a later session can pick this one up (`--resume`/fork): the record it
@@ -952,15 +994,20 @@ function agentMessagesConversation(g: Gen, index: number): Conversation {
     ),
   );
 
-  const spawn = (agentType?: (typeof SUBAGENT_TYPES)[number]): { sub: SubAgent; agentType: string } => {
-    const { toolUse, ledgerResult, sub } = spawnSubAgent(g, at(60), cwd, { canFail: false, agentType });
+  const spawn = (opts: {
+    agentType?: (typeof SUBAGENT_TYPES)[number];
+    isBackground?: boolean;
+  }): { sub: SubAgent; agentType: string } => {
+    const { toolUse, ledgerResult, sub } = spawnSubAgent(g, at(60), cwd, { canFail: false, ...opts });
     lines.push(assistantTurn(g, t, cwd, model, { toolUses: [toolUse] }));
     lines.push(toolResult(g, at(5), cwd, (toolUse as { id: string }).id, ledgerResult));
-    return { sub, agentType: (ledgerResult as { agentType: string }).agentType };
+    return { sub, agentType: sub.meta.agentType };
   };
-  const { sub: worker, agentType: workerType } = spawn();
+  // In the background, as half the spawns in real logs are: its hand-back
+  // comes as an Inter-agent message, and only its meta file states its type.
+  const { sub: worker, agentType: workerType } = spawn({ isBackground: true });
   // Plan, for its markdown Task prompt: the e2e opened-Agent-call test relies on it.
-  const { sub: stopped } = spawn("Plan");
+  const { sub: stopped } = spawn({ agentType: "Plan" });
 
   // The worker reports in, then hands back; meanwhile the person and another
   // session speak while the main agent is busy.
@@ -1777,7 +1824,11 @@ function loggedRequestsSubAgent(
       totalToolUseCount: 1,
       totalDurationMs: 40_000,
     },
-    sub: { agentId, lines },
+    sub: {
+      agentId,
+      lines,
+      meta: { agentType: "Explore", description: SUBAGENT_DESCRIPTIONS.Explore, toolUseId, spawnDepth: 1 },
+    },
   };
 }
 
@@ -1820,6 +1871,16 @@ function scratchConversations(g: Gen, startIndex: number): Conversation[] {
 /** The newest record timestamp, main threads and sub-agents alike, in epoch ms. */
 function latestTimestamp(conversations: readonly Conversation[]): number {
   return latestLineTimestamp(conversations.flatMap((c) => [...c.mainLines, ...c.subAgents.flatMap((s) => s.lines)]));
+}
+
+/**
+ * Write `sub`'s meta file at `filePath`, dated at its first record, as Claude
+ * Code writes it at the spawn.
+ */
+function writeSubAgentMeta(filePath: string, sub: SubAgent): void {
+  writeFileSync(filePath, JSON.stringify(sub.meta));
+  const spawnedAt = new Date(Date.parse((JSON.parse(sub.lines[0]!) as { timestamp: string }).timestamp));
+  utimesSync(filePath, spawnedAt, spawnedAt);
 }
 
 /** The newest timestamp among `lines`' records, in epoch ms. */
@@ -1884,6 +1945,7 @@ export function generateFakeLogs(opts: { logsRoot: string; now: Date }): FakeLog
       mkdirSync(subDir, { recursive: true });
       for (const sub of convo.subAgents) {
         writeLog(path.join(subDir, `agent-${sub.agentId}.jsonl`), sub.lines);
+        writeSubAgentMeta(path.join(subDir, `agent-${sub.agentId}.meta.json`), sub);
         subAgents += 1;
       }
     }

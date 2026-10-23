@@ -544,6 +544,33 @@ function extractAgentSpawn(record: Record<string, unknown>, toolUseId: string): 
   };
 }
 
+/**
+ * What a Sub-agent's `agent-<id>.meta.json` states about its spawn (log-format
+ * §4): its Agent type, and the `tool_use_id` of the `Agent` call that spawned it.
+ */
+export type ParsedSubAgentMeta = {
+  agentType: string | null;
+  toolUseId: string | null;
+};
+
+/**
+ * Parse the text of a Sub-agent's meta file. A field it lacks, or holds as
+ * anything but a non-empty string, is null; so is every field of a file that is
+ * not a JSON object — a malformed meta file is skipped, never thrown.
+ *
+ * @example parseSubAgentMeta('{"agentType":"Explore","toolUseId":"toolu_01"}') // { agentType: "Explore", toolUseId: "toolu_01" }
+ */
+export function parseSubAgentMeta(text: string): ParsedSubAgentMeta {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    raw = null;
+  }
+  const meta = isRecord(raw) ? raw : {};
+  return { agentType: asString(meta.agentType), toolUseId: asString(meta.toolUseId) };
+}
+
 /** Sum every token bucket of a raw `usage` (the parent-aggregate cross-check). */
 function sumUsageTokens(usage: RawUsage): number {
   const s = parseUsage(usage);
