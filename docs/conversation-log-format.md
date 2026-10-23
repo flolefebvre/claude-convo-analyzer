@@ -54,7 +54,7 @@ Counts are from the snapshot (across main + sub-agent files combined).
 | `assistant`             | 11808  | An assistant turn (see §3). Carries `message.usage`, `message.model`, content blocks, attribution.                                                                                                                                                      | **Yes** → `message` (+ `tool_call`)        |
 | `user`                  | 7251   | A user message OR a `tool_result` carrier (see §4).                                                                                                                                                                                                     | **Yes** → `message` / feeds `tool_call`    |
 | `attachment`            | 3105   | A dict `attachment` tied to a message via `parentUuid`: pasted content (images, files), a `queued_command` — a message delivered while the agent was working (§8) — or, since 2.1.266, injected context with the text the model saw in `rendered` (§9). | **Partly** → `queued_command`, `rendered`  |
-| `ai-title`              | 1252   | `aiTitle`: AI-generated conversation title.                                                                                                                                                                                                             | **Yes** → `conversation.title`             |
+| `ai-title`              | 1252   | `aiTitle`: AI-generated conversation title, re-written as the session goes: the **last** wins, `""` clears it, a record without a string is skipped. 1,867 of 2,650 originals carry ≥2; 25 with ≥2 distinct values (Oct 2026).                          | **Yes** → `conversation.title`             |
 | `mode`                  | 1016   | `mode` (e.g. `normal`) state marker.                                                                                                                                                                                                                    | **No** (low value)                         |
 | `permission-mode`       | 1013   | `permissionMode` (e.g. `default`, `plan`) state marker. Also present per-turn on `user` records.                                                                                                                                                        | **Partly** (per-turn field on `message`)   |
 | `last-prompt`           | 992    | `lastPrompt` text + `leafUuid`. Duplicates content already in `user` records.                                                                                                                                                                           | **No** (redundant)                         |
@@ -66,7 +66,7 @@ Counts are from the snapshot (across main + sub-agent files combined).
 | `agent-name`            | 50     | `agentName` — a name assigned to a (sub)agent session.                                                                                                                                                                                                  | **No**                                     |
 | `agent-setting`         | 23     | `agentSetting` (e.g. `claude`).                                                                                                                                                                                                                         | **No**                                     |
 | `worktree-state`        | 15     | `worktreeSession` dict — git worktree association.                                                                                                                                                                                                      | **No**                                     |
-| `custom-title`          | 15     | `customTitle` — user-set conversation title.                                                                                                                                                                                                            | **Consider** (overrides `ai-title`)        |
+| `custom-title`          | 15     | `customTitle` — user-set conversation title; the **last** wins, as for `ai-title`, and overrides it. 1,922 records (Oct 2026), 133 files with several, none empty.                                                                                      | **Yes** → `conversation.title`             |
 | `api-request`           | §9     | One API request an Agent sent, since 2.1.300: its parameters, and pointers to its system prompt, tools and messages.                                                                                                                                    | **Yes** → `api_request` (§9)               |
 | `api-request-shape`     | §9     | The system prompt and tools of `api-request`s, stored once under `shapeHash`.                                                                                                                                                                           | **Yes** → `system_prompt`, `tool_set` (§9) |
 | `api-request-blob`      | §9     | One message of `api-request`s, stored once under its hash.                                                                                                                                                                                              | **Yes** → `sent_message` (§9)              |
@@ -677,8 +677,13 @@ on 2,722 Main-thread files (2.1.143–2.1.309), October 2026:
 - The copy holds only the chain records (`user`, `assistant`, `attachment`,
   `system`), contiguous. The original interleaves other records (`api-request`,
   `mode`, `last-prompt`…) in the same stretch: 54 of 55 pairs tell apart this
-  way. A copy usually opens with an `ai-title` (the parent's title, 67 of 71)
-  and an `agent-name`, an original with `mode`/`permission-mode`.
+  way. A copy usually opens with an `ai-title` (67 of 71) and an `agent-name`,
+  an original with `mode`/`permission-mode`.
+- The copy's only title is the parent's: on resume Claude Code re-appends the
+  current title into the new file, and all 71 named children hold one distinct
+  `ai-title` value, the parent's. So a continuation shows its parent's title,
+  in Claude Code's `/resume` picker and here alike; the family tree is what
+  tells the sittings apart.
 - Since 2.1.296 the parent's file ends with a `continued-in` record naming the
   child: `{"type":"continued-in","sessionId":<parent>,"continuedInSessionId":<child>}`.
   A session resumed twice carries two. 71 files hold one.
