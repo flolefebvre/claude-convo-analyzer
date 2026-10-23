@@ -17,24 +17,36 @@
 // bounded by the largest Conversation, mostly its sent messages, which are
 // stored whole — its tool results are already cut to their storage cap.
 //
+// `--live-update-of-largest-main-thread` then times what Live costs on the
+// largest active Conversation: a second Refresh after its Main thread changed.
+// The change is simulated in the scratch database, never on disk, so the bench
+// stays read-only on the logs, the real ones included.
+//
 // Not part of `check`, `gate` or CI: it reads the real logs and takes minutes.
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { parseArgs } from "node:util";
+import Database from "better-sqlite3";
 
 import { defaultLogsRoot } from "@/core/discovery";
-import { refresh, type RefreshPhase, type RefreshProgress } from "@/core/refresh";
+import { refresh, type RefreshPhase, type RefreshProgress, type RefreshSummary } from "@/core/refresh";
 
-const USAGE = `Usage: pnpm bench:refresh
+const USAGE = `Usage: pnpm bench:refresh [--live-update-of-largest-main-thread]
 
 Run a cold Refresh of CCA_LOGS_ROOT (default ~/.claude/projects) into a scratch
 database under the OS temp directory, then print the phase split, the peak live
 heap (each sample taken after a forced GC) with where it was taken, and the
 longest main-thread stall. The scratch database is deleted afterwards.
 
+  --live-update-of-largest-main-thread
+          After the cold Refresh, Refresh once more as Live does when the Main
+          thread of the Conversation with the largest one grows, and print that
+          run's phase split. The change is simulated by making the stored change
+          key of that Main thread stale in the scratch database: no log file is
+          written or touched.
   --help  Show this message.`;
 
 const BYTES_PER_MIB = 1024 * 1024;
@@ -106,8 +118,48 @@ function formatSeconds(ms: number): string {
   return `${(ms / 1000).toFixed(1)} s`;
 }
 
+/** Print each phase of `summary`: its duration, in milliseconds, and its share of the run. */
+function printPhases(summary: RefreshSummary): void {
+  console.log("Phases:");
+  for (const [phase, durationMs] of Object.entries(summary.durationMsByPhase) as [RefreshPhase, number][]) {
+    const share = summary.durationMs === 0 ? 0 : (100 * durationMs) / summary.durationMs;
+    console.log(
+      `  ${phase.padEnd(10)} ${`${durationMs.toFixed(0)} ms`.padStart(11)}  ${share.toFixed(1).padStart(5)} %`,
+    );
+  }
+}
+
+/**
+ * In the database at `dbPath`, make the stored change key of the largest Main
+ * thread stale — the Main thread file of a stored Conversation with the most
+ * bytes — so the next Refresh finds it changed, as after Live saw it grow.
+ * Returns that file, or null when no Conversation is stored. Reads the log
+ * files' sizes only: nothing on disk is written.
+ */
+function markLargestMainThreadChanged(dbPath: string): { sourcePath: string; sizeInBytes: number } | null {
+  const db = new Database(dbPath);
+  try {
+    const conversations = db.prepare(`SELECT "id", "source_path" AS "sourcePath" FROM "conversation"`).all() as {
+      id: number;
+      sourcePath: string;
+    }[];
+    let largest: { id: number; sourcePath: string; sizeInBytes: number } | null = null;
+    for (const { id, sourcePath } of conversations) {
+      const sizeInBytes = statSync(sourcePath, { throwIfNoEntry: false })?.size ?? 0;
+      if (largest === null || sizeInBytes > largest.sizeInBytes) largest = { id, sourcePath, sizeInBytes };
+    }
+    if (largest === null) return null;
+    db.prepare(`UPDATE "conversation" SET "source_mtime" = -1 WHERE "id" = ?`).run(largest.id);
+    return { sourcePath: largest.sourcePath, sizeInBytes: largest.sizeInBytes };
+  } finally {
+    db.close();
+  }
+}
+
 async function main(): Promise<void> {
-  const { values } = parseArgs({ options: { help: { type: "boolean" } } });
+  const { values } = parseArgs({
+    options: { help: { type: "boolean" }, "live-update-of-largest-main-thread": { type: "boolean" } },
+  });
   if (values.help) {
     console.log(USAGE);
     return;
@@ -147,11 +199,7 @@ async function main(): Promise<void> {
         `${summary.malformedLinesSkipped} malformed lines skipped, ${summary.duplicateSessionsSkipped.length} duplicates`,
     );
     console.log(`Total:         ${formatSeconds(summary.durationMs)}`);
-    console.log("Phases:");
-    for (const [phase, durationMs] of Object.entries(summary.durationMsByPhase) as [RefreshPhase, number][]) {
-      const share = summary.durationMs === 0 ? 0 : (100 * durationMs) / summary.durationMs;
-      console.log(`  ${phase.padEnd(10)} ${formatSeconds(durationMs).padStart(9)}  ${share.toFixed(1).padStart(5)} %`);
-    }
+    printPhases(summary);
     console.log(
       `Peak heap:     ${(sampling.heapUsedBytes / BYTES_PER_MIB).toFixed(0)} MiB heapUsed ` +
         `at ${formatSamplePosition(sampling.heapUsedPeakAt)}, ` +
@@ -160,6 +208,26 @@ async function main(): Promise<void> {
         `forced GC ${formatSeconds(sampling.forcedGcMs)}, in Total, not in the phases)`,
     );
     console.log(`Longest stall: ${formatSeconds(longestStallMs)} (main thread, setImmediate gap)`);
+
+    if (values["live-update-of-largest-main-thread"]) {
+      const largestMainThread = markLargestMainThreadChanged(dbPath);
+      if (largestMainThread === null) {
+        console.log("\nLive update: no Conversation stored, nothing to change.");
+        return;
+      }
+      const liveUpdateSummary = await refresh({ logsRoot, dbPath });
+      console.log("");
+      console.log(
+        `Live update of the largest Main thread: ${largestMainThread.sourcePath} ` +
+          `(${(largestMainThread.sizeInBytes / BYTES_PER_MIB).toFixed(1)} MiB)`,
+      );
+      console.log(
+        `Conversations: ${liveUpdateSummary.conversationsParsed} parsed, ` +
+          `${liveUpdateSummary.conversationsSkipped} skipped`,
+      );
+      console.log(`Total:         ${liveUpdateSummary.durationMs} ms`);
+      printPhases(liveUpdateSummary);
+    }
   } finally {
     rmSync(scratchDir, { recursive: true, force: true });
   }
