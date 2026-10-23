@@ -47,7 +47,7 @@ docs/
 pnpm dev           Run the app (next dev) on :3000
 pnpm seed          Rebuild the fake-data seed environment in data/seed/ (seed.db + projects/); --now=<ISO> pins it
 pnpm gen           Regenerate the typed route builders in src/generated/routes/ (next-pipe gen); run after adding, moving or removing a route
-pnpm dev:seed      Seed, then run next dev on it; prints `Seeded app: http://localhost:<port>` (first free from 3001, or $PORT)
+pnpm dev:seed      Seed, then run next dev on it; prints `Seeded app: http://127.0.0.1:<port>` (first free from 3001, or $PORT)
 pnpm e2e:server    Seed, then next build with the testing API exposed and next start on it ($PORT, as dev:seed) — what pnpm e2e serves
 pnpm bench:refresh Cold Refresh of $CCA_LOGS_ROOT (default ~/.claude/projects) into a scratch DB; prints phase split, peak live heap (forced GC before each sample) and where it was, longest stall. Not in check/gate/CI
 pnpm check         Format check, lint, duplication, typecheck, then the tests affected since $CHECK_BASE (default origin/main) — the inner loop

@@ -7,7 +7,7 @@ root.
 ## Start the seeded app
 
 - Start `pnpm dev:seed` with the Bash tool's `run_in_background: true`, then
-  read its output file until the `Seeded app: http://localhost:<port>` line
+  read its output file until the `Seeded app: http://127.0.0.1:<port>` line
   appears; that URL is the app.
 - Stop it with `TaskStop` on that background task: `kill` on the `pnpm` pid
   orphans `next dev`, which keeps the port.
@@ -19,7 +19,7 @@ so concurrent agents never share a browser; spell it out, since a worktree
 session refuses `pnpm` commands carrying `$(...)`:
 
 ```sh
-pnpm exec playwright-cli -s=<worktree> open http://localhost:<port>
+pnpm exec playwright-cli -s=<worktree> open http://127.0.0.1:<port>
 pnpm exec playwright-cli -s=<worktree> snapshot          # accessibility tree, with [ref=eN] refs
 pnpm exec playwright-cli -s=<worktree> find "<text>"     # snapshot nodes matching the text
 pnpm exec playwright-cli -s=<worktree> click e31         # a ref from the latest snapshot
@@ -46,9 +46,9 @@ Regenerate an image in `docs/images/` after a UI change it shows. Start
 `Seeded app:` line), then:
 
 ```sh
-pnpm exec playwright-cli -s=<worktree> open --config .playwright/readme-screenshot.config.json http://localhost:<port>
+pnpm exec playwright-cli -s=<worktree> open --config .playwright/readme-screenshot.config.json http://127.0.0.1:<port>
 # then, for each image in the list below:
-pnpm exec playwright-cli -s=<worktree> goto "http://localhost:<port><path>"
+pnpm exec playwright-cli -s=<worktree> goto "http://127.0.0.1:<port><path>"
 pnpm exec playwright-cli -s=<worktree> resize 1920 <height>
 # the image's clicks, if any
 pnpm exec playwright-cli -s=<worktree> mousemove 0 0
@@ -138,7 +138,7 @@ two worktrees at once, give one of them a different `E2E_PORT`.
   directory, so each start rebuilds it under the other.
 - The lock behind `instant()` and the Navigation Inspector's "Pause on
   navigations" is the `next-instant-navigation-testing` cookie. Cookies are
-  shared across ports on `localhost`, so in a manual browser with `:3000` and
+  shared across ports on the same host (`127.0.0.1`), so in a manual browser with `:3000` and
   the seeded app both open, a pause in one also freezes navigations in the
   other. Playwright's specs aren't affected: each one starts in a fresh
   browser context.

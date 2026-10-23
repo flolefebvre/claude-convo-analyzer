@@ -1,5 +1,7 @@
-// Port probing for `pnpm dev:seed`. A probe binds all interfaces, as `next dev`
-// does by default, so a port held on either IPv4 or IPv6 counts as taken.
+// Port probing for `pnpm dev:seed`. A probe binds all interfaces, deliberately
+// stricter than the server's loopback-only bind: a port held on any interface or
+// stack counts as taken, because on macOS binding 127.0.0.1 succeeds while
+// another program listens on 0.0.0.0, which would then lose its loopback traffic.
 
 import { createServer } from "node:net";
 
