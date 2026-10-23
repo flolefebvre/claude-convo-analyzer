@@ -16,6 +16,7 @@ import { type MessageOrigin, messageOriginSchema } from "@/core/parse";
 import type { Prisma, PrismaClient } from "@/core/prisma/generated/client";
 import { PARSER_VERSION } from "@/core/refresh";
 import { toolCallBodyParts, type ToolCallBodyParts } from "@/core/tool-call-views";
+import { orderedBefore, REVERSE_TRANSCRIPT_ORDER, TRANSCRIPT_ORDER } from "@/core/transcript-order";
 import { failedAttemptsByMessage } from "@/core/what-was-sent";
 
 export type ConversationSummary = {
@@ -1156,22 +1157,6 @@ function renderedMessages(agentId: number): Prisma.MessageWhereInput {
   };
 }
 
-/** The transcript order: timestamp, then id; SQLite sorts null timestamps first. */
-const TRANSCRIPT_ORDER: Prisma.MessageOrderByWithRelationInput[] = [{ timestamp: "asc" }, { id: "asc" }];
-
-/**
- * The messages that come before `row` in {@link TRANSCRIPT_ORDER}. An undated
- * row follows only the undated rows logged before it; a dated one follows
- * every undated row, every earlier timestamp, and its own timestamp's
- * earlier-logged rows.
- */
-function orderedBefore(row: { id: number; timestamp: bigint | null }): Prisma.MessageWhereInput {
-  if (row.timestamp === null) return { timestamp: null, id: { lt: row.id } };
-  return {
-    OR: [{ timestamp: null }, { timestamp: { lt: row.timestamp } }, { timestamp: row.timestamp, id: { lt: row.id } }],
-  };
-}
-
 /**
  * Read the selected agent's Transcript page and the figures of its whole
  * transcript. The page is the explicit `opts.page` when given (`"all"`: the
@@ -1231,7 +1216,7 @@ async function effortBeforeMessage(
   const timestamp = message.timestamp === null ? null : BigInt(Date.parse(message.timestamp));
   const row = await prisma.message.findFirst({
     where: { AND: [rendered, { effort: { not: null } }, orderedBefore({ id: message.id, timestamp })] },
-    orderBy: [{ timestamp: "desc" }, { id: "desc" }],
+    orderBy: REVERSE_TRANSCRIPT_ORDER,
     select: { effort: true },
   });
   return row?.effort ?? null;
