@@ -13,4 +13,22 @@
 - Pin `node-version` to the major the repo is developed on, never a range that lets CI drift onto a major nobody has run.
 - Keep `pnpm/action-setup` ahead of `actions/setup-node`, which needs pnpm on the PATH for `cache: pnpm`. It takes no `version` input: pnpm resolves from the `packageManager` pin in package.json.
 
-Before pushing a change to the workflow, lint it with `docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest`.
+Before pushing a change to a workflow, lint them all with `docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest`.
+
+## Release
+
+`.github/workflows/release.yml` runs on every pushed `v*` tag, and nothing else. Its jobs run in sequence, each only if the one before succeeded:
+
+1. `version`, before anything is built, classifies the tag against package.json's `version` (`scripts/classify-release-tag.ts`, its rule in `scripts/release-tag.ts`) and exposes the result as the output `kind`. `v<version>` is a `release`, and its tagged commit must also be on `origin/main`: a release is never cut from a branch. `v<version>-<pre-release>` (`v0.1.0-rc.1`) is a `rehearsal`, and may point at any commit. Any other tag fails the job, naming the tag and the version.
+2. `ci` calls `ci.yml` itself (its `workflow_call` trigger), so a release passes exactly the checks a pull request does, the three-OS `smoke` included. Never copy a ci job into release.yml: add it to ci.yml, and both run it. A tag push does not trigger ci.yml on its own, so the checks run once.
+3. `publish` downloads the `package-tarball` artifact that `ci` packed and smoked, the same run's, and publishes that file, never a rebuild: `npm publish <tarball> --provenance --access public`, then `gh release create <tag> <tarball> --verify-tag --generate-notes`, whose notes are the titles of the pull requests merged since the previous tag, with the tarball attached. On a `rehearsal`, `npm publish` gets `--dry-run` and no GitHub release is created; everything else runs as for a `release`.
+
+`publish` holds the only write permissions (`id-token: write`, `contents: write`); the workflow's default is `contents: read`. It authenticates to npm by trusted publishing (OIDC): no npm token is stored, and npm's trusted publisher for the package names `release.yml`, so keep the file's name and publish from no other workflow. Trusted publishing needs npm 11.5.1 or later; the job prints the npm that Node 24 bundles and upgrades it when it is older. `publish` builds nothing, so it neither checks out the repo nor calls the setup action: `actions/setup-node` with `registry-url` (the `.npmrc` the OIDC exchange needs) and no cache is all it installs.
+
+To cut a release:
+
+1. In a pull request, bump `version` in package.json (`npm version <major|minor|patch> --no-git-tag-version`), and merge it.
+2. Optionally rehearse: tag the merge commit `v<version>-rc.1`, push the tag, watch the run go green, then delete the tag (`git push origin --delete <tag>`, `git tag -d <tag>`).
+3. Tag the merge commit `v<version>` (`git tag v<version> <merge commit>`), and push the tag (`git push origin v<version>`).
+
+A release that fails before `publish` published nothing: fix the cause in a pull request, then delete the tag and tag the new merge commit. A version npm has published can never be published again, so a failure after `npm publish` (in `gh release create`) is finished by hand with that command, not by re-tagging.
