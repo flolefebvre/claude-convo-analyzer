@@ -42,6 +42,35 @@ export function migrationsDir(): string {
 /** Tracker table: which committed migrations have been applied to this DB. */
 const MIGRATION_LEDGER = "_cca_migrations";
 
+/** How long an opener waits for another connection's write lock before failing. */
+const MIGRATION_LOCK_TIMEOUT_MS = 5000;
+
+/** Pause between two attempts at the WAL switch while another opener holds the file. */
+const WAL_SWITCH_RETRY_INTERVAL_MS = 10;
+
+/**
+ * Put `db`'s file in WAL mode, retrying while another connection holds it.
+ * Switching a fresh rollback-journal file to WAL needs an exclusive lock, and
+ * two openers both hold SHARED from the pragma's own read: SQLite skips the busy
+ * handler on that upgrade to avoid deadlock, so the connection's `timeout`
+ * cannot cover it, and a journal-mode change cannot sit inside a transaction.
+ * Only `SQLITE_BUSY` is retried, up to {@link MIGRATION_LOCK_TIMEOUT_MS}.
+ */
+function switchToWalWaitingOnOtherOpeners(db: Database.Database): void {
+  const deadline = Date.now() + MIGRATION_LOCK_TIMEOUT_MS;
+  const sleepSignal = new Int32Array(new SharedArrayBuffer(4));
+  for (;;) {
+    try {
+      db.pragma("journal_mode = WAL");
+      return;
+    } catch (error) {
+      const isLockContention = (error as { code?: unknown }).code === "SQLITE_BUSY";
+      if (!isLockContention || Date.now() >= deadline) throw error;
+      Atomics.wait(sleepSignal, 0, 0, WAL_SWITCH_RETRY_INTERVAL_MS);
+    }
+  }
+}
+
 /**
  * Apply every committed migration's `migration.sql` to the database at `dbPath`,
  * in lexicographic (timestamp) order, idempotently and EXACTLY ONCE each. Used
@@ -50,11 +79,17 @@ const MIGRATION_LEDGER = "_cca_migrations";
  *
  * Applied migrations are recorded by name in a small `_cca_migrations` ledger
  * (mirroring Prisma's `_prisma_migrations` semantics). On every open we apply
- * only the migrations NOT yet in the ledger, each in its own transaction with
- * its ledger insert — so a pre-existing DB still picks up a newly added
- * migration (no schema drift on upgrade) and re-opening is a no-op. The previous
- * "short-circuit if the `project` table exists" guard is gone: it would have
- * silently skipped any migration added after the initial one.
+ * only the migrations NOT yet in the ledger, each with its ledger insert — so a
+ * pre-existing DB still picks up a newly added migration (no schema drift on
+ * upgrade) and re-opening is a no-op.
+ *
+ * Safe for concurrent openers: the ledger is first read without a lock, and an
+ * up-to-date database returns there, taking no write lock. Otherwise the whole
+ * catch-up runs in one `BEGIN IMMEDIATE` transaction that re-reads the ledger
+ * first, so a second opener waits on the write lock (up to
+ * {@link MIGRATION_LOCK_TIMEOUT_MS}) and then finds nothing left to apply. Being
+ * one transaction, a failing migration rolls back the ones applied before it
+ * in the same open too, and they are re-applied on every open until it is fixed.
  */
 function applyMigrations(dbPath: string): void {
   const dir = path.dirname(dbPath);
@@ -62,12 +97,12 @@ function applyMigrations(dbPath: string): void {
     mkdirSync(dir, { recursive: true });
   }
 
-  const db = new Database(dbPath);
+  const db = new Database(dbPath, { timeout: MIGRATION_LOCK_TIMEOUT_MS });
   try {
     // WAL belongs to the database FILE, so setting it on this first connection
     // puts every later one in WAL too: readers then run beside the one writer
     // instead of hitting SQLITE_BUSY while it commits.
-    db.pragma("journal_mode = WAL");
+    switchToWalWaitingOnOtherOpeners(db);
     // Commits skip the fsync per transaction: a power cut may lose the last
     // ones, acceptable since the database is a cache rebuildable from the logs.
     db.pragma("synchronous = NORMAL");
@@ -78,32 +113,28 @@ function applyMigrations(dbPath: string): void {
        )`,
     );
 
-    const applied = new Set(
-      (db.prepare(`SELECT migration_name FROM "${MIGRATION_LEDGER}"`).all() as { migration_name: string }[]).map(
-        (r) => r.migration_name,
-      ),
-    );
-
-    const migrationDirs = readdirSync(MIGRATIONS_DIR, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
+    const selectAppliedNames = db.prepare(`SELECT migration_name FROM "${MIGRATION_LEDGER}"`).pluck();
+    const committedNames = readdirSync(MIGRATIONS_DIR, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && existsSync(path.join(MIGRATIONS_DIR, entry.name, "migration.sql")))
       .map((entry) => entry.name)
       .sort();
+    const missingNames = () => {
+      const appliedNames = new Set(selectAppliedNames.all() as string[]);
+      return committedNames.filter((name) => !appliedNames.has(name));
+    };
+
+    if (missingNames().length === 0) return;
 
     const insertLedger = db.prepare(`INSERT INTO "${MIGRATION_LEDGER}" (migration_name, applied_at) VALUES (?, ?)`);
-
-    for (const name of migrationDirs) {
-      if (applied.has(name)) continue;
-      const sqlPath = path.join(MIGRATIONS_DIR, name, "migration.sql");
-      if (!existsSync(sqlPath)) continue;
-      const sql = readFileSync(sqlPath, "utf8");
-      // Each migration + its ledger row land atomically: a half-applied
-      // migration must never be recorded as done.
-      const run = db.transaction(() => {
-        db.exec(sql);
+    // Each migration lands with its ledger row, in the same transaction: a
+    // half-applied migration is never recorded as done.
+    const applyMissing = db.transaction(() => {
+      for (const name of missingNames()) {
+        db.exec(readFileSync(path.join(MIGRATIONS_DIR, name, "migration.sql"), "utf8"));
         insertLedger.run(name, Date.now());
-      });
-      run();
-    }
+      }
+    });
+    applyMissing.immediate();
   } finally {
     db.close();
   }

@@ -5,7 +5,8 @@
 accepted. The Refresh paragraph and the "SSE deferred" consequence are
 superseded by ADR-0004. The Persistence paragraph is amended by ADR-0005: the
 Refresh writes through bare better-sqlite3, not Prisma. The database file's
-location is amended in place: it lives in the home directory.
+location is amended in place: it lives in the home directory. So is how
+migrations apply: under the write lock, safe for concurrent openers.
 
 ## Context
 
@@ -41,6 +42,9 @@ The database runs in **WAL** mode, so readers run beside the one Refresh writer
 instead of blocking on its commits, with **`synchronous=NORMAL`** on the
 connections that commit: a power cut may lose the last commits, which is
 acceptable for a cache that can always be rebuilt from the logs.
+_Amended: migrations apply under SQLite's write lock (`BEGIN IMMEDIATE`, the
+ledger re-read inside it), so two connections opening the same file at once
+are safe: the second waits, then finds nothing left to apply._
 
 **Refresh.** _Superseded by ADR-0004 (Refresh runs off the main thread): a
 worker thread runs it, owned by a shared refresh runner._ User-triggered via a
