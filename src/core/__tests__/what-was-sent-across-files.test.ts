@@ -12,7 +12,12 @@ import { getRawApiRequest, getWhatWasSent } from "@/core/what-was-sent";
 import { seededTempDb } from "./helpers/temp-db";
 
 const LOGS_ROOT = path.join(import.meta.dirname, "fixtures", "resumed-request-logs");
-/** Two Turns, the second one's API request preceded by a Failed attempt. */
+/**
+ * Two Turns, the second one's API request (`preq-2`) preceded by a Failed
+ * attempt. `preq-2` keeps its three messages from that attempt (`keep: 3`, no
+ * tail), so only a walk of the parent's own base chain knows them: what the
+ * child's own Turn is compared against.
+ */
 const PARENT_SESSION_ID = "sess-resumed-parent";
 /** A fork holding a copy of the parent's first API request record, and its Turn. */
 const COPY_SESSION_ID = "sess-resumed-copy";
