@@ -19,6 +19,10 @@ This project uses TDD. The rules that matter here:
   (e.g. `scripts/seed/seed.test.ts`), and so do the launcher's, beside its
   pure decisions in `src/launcher/`; its I/O edge is covered by `pnpm smoke`;
   and `src/lib`'s, beside the module (e.g. `src/lib/project-path.test.ts`).
+- **One timeout for the whole suite.** `vitest.config.ts` sets `testTimeout`
+  and `hookTimeout` to 30 s: a cold Refresh of a fixture root, in a test or in
+  `seededTempDb`'s `beforeEach`, sits near Vitest's 5 s default on the Windows
+  CI runner. A test does not set its own timeout.
 
 ## End-to-end
 

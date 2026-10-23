@@ -38,9 +38,7 @@ import {
 
 const NOW = new Date("2026-06-22T17:00:00.000Z");
 
-// A full seed is a real ingest of 148 files (~3s); two per test outrun the 5s
-// default when the suite runs in parallel.
-describe("seedEnvironment", { timeout: 30_000 }, () => {
+describe("seedEnvironment", () => {
   let tmpDir = "";
 
   beforeEach(() => {
