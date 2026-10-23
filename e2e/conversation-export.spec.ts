@@ -52,7 +52,7 @@ function styleUrls(html: string): string[] {
 }
 
 test.describe("Conversation export (/api/conversation/[sessionId]/export)", () => {
-  test("downloads the main thread whole, as one file that references nothing outside itself", async ({ page }) => {
+  test("downloads a Conversation whole, as one file that references nothing outside itself", async ({ page }) => {
     const { fileName, html } = await downloadExport(page, LONG_TITLE);
 
     expect(fileName).toMatch(/^port-every-report-to-the-new-rendering-engine-\d{4}-\d{2}-\d{2}\.html$/);

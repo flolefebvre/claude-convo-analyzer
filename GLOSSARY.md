@@ -195,8 +195,9 @@ by someone who doesn't have it: every Agent's whole Transcript, never one page
 of it, with its Tool calls' bodies and its Costs, as the app shows them. It
 leaves out what the app hides (Meta Messages) and What was sent, and it names
 the user's home directory `~`; nothing else is scrubbed. Tool results stay as
-stored, so a long one is still cut. A link that would lead back into the app
-reads as plain text.
+stored, so a long one is still cut. A link to one of its own Agents leads to
+that Agent's Transcript in the document; a link that would lead back into the
+app reads as plain text.
 _Avoid_: dump, snapshot, archive.
 
 ### Attribution
