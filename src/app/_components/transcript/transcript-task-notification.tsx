@@ -1,10 +1,10 @@
-import { ArrowRight, ChevronRight } from "lucide-react";
-import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 
-import { agentHref, withListReturn } from "@/app/_lib/transcript-url";
+import type { AgentLabel } from "@/app/_lib/transcript";
+import { agentHref, agentSectionHref, withListReturn } from "@/app/_lib/transcript-url";
 import type { TranscriptMessage } from "@/core/read";
 
-import { ErrorBadge, type MessageAnchor, RowTime, labelledBy } from "./transcript-parts";
+import { ErrorBadge, type MessageAnchor, OpenTranscriptLink, RowTime, labelledBy } from "./transcript-parts";
 import { TurnMarkdown } from "./turn-markdown";
 
 /** Statuses of a task that did not finish on its own — flagged, not just stated. */
@@ -21,20 +21,32 @@ export function TaskNotificationRow({
   time,
   anchor,
   sessionId,
+  labels,
   listReturn,
-  linksAreText = false,
+  agentLinksAreInFile = false,
 }: {
   message: TranscriptMessage;
   time: string;
   anchor: MessageAnchor;
   sessionId: string;
+  /** Every agent's display name, from `agentLabels(view.tree)`: the Agents of this Conversation. */
+  labels: Map<string, AgentLabel>;
   /** The list view this transcript was opened from (`?from=`), carried on links. */
   listReturn?: string;
-  /** True in the Conversation export, which leaves the link to the Sub-agent out. */
-  linksAreText?: boolean;
+  /** True in the Conversation export: the Sub-agent's link points at its
+   *  section of the file, and is left out when it has none. */
+  agentLinksAreInFile?: boolean;
 }) {
   const origin = message.origin;
   const status = origin?.taskStatus;
+  const taskAgentId = origin?.taskAgentId;
+  const openTranscriptHref = !taskAgentId
+    ? undefined
+    : !agentLinksAreInFile
+      ? withListReturn(agentHref(sessionId, taskAgentId), listReturn)
+      : labels.has(taskAgentId)
+        ? agentSectionHref(taskAgentId)
+        : undefined;
   const className = ["notice", anchor.anchored && "anchored"].filter(Boolean).join(" ");
 
   return (
@@ -52,11 +64,8 @@ export function TaskNotificationRow({
             {status}
           </span>
         ))}
-      {origin?.taskAgentId && !linksAreText && (
-        <Link className="open-agent" href={withListReturn(agentHref(sessionId, origin.taskAgentId), listReturn)}>
-          Open transcript
-          <ArrowRight aria-hidden className="size-3.5" />
-        </Link>
+      {openTranscriptHref !== undefined && (
+        <OpenTranscriptLink href={openTranscriptHref} isInFile={agentLinksAreInFile} />
       )}
       <span className="spacer" />
       <RowTime time={time} timestamp={message.timestamp} labelId={anchor.labelId} />

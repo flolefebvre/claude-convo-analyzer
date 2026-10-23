@@ -17,6 +17,11 @@ const TOOL_RESULT_TEXT = "export function handler(req: Request) { const user = a
 const LOGGED_REQUESTS_TITLE = "Trace the slow invoice query";
 const LOGGED_REQUESTS_THINKING_TEXT =
   "Eight seconds on a list suggests a missing index or an N+1. Checking the query plan before reading the code.";
+// The seeded Conversation with Sub-agents (issue #96), its Plan Agent call's description, and the Task prompt
+// that opens the Plan Sub-agent's Transcript (`agentMessagesConversation` in `scripts/seed/fake-logs.ts`).
+const AGENT_MESSAGES_TITLE = "Coordinate the search rewrite across agents";
+const PLAN_CALL_DESCRIPTION = "plan the change";
+const PLAN_TASK_PROMPT_TEXT = "Draft the implementation plan";
 
 /**
  * Open the seeded Conversation titled `title`, download its export, save it under its own name, and return
@@ -113,6 +118,51 @@ test.describe("Conversation export (/api/conversation/[sessionId]/export)", () =
     expect(await bodyBackgroundPixel()).toEqual(await pixelOf("oklch(0.145 0 0)"));
     await page.emulateMedia({ colorScheme: "light" });
     expect(await bodyBackgroundPixel()).toEqual(await pixelOf("oklch(1 0 0)"));
+  });
+
+  test("holds every Agent's Transcript, one shown at a time, switched by in-file links with no script", async ({
+    page,
+  }) => {
+    const { filePath, html } = await downloadExport(page, AGENT_MESSAGES_TITLE);
+
+    expect(html).toContain(PLAN_TASK_PROMPT_TEXT);
+    expect(html).not.toMatch(/<script/i);
+    expect(html).not.toMatch(/<link/i);
+    const ids = [...html.matchAll(/\sid="([^"]*)"/g)].map((match) => match[1]);
+    expect(ids.filter((id, i) => ids.indexOf(id) !== i)).toEqual([]);
+
+    await page.goto(pathToFileURL(filePath).href);
+    const mainSection = page.getByRole("region", { name: "main transcript" });
+    const planSection = page.getByRole("region", { name: "Plan transcript" });
+    const planNodeIn = (section: typeof mainSection) =>
+      section.getByRole("navigation", { name: "Agents" }).getByRole("link").filter({ hasText: "Plan" });
+    // With no fragment, the main thread.
+    await expect(mainSection).toBeVisible();
+    await expect(planSection).toBeHidden();
+
+    await planNodeIn(mainSection).click();
+    await expect(planSection).toBeVisible();
+    await expect(mainSection).toBeHidden();
+    await expect(planNodeIn(planSection)).toHaveAttribute("aria-current", "page");
+    await expect(planSection.getByRole("article").filter({ hasText: PLAN_TASK_PROMPT_TEXT })).toBeVisible();
+
+    // Back to the Agent call that spawned it, in view.
+    await planSection.getByRole("link", { name: "Back to the Agent call in main" }).click();
+    await expect(mainSection).toBeVisible();
+    await expect(planSection).toBeHidden();
+    const planCall = mainSection.getByRole("group").filter({ hasText: PLAN_CALL_DESCRIPTION }).first();
+    await expect(planCall).toBeInViewport();
+
+    // Its summary: the body holds the description too.
+    await planCall.getByText(PLAN_CALL_DESCRIPTION).first().click();
+    await planCall.getByRole("link", { name: "Open transcript" }).click();
+    await expect(planSection).toBeVisible();
+    await expect(mainSection).toBeHidden();
+
+    // On paper, every Agent's section.
+    await page.emulateMedia({ media: "print" });
+    await expect(mainSection).toBeVisible();
+    await expect(planSection).toBeVisible();
   });
 
   test("keeps the thinking and leaves What was sent out", async ({ page }) => {
