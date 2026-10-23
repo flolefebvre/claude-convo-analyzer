@@ -1,5 +1,5 @@
 // Claude Conversation Analyzer — data model.
-// Eleven tables per ADR-0001 (docs/adr/0001-token-accounting-and-data-model.md).
+// Twelve tables per ADR-0001 (docs/adr/0001-token-accounting-and-data-model.md).
 // Prisma 7: `prisma-client` generator + @prisma/adapter-better-sqlite3 driver adapter.
 // The generated client output is gitignored (commit schema + migrations only).
 // The Refresh writes these tables WITHOUT Prisma (ADR-0005): mirror any column
@@ -52,7 +52,9 @@ model Conversation {
   /// `PARSER_VERSION` (refresh.ts) forces a one-time re-parse after an upgrade.
   parserVersion Int    @default(0) @map("parser_version")
 
-  /// Set when the first message's parentUuid resolves into a prior session (--resume/fork).
+  /// The Conversation this one was resumed or forked from: the one whose
+  /// `continued-in` record names it, else the one whose Main-thread Messages
+  /// its own hold all of (log-format §10). NULL without one.
   continuedFromConversationId Int? @map("continued_from_conversation_id")
 
   project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -63,8 +65,10 @@ model Conversation {
   prLinks       PrLink[]
   turnDurations TurnDuration[]
   apiRequests   ApiRequest[]
+  continuedIn   ContinuedIn[]
 
   @@index([projectId])
+  @@index([continuedFromConversationId])
   @@map("conversation")
 }
 
@@ -118,8 +122,9 @@ model Message {
 
   /// Source message id (Anthropic `message.id`); the dedup key for assistant turns.
   messageId String? @map("message_id")
-  /// Record `uuid` — the cross-session key for continued-from resolution (a
-  /// child's first-message `parentUuid` points at the parent message's `uuid`).
+  /// Record `uuid`. Not unique: a resumed or forked session's file copies its
+  /// parent's records with their uuids (log-format §10), so a uuid several
+  /// Conversations hold is how a Refresh finds a continuation's parent.
   uuid      String? @map("uuid")
   /// `user` | `assistant`.
   role      String
@@ -187,6 +192,10 @@ model Message {
   /// of another file (log-format §9, "How they are stored", for which); NULL
   /// when no file holds it.
   apiRequestId Int?    @map("api_request_id")
+
+  /// A Copied Message (GLOSSARY.md): in its Agent's leading run of Messages
+  /// that an Agent of the Conversation's parent (`continuedFrom`) also holds.
+  isCopied Boolean @default(false) @map("is_copied")
 
   conversation             Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   agent                    Agent        @relation("AgentMessages", fields: [agentId], references: [id], onDelete: Cascade)
@@ -261,6 +270,22 @@ model TurnDuration {
 
   @@index([conversationId])
   @@map("turn_duration")
+}
+
+/// One per `continued-in` record of a Conversation's Main-thread file: the
+/// session it was resumed or forked into (log-format §10). A session resumed
+/// twice carries two.
+model ContinuedIn {
+  id             Int    @id @default(autoincrement())
+  conversationId Int    @map("conversation_id")
+  /// The record's `continuedInSessionId`: the continuation's session id.
+  sessionId      String @map("session_id")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([sessionId])
+  @@map("continued_in")
 }
 
 /// One per `api-request` record of the Conversation's log files, Main thread

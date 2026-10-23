@@ -367,8 +367,7 @@ function userPrompt(
   ms: number,
   cwd: string,
   text: string,
-  /** Set on a RESUMED session's first prompt: the parent session's record it
-   *  continues from. `refresh()` resolves it into a `continued_from` link. */
+  /** Set on a RESUMED session's first own prompt: the last record it copied. */
   parentUuid?: string,
   agent?: { agentId: string },
 ): string {
@@ -638,10 +637,11 @@ function buildConversation(
   project: SeedProject,
   index: number,
   opts: {
-    /** Makes this a CONTINUATION of an earlier session (issue #46): its first
-     *  prompt carries that session's record as `parentUuid`, and it starts a few
-     *  hours later. */
-    resumeFrom?: ResumePoint;
+    /** Makes this a CONTINUATION of an earlier Conversation (issue #46), as
+     *  Claude Code writes one (log-format §10): it opens with a copy of that
+     *  Conversation's records up to its resume point, same uuids, and starts a
+     *  few hours later; that Conversation gains a `continued-in` record naming it. */
+    resumeFrom?: Conversation;
     /** Overrides the random title — used so a family reads as one piece of work.
      *  `null` leaves it untitled: no `ai-title` record, and another session's
      *  message in place of the first prompt — a Conversation without a title
@@ -662,7 +662,7 @@ function buildConversation(
 
   const start =
     opts.resumeFrom !== undefined
-      ? opts.resumeFrom.ms + g.int(1, 8) * 3_600_000
+      ? opts.resumeFrom.resumePoint.ms + g.int(1, 8) * 3_600_000
       : opts.startedAgo !== undefined
         ? g.now - opts.startedAgo
         : g.now - g.int(0, 21) * DAY - g.int(0, 18) * 3_600_000;
@@ -685,7 +685,13 @@ function buildConversation(
     );
   } else {
     lines.push(JSON.stringify({ type: "ai-title", aiTitle: title }));
-    lines.push(userPrompt(g, t, cwd, g.pick(PROMPTS), opts.resumeFrom?.uuid));
+    if (opts.resumeFrom !== undefined) {
+      lines.push(...linesUpToResumePoint(opts.resumeFrom));
+      opts.resumeFrom.mainLines.push(
+        JSON.stringify({ type: "continued-in", sessionId: opts.resumeFrom.sessionId, continuedInSessionId: sessionId }),
+      );
+    }
+    lines.push(userPrompt(g, t, cwd, g.pick(PROMPTS), opts.resumeFrom?.resumePoint.uuid));
   }
 
   // Most conversations have a dominant model; some are mixed.
@@ -764,8 +770,21 @@ function buildConversation(
   };
 }
 
+/** The user and assistant records of `conversation` up to its resume point:
+ *  what a continuation of it copies, verbatim, before its own records. */
+function linesUpToResumePoint(conversation: Conversation): string[] {
+  const copied: string[] = [];
+  for (const line of conversation.mainLines) {
+    const rec = JSON.parse(line) as { type?: string; uuid?: string };
+    if (rec.type !== "user" && rec.type !== "assistant") continue;
+    copied.push(line);
+    if (rec.uuid === conversation.resumePoint.uuid) break;
+  }
+  return copied;
+}
+
 /** The uuid of the conversation's LAST assistant record — what a `--resume`
- *  writes as its first prompt's `parentUuid`. */
+ *  continues from: the last record it copies, and its first prompt's `parentUuid`. */
 function lastAssistantUuid(lines: readonly string[]): string {
   for (let i = lines.length - 1; i >= 0; i--) {
     const rec = JSON.parse(lines[i]) as { type?: string; uuid?: string };
@@ -795,22 +814,22 @@ function continuationFamilies(g: Gen, startIndex: number): Conversation[] {
     title: "Split the billing service out of the monolith",
   });
   const firstBranch = buildConversation(g, forkProject, i++, {
-    resumeFrom: root.resumePoint,
+    resumeFrom: root,
     title: "Billing split — extract the invoice writer",
   });
   const secondBranch = buildConversation(g, forkProject, i++, {
-    resumeFrom: root.resumePoint,
+    resumeFrom: root,
     title: "Billing split — try the event-sourced angle instead",
   });
   const deeper = buildConversation(g, forkProject, i++, {
-    resumeFrom: firstBranch.resumePoint,
+    resumeFrom: firstBranch,
     title: "Billing split — migrate the last caller and delete the shim",
   });
 
   // Resumed from a git worktree of the same repo: Claude Code launches there in
   // its own directory, so the sitting belongs to a DIFFERENT Project (GLOSSARY.md).
   const inWorktree = buildConversation(g, { ...forkProject, path: FAMILY_WORKTREE_PROJECT_PATH }, i++, {
-    resumeFrom: secondBranch.resumePoint,
+    resumeFrom: secondBranch,
     title: "Billing split — event-sourced spike, in a worktree",
   });
 
@@ -818,7 +837,7 @@ function continuationFamilies(g: Gen, startIndex: number): Conversation[] {
     title: "Make the nightly export idempotent",
   });
   const chainEnd = buildConversation(g, chainProject, i++, {
-    resumeFrom: chainStart.resumePoint,
+    resumeFrom: chainStart,
     title: "Nightly export — finish the retry path",
   });
 

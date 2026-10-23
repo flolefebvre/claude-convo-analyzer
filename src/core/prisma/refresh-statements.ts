@@ -135,6 +135,11 @@ const TURN_DURATION_COLUMN_BY_FIELD = {
   messageCount: "message_count",
 } as const;
 
+const CONTINUED_IN_COLUMN_BY_FIELD = {
+  conversationId: "conversation_id",
+  sessionId: "session_id",
+} as const;
+
 const API_REQUEST_COLUMN_BY_FIELD = {
   conversationId: "conversation_id",
   agentId: "agent_id",
@@ -169,6 +174,17 @@ export type PrLinkRow = InsertRow<keyof typeof PR_LINK_COLUMN_BY_FIELD>;
 export type TurnDurationRow = InsertRow<keyof typeof TURN_DURATION_COLUMN_BY_FIELD>;
 /** An `api_request` row to insert. */
 export type ApiRequestRow = InsertRow<keyof typeof API_REQUEST_COLUMN_BY_FIELD>;
+/** A `continued_in` row to insert. */
+export type ContinuedInRow = InsertRow<keyof typeof CONTINUED_IN_COLUMN_BY_FIELD>;
+
+/** What deciding a stored Conversation's parent needs of it (log-format §10). */
+export type ContinuationCandidate = {
+  id: number;
+  sessionId: string;
+  sourcePath: string;
+  /** Row id of its Main thread's Agent. */
+  mainThreadAgentId: number;
+};
 
 /** What the skip/changed/delete decision needs of a stored Conversation. */
 export type StoredConversation = {
@@ -230,9 +246,105 @@ export function prepareRefreshStatements(db: Database.Database) {
     .pluck();
   const deletePrLinks = db.prepare(`DELETE FROM "pr_link" WHERE "conversation_id" = ?`);
   const deleteTurnDurations = db.prepare(`DELETE FROM "turn_duration" WHERE "conversation_id" = ?`);
-  // The ids go in as one JSON array, so any number of them binds to one parameter.
+  const deleteContinuedIn = db.prepare(`DELETE FROM "continued_in" WHERE "conversation_id" = ?`);
   const updateContinuedFrom = db.prepare(
-    `UPDATE "conversation" SET "continued_from_conversation_id" = ? WHERE "id" IN (SELECT "value" FROM json_each(?))`,
+    `UPDATE "conversation" SET "continued_from_conversation_id" = ? WHERE "id" = ?`,
+  );
+  // The ids go in as one JSON array, so any number of them binds to one parameter.
+  const selectContinuationIds = db
+    .prepare(
+      `SELECT "id" FROM "conversation"
+        WHERE "continued_from_conversation_id" IN (SELECT "value" FROM json_each(?))`,
+    )
+    .pluck();
+  const selectConversationIdsBySessionId = db
+    .prepare(`SELECT "id" FROM "conversation" WHERE "session_id" IN (SELECT "value" FROM json_each(?))`)
+    .pluck();
+  const selectContinuationCandidate = db.prepare(
+    `SELECT "conversation"."id", "conversation"."session_id" AS "sessionId",
+            "conversation"."source_path" AS "sourcePath", "agent"."id" AS "mainThreadAgentId"
+       FROM "conversation"
+       JOIN "agent" ON "agent"."conversation_id" = "conversation"."id" AND "agent"."external_agent_id" IS NULL
+      WHERE "conversation"."id" = ?`,
+  );
+  const selectFirstMessageUuid = db
+    .prepare(`SELECT "uuid" FROM "message" WHERE "agent_id" = ? ORDER BY "id" LIMIT 1`)
+    .pluck();
+  // A uuid is not unique: a continuation copies its parent's records with
+  // their uuids (log-format §10). In `source_path` order, so the smallest
+  // path wins a tie wherever these are compared.
+  const selectOtherHolders = db.prepare(
+    `SELECT "conversation"."id", "conversation"."session_id" AS "sessionId",
+            "conversation"."source_path" AS "sourcePath", "agent"."id" AS "mainThreadAgentId"
+       FROM "conversation"
+       JOIN "agent" ON "agent"."conversation_id" = "conversation"."id" AND "agent"."external_agent_id" IS NULL
+      WHERE "conversation"."id" IN (SELECT "conversation_id" FROM "message" WHERE "uuid" = @uuid)
+        AND "conversation"."id" <> @excludedConversationId
+      ORDER BY "conversation"."source_path"`,
+  );
+  // Of the Conversations whose `continued-in` record names the session, the
+  // one with the smallest `source_path`.
+  const selectNamingConversationId = db
+    .prepare(
+      `SELECT "conversation"."id" FROM "continued_in"
+         JOIN "conversation" ON "conversation"."id" = "continued_in"."conversation_id"
+        WHERE "continued_in"."session_id" = @sessionId AND "conversation"."id" <> @conversationId
+        ORDER BY "conversation"."source_path"
+        LIMIT 1`,
+    )
+    .pluck();
+  const selectIsSessionNamed = db
+    .prepare(`SELECT 1 FROM "continued_in" WHERE "conversation_id" = ? AND "session_id" = ? LIMIT 1`)
+    .pluck();
+  const selectIsEveryMessageHeld = db
+    .prepare(
+      `SELECT NOT EXISTS (
+         SELECT 1 FROM "message" AS "held"
+          WHERE "held"."agent_id" = @agentId
+            AND ("held"."uuid" IS NULL OR NOT EXISTS (
+              SELECT 1 FROM "message" AS "holding"
+               WHERE "holding"."uuid" = "held"."uuid" AND "holding"."agent_id" = @holdingAgentId)))`,
+    )
+    .pluck();
+  // How many of the Agent's Messages, from its first, the other Agent holds:
+  // up to the first one it does not, in file order (row id order).
+  const selectSharedLeadingRunLength = db
+    .prepare(
+      `SELECT COUNT(*) FROM "message"
+        WHERE "agent_id" = @agentId
+          AND "id" < COALESCE(
+            (SELECT "own"."id" FROM "message" AS "own"
+              WHERE "own"."agent_id" = @agentId
+                AND ("own"."uuid" IS NULL OR NOT EXISTS (
+                  SELECT 1 FROM "message" AS "holding"
+                   WHERE "holding"."uuid" = "own"."uuid" AND "holding"."agent_id" = @holdingAgentId))
+              ORDER BY "own"."id"
+              LIMIT 1),
+            9223372036854775807)`,
+    )
+    .pluck();
+  const clearCopiedMessages = db.prepare(
+    `UPDATE "message" SET "is_copied" = 0 WHERE "conversation_id" = ? AND "is_copied" = 1`,
+  );
+  // THE RULE for a Copied Message (log-format §10): in its Agent's leading
+  // run of Messages that an Agent of the parent Conversation holds. Each
+  // Agent's first Message the parent does not hold is found once.
+  const updateCopiedMessages = db.prepare(
+    `WITH "first_own" AS MATERIALIZED (
+       SELECT "agent"."id" AS "agent_id",
+              (SELECT "own"."id" FROM "message" AS "own"
+                WHERE "own"."agent_id" = "agent"."id"
+                  AND ("own"."uuid" IS NULL OR NOT EXISTS (
+                    SELECT 1 FROM "message" AS "holding"
+                     WHERE "holding"."uuid" = "own"."uuid" AND "holding"."conversation_id" = @parentConversationId))
+                ORDER BY "own"."id"
+                LIMIT 1) AS "message_id"
+         FROM "agent" WHERE "agent"."conversation_id" = @conversationId)
+     UPDATE "message" SET "is_copied" = 1
+      WHERE "conversation_id" = @conversationId
+        AND "id" < COALESCE(
+          (SELECT "message_id" FROM "first_own" WHERE "first_own"."agent_id" = "message"."agent_id"),
+          9223372036854775807)`,
   );
   const updateParserVersion = db.prepare(
     `UPDATE "conversation" SET "parser_version" = ? WHERE "id" IN (SELECT "value" FROM json_each(?))`,
@@ -325,16 +437,6 @@ export function prepareRefreshStatements(db: Database.Database) {
          LIMIT 1)
       WHERE "api_request_id" IS NULL AND "request_ref" IS NOT NULL`,
   );
-  // `uuid` is not unique: of several Conversations holding a message with it,
-  // the one with the smallest `source_path`, the rule for a request several
-  // files hold. Row ids never decide: they differ between a cold Refresh and
-  // an incremental one.
-  const selectMessageOwner = db.prepare(
-    `SELECT "id", "session_id" AS "sessionId" FROM "conversation"
-      WHERE "id" IN (SELECT "conversation_id" FROM "message" WHERE "uuid" = ?)
-      ORDER BY "source_path"
-      LIMIT 1`,
-  );
 
   return {
     /** Open a write transaction. */
@@ -352,14 +454,49 @@ export function prepareRefreshStatements(db: Database.Database) {
     /** The Message row holding Agent `agentId`'s Tool call `toolUseId`, if any. */
     selectSpawningMessageId: (agentId: number, toolUseId: string) =>
       selectSpawningMessageId.get(agentId, toolUseId) as number | undefined,
-    /** Delete a Conversation's `pr_link` and `turn_duration` rows: what its Main thread's file gives it besides its Agent. */
-    deletePrLinksAndTurnDurations: (conversationId: number) => {
+    /**
+     * Delete a Conversation's `pr_link`, `turn_duration` and `continued_in`
+     * rows: what its Main thread's file gives it besides its Agent.
+     */
+    deletePrLinksTurnDurationsAndContinuedIn: (conversationId: number) => {
       deletePrLinks.run(conversationId);
       deleteTurnDurations.run(conversationId);
+      deleteContinuedIn.run(conversationId);
     },
-    /** Point each of `conversationIds` at the Conversation they continue from. */
-    updateContinuedFrom: (conversationIds: number[], continuedFromConversationId: number) =>
-      void updateContinuedFrom.run(continuedFromConversationId, JSON.stringify(conversationIds)),
+    /** Point Conversation `conversationId` at the Conversation it continues from, or at none. */
+    updateContinuedFrom: (conversationId: number, continuedFromConversationId: number | null) =>
+      void updateContinuedFrom.run(continuedFromConversationId, conversationId),
+    /** Ids of the Conversations that continue from any of `conversationIds`. */
+    selectContinuationIds: (conversationIds: number[]) =>
+      selectContinuationIds.all(JSON.stringify(conversationIds)) as number[],
+    /** Ids of the stored Conversations of `sessionIds`. */
+    selectConversationIdsBySessionId: (sessionIds: string[]) =>
+      selectConversationIdsBySessionId.all(JSON.stringify(sessionIds)) as number[],
+    /** Conversation `conversationId` as deciding its parent needs it; undefined when it is not stored. */
+    selectContinuationCandidate: (conversationId: number) =>
+      selectContinuationCandidate.get(conversationId) as ContinuationCandidate | undefined,
+    /** The `uuid` of Agent `agentId`'s first Message; undefined without one, null when it has none. */
+    selectFirstMessageUuid: (agentId: number) => selectFirstMessageUuid.get(agentId) as string | null | undefined,
+    /** The Conversations other than `excludedConversationId` that hold a Message with `uuid`, smallest `source_path` first. */
+    selectOtherHolders: (uuid: string, excludedConversationId: number) =>
+      selectOtherHolders.all({ uuid, excludedConversationId }) as ContinuationCandidate[],
+    /** Of the other Conversations whose `continued-in` record names `sessionId`, the one with the smallest `source_path`. */
+    selectNamingConversationId: (sessionId: string, conversationId: number) =>
+      selectNamingConversationId.get({ sessionId, conversationId }) as number | undefined,
+    /** Whether a `continued-in` record of Conversation `conversationId` names `sessionId`. */
+    isSessionNamed: (conversationId: number, sessionId: string) =>
+      selectIsSessionNamed.get(conversationId, sessionId) !== undefined,
+    /** Whether Agent `holdingAgentId` holds a Message with the uuid of each of Agent `agentId`'s. */
+    isEveryMessageHeld: (agentId: number, holdingAgentId: number) =>
+      selectIsEveryMessageHeld.get({ agentId, holdingAgentId }) === 1,
+    /** How many of Agent `agentId`'s Messages, from its first, Agent `holdingAgentId` holds a Message with the uuid of. */
+    selectSharedLeadingRunLength: (agentId: number, holdingAgentId: number) =>
+      selectSharedLeadingRunLength.get({ agentId, holdingAgentId }) as number,
+    /** Flag Conversation `conversationId`'s Copied Messages, as copies of `parentConversationId`'s; none without a parent. */
+    updateCopiedMessages: (conversationId: number, parentConversationId: number | null) => {
+      clearCopiedMessages.run(conversationId);
+      if (parentConversationId !== null) updateCopiedMessages.run({ conversationId, parentConversationId });
+    },
     /** Stamp `parserVersion` on each of `conversationIds`. */
     updateParserVersion: (conversationIds: number[], parserVersion: number) =>
       void updateParserVersion.run(parserVersion, JSON.stringify(conversationIds)),
@@ -378,8 +515,6 @@ export function prepareRefreshStatements(db: Database.Database) {
       }) as string | undefined,
     /** Delete every Project no Conversation belongs to any more. */
     deleteProjectsWithoutConversations: () => void deleteProjectsWithoutConversations.run(),
-    /** Of the Conversations holding a message with `uuid`, the one with the smallest `source_path`, if any. */
-    selectMessageOwner: (uuid: string) => selectMessageOwner.get(uuid) as { id: number; sessionId: string } | undefined,
     insertProject: prepareInsert(db, "project", PROJECT_COLUMN_BY_FIELD),
     insertConversation: prepareInsert(db, "conversation", CONVERSATION_COLUMN_BY_FIELD),
     /** Rewrite the stored Conversation of row id `id` in place. */
@@ -392,6 +527,7 @@ export function prepareRefreshStatements(db: Database.Database) {
     insertPrLink: prepareInsert(db, "pr_link", PR_LINK_COLUMN_BY_FIELD),
     insertTurnDuration: prepareInsert(db, "turn_duration", TURN_DURATION_COLUMN_BY_FIELD),
     insertApiRequest: prepareInsert(db, "api_request", API_REQUEST_COLUMN_BY_FIELD),
+    insertContinuedIn: prepareInsert(db, "continued_in", CONTINUED_IN_COLUMN_BY_FIELD),
     /** Link each Turn of Agent `agentId` to the API request its `requestRef` names in the same file, if any. */
     updateTurnApiRequestsInFile: (agentId: number) => void updateTurnApiRequestsInFile.run(agentId),
     /**

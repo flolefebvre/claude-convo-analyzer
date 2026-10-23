@@ -2,7 +2,7 @@
 // lines into a typed, deduplicated `ParsedSession` ready for DB write.
 //
 // SLICE SCOPE: handles `assistant`, `user` (incl. tool_result), `ai-title`,
-// `custom-title`, `pr-link`, `system`/`turn_duration`, `queued_command`
+// `custom-title`, `pr-link`, `continued-in`, `system`/`turn_duration`, `queued_command`
 // attachments (mid-turn user Messages), and the `api-request` and
 // `api-request-shape` request records (log-format §9); tool_use blocks and
 // `Agent` spawn ledgers are lifted too. Other record types are skipped gracefully
@@ -13,8 +13,6 @@
 //     branches there. The same routine parses a sub-agent transcript (it is the
 //     same per-turn shape — GLOSSARY.md), so refresh reuses it directly for subs.
 //   - `extractText` / `extractToolUseBlocks` decode the `content` union once.
-//   - `ParsedMessage` already carries `uuid`/`parentUuid` so Slice 4 can build the
-//     message-uuid index for continued-from resolution.
 
 import { createHash } from "node:crypto";
 import { z } from "zod";
@@ -280,7 +278,6 @@ export type ParsedMessage = {
    */
   requestRef: string | null;
   uuid: string | null;
-  parentUuid: string | null;
   role: "user" | "assistant";
   /** User-record classification (see {@link MessageKind}); null for assistant. */
   kind: MessageKind | null;
@@ -384,6 +381,11 @@ export type ParsedSession = {
   toolResults: Map<string, ParsedToolResult>;
   /** `pr-link` records in the session. */
   prLinks: ParsedPrLink[];
+  /**
+   * The session each `continued-in` record names, in file order, each once:
+   * the sessions this one was resumed or forked into (log-format §10).
+   */
+  continuedInSessionIds: string[];
   /** `system`/`turn_duration` records in the session. */
   turnDurations: ParsedTurnDuration[];
   /** `Agent` spawn ledgers keyed by spawned `agentId` (cross-check + linkage). */
@@ -610,6 +612,7 @@ export function parseSessionLines(lines: readonly string[]): ParsedSession {
   const messages: ParsedMessage[] = [];
   const toolResults = new Map<string, ParsedToolResult>();
   const prLinks: ParsedPrLink[] = [];
+  const continuedInSessionIds = new Set<string>();
   const turnDurations: ParsedTurnDuration[] = [];
   const agentSpawns = new Map<string, ParsedAgentSpawn>();
   // Assistant turns already emitted, keyed by message.id, so later content-block
@@ -651,6 +654,11 @@ export function parseSessionLines(lines: readonly string[]): ParsedSession {
     }
     if (type === "custom-title") {
       customTitle ??= asString(record.customTitle);
+      continue;
+    }
+    if (type === "continued-in") {
+      const continuedInSessionId = asString(record.continuedInSessionId);
+      if (continuedInSessionId !== null) continuedInSessionIds.add(continuedInSessionId);
       continue;
     }
 
@@ -771,7 +779,6 @@ export function parseSessionLines(lines: readonly string[]): ParsedSession {
       messageId,
       requestRef: asString(record.requestRef),
       uuid: asString(record.uuid),
-      parentUuid: asString(record.parentUuid),
       role: "assistant",
       kind: null,
       text,
@@ -809,6 +816,7 @@ export function parseSessionLines(lines: readonly string[]): ParsedSession {
     messages,
     toolResults,
     prLinks,
+    continuedInSessionIds: [...continuedInSessionIds],
     turnDurations,
     agentSpawns,
     // Resolved once the whole file is read: a shape need not precede its requests.
@@ -1118,7 +1126,6 @@ function userMessage(
     messageId: null,
     requestRef: null,
     uuid: asString(record.uuid),
-    parentUuid: asString(record.parentUuid),
     role: "user",
     ...classified,
     toolUses: [],
