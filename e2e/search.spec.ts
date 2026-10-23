@@ -1,6 +1,7 @@
 import { instant } from "@next/playwright";
 import { test } from "@playwright/test";
 
+import { gotoInteractive } from "./interactive-page";
 import { type RouteShell, expectData, expectInstantLoad, expectShell } from "./route-shell";
 
 // A seeded conversation title (`scripts/seed/fake-logs.ts`), so the query has a match.
@@ -19,7 +20,8 @@ test.describe("Search (/search)", () => {
   });
 
   test("is instant on a client navigation", async ({ page }) => {
-    await page.goto("/");
+    // Outside the scope: the search box is the real field before it is typed into.
+    await gotoInteractive(page, "/");
     await instant(page, async () => {
       const searchBox = page.getByRole("searchbox", { name: "Search conversations" });
       await searchBox.fill(QUERY);
