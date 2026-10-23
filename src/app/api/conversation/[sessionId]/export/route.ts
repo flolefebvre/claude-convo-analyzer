@@ -14,14 +14,17 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/conversa
   const detail = await loadConversationDetail(sessionId);
   if (detail === null) return new Response("Unknown conversation", { status: 404 });
 
-  const origin = request.nextUrl.origin;
-  const page = await fetch(`${origin}/conversation/${encodeURIComponent(sessionId)}/export`, { cache: "no-store" });
+  const pageUrl = new URL(`/conversation/${encodeURIComponent(sessionId)}/export`, request.nextUrl.origin);
+  const page = await fetch(pageUrl, { cache: "no-store" });
   if (!page.ok) return new Response(`The export page answered ${page.status}`, { status: 502 });
 
-  const html = await selfContainedHtml(await page.text(), async (href) => {
-    const stylesheet = await fetch(new URL(href, origin), { cache: "no-store" });
-    if (!stylesheet.ok) throw new Error(`Stylesheet ${href} answered ${stylesheet.status}`);
-    return stylesheet.text();
+  const html = await selfContainedHtml(await page.text(), pageUrl, async (url) => {
+    const resource = await fetch(url, { cache: "no-store" });
+    if (!resource.ok) throw new Error(`${url.pathname} answered ${resource.status}`);
+    return {
+      bytes: new Uint8Array(await resource.arrayBuffer()),
+      contentType: resource.headers.get("content-type") ?? "application/octet-stream",
+    };
   });
   const fileName = exportFileName({ title: detail.title, sessionId, startedAt: detail.startedAt });
   return new Response(html, {

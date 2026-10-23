@@ -1,6 +1,5 @@
 import { SSEProvider } from "@flefebvre/next-sse/server";
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import { Suspense } from "react";
 
 import "@/app/globals.css";
@@ -8,18 +7,9 @@ import { AppBar } from "@/app/_components/app-bar";
 import { MeasuredChrome } from "@/app/_components/measured-chrome";
 import { ParserUpdateBanner } from "@/app/_components/parser-update-banner";
 import { ThemeProvider } from "@/app/_components/theme-provider";
+import { fontVariableClassNames } from "@/app/_lib/fonts";
 import { sse } from "@/app/_lib/sse";
 import { TooltipProvider } from "@/components/ui/tooltip";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: {
@@ -63,7 +53,7 @@ export default function RootLayout({
       // before hydration (no theme flash), and ours sets `data-theme-choice`;
       // suppress the resulting attribute mismatch warning.
       suppressHydrationWarning
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${fontVariableClassNames} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col">
         <script dangerouslySetInnerHTML={{ __html: THEME_CHOICE_SCRIPT }} />
