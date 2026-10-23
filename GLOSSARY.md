@@ -65,7 +65,8 @@ there again, back in its place between its neighbours.
 One continuous Claude Code session. On disk it is a single `<sessionId>.jsonl`
 file inside a log folder under `~/.claude/projects/`. Each line is a typed
 Record. A Conversation is the unit shown as one row in the conversation list.
-Its human-readable name comes from an `ai-title` Record.
+Its title is the one Claude Code shows: the last `custom-title` Record, else
+the last `ai-title` Record, else its first Prompt.
 
 ### Continuation family
 
