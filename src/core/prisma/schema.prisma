@@ -1,5 +1,6 @@
 // Claude Conversation Analyzer — data model.
-// Twelve tables per ADR-0001 (docs/adr/0001-token-accounting-and-data-model.md).
+// Thirteen tables per ADR-0001 (docs/adr/0001-token-accounting-and-data-model.md),
+// `turn` per ADR-0011.
 // Prisma 7: `prisma-client` generator + @prisma/adapter-better-sqlite3 driver adapter.
 // The generated client output is gitignored (commit schema + migrations only).
 // The Refresh writes these tables WITHOUT Prisma (ADR-0005): mirror any column
@@ -67,6 +68,7 @@ model Conversation {
   turnDurations TurnDuration[]
   apiRequests   ApiRequest[]
   continuedIn   ContinuedIn[]
+  turns         Turn[]
 
   @@index([projectId])
   @@index([continuedFromConversationId])
@@ -99,6 +101,11 @@ model Agent {
   sourceMtime BigInt? @map("source_mtime")
   /// Its own log file's size in bytes when its rows were written (see `sourceMtime`).
   sourceSize  BigInt? @map("source_size")
+  /// The path its log file was read at: the Conversation's `<sessionId>.jsonl`
+  /// for the Main thread, its `subagents/agent-<id>.jsonl` for a Sub-agent. Of
+  /// holders of a Turn with no lineage between them, the smallest owns it
+  /// (ADR-0011). NULL only on rows predating the column, which the parser bump rewrites.
+  sourcePath  String? @map("source_path")
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   parentAgent  Agent?       @relation("AgentLineage", fields: [parentAgentId], references: [id], onDelete: SetNull)
@@ -109,6 +116,7 @@ model Agent {
   messages    Message[]    @relation("AgentMessages")
   toolCalls   ToolCall[]
   apiRequests ApiRequest[]
+  turns       Turn[]
 
   @@index([conversationId])
   @@index([parentAgentId])
@@ -121,8 +129,13 @@ model Message {
   conversationId Int @map("conversation_id")
   agentId        Int @map("agent_id")
 
-  /// Source message id (Anthropic `message.id`); the dedup key for assistant turns.
+  /// Source message id (Anthropic `message.id`, else the record's `requestId`);
+  /// the dedup key for assistant turns.
   messageId String? @map("message_id")
+  /// The assistant record's `requestId`, verbatim: with one, the Turn is
+  /// identified by `messageId` across all the logs; without one (a mock API's,
+  /// a synthetic record), it is its own file's (ADR-0011). NULL on user rows.
+  requestId String? @map("request_id")
   /// Record `uuid`. Not unique: a resumed or forked session's file copies its
   /// parent's records with their uuids (log-format §10), so a uuid several
   /// Conversations hold is how a Refresh finds a continuation's parent.
@@ -205,6 +218,8 @@ model Message {
   toolCalls                ToolCall[]
   /// The API requests that were this Turn's Failed attempts.
   failedAttemptApiRequests ApiRequest[] @relation("ApiRequestFailedAttempt")
+  /// The Turn this occurrence owns; none when another occurrence owns it.
+  turn                     Turn?
 
   @@index([conversationId])
   @@index([agentId])
@@ -212,6 +227,38 @@ model Message {
   @@index([uuid])
   @@index([apiRequestId, requestRef])
   @@map("message")
+}
+
+/// One per Turn — one API response — however many log files hold it (ADR-0011),
+/// written by the Refresh's links pass. Cost and every token total sum it.
+model Turn {
+  id             Int @id @default(autoincrement())
+  /// The owning occurrence: of the Agents holding the Turn, the ancestor (the
+  /// continued-from parent, the spawning Agent, at any depth), else the one
+  /// with the smallest `agent.source_path`.
+  messageId      Int @unique @map("message_id")
+  /// The owning occurrence's Agent.
+  agentId        Int @map("agent_id")
+  /// The owning occurrence's Conversation: the one whose Cost counts the Turn.
+  conversationId Int @map("conversation_id")
+
+  /// Each bucket's highest value across every occurrence.
+  inputTokens           Int @map("input_tokens")
+  outputTokens          Int @map("output_tokens")
+  cacheCreation5mTokens Int @map("cache_creation_5m_tokens")
+  cacheCreation1hTokens Int @map("cache_creation_1h_tokens")
+  cacheReadTokens       Int @map("cache_read_tokens")
+
+  /// The owning occurrence's model.
+  model String?
+
+  message      Message      @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  agent        Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+  @@index([conversationId])
+  @@map("turn")
 }
 
 /// One per `tool_use` block.

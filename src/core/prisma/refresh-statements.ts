@@ -79,12 +79,14 @@ const AGENT_COLUMN_BY_FIELD = {
   ...AGENT_LINEAGE_COLUMN_BY_FIELD,
   sourceMtime: "source_mtime",
   sourceSize: "source_size",
+  sourcePath: "source_path",
 } as const;
 
 const MESSAGE_COLUMN_BY_FIELD = {
   conversationId: "conversation_id",
   agentId: "agent_id",
   messageId: "message_id",
+  requestId: "request_id",
   uuid: "uuid",
   role: "role",
   kind: "kind",
@@ -158,6 +160,18 @@ const API_REQUEST_COLUMN_BY_FIELD = {
   toolSetHash: "tool_set_hash",
 } as const;
 
+const TURN_COLUMN_BY_FIELD = {
+  messageId: "message_id",
+  agentId: "agent_id",
+  conversationId: "conversation_id",
+  inputTokens: "input_tokens",
+  outputTokens: "output_tokens",
+  cacheCreation5mTokens: "cache_creation_5m_tokens",
+  cacheCreation1hTokens: "cache_creation_1h_tokens",
+  cacheReadTokens: "cache_read_tokens",
+  model: "model",
+} as const;
+
 /** A `project` row to insert. */
 export type ProjectRow = InsertRow<keyof typeof PROJECT_COLUMN_BY_FIELD>;
 /** A `conversation` row to insert. */
@@ -176,6 +190,34 @@ export type TurnDurationRow = InsertRow<keyof typeof TURN_DURATION_COLUMN_BY_FIE
 export type ApiRequestRow = InsertRow<keyof typeof API_REQUEST_COLUMN_BY_FIELD>;
 /** A `continued_in` row to insert. */
 export type ContinuedInRow = InsertRow<keyof typeof CONTINUED_IN_COLUMN_BY_FIELD>;
+/** A `turn` row to write. */
+export type TurnRow = {
+  messageId: number;
+  agentId: number;
+  conversationId: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreation5mTokens: number;
+  cacheCreation1hTokens: number;
+  cacheReadTokens: number;
+  model: string | null;
+};
+
+/** One occurrence of a Turn identified across the logs, as deciding its owner and usage needs it. */
+export type TurnOccurrence = {
+  /** Its `message` row id. */
+  id: number;
+  agentId: number;
+  conversationId: number;
+  /** Its Agent's `source_path`; NULL only on rows predating the column. */
+  sourcePath: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  cacheCreation5mTokens: number | null;
+  cacheCreation1hTokens: number | null;
+  cacheReadTokens: number | null;
+  model: string | null;
+};
 
 /** What deciding a stored Conversation's parent needs of it (log-format §10). */
 export type ContinuationCandidate = {
@@ -362,6 +404,65 @@ export function prepareRefreshStatements(db: Database.Database) {
           (SELECT "message_id" FROM "first_own" WHERE "first_own"."agent_id" = "message"."agent_id"),
           9223372036854775807)`,
   );
+  // A Turn with a `requestId` is identified by its message id across all the
+  // logs (ADR-0011): its key. One without is its own file's, and keyless.
+  const selectTurnKeysOfAgent = db
+    .prepare(`SELECT DISTINCT "message_id" FROM "message" WHERE "agent_id" = ? AND "request_id" IS NOT NULL`)
+    .pluck();
+  const selectTurnKeysOfConversation = db
+    .prepare(`SELECT DISTINCT "message_id" FROM "message" WHERE "conversation_id" = ? AND "request_id" IS NOT NULL`)
+    .pluck();
+  const selectTurnKeyHolderConversationIds = db
+    .prepare(
+      `SELECT DISTINCT "conversation_id" FROM "message"
+        WHERE "message_id" IN (SELECT "value" FROM json_each(?)) AND "request_id" IS NOT NULL
+          AND "conversation_id" <> ?`,
+    )
+    .pluck();
+  const selectTurnOccurrences = db.prepare(
+    `SELECT "message"."id", "message"."agent_id" AS "agentId", "message"."conversation_id" AS "conversationId",
+            "agent"."source_path" AS "sourcePath",
+            "message"."input_tokens" AS "inputTokens", "message"."output_tokens" AS "outputTokens",
+            "message"."cache_creation_5m_tokens" AS "cacheCreation5mTokens",
+            "message"."cache_creation_1h_tokens" AS "cacheCreation1hTokens",
+            "message"."cache_read_tokens" AS "cacheReadTokens", "message"."model"
+       FROM "message" JOIN "agent" ON "agent"."id" = "message"."agent_id"
+      WHERE "message"."message_id" = ? AND "message"."request_id" IS NOT NULL
+      ORDER BY "message"."id"`,
+  );
+  const selectParentAgentId = db.prepare(`SELECT "parent_agent_id" FROM "agent" WHERE "id" = ?`).pluck();
+  const selectContinuedFromId = db
+    .prepare(`SELECT "continued_from_conversation_id" FROM "conversation" WHERE "id" = ?`)
+    .pluck();
+  // The other occurrences' rows of a Turn whose owner is `@ownerMessageId`.
+  const deleteTurnsOfOtherOccurrences = db.prepare(
+    `DELETE FROM "turn"
+      WHERE "message_id" IN (SELECT "id" FROM "message" WHERE "message_id" = @turnKey AND "request_id" IS NOT NULL)
+        AND "message_id" <> @ownerMessageId`,
+  );
+  // Rewritten only when a value differs, so a Turn re-resolved to what it was costs no write.
+  const turnColumns = Object.values(TURN_COLUMN_BY_FIELD);
+  const upsertTurn = db.prepare(
+    `INSERT INTO "turn" (${turnColumns.map((column) => `"${column}"`).join(", ")})
+       VALUES (${Object.keys(TURN_COLUMN_BY_FIELD)
+         .map((field) => `@${field}`)
+         .join(", ")})
+       ON CONFLICT ("message_id") DO UPDATE SET
+         ${turnColumns.map((column) => `"${column}" = "excluded"."${column}"`).join(", ")}
+       WHERE ${turnColumns.map((column) => `"turn"."${column}" IS NOT "excluded"."${column}"`).join(" OR ")}`,
+  );
+  // A Turn without a `requestId` is its own file's: its one occurrence owns it,
+  // with its own usage. Its row outlives nothing: its occurrence's delete cascades to it.
+  const insertOwnFileTurns = db.prepare(
+    `INSERT INTO "turn" (${turnColumns.map((column) => `"${column}"`).join(", ")})
+     SELECT "id", "agent_id", "conversation_id", COALESCE("input_tokens", 0), COALESCE("output_tokens", 0),
+            COALESCE("cache_creation_5m_tokens", 0), COALESCE("cache_creation_1h_tokens", 0),
+            COALESCE("cache_read_tokens", 0), "model"
+       FROM "message"
+      WHERE "conversation_id" = ? AND "role" = 'assistant' AND "request_id" IS NULL
+      ORDER BY "id"
+     ON CONFLICT ("message_id") DO NOTHING`,
+  );
   const updateParserVersion = db.prepare(
     `UPDATE "conversation" SET "parser_version" = ? WHERE "id" IN (SELECT "value" FROM json_each(?))`,
   );
@@ -522,6 +623,28 @@ export function prepareRefreshStatements(db: Database.Database) {
       clearCopiedMessages.run(conversationId);
       updateCopiedMessages.run({ conversationId, parentConversationId });
     },
+    /** The keys of the Turns identified across the logs that Agent `agentId` holds an occurrence of. */
+    selectTurnKeysOfAgent: (agentId: number) => selectTurnKeysOfAgent.all(agentId) as string[],
+    /** The keys of the Turns identified across the logs that Conversation `conversationId` holds an occurrence of. */
+    selectTurnKeysOfConversation: (conversationId: number) =>
+      selectTurnKeysOfConversation.all(conversationId) as string[],
+    /** The Conversations other than `excludedConversationId` holding an occurrence of any of the Turns `turnKeys`. */
+    selectTurnKeyHolderConversationIds: (turnKeys: string[], excludedConversationId: number) =>
+      selectTurnKeyHolderConversationIds.all(JSON.stringify(turnKeys), excludedConversationId) as number[],
+    /** Every stored occurrence of the Turn `turnKey`, in row id order. */
+    selectTurnOccurrences: (turnKey: string) => selectTurnOccurrences.all(turnKey) as TurnOccurrence[],
+    /** The Agent that spawned Agent `agentId`; null for a Main thread, without one, or when it is not stored. */
+    selectParentAgentId: (agentId: number) => (selectParentAgentId.get(agentId) as number | null | undefined) ?? null,
+    /** The Conversation that Conversation `conversationId` continues from; null without one or when it is not stored. */
+    selectContinuedFromId: (conversationId: number) =>
+      (selectContinuedFromId.get(conversationId) as number | null | undefined) ?? null,
+    /** Write the row of a Turn identified across the logs, and delete the rows its other occurrences held. */
+    writeTurn: (turnKey: string, row: TurnRow) => {
+      deleteTurnsOfOtherOccurrences.run({ turnKey, ownerMessageId: row.messageId });
+      upsertTurn.run(row);
+    },
+    /** Write a row for each Turn of Conversation `conversationId` that is its own file's and has none yet. */
+    insertOwnFileTurns: (conversationId: number) => void insertOwnFileTurns.run(conversationId),
     /** Stamp `parserVersion` on each of `conversationIds`. */
     updateParserVersion: (conversationIds: number[], parserVersion: number) =>
       void updateParserVersion.run(parserVersion, JSON.stringify(conversationIds)),

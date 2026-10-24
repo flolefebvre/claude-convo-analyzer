@@ -1,6 +1,6 @@
 // Stored data is pinned: a Refresh of each fixture root into a fresh database
 // writes exactly these rows — same count, same ids, same column values and
-// storage types — in all twelve tables. The write path is free to change; what
+// storage types — in all thirteen tables. The write path is free to change; what
 // it stores is not.
 //
 // A MISMATCH means the write path now stores something different: a column
@@ -32,7 +32,7 @@ import { refresh } from "@/core/refresh";
 
 const FIXTURES_DIR = path.join(import.meta.dirname, "fixtures");
 
-/** The twelve tables of ADR-0001, each pinned by its row count and checksum. */
+/** The thirteen tables of ADR-0001 and ADR-0011, each pinned by its row count and checksum. */
 const STORED_TABLES = [
   "project",
   "conversation",
@@ -46,6 +46,7 @@ const STORED_TABLES = [
   "tool_set",
   "sent_message",
   "continued_in",
+  "turn",
 ] as const;
 
 type StoredTable = (typeof STORED_TABLES)[number];
@@ -115,7 +116,7 @@ function fingerprintTable(db: Database.Database, table: StoredTable, logsRoot: s
   return { rowCount: rows.length, sha256: hash.digest("hex") };
 }
 
-/** Fingerprint all twelve tables of the database at `dbPath`. */
+/** Fingerprint all thirteen tables of the database at `dbPath`. */
 function fingerprintStoredData(dbPath: string, logsRoot: string): Record<StoredTable, TableFingerprint> {
   const db = new Database(dbPath, { readonly: true });
   try {
@@ -149,14 +150,15 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 15, sha256: "d79302a905b975c08cfd6c217e6ae3eaa17e44ca45bb318cdfeefa1ae7b0e329" },
-      conversation: { rowCount: 21, sha256: "c013217c7dc7f0b3486ae01efb32b088a64fe4323b0d512fc37a7f0bddb60abf" },
-      agent: { rowCount: 35, sha256: "711e9837000a62cb2b2d1958c27c6aaeeeadab1ce7130ef41a5cf54f6ddfda6c" },
-      message: { rowCount: 127, sha256: "f062d0ade17ffbd2e026dc923d65bc33e28cc68d1db40ccaa3c03a3f78d03959" },
+      conversation: { rowCount: 21, sha256: "b25dd840f823f932b1f5c9fcc5f874ac778796432070c8304d717b336c934d0f" },
+      agent: { rowCount: 35, sha256: "de42e5a7f156c16703ac5f7e15f98996a1f1aaa3b63f7c2a7720dadf72b47d47" },
+      message: { rowCount: 127, sha256: "fd8781e9cab8dd6400bae1e48c091ca2e740df0ac717c263bc36ff0ce0ccd01c" },
       tool_call: { rowCount: 34, sha256: "1ebf6ceb68879e5e3dfbb37ddf59dce1699db2145274b17b09453577f97c8512" },
       pr_link: { rowCount: 1, sha256: "efff4b0f419e7b55d6dc8602b3503e06e81829e6fd868d216679845fa0970d16" },
       turn_duration: { rowCount: 1, sha256: "11a23dd83764e1de631b25b7b2fb8a6b5af397fe1503b2086f0404a57cb943c4" },
       ...NO_LOGGED_API_REQUESTS,
       continued_in: { rowCount: 1, sha256: "030772a8c9a88fd3802687086c9d1417d6ad731913d6b53c562bc02e78a1e62f" },
+      turn: { rowCount: 60, sha256: "a6a08b7baf3559b2294c8cc8a644e396bcb6991a8c014be27d236b476fcf59b0" },
     });
   });
 
@@ -166,14 +168,15 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "5d55ed2d1c37a5a354777b7e27dfce7bb9f299e0e7237d17a32956fee0357675" },
-      conversation: { rowCount: 1, sha256: "5beaee2d1deee7d577d9cd1867e8d352ab087699955d7eb9419d02e2eb6881db" },
-      agent: { rowCount: 2, sha256: "f5aba5caf67fb377381f3a6615b9a5b84ba42ad02870c04d39ae685c7f265e3e" },
-      message: { rowCount: 28, sha256: "c0aa023f7b4bc513a093c1d6c99425c9ecee2e8f3b291ac29f2c99cc94ea9aa4" },
+      conversation: { rowCount: 1, sha256: "76baab9228417e58c12553f93fcece364436efb2d714d3c72d1ec26945ba9a86" },
+      agent: { rowCount: 2, sha256: "713fcf5396f473f437c14c1f1b32d131ec6dc2a05a0f64b7e92473453b7915d7" },
+      message: { rowCount: 28, sha256: "07b59312bfaac3eb2046047b94a60068781347e71f5e9e8b66c75c35eb29e5fb" },
       tool_call: { rowCount: 1, sha256: "a7fdb225fda2bff0ca75f88a22789a86cd79a97f5ea4e2f952e1d4559aa8efd9" },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       ...NO_LOGGED_API_REQUESTS,
       continued_in: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+      turn: { rowCount: 4, sha256: "f72615b6d465eaca5fa7fd5ef463891faa08943fbd6c97f9124f72691212eeda" },
     });
   });
 
@@ -183,14 +186,15 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 9, sha256: "e740c951fb2b58e8b13902eea830681396ac5eea03a445a31d6fb998c250a3e1" },
-      conversation: { rowCount: 13, sha256: "723ebc70c40e95d63238adeecf1b824013f79fdd5f5feefdf021e22d20e9a97b" },
-      agent: { rowCount: 13, sha256: "05071b138ea90dac2a6f439c5ffdc80cf4ecde23d204d53599a57202eb17a230" },
-      message: { rowCount: 22, sha256: "25a07cc59be5e565459a3225cfefcc2184607786a7a14353071035b07a770c3a" },
+      conversation: { rowCount: 13, sha256: "ce55c8b1d5106d6953a98c606561af5c176d0b3288d07fe455f92b3225b87b40" },
+      agent: { rowCount: 13, sha256: "e7ac854b5bb32c8eed7800c23ea7885c9cec75c89f4805602c23cea19af38fcf" },
+      message: { rowCount: 22, sha256: "1382769cc13e635178863dfbe6b82a8e9663d9f1df7470adac18f19277e51158" },
       tool_call: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       ...NO_LOGGED_API_REQUESTS,
       continued_in: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+      turn: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
     });
   });
 
@@ -200,14 +204,15 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "c39a0134a2be51dcdd6348bf0657691be4b1d4092d6e1616117c4d0f4f58a771" },
-      conversation: { rowCount: 4, sha256: "05fe5d5cadf0e5a900659568c348d1879ce86295f54ef3cc270a2b189fad503b" },
-      agent: { rowCount: 5, sha256: "3ad52bfa85815c31aed384550111d7e07207b1d7199175e9df9ca71a8fd41c21" },
-      message: { rowCount: 17, sha256: "4a305e6648f6803b653d8c99880557c54a32685c31cb6bb5a73f6351934bbae5" },
+      conversation: { rowCount: 4, sha256: "7c1c18c538f2a49d8d5f16b6307acab81a3469595a37b884d52ae597808773af" },
+      agent: { rowCount: 5, sha256: "c4b080955ead80f8ac49312c2adc19d6232c0b4b2252a9ef272fb81afc384c3b" },
+      message: { rowCount: 17, sha256: "f3edbdcf0dff7be640d7859d82803b92937287de9cd972c0c2f27ce788a94bf4" },
       tool_call: { rowCount: 1, sha256: "e331ea30643c19a0602a2759f557187aacaf1729c796a955560799b9c4dbd73f" },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       ...NO_LOGGED_API_REQUESTS,
       continued_in: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+      turn: { rowCount: 11, sha256: "acaf84605a379ffe6220c8fa68422d83afe480dabb311064fd4e57e38b357981" },
     });
   });
 
@@ -217,9 +222,9 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "8b9da1ddb86766f02f4a1ac8d582400f0f6c9e5071156b7b726e7b6d9bf11d31" },
-      conversation: { rowCount: 3, sha256: "dc8ac5addef3cf1b3c226aa6a3d3f2916d25d18fbd61c41fef14f03e3839d4e4" },
-      agent: { rowCount: 4, sha256: "236b6560485fe1af22869e5fa6c5ab02686684a00d3e90c411e2246519b775a9" },
-      message: { rowCount: 19, sha256: "d3f9836aa555bd8b3e4a58a94f2bd44df57147a61af50e55170caec43e9259ed" },
+      conversation: { rowCount: 3, sha256: "106508b19716a87b38c212d548f5a798e043a3500a5d67b47b70de08d1e3fa22" },
+      agent: { rowCount: 4, sha256: "b84ca3bc22285399954288b6ada107594fc072eb9664fe6cb7a7c5bc7356b65e" },
+      message: { rowCount: 19, sha256: "08b3e797fe1644f12d083058f1664a905c06398642d38ff5f1e23e0841e02d9d" },
       tool_call: { rowCount: 3, sha256: "e5f615b5d6290bc0dab75ea171da282d5e176e04be16438fc4d834c227f91b9d" },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
@@ -231,6 +236,7 @@ describe("stored data equivalence", () => {
       // The two blobs carry the pieces of Injected context their attachments name: CLAUDE.md, and the date.
       sent_message: { rowCount: 15, sha256: "132ab154cc97d01608e9e5ffd1016826fa8b59178bb9f1b3db2ad7cb04c15f2d" },
       continued_in: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+      turn: { rowCount: 9, sha256: "6573021861cfbf0ebbab74e03a2078e7be8f7c8a65f558e710dc535ecfd32f23" },
     });
   });
 
@@ -240,10 +246,10 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "39d8e36d20227daa2cab6248635b86861d0a5bd0a9e19a0cf4c98eb4de3f7141" },
-      conversation: { rowCount: 4, sha256: "b2433181598171d830d78bd4b40e8b6fd99196e14529d213cdbb86f1dafbe67b" },
-      agent: { rowCount: 4, sha256: "5133ecce6c7b4babfbe5aaa102ae82698624764ec13272567e76b9a44f527e2a" },
+      conversation: { rowCount: 4, sha256: "b9f95ea374a5e730d1cd3dfa414cd094f56fa4a1dbad4dcb252e7053162af6aa" },
+      agent: { rowCount: 4, sha256: "7514b1d3c548431b2c19856159b3138aabda81ae301fbaac5dd95f9f74d189b3" },
       // The child's copied Turns name the requests of the copy's and the parent's files.
-      message: { rowCount: 16, sha256: "0e48a1941588ca86d550b22852047a588add5dd14cbe49ee5379b889a9d6c54e" },
+      message: { rowCount: 16, sha256: "bae2f79d087be7ac5e79b990ca96e926ed8fc727e2a85f3effa663428e8f67c9" },
       tool_call: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
@@ -252,6 +258,7 @@ describe("stored data equivalence", () => {
       tool_set: { rowCount: 1, sha256: "bd38eccd26f4c9604aad98fcff1f9643ab0523b07da230a857569e163247ac0e" },
       sent_message: { rowCount: 5, sha256: "e7b8ba8a7395036a9c885011145c435f535f212957dcb9f5b24aa330ebc79025" },
       continued_in: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+      turn: { rowCount: 6, sha256: "9170e3f67c51fc9493e8c5ef9ed14add952bf74c16a121b515848561d5ed2f4f" },
     });
   });
 });
@@ -342,15 +349,17 @@ describe("continuations", () => {
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 4, sha256: "22e03dd6cdf94d1b50e8c393efeb02e01452e218a539f452ce79dda37d7e9a94" },
       // Each continuation names its parent; sess-orphan, sess-fam-solo and sess-legacy-fork name none.
-      conversation: { rowCount: 10, sha256: "027b030bde6b7d46c22b4d5d432fd8645c1517a403a15625f00acca0cc92f923" },
-      agent: { rowCount: 12, sha256: "02d3ec7fae2b56dab3693127d339937d9654818fa7970c6dd830ddb47d0769c4" },
+      conversation: { rowCount: 10, sha256: "e31ec89ac7ae38d2d4ddbecf8f64442c1dea197f44fb6e97b852f79eeb8aae93" },
+      agent: { rowCount: 12, sha256: "bd10b9860196d396e3e83ca161a19efed05c508af84c44a18526ca8c4327b612" },
       // The copies of the parents' Messages, sess-fam-b's copied Sub-agent included, are flagged.
-      message: { rowCount: 43, sha256: "1accad12a52ba280e0be3a006249a3daefaaa7077cf86615647ff847c6af8770" },
+      message: { rowCount: 43, sha256: "64bea9ea49dedd60e09cf19609399b19997079ce1a1a244acc6717e43ecd12d9" },
       tool_call: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       ...NO_LOGGED_API_REQUESTS,
       continued_in: { rowCount: 4, sha256: "ec21bb4d85f23ded7081dba5372a4d755020a106cfeb93ab394e71b9e0aff89c" },
+      // One per Turn, each copied one owned by the sitting it was copied from; leg-msg-1 by sess-legacy-a.
+      turn: { rowCount: 12, sha256: "fcd98aa523dd4b97bd611aab49ba65282b641a8d0dc4aa1d0fecdabdce5e8c73" },
     });
   });
 
@@ -452,16 +461,18 @@ describe("continuations", () => {
 
       expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
         project: { rowCount: 1, sha256: "feba540146d17e8b299b85b8b419edb0f24a80e6a19fb1209d37f6936f17c75a" },
-        conversation: { rowCount: 1, sha256: "5972a11f5b4d7a16bd1f7f7e9669798ff55380927b71a075e396a17e331fb66d" },
+        conversation: { rowCount: 1, sha256: "1cd694024b09591d922f111df8e3dde5648ed2caf06e3b14e2bc53bf0019144e" },
         // fork-a under fork-lead, fork-b under fork-a: each stored under the Sub-agent that spawned it.
-        agent: { rowCount: 4, sha256: "a4f026fc46ec435fff99e25e5e712dcaad530c883e03f24f42bea5b60a49d4e1" },
+        agent: { rowCount: 4, sha256: "35492582568b5721c09faf53263953a4e503aada867dd755c4e224ba7745a653" },
         // Each fork's copy of its spawner's Messages is flagged.
-        message: { rowCount: 25, sha256: "c25ab69f4bbbaf98d46f2009f9df948691b5f5a9ce1d88955c056d4be127bf0a" },
+        message: { rowCount: 25, sha256: "59953ca0526e6d769710a5ecc50b3e690b15f4f4ce43b1edc6b81496450b0d89" },
         tool_call: { rowCount: 6, sha256: "eb6fa55b8ab37a703f86136cd5d228e644e0032e19c3abf12fb9657b4b2158bb" },
         pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
         turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
         ...NO_LOGGED_API_REQUESTS,
         continued_in: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+        // One per Turn, each copied one owned by its spawner: fork-a-msg-2, re-written by fork-b, by fork-a.
+        turn: { rowCount: 9, sha256: "e723e1e05ac71cb743deb7174ebf2edacbb5d3d0cb733ddc9b0eead3427b533d" },
       });
     });
 
@@ -586,16 +597,17 @@ describe("Sub-agents typed or linked by their meta files", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "87e358d6df0ff2d8431ebc48333192a593bcdf98a954f03524498a21d5655677" },
-      conversation: { rowCount: 1, sha256: "2d522f2a0edae2c2615868c031359ee4dacd34f2018bb91ed1efb2e1978c883f" },
+      conversation: { rowCount: 1, sha256: "fcc4d500877b7f9c0aba64089e2968cd358238fc7ef9044d9b87ef56c145af31" },
       // bg, loose, inner and c-fork typed by their meta files; loose, inner and c-fork linked by them:
       // inner under bg, not its fork; c-fork under s-spawner, not its own fork.
-      agent: { rowCount: 11, sha256: "2b93136b6fd37035bb9bdb9d27a1216e2d4aa9e1dfeeb9ad9639a8736841ab63" },
-      message: { rowCount: 48, sha256: "da3e8d95593d68a91fb93883591afac0f3cf26fc15767930854cd8a3ae820353" },
+      agent: { rowCount: 11, sha256: "426f1d467ede218d985cbce20cdd1ba93effe77fe926f3e8581c1a9ab402e28a" },
+      message: { rowCount: 48, sha256: "0c671dc4636dd159c8cc6a9268968f33a60d5fa0ebc5ef7c960f92f3fc1b7c16" },
       tool_call: { rowCount: 15, sha256: "f295985a25f659d9f3864305c7b893e8f647bbdb4d519e967dfb6d136111bf28" },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       ...NO_LOGGED_API_REQUESTS,
       continued_in: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+      turn: { rowCount: 19, sha256: "834d410402fdbcb4e6413b83a7acdcb25409ab6d567f8b49efc4c607d6bc4f75" },
     });
   });
 

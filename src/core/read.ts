@@ -1,11 +1,14 @@
 // Read API (ADR-0001, ADR-0002). `listConversations()` and `getConversation()`
-// are the stable read seams over the twelve tables written by `refresh()` (the
-// ingest spine, in `refresh.ts`). This module is read-only — it issues SUM
+// are the stable read seams over the thirteen tables written by `refresh()`
+// (the ingest spine, in `refresh.ts`). This module is read-only — it issues SUM
 // queries and prices/assembles summaries, and never writes.
 //
-// ROLLUP DESIGN (ADR-0001): conversation totals/cost are SUM queries over ALL
-// messages of ALL agents in the conversation — so sub-agent tokens roll up
-// automatically, counted ONCE (the parent Agent aggregate is never summed in).
+// ROLLUP DESIGN (ADR-0001, ADR-0011): every usage figure — Cost, token totals,
+// every breakdown — is a SUM over `turn`, one row per API response, owned by
+// one Agent of one Conversation: sub-agent tokens roll up automatically,
+// counted ONCE (the parent Agent aggregate is never summed in), and a
+// Conversation counts only what it spent itself, never the history it copied.
+// Error counts and time spans stay on `message`.
 
 import { type CostByType, priceSplitByType, resolveModel, type TokenSplit, type Tokens } from "@/core/cost";
 import { readClient } from "@/core/db";
@@ -51,7 +54,7 @@ export type ConversationSummary = {
 /**
  * The detail view of one conversation. Extends the SAME `ConversationSummary`
  * (the base fields match `listConversations` exactly) with three breakdowns, all
- * computed by SUM queries over every agent's messages (ADR-0001):
+ * computed by SUM queries over the Turns its agents own (ADR-0001, ADR-0011):
  *  - `perModel`: every model group across root + sub-agents, exact per-tier cost.
  *  - `subAgents`: one entry per sub-agent transcript (the source of truth).
  *  - `perSkill`: exact per-skill cost via per-turn attribution.
@@ -169,9 +172,9 @@ export type TranscriptAgentNode = {
   agentType: string | null;
   /** Concrete model the agent ran on (label source; may be null). */
   resolvedModel: string | null;
-  /** Own-transcript cost — THIS agent's own messages only, priced per-tier (not rolled up). */
+  /** Own-transcript cost — the Turns THIS agent owns only, priced per-tier (not rolled up). */
   costUsd: number;
-  /** Own-transcript tokens (this agent's messages only). */
+  /** Own-transcript tokens (the Turns this agent owns only). */
   tokens: Tokens;
   unpriced: boolean;
   /** True when any of this agent's turns recorded an API error (the error dot). */
@@ -243,21 +246,22 @@ type ListOptions = {
 
 /**
  * Read all conversations as `ConversationSummary[]`. Totals and cost are computed
- * as SUM queries over every message of every agent in the conversation (ADR-0001),
+ * as SUM queries over the Turns every agent of the conversation owns (ADR-0011),
  * so sub-agents added in Slice 4 roll up automatically.
  */
 export async function listConversations(opts: ListOptions = {}): Promise<ConversationSummary[]> {
   const { prisma, owned } = readClient(opts.dbPath);
   try {
     // O(1) queries regardless of conversation count (no per-conversation loop):
-    // one findMany + three batched groupBys + one continued-from resolve. All
-    // rollups bucket on `message.conversationId` (denormalized onto every row,
-    // sub-agents included), then assemble per-conversation summaries in JS.
+    // one findMany + four batched groupBys + one continued-from resolve. Usage
+    // buckets on the owning `turn.conversationId`, the rest on
+    // `message.conversationId` (both denormalized, sub-agents included), then
+    // per-conversation summaries are assembled in JS.
     const conversations = await prisma.conversation.findMany({
       include: { project: true },
     });
 
-    const modelSums = await prisma.message.groupBy({
+    const modelSums = await prisma.turn.groupBy({
       by: ["conversationId", "model"],
       _sum: TOKEN_SUM,
     });
@@ -356,7 +360,7 @@ type DetailOptions = { dbPath?: string };
  * Detail read API: the full `ConversationDetail` for one session id, or `null`
  * if unknown. The base fields reuse the SAME summarizer as `listConversations`
  * (so they match exactly); the three breakdowns are independent SUM queries over
- * every agent's messages (sub-agent tokens roll up automatically, counted once).
+ * the Turns every agent owns (sub-agent tokens roll up automatically, counted once).
  */
 export async function getConversation(id: string, opts: DetailOptions = {}): Promise<ConversationDetail | null> {
   const { prisma, owned } = readClient(opts.dbPath);
@@ -386,38 +390,38 @@ export async function getConversation(id: string, opts: DetailOptions = {}): Pro
   }
 }
 
-/** Per-skill rollup — exact cost via per-turn attribution (ADR-0001). */
+/**
+ * Per-skill rollup — exact cost via per-turn attribution (ADR-0001): the
+ * Conversation's own Turns, each under its owning occurrence's skill.
+ */
 async function pricedGroupsBySkill(
   prisma: PrismaClient,
   conversationId: number,
 ): Promise<{ skill: string; tokens: Tokens; costUsd: number }[]> {
-  // Grouped per (skill, model) so each model's tokens price at its own rate;
-  // results are then merged per skill (a skill may drive >1 model's turns).
-  // `conversationId` denormalization lets us scope without an `agent` join.
-  const grouped = await prisma.message.groupBy({
-    by: ["attributionSkill", "model"],
+  // Each Turn row priced at its own model's rate through `pricedRollup`
+  // (which prices+merges by model), then merged per skill (a skill may drive
+  // >1 model's turns). Attribution is the owning occurrence's: one join hop.
+  const turns = await prisma.turn.findMany({
     where: {
       conversationId,
-      attributionSkill: { not: null },
       model: { not: null },
+      message: { attributionSkill: { not: null } },
     },
-    _sum: TOKEN_SUM,
+    orderBy: { id: "asc" },
+    select: { ...TOKEN_SUM, model: true, message: { select: { attributionSkill: true } } },
   });
 
-  // Partition the (skill, model) rows by skill, then fold each skill's model
-  // rows through the single `pricedRollup` (which prices+merges by model) and
-  // re-merge to one entry per skill.
   const bySkill = new Map<string, ModelSumRow[]>();
   const order: string[] = [];
-  for (const g of grouped) {
-    const skill = g.attributionSkill as string;
+  for (const turn of turns) {
+    const skill = turn.message.attributionSkill as string;
     let rows = bySkill.get(skill);
     if (rows === undefined) {
       rows = [];
       bySkill.set(skill, rows);
       order.push(skill);
     }
-    rows.push(toModelSumRow(g));
+    rows.push(turn);
   }
 
   return order.map((skill) => {
@@ -463,11 +467,11 @@ function emptyTokens(): Tokens {
   return { input: 0, output: 0, cacheWrite: 0, cacheRead: 0, total: 0 };
 }
 
-/** One agent's own-transcript cost — its own messages only, priced per-tier. */
+/** One agent's own-transcript cost — the Turns it owns only, priced per-tier. */
 type OwnCost = { tokens: Tokens; costUsd: number; unpriced: boolean };
 
 /**
- * Own-transcript cost for each agent in `agentIds` (its OWN messages only, NOT
+ * Own-transcript cost for each agent in `agentIds` (the Turns it OWNS only, NOT
  * rolled up with children). One batched per-(agent, model) groupBy for ALL
  * agents (never N+1), folded through the shared `pricedRollup`. This is the
  * single source of the per-agent own-cost used by both the sub-agent breakdown
@@ -477,7 +481,7 @@ async function ownCostByAgent(prisma: PrismaClient, agentIds: number[]): Promise
   const out = new Map<number, OwnCost>();
   if (agentIds.length === 0) return out;
 
-  const grouped = await prisma.message.groupBy({
+  const grouped = await prisma.turn.groupBy({
     by: ["agentId", "model"],
     where: { agentId: { in: agentIds }, model: { not: null } },
     _sum: TOKEN_SUM,
@@ -1457,7 +1461,7 @@ type ConversationRow = {
 
 /**
  * One per-model token-sum row, the shape every priced rollup folds: a
- * `message` groupBy's `_sum`. `model` may be null (a turn with no resolved
+ * `turn` groupBy's `_sum`, or one `turn` row. `model` may be null (a turn with no resolved
  * model); the fold skips those. SQL `SUM` ignores nulls, so an absent tier
  * arrives as null and folds to 0.
  */
@@ -1551,7 +1555,7 @@ function pricedRollup(rows: ModelSumRow[]): PricedGroup[] {
   return order.map((m) => byModel.get(m) as PricedGroup);
 }
 
-/** Map a Prisma `message.groupBy` `_sum` row to the `ModelSumRow` fold shape. */
+/** Map a Prisma `turn.groupBy` `_sum` row to the `ModelSumRow` fold shape. */
 function toModelSumRow(g: {
   model: string | null;
   _sum: {
@@ -1589,13 +1593,13 @@ function addTokens(a: Tokens, b: Tokens): void {
   a.total = a.input + a.output + a.cacheWrite + a.cacheRead;
 }
 
-/** Group ALL messages of ALL agents in a conversation by model, priced exactly. */
+/** Group every Turn a conversation owns, of all its agents, by model, priced exactly. */
 async function pricedGroupsByModel(prisma: PrismaClient, conversationId: number): Promise<PricedGroup[]> {
   // Per-model token sums via one typed `groupBy` (ADR-0001: SUM, never stored
-  // aggregates). `message.conversationId` is denormalized onto every row —
-  // including sub-agent messages — so scoping by it rolls up every agent's
-  // tokens without an `agent` join. SUM ignores nulls (no COALESCE needed).
-  const grouped = await prisma.message.groupBy({
+  // aggregates). `turn.conversationId` is the owner's, denormalized onto every
+  // row — sub-agents' Turns included — so scoping by it rolls up every agent's
+  // own tokens without an `agent` join.
+  const grouped = await prisma.turn.groupBy({
     by: ["model"],
     where: { conversationId },
     _sum: TOKEN_SUM,

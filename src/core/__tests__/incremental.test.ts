@@ -58,7 +58,7 @@ const CHILD_OF_ORIGIN_LOG = [
   '{"type":"user","uuid":"orig-u1","timestamp":"2026-06-19T10:00:00.000Z","cwd":"/Users/me/dev/resume","version":"2.1.300","sessionId":"sess-child","message":{"role":"user","content":"start work"}}',
   '{"type":"assistant","uuid":"orig-a1","parentUuid":"orig-u1","requestId":"oreq-1","timestamp":"2026-06-19T10:00:05.000Z","cwd":"/Users/me/dev/resume","version":"2.1.300","sessionId":"sess-child","message":{"id":"omsg-1","role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"started"}],"usage":{"input_tokens":10,"output_tokens":10,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}}}',
   '{"type":"user","uuid":"child-u1","parentUuid":"orig-a1","timestamp":"2026-06-20T09:00:00.000Z","cwd":"/Users/me/dev/resume","version":"2.1.300","sessionId":"sess-child","message":{"role":"user","content":"resume from origin"}}',
-  '{"type":"assistant","uuid":"child-a1","parentUuid":"child-u1","requestId":"creq-1","timestamp":"2026-06-20T09:00:05.000Z","cwd":"/Users/me/dev/resume","version":"2.1.300","sessionId":"sess-child","message":{"id":"cmsg-1","role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"continued"}],"usage":{"input_tokens":5,"output_tokens":5,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}}}',
+  '{"type":"assistant","uuid":"child-a1","parentUuid":"child-u1","requestId":"creq-1","timestamp":"2026-06-20T09:00:05.000Z","cwd":"/Users/me/dev/resume","version":"2.1.300","sessionId":"sess-child","message":{"id":"child-msg-1","role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"continued"}],"usage":{"input_tokens":5,"output_tokens":5,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}}}',
   "",
 ].join("\n");
 
@@ -195,7 +195,7 @@ describe("incremental refresh", () => {
       newPath,
       [
         '{"type":"user","uuid":"n0","timestamp":"2026-06-20T12:00:00.000Z","cwd":"/Users/me/dev/demo","message":{"role":"user","content":"new session"}}',
-        '{"type":"assistant","uuid":"n1","requestId":"nr1","timestamp":"2026-06-20T12:00:05.000Z","cwd":"/Users/me/dev/demo","message":{"id":"nmsg-1","role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":5,"output_tokens":7,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}}}',
+        '{"type":"assistant","uuid":"n1","requestId":"nr1","timestamp":"2026-06-20T12:00:05.000Z","cwd":"/Users/me/dev/demo","message":{"id":"new-msg-1","role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":5,"output_tokens":7,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}}}',
         "",
       ].join("\n"),
     );
