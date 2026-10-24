@@ -52,7 +52,7 @@ describe("assistant effort parsing", () => {
 
   it("takes effort from the first line of a turn split across content blocks", () => {
     // Claude Code splits one turn into several lines sharing a message.id; the
-    // first line wins for usage/model/timestamp, and effort follows suit.
+    // first line wins for model/timestamp, and effort follows suit.
     const first = assistant({ effort: "high", uuid: "a1" });
     const second = assistant({ effort: "xhigh", uuid: "a2" });
     const parsed = parseSessionLines([first, second]);
