@@ -4,7 +4,11 @@
 
 accepted. Amends ADR-0005's "each Conversation is still deleted and rewritten
 in the same transaction" paragraph: a changed Conversation is now rewritten in
-place, one Agent's file at a time, still in one transaction.
+place, one Agent's file at a time, still in one transaction. Amended by
+ADR-0011: the Agent's file stays the unit of re-parse, but a parse no longer
+reads a Sub-agent's parent for its lineage, which the Refresh resolves from
+stored facts, and the "known limit" paragraph in Consequences no longer
+applies.
 
 ## Context
 

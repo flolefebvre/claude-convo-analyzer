@@ -2,7 +2,9 @@
 
 ## Status
 
-accepted
+accepted. Amended by ADR-0011: Cost and every total are sums over `turn`, one
+row per API response across all the logs, not over `message`, and a
+Conversation's Cost is its own spend, never the history it copied.
 
 ## Context
 

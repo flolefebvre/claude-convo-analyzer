@@ -82,9 +82,9 @@ alike. Its **cumulative total** is the sum of its members' Costs, and is a lower
 bound whenever any member has unpriced usage.
 
 A family is a _view_, never a merge: every member stays its own Conversation
-row with its own Cost, so per-conversation totals and the overview aggregate are
-unchanged by it (nothing is double-counted). Members can live in different
-Projects — resuming from a git worktree launches in another directory.
+row with its own Cost, which counts only its own Turns, never the history it
+copied, so the cumulative total is the family's real spend. Members can live in
+different Projects — resuming from a git worktree launches in another directory.
 
 ### Record
 
@@ -106,12 +106,15 @@ An autonomous Claude execution within a Conversation. There are two kinds:
   per-turn `assistant` Records as a Main thread (marked `isSidechain: true`) —
   including, when it spawns, its own `Agent` calls and spawn ledger, which is
   where a grandchild's parentage is recorded. Its type and spawner come from
-  that spawn ledger, else from the `agent-<agentId>.meta.json` Claude Code
-  writes beside its transcript (log-format §4). The spawning `Agent` call also
-  mirrors the sub-agent's _aggregated_ token ledger into its tool result
-  (`toolUseResult`) — the same tokens as the transcript, so the transcript is
-  the source of truth and the aggregate is only a cross-check. A sub-agent may
-  resolve to a different (often cheaper) model than the Main thread.
+  the `agent-<agentId>.meta.json` Claude Code writes beside its transcript:
+  the spawner is the Agent that owns the `Agent` call it names. Only a
+  Sub-agent whose meta file states nothing falls back to the spawn ledger
+  naming it, else to the Main thread (log-format §4). The spawning `Agent`
+  call also mirrors the sub-agent's _aggregated_ token ledger into its tool
+  result (`toolUseResult`) — the same tokens as the transcript, so the
+  transcript is the source of truth and the aggregate is only a cross-check. A
+  sub-agent may resolve to a different (often cheaper) model than the Main
+  thread.
 
 Main thread and Sub-agent are the **same kind of thing** — a transcript of
 Claude doing work — differing only by location and lineage. They are parsed
@@ -137,12 +140,15 @@ Usage is split into distinct types, each priced differently:
 
 ### Turn
 
-One model request/response within the Main thread. Usage is reported
-**per turn**, so a Conversation's Main-thread usage is the sum across turns.
-Multiple Records can describe the same turn (one per content block) — turns
-are therefore deduplicated by their message id before summing, a turn's usage
-being the highest value of each bucket across its Records. A Turn may carry its **thinking**: how long the model thought and,
-sometimes, a short summary of it.
+One model response to one API request, by any Agent. A Turn is identified by
+its message id across all the logs: several Records describe it (one per
+content block, its usage growing as it streams), and a copied history holds it
+again in another file. Each file that holds it holds an **occurrence** of the
+one Turn, which is counted once, with the highest value of each usage bucket
+any of its Records reports. A Turn without a request id (a mock API's, a
+synthetic one) is its file's alone. A Turn may carry its **thinking**: how long
+the model thought and, sometimes, a short summary of it.
+_Avoid_: using Turn for one Record, or for one file's copy of it.
 
 ### Message
 
@@ -181,12 +187,15 @@ which case it lands mid-turn rather than between turns.
 
 ### Copied Message
 
-A Message a continuation copied from its parent Conversation when it was
-resumed or forked, or a forked Sub-agent copied from the Agent that spawned it:
-in its Agent's leading run of Messages that an Agent of the parent, or the
-spawning Agent, also holds, by `uuid` (log-format §10). History the copy
-carries, not work it did; the parent's and the spawner's own Messages are
-never Copied Messages.
+An occurrence of a Message in an Agent that does not **own** it. A Message
+held by several Agents — a continuation's copy of its parent's history, a
+forked Sub-agent's copy of its spawner's, a transcript a resumed session
+links to — is owned by one of them: the ancestor among the holders (the
+continued-from parent, the spawning Agent, at any depth), else the holder
+with the smallest log path; a Message's only holder owns it, copy or not.
+History the copier carries, not work it did; it shows in the Transcript and
+counts in no Cost. A Turn is matched across Agents by its message id, any
+other Message by its `uuid`.
 _Avoid_: duplicate message, inherited message.
 
 ### Transcript
@@ -266,9 +275,10 @@ individual Tool call**. Therefore:
 ### Cost
 
 The hypothetical price of a Conversation had it run on the Claude API, computed
-from its token usage and a per-model, per-token-type price list. Costs are
-attributed per Resolved model, so Main-thread and sub-agent costs can differ
-within one Conversation. Claude Code's own background requests (naming the
+from the usage of its own Turns and a per-model, per-token-type price list. A
+Turn counts in one Conversation's Cost only; a copied history shows in the
+Transcript but costs nothing. Costs are attributed per Resolved model, so
+Main-thread and sub-agent costs can differ within one Conversation. Claude Code's own background requests (naming the
 session, suggestions, web summaries) never appear in the logs, so Cost leaves
 them out.
 
