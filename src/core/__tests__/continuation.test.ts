@@ -26,6 +26,12 @@ async function continuedFromById(dbPath: string): Promise<Record<string, string 
   return Object.fromEntries(rows.map((row) => [row.id, row.continuedFromId]));
 }
 
+/** The owner each of one Agent's rendered Messages names, by uuid: null on one it owns. */
+async function copiedFromByUuid(dbPath: string, sessionId: string, agentId?: string) {
+  const transcript = await getTranscript(sessionId, { dbPath, agentId, page: "all" });
+  return Object.fromEntries((transcript?.messages ?? []).map((m) => [m.uuid, m.copiedFrom]));
+}
+
 /** The uuids of one Agent's rendered Messages that are Copied Messages, and of those that are not. */
 async function copiedAndOwnUuids(dbPath: string, sessionId: string, agentId?: string) {
   const transcript = await getTranscript(sessionId, { dbPath, agentId, page: "all" });
@@ -90,6 +96,23 @@ describe("a cold Refresh of copied sessions", () => {
     });
   });
 
+  it("names the occurrence each Copied Message is from: its owner's session, title and Message", async () => {
+    const copiedFrom = await copiedFromByUuid(db.dbPath, "sess-fam-c");
+    // The Main thread's key is not stable, so a Main-thread owner names none.
+    expect(copiedFrom["fam-a-u1"]).toEqual({
+      sessionId: "sess-fam-a",
+      title: "Family root",
+      agentId: null,
+      messageUuid: "fam-a-u1",
+    });
+    expect(copiedFrom["fam-b-a1"]).toMatchObject({ sessionId: "sess-fam-b", agentId: null, messageUuid: "fam-b-a1" });
+    expect(copiedFrom["fam-c-u1"]).toBeNull();
+    expect((await copiedFromByUuid(db.dbPath, "sess-fam-b", "fam-helper"))["fam-helper-u1"]).toMatchObject({
+      sessionId: "sess-fam-a",
+      agentId: "fam-helper",
+    });
+  });
+
   it("marks as copied a Sub-agent transcript copied along with its parent's records", async () => {
     expect(await copiedAndOwnUuids(db.dbPath, "sess-fam-b", "fam-helper")).toEqual({
       copied: ["fam-helper-u1", "fam-helper-a1"],
@@ -117,6 +140,22 @@ describe("a cold Refresh of forked Sub-agents", () => {
     expect(await copiedAndOwnUuids(db.dbPath, "sess-forks", "fork-b")).toEqual({
       copied: ["lead-u1", "lead-a1", "fork-a-a1", "fork-a-a2", "fork-b-a1"],
       own: ["fork-b-a2"],
+    });
+  });
+
+  it("names a fork's copies as from the root spawner, at its own occurrence of a re-written spawn record", async () => {
+    const copiedFrom = await copiedFromByUuid(db.dbPath, "sess-forks", "fork-b");
+    const fromForkLead = { sessionId: "sess-forks", title: "audit the runs", agentId: "fork-lead" };
+    expect(copiedFrom["lead-u1"]).toEqual({ ...fromForkLead, messageUuid: "lead-u1" });
+    // fork-a-a1 re-writes fork-lead's spawning Turn, lead-a2 in fork-lead's file.
+    expect(copiedFrom["fork-a-a1"]).toEqual({ ...fromForkLead, messageUuid: "lead-a2" });
+    expect(copiedFrom["fork-a-a2"]).toEqual({ ...fromForkLead, agentId: "fork-a", messageUuid: "fork-a-a2" });
+    expect(copiedFrom["fork-b-a2"]).toBeNull();
+    expect((await copiedFromByUuid(db.dbPath, "sess-main-fork", "main-fork"))["main-fork-a1"]).toEqual({
+      sessionId: "sess-main-fork",
+      title: "name the tables",
+      agentId: null,
+      messageUuid: "mainfork-a1",
     });
   });
 
