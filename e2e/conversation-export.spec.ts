@@ -22,6 +22,10 @@ const LOGGED_REQUESTS_THINKING_TEXT =
 const AGENT_MESSAGES_TITLE = "Coordinate the search rewrite across agents";
 const PLAN_CALL_DESCRIPTION = "plan the change";
 const PLAN_TASK_PROMPT_TEXT = "Draft the implementation plan";
+// A seeded continuation, and the Conversation it continues from, which owns its copied history
+// (`continuationFamilies` in `scripts/seed/fake-logs.ts`).
+const CONTINUATION_TITLE = "Billing split — extract the invoice writer";
+const CONTINUED_FROM_TITLE = "Split the billing service out of the monolith";
 
 /**
  * Open the seeded Conversation titled `title`, download its export, save it under its own name, and return
@@ -177,6 +181,21 @@ test.describe("Conversation export (/api/conversation/[sessionId]/export)", () =
     await page.emulateMedia({ media: "print" });
     await expect(mainSection).toBeVisible();
     await expect(planSection).toBeVisible();
+  });
+
+  test("marks a continuation's copied history with its owner, named as plain text", async ({ page }) => {
+    const { filePath, html } = await downloadExport(page, CONTINUATION_TITLE);
+
+    expect(html).not.toMatch(/<script/i);
+    await page.goto(pathToFileURL(filePath).href);
+    const copiedPrompt = page
+      .getByRole("region", { name: "main transcript" })
+      .getByRole("article")
+      .filter({ hasText: `from ${CONTINUED_FROM_TITLE}` })
+      .first();
+    await expect(copiedPrompt).toBeVisible();
+    // The owner is another Conversation, not in the file: no link leads to it.
+    await expect(copiedPrompt.getByRole("link", { name: CONTINUED_FROM_TITLE })).toHaveCount(0);
   });
 
   test("keeps the thinking and leaves What was sent out", async ({ page }) => {

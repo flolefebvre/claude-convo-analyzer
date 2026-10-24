@@ -20,6 +20,9 @@ const LOGGED_REQUESTS_SUB_AGENT_THINKING_TEXT =
 // The seeded Conversation with an ExitPlanMode call, then a SendMessage call (issue #149).
 const PLAN_HANDOFF_TITLE = "Hand the search plan to the docs team";
 
+// A seeded continuation of TITLE, whose copied history TITLE owns (`continuationFamilies` in `scripts/seed/fake-logs.ts`).
+const CONTINUATION_TITLE = "Billing split — extract the invoice writer";
+
 const titleLink = (page: Page) => page.getByRole("link", { name: TITLE, exact: true });
 
 /** Open the seeded Conversation titled `title` from the Conversations list. */
@@ -63,6 +66,37 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
       await expectShell(page, conversation);
     });
     await expectData(page, conversation);
+  });
+
+  test("is instant on a continuation, then marks its copied history with its owner, linked to that Message", async ({
+    page,
+    baseURL,
+  }) => {
+    await page.goto("/");
+    const path = await page.getByRole("link", { name: CONTINUATION_TITLE, exact: true }).getAttribute("href");
+    const ownerPathname = new URL((await titleLink(page).getAttribute("href"))!, baseURL).pathname;
+    // In a transcript row, not the family banner above it, which links the parent too.
+    const ownerLinks = (p: Page) =>
+      p.getByRole("main").getByRole("article").getByRole("link", { name: TITLE, exact: true });
+    await expectInstantLoad(page, baseURL, path!, {
+      ...conversation,
+      data: (p) => [p.getByRole("heading", { level: 1, name: CONTINUATION_TITLE }), ownerLinks(p)],
+    });
+
+    // The last Message copied, far below the top of its owner's Transcript.
+    const ownerLink = ownerLinks(page).last();
+    await expect(ownerLink.locator("..")).toHaveText(`from ${TITLE}`);
+    const href = (await ownerLink.getAttribute("href"))!;
+    expect(href.startsWith(`${ownerPathname}?msg=`)).toBe(true);
+    const messageUuid = new URL(href, baseURL).searchParams.get("msg")!;
+    expect(href.endsWith(`#msg-${messageUuid}`)).toBe(true);
+
+    await ownerLink.click();
+    await page.waitForURL((url) => url.pathname === ownerPathname);
+    // The router keeps the continuation it came from around, hidden, with the same uuid.
+    const ownerMessage = page.locator(`article[id="msg-${messageUuid}"]`).filter({ visible: true });
+    await expect(ownerMessage).toHaveClass(/\banchored\b/);
+    await expect(ownerMessage).toBeInViewport();
   });
 
   test("publishes the chrome's measured height, which the agent tree fits under", async ({ page }) => {
