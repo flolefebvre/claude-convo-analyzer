@@ -5,12 +5,13 @@
 // fixture logs.
 //
 // These fixtures live in their OWN logs root (`fixtures/family-logs`), not the
-// shared one: the family shapes need ten extra sessions, and adding them to
+// shared one: the family shapes need eleven extra sessions, and adding them to
 // the shared root both slowed every other refresh-based suite and collided with
 // the corpus assertions of the FTS tests. Each continuation copies its parent's
 // records (log-format §10): the root encodes a standalone session, a linear
-// chain, a fork, a cross-project resume, a copy whose original is gone, and an
-// older pair with no `continued-in` record. A cycle cannot come out of copies,
+// chain, a fork, a cross-project resume, a sitting resumed then quit before its
+// first own Message, a copy whose original is gone, and an older pair with no
+// `continued-in` record. A cycle cannot come out of copies,
 // so the walk's guard is fed made-up summaries. The titles carry the shapes of
 // the last-wins rule: the root is re-titled, the standalone session renamed
 // twice, and sess-fam-b holds only its parent's title, re-appended on resume.
@@ -19,7 +20,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { buildFamily, type FamilyRow, familySizes } from "@/core/family";
-import { listConversations } from "@/core/read";
+import { getConversation, listConversations } from "@/core/read";
 
 import { seededTempDb } from "./helpers/temp-db";
 
@@ -51,7 +52,7 @@ describe("buildFamily", () => {
     expect(family.members.slice(0, 3).map((m) => m.id)).toEqual(["sess-fam-a", "sess-fam-b", "sess-fam-c"]);
     expect(family.members.slice(0, 3).map((m) => m.depth)).toEqual([0, 1, 2]);
     expect(family.parent?.id).toBe("sess-fam-b");
-    expect(family.children).toEqual([]);
+    expect(family.children.map((c) => c.id)).toEqual(["sess-fam-f"]);
 
     // The middle sitting sees its parent above and its continuation below.
     const middle = buildFamily(rows, "sess-fam-b");
@@ -61,21 +62,22 @@ describe("buildFamily", () => {
 
   it("lays a forked family out as a tree, chronological within each fork", async () => {
     const rows = await listConversations({ dbPath: db.dbPath });
-    // sess-fam-a forks into sess-fam-b (→ sess-fam-c) and sess-fam-d
-    // (→ sess-fam-e, resumed in ANOTHER project).
+    // sess-fam-a forks into sess-fam-b (→ sess-fam-c → sess-fam-f) and
+    // sess-fam-d (→ sess-fam-e, resumed in ANOTHER project).
     const family = buildFamily(rows, "sess-fam-c");
 
     expect(family).not.toBeNull();
     if (family === null) return;
-    expect(family.size).toBe(5);
+    expect(family.size).toBe(6);
     expect(family.members.map((m) => m.id)).toEqual([
       "sess-fam-a",
       "sess-fam-b",
       "sess-fam-c",
+      "sess-fam-f",
       "sess-fam-d",
       "sess-fam-e",
     ]);
-    expect(family.members.map((m) => m.depth)).toEqual([0, 1, 2, 1, 2]);
+    expect(family.members.map((m) => m.depth)).toEqual([0, 1, 2, 3, 1, 2]);
     expect(family.members.filter((m) => m.isCurrent).map((m) => m.id)).toEqual(["sess-fam-c"]);
 
     // The fork's two branches are the root's direct continuations.
@@ -126,6 +128,28 @@ describe("buildFamily", () => {
     expect(buildFamily(rows, "does-not-exist")).toBeNull();
   });
 
+  // Not redundant: the fixture's siblings agree in session-id and chronological order, so only this pins the order.
+  it("orders a fork's continuations by their own start, not by session id", () => {
+    const row = (id: string, startedAt: string, continuedFromId: string | null): FamilyRow => ({
+      id,
+      title: null,
+      project: { path: "/Users/me/dev/fork" },
+      startedAt,
+      costUsd: 0,
+      unpriced: false,
+      continuedFromId,
+    });
+    const rows = [
+      row("sess-fork-root", "2026-06-21T09:00:00.000Z", null),
+      row("sess-fork-a", "2026-06-21T15:00:00.000Z", "sess-fork-root"),
+      row("sess-fork-b", "2026-06-21T11:00:00.000Z", "sess-fork-root"),
+    ];
+
+    const family = buildFamily(rows, "sess-fork-root");
+    expect(family?.children.map((c) => c.id)).toEqual(["sess-fork-b", "sess-fork-a"]);
+    expect(family?.members.map((m) => m.id)).toEqual(["sess-fork-root", "sess-fork-b", "sess-fork-a"]);
+  });
+
   it("terminates on a cyclic link structure, listing each member once", () => {
     // Two sessions continuing EACH OTHER — a shape copies cannot produce,
     // guarded against anyway.
@@ -157,8 +181,8 @@ describe("familySizes", () => {
     const sizes = familySizes(rows);
 
     // The whole connected component counts, seen from any of its members.
-    for (const id of ["sess-fam-a", "sess-fam-b", "sess-fam-c", "sess-fam-d", "sess-fam-e"]) {
-      expect(sizes.get(id)).toBe(5);
+    for (const id of ["sess-fam-a", "sess-fam-b", "sess-fam-c", "sess-fam-d", "sess-fam-e", "sess-fam-f"]) {
+      expect(sizes.get(id)).toBe(6);
     }
     expect(sizes.get("sess-legacy-a")).toBe(2);
     expect(sizes.get("sess-legacy-b")).toBe(2);
@@ -167,6 +191,54 @@ describe("familySizes", () => {
     expect(sizes.get("sess-orphan")).toBe(1);
     // Every conversation is accounted for exactly once.
     expect(sizes.size).toBe(rows.length);
+  });
+});
+
+describe("a Conversation's time bounds", () => {
+  const db = seededTempDb({ prefix: "cca-fambounds-", logsRoot: FIXTURES_ROOT });
+
+  /** The listed and the detail bounds of the Conversation `sessionId`, which must agree. */
+  async function boundsOf(sessionId: string): Promise<{ startedAt?: string; endedAt?: string }> {
+    const listed = (await listConversations({ dbPath: db.dbPath })).find((r) => r.id === sessionId);
+    const detail = await getConversation(sessionId, { dbPath: db.dbPath });
+    expect(detail?.startedAt).toBe(listed?.startedAt);
+    expect(detail?.endedAt).toBe(listed?.endedAt);
+    return { startedAt: listed?.startedAt, endedAt: listed?.endedAt };
+  }
+
+  it("are a root's first and last Message", async () => {
+    expect(await boundsOf("sess-fam-a")).toEqual({
+      startedAt: "2026-06-21T09:00:00.000Z",
+      endedAt: "2026-06-21T09:00:05.000Z",
+    });
+  });
+
+  it("are a continuation's first and last own Message, not its copied block's", async () => {
+    expect(await boundsOf("sess-fam-b")).toEqual({
+      startedAt: "2026-06-21T10:00:00.000Z",
+      endedAt: "2026-06-21T10:00:05.000Z",
+    });
+    // sess-fam-c copies through sess-fam-b's own Messages too.
+    expect(await boundsOf("sess-fam-c")).toEqual({
+      startedAt: "2026-06-21T11:00:00.000Z",
+      endedAt: "2026-06-21T11:00:05.000Z",
+    });
+    expect(await boundsOf("sess-fam-d")).toEqual({
+      startedAt: "2026-06-21T10:30:00.000Z",
+      endedAt: "2026-06-21T10:30:05.000Z",
+    });
+    expect(await boundsOf("sess-fam-e")).toEqual({
+      startedAt: "2026-06-21T12:00:00.000Z",
+      endedAt: "2026-06-21T12:00:10.000Z",
+    });
+  });
+
+  it("are the copied block's for a continuation resumed then quit before its first own Message, which stays listed", async () => {
+    // sess-fam-f holds only sess-fam-c's six Messages.
+    expect(await boundsOf("sess-fam-f")).toEqual({
+      startedAt: "2026-06-21T09:00:00.000Z",
+      endedAt: "2026-06-21T11:00:05.000Z",
+    });
   });
 });
 

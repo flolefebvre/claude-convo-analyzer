@@ -350,17 +350,17 @@ describe("continuations", () => {
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 4, sha256: "22e03dd6cdf94d1b50e8c393efeb02e01452e218a539f452ce79dda37d7e9a94" },
       // Each continuation names its parent; sess-orphan, sess-fam-solo and sess-legacy-fork name none.
-      conversation: { rowCount: 10, sha256: "3f518e6e23d31b5bf7312f07a393700614854967c8ba37bd1e0b4891ae6630fd" },
-      agent: { rowCount: 12, sha256: "9f677eb12d9b385413077033e91475ef776ec77024d40209936d34c02371f74f" },
+      conversation: { rowCount: 11, sha256: "ad2847b45a73c31f699353f76d2b62af3b2655475bcb8a2243cb4da71da79833" },
+      agent: { rowCount: 13, sha256: "60a8128bf5047e4c2c23cbaf4d745e1c84330a299c01e0bbd4915ce79636e579" },
       // The copies of the parents' Messages, sess-fam-b's copied Sub-agent included, name the occurrence that owns them.
-      message: { rowCount: 43, sha256: "0a7ce9f14b68890c39c1eb2449e15f7cc9946241f5aa10c326053ec5891d1ac4" },
+      message: { rowCount: 49, sha256: "ac93f06f44eae166749a51b79237200acb25347c815341d7c0013284df8092a6" },
       tool_call: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       ...NO_LOGGED_API_REQUESTS,
-      continued_in: { rowCount: 4, sha256: "ec21bb4d85f23ded7081dba5372a4d755020a106cfeb93ab394e71b9e0aff89c" },
+      continued_in: { rowCount: 5, sha256: "dcd992ee5e6ae9cd1e041d68b06c000b1969f03a31702171b5a691e141a8dda4" },
       // One per Turn, each copied one owned by the sitting it was copied from; leg-msg-1 by sess-legacy-a.
-      turn: { rowCount: 12, sha256: "23ca3fb0acedfc581df9206337bf0dab96d474a83b65f9c754139d4703977527" },
+      turn: { rowCount: 12, sha256: "88873322b4b00c66252bbc7079ce4f7880422e600cca548b8aaf20dd131ebe98" },
     });
   });
 
