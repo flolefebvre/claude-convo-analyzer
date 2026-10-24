@@ -132,9 +132,20 @@ stored.
 ### GOTCHA 1 — deduplicate by message id before summing usage
 
 A single assistant turn can be written as **multiple `assistant` records** (one
-per content block), each repeating the **identical `usage`**. In the snapshot,
-37 assistant records collapsed to 20 distinct `requestId`/`message.id`. **Sum
-usage once per distinct `message.id` (or `requestId`)**, or you double-count.
+per content block), each carrying the turn's `usage` as it stood when that
+record was written. In the snapshot, 37 assistant records collapsed to 20
+distinct `requestId`/`message.id`. **Count usage once per distinct
+`message.id` (or `requestId`)**, or you double-count.
+
+The records do not always repeat the same `usage`: in a Sub-agent's turn,
+`output_tokens` grows from record to record as the response streams. Measured
+on 392,912 `assistant` records (2.1.143–2.1.310, Oct 2026): of the 133,008
+turns written as several records, 42,774 grow, all but 2 of them Sub-agents'.
+Their first records' output sums to 71.0 M tokens, their last records' to
+111.3 M: taking the first record misses 36 % of output. The other buckets never
+change between records, and the last record's values are always the highest.
+So **a turn's usage is the highest value of each bucket across its records**;
+its model, timestamp, effort and attribution are the first record's.
 
 ### GOTCHA 2 — `usage` is per-turn, not cumulative
 

@@ -77,7 +77,7 @@ describe("core ingest spine", () => {
     expect(dup).toBeDefined();
     if (!dup) return;
 
-    // Three records repeat the identical usage for one message.id → count once.
+    // Three records of one message.id carry the same usage → counted once.
     expect(dup.tokens.input).toBe(1000);
     expect(dup.tokens.output).toBe(40);
     expect(dup.models.distinctCount).toBe(1);

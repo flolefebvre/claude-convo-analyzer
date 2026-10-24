@@ -139,9 +139,9 @@ Usage is split into distinct types, each priced differently:
 
 One model request/response within the Main thread. Usage is reported
 **per turn**, so a Conversation's Main-thread usage is the sum across turns.
-Multiple Records can describe the same turn (one per content block) and repeat
-the same usage — turns are therefore deduplicated by their message id before
-summing. A Turn may carry its **thinking**: how long the model thought and,
+Multiple Records can describe the same turn (one per content block) — turns
+are therefore deduplicated by their message id before summing, a turn's usage
+being the highest value of each bucket across its Records. A Turn may carry its **thinking**: how long the model thought and,
 sometimes, a short summary of it.
 
 ### Message
