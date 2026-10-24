@@ -1,10 +1,11 @@
 // Continuations (log-format §10): a resumed or forked session's file starts
 // with a copy of its parent's records, same uuids. A Refresh links it to its
 // parent — the session whose `continued-in` record names it, else the one
-// whose Messages it holds all of — and flags the Messages it copied. A forked
-// Sub-agent's file likewise starts with a copy of its spawning Agent's
-// records, flagged against that Agent. Read
-// back through `listConversations` and `getTranscript`, never SQL.
+// whose Messages it holds all of. A forked Sub-agent's file likewise starts
+// with a copy of its spawning Agent's records. Of the Agents holding a
+// Message, one owns it — the ancestor, else the smallest log path — and every
+// other occurrence is a Copied Message (ADR-0011). Read back through
+// `listConversations` and `getTranscript`, never SQL.
 
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -61,7 +62,7 @@ describe("a cold Refresh of copied sessions", () => {
     expect(links["sess-legacy-fork"]).toBeNull();
   });
 
-  it("flags a continuation's copied Messages, and only those", async () => {
+  it("marks as copied a continuation's copy of its parent's Messages, and only those", async () => {
     expect(await copiedAndOwnUuids(db.dbPath, "sess-fam-c")).toEqual({
       copied: ["fam-a-u1", "fam-a-a1", "fam-b-u1", "fam-b-a1"],
       own: ["fam-c-u1", "fam-c-a1"],
@@ -72,13 +73,24 @@ describe("a cold Refresh of copied sessions", () => {
     });
   });
 
-  it("flags nothing in a session that was copied, nor in one whose original is gone", async () => {
+  it("an original owns its Messages, and so does a copy whose original is gone, their only holder", async () => {
     expect((await copiedAndOwnUuids(db.dbPath, "sess-fam-a")).copied).toEqual([]);
-    expect((await copiedAndOwnUuids(db.dbPath, "sess-orphan")).copied).toEqual([]);
-    expect((await copiedAndOwnUuids(db.dbPath, "sess-legacy-fork")).copied).toEqual([]);
+    expect((await copiedAndOwnUuids(db.dbPath, "sess-legacy-a")).copied).toEqual([]);
+    expect(await copiedAndOwnUuids(db.dbPath, "sess-orphan")).toEqual({
+      copied: [],
+      own: ["gone-u1", "gone-a1", "orph-u1", "orph-a1"],
+    });
   });
 
-  it("flags a Sub-agent transcript copied along with its parent's records", async () => {
+  it("marks as copied a near-fork's shared Messages, owned by the holder of the smallest log path", async () => {
+    // No record links sess-legacy-fork to sess-legacy-a, and neither holds all of the other's Messages.
+    expect(await copiedAndOwnUuids(db.dbPath, "sess-legacy-fork")).toEqual({
+      copied: ["leg-u1", "leg-a1"],
+      own: ["leg-fork-u1"],
+    });
+  });
+
+  it("marks as copied a Sub-agent transcript copied along with its parent's records", async () => {
     expect(await copiedAndOwnUuids(db.dbPath, "sess-fam-b", "fam-helper")).toEqual({
       copied: ["fam-helper-u1", "fam-helper-a1"],
       own: [],
@@ -93,23 +105,32 @@ describe("a cold Refresh of forked Sub-agents", () => {
     logsRoot: path.join(import.meta.dirname, "fixtures", "forked-agent-logs"),
   });
 
-  it("flags a fork's copy of its spawning Sub-agent's Messages, and only those", async () => {
+  it("marks as copied a fork's copy of its spawning Sub-agent's Messages, its re-written spawn record included", async () => {
+    // fork-a-a1 is the spawner's spawning Turn under a new uuid: the spawner owns it.
     expect(await copiedAndOwnUuids(db.dbPath, "sess-forks", "fork-a")).toEqual({
-      copied: ["lead-u1", "lead-a1"],
-      own: ["fork-a-a1", "fork-a-a2", "fork-a-a3", "fork-a-a4"],
+      copied: ["lead-u1", "lead-a1", "fork-a-a1"],
+      own: ["fork-a-a2", "fork-a-a3", "fork-a-a4"],
     });
   });
 
-  it("flags a fork of a fork against the fork that spawned it, its copy of the first fork's own Messages included", async () => {
+  it("marks as copied a fork of a fork's copy, the first fork's own Messages and its re-written spawn record included", async () => {
     expect(await copiedAndOwnUuids(db.dbPath, "sess-forks", "fork-b")).toEqual({
-      copied: ["lead-u1", "lead-a1", "fork-a-a1", "fork-a-a2"],
-      own: ["fork-b-a1", "fork-b-a2"],
+      copied: ["lead-u1", "lead-a1", "fork-a-a1", "fork-a-a2", "fork-b-a1"],
+      own: ["fork-b-a2"],
     });
   });
 
-  it("flags nothing in the Sub-agent that was forked, nor in the Main thread", async () => {
+  it("marks nothing as copied in the Sub-agent that was forked, nor in the Main thread", async () => {
     expect((await copiedAndOwnUuids(db.dbPath, "sess-forks", "fork-lead")).copied).toEqual([]);
     expect((await copiedAndOwnUuids(db.dbPath, "sess-forks")).copied).toEqual([]);
+  });
+
+  it("marks as copied a Main-thread fork's re-written spawning Turn, after its fork-context-ref", async () => {
+    expect(await copiedAndOwnUuids(db.dbPath, "sess-main-fork", "main-fork")).toEqual({
+      copied: ["main-fork-a1"],
+      own: ["main-fork-a2"],
+    });
+    expect((await copiedAndOwnUuids(db.dbPath, "sess-main-fork")).copied).toEqual([]);
   });
 });
 

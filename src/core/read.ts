@@ -1293,7 +1293,7 @@ async function readAgentTranscript(
       apiErrorMessage: true,
       timestamp: true,
       apiRequestId: true,
-      isCopied: true,
+      copiedFromMessageId: true,
     },
   });
 
@@ -1340,7 +1340,7 @@ async function readAgentTranscript(
       unpriced: turn.unpriced,
       isApiError: r.isApiError,
       apiErrorMessage: r.apiErrorMessage,
-      isCopied: r.isCopied,
+      isCopied: r.copiedFromMessageId !== null,
       timestamp: r.timestamp === null ? null : new Date(Number(r.timestamp)).toISOString(),
       toolCalls: toolCallsByMsg.get(r.id) ?? [],
       apiRequestId: r.apiRequestId,

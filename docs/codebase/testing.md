@@ -90,8 +90,9 @@ per gotcha:
   copy, a copied Sub-agent transcript, and a copy whose original is gone
   (`family-logs/`, log-format §10);
 - a Sub-agent forked by another Sub-agent, and a fork of that fork, each
-  transcript **copying its spawner's records** (`forked-agent-logs/`,
-  log-format §10);
+  transcript **copying its spawner's records**, and a fork the Main thread
+  spawned, its transcript opening with a `fork-context-ref` record and its
+  spawning Turn re-written (`forked-agent-logs/`, log-format §10);
 - Sub-agents with an **`agent-<id>.meta.json`** beside their transcript: a
   background launch whose ledger states no type, a ledger whose type differs
   from its meta file's, a malformed meta file, and Sub-agents no ledger names,

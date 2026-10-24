@@ -416,9 +416,9 @@ describe("incremental refresh", () => {
   });
 
   it("decides a deleted parent's continuation again after an INTERRUPTED refresh, as a cold Refresh does", async () => {
-    // Deleting sess-origin leaves sess-resumed without a parent: its copied
-    // Messages are copies of nothing on disk any more. A run that dies before
-    // deciding that again must leave sess-resumed re-parseable.
+    // Deleting sess-origin leaves sess-resumed the only holder of the history
+    // it copied: it owns it now. A run that dies before deciding that again
+    // must leave sess-resumed re-parseable.
     const resumeDir = path.join(logsRoot, "-Users-me-dev-resume");
     await refresh({ logsRoot, dbPath });
     const copiedUuids = async (db: string) =>

@@ -207,11 +207,18 @@ model Message {
   /// when no file holds it.
   apiRequestId Int?    @map("api_request_id")
 
-  /// A Copied Message (GLOSSARY.md): in its Agent's leading run of Messages
-  /// that an Agent of the Conversation's parent (`continuedFrom`) also holds.
-  isCopied Boolean @default(false) @map("is_copied")
+  /// When this occurrence is a Copied Message (GLOSSARY.md), the occurrence
+  /// that owns the Message: of the Agents holding it, the ancestor at any
+  /// depth — a fork of a fork's copy is from the root spawner, not the fork
+  /// it copied — else the smallest `agent.source_path`. NULL on the owner, and
+  /// on a Message only its own file can own (no `uuid`, or a Turn without a
+  /// `requestId`). Written by the Refresh's links pass (ADR-0011).
+  copiedFromMessageId Int? @map("copied_from_message_id")
 
   conversation             Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  copiedFrom               Message?     @relation("CopiedMessage", fields: [copiedFromMessageId], references: [id], onDelete: SetNull)
+  /// The Copied Messages this occurrence owns.
+  copies                   Message[]    @relation("CopiedMessage")
   agent                    Agent        @relation("AgentMessages", fields: [agentId], references: [id], onDelete: Cascade)
   apiRequest               ApiRequest?  @relation("ApiRequestTurn", fields: [apiRequestId], references: [id], onDelete: SetNull)
   spawnedAgents            Agent[]      @relation("AgentSpawn")
@@ -226,6 +233,7 @@ model Message {
   @@index([messageId])
   @@index([uuid])
   @@index([apiRequestId, requestRef])
+  @@index([copiedFromMessageId])
   @@map("message")
 }
 
