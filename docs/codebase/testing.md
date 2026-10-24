@@ -76,8 +76,11 @@ per gotcha:
 - a turn written as **multiple records with the same `message.id`** (dedup must
   count it once);
 - a Sub-agent's turn written as three records whose **`output_tokens` grows**
-  (its usage is the highest of each bucket, `growing-turn-usage-logs/`,
+  (its usage is the highest of each bucket), and a fork whose copy holds the
+  final count of a Turn its spawner's file keeps partial (`growing-turn-usage-logs/`,
   log-format §3);
+- a mock API's Turn, **no `requestId`**, under one message id in two unrelated
+  files: two Turns (`requestless-turn-logs/`, log-format §3);
 - a **sub-agent transcript** under `subagents/` plus the parent's `Agent`
   `toolUseResult` (must count once, from the transcript — never both);
 - an assistant turn with **`attributionSkill`** (per-skill cost is exact);
