@@ -91,6 +91,13 @@ describe("a Turn's owner", () => {
     });
   });
 
+  it("is its own file's without a requestId: a mock API's message id in two unrelated files is two Turns", async () => {
+    await refresh({ logsRoot: path.join(FIXTURES_DIR, "requestless-turn-logs"), dbPath });
+
+    // Both files hold msg_fake_1, neither with a requestId: each counts its own.
+    expect(await totalTokensBySessionId()).toEqual({ "sess-mock-a": 7, "sess-mock-b": 11 });
+  });
+
   describe("among a Sub-agent and its forks", () => {
     beforeEach(async () => {
       await refresh({ logsRoot: path.join(FIXTURES_DIR, "forked-agent-logs"), dbPath });
