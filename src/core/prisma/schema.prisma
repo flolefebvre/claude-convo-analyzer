@@ -250,7 +250,10 @@ model Turn {
   cacheReadTokens       Int @map("cache_read_tokens")
 
   /// The owning occurrence's model.
-  model String?
+  model     String?
+  /// The owning occurrence's timestamp (epoch ms), denormalized: the day daily
+  /// spend counts the Turn on, read without a join to `message`.
+  timestamp BigInt?
 
   message      Message      @relation(fields: [messageId], references: [id], onDelete: Cascade)
   agent        Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)

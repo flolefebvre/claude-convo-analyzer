@@ -158,7 +158,7 @@ describe("stored data equivalence", () => {
       turn_duration: { rowCount: 1, sha256: "11a23dd83764e1de631b25b7b2fb8a6b5af397fe1503b2086f0404a57cb943c4" },
       ...NO_LOGGED_API_REQUESTS,
       continued_in: { rowCount: 1, sha256: "030772a8c9a88fd3802687086c9d1417d6ad731913d6b53c562bc02e78a1e62f" },
-      turn: { rowCount: 60, sha256: "a6a08b7baf3559b2294c8cc8a644e396bcb6991a8c014be27d236b476fcf59b0" },
+      turn: { rowCount: 60, sha256: "66d9f6d2fe9dab8f10f6a3925a427dd151468803f7092f6c39fb24b1dc6394fa" },
     });
   });
 
@@ -176,7 +176,7 @@ describe("stored data equivalence", () => {
       turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       ...NO_LOGGED_API_REQUESTS,
       continued_in: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
-      turn: { rowCount: 4, sha256: "f72615b6d465eaca5fa7fd5ef463891faa08943fbd6c97f9124f72691212eeda" },
+      turn: { rowCount: 4, sha256: "b6876e77956aff06770536131d4d6199b9cacdc398ba062dfa96485980f1560b" },
     });
   });
 
@@ -212,7 +212,7 @@ describe("stored data equivalence", () => {
       turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       ...NO_LOGGED_API_REQUESTS,
       continued_in: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
-      turn: { rowCount: 11, sha256: "acaf84605a379ffe6220c8fa68422d83afe480dabb311064fd4e57e38b357981" },
+      turn: { rowCount: 11, sha256: "7660fbe23e2e427ac250ae2a6591c8b1dabbf7e17f97ce27e5d52cddff671fcb" },
     });
   });
 
@@ -236,7 +236,7 @@ describe("stored data equivalence", () => {
       // The two blobs carry the pieces of Injected context their attachments name: CLAUDE.md, and the date.
       sent_message: { rowCount: 15, sha256: "132ab154cc97d01608e9e5ffd1016826fa8b59178bb9f1b3db2ad7cb04c15f2d" },
       continued_in: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
-      turn: { rowCount: 9, sha256: "6573021861cfbf0ebbab74e03a2078e7be8f7c8a65f558e710dc535ecfd32f23" },
+      turn: { rowCount: 9, sha256: "20bdd7fe0fc6b95cafe6e894b06a0451a5e3739d35ba05e9e646739c9ed14137" },
     });
   });
 
@@ -258,7 +258,7 @@ describe("stored data equivalence", () => {
       tool_set: { rowCount: 1, sha256: "bd38eccd26f4c9604aad98fcff1f9643ab0523b07da230a857569e163247ac0e" },
       sent_message: { rowCount: 5, sha256: "e7b8ba8a7395036a9c885011145c435f535f212957dcb9f5b24aa330ebc79025" },
       continued_in: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
-      turn: { rowCount: 6, sha256: "9170e3f67c51fc9493e8c5ef9ed14add952bf74c16a121b515848561d5ed2f4f" },
+      turn: { rowCount: 6, sha256: "256d0bde3c520671b8eb32d3ec3a81e83c70df064e88efca2846417b1c5621a2" },
     });
   });
 });
@@ -359,7 +359,7 @@ describe("continuations", () => {
       ...NO_LOGGED_API_REQUESTS,
       continued_in: { rowCount: 4, sha256: "ec21bb4d85f23ded7081dba5372a4d755020a106cfeb93ab394e71b9e0aff89c" },
       // One per Turn, each copied one owned by the sitting it was copied from; leg-msg-1 by sess-legacy-a.
-      turn: { rowCount: 12, sha256: "fcd98aa523dd4b97bd611aab49ba65282b641a8d0dc4aa1d0fecdabdce5e8c73" },
+      turn: { rowCount: 12, sha256: "23ca3fb0acedfc581df9206337bf0dab96d474a83b65f9c754139d4703977527" },
     });
   });
 
@@ -472,7 +472,7 @@ describe("continuations", () => {
         ...NO_LOGGED_API_REQUESTS,
         continued_in: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
         // One per Turn, each copied one owned by its spawner: fork-a-msg-2, re-written by fork-b, by fork-a.
-        turn: { rowCount: 9, sha256: "e723e1e05ac71cb743deb7174ebf2edacbb5d3d0cb733ddc9b0eead3427b533d" },
+        turn: { rowCount: 9, sha256: "60c46e0b78e8b29fcd9977bcea048a36b5f2137264298363c3e5e0925135f431" },
       });
     });
 
@@ -666,7 +666,7 @@ describe("Sub-agents typed or linked by their meta files", () => {
       turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       ...NO_LOGGED_API_REQUESTS,
       continued_in: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
-      turn: { rowCount: 19, sha256: "834d410402fdbcb4e6413b83a7acdcb25409ab6d567f8b49efc4c607d6bc4f75" },
+      turn: { rowCount: 19, sha256: "5a879efe61ca04cb68436f871996ef72ad3297b52e7c0d48c841e61af2453cb2" },
     });
   });
 

@@ -793,7 +793,7 @@ type DailySpendOptions = FolderScope & {
 /**
  * Daily spend read API (ADR-0001, ADR-0002): per-day, per-model cost for the
  * Trends view. Turns are bucketed by the LOCAL calendar day of their owning
- * occurrence's timestamp, so a Turn's cost lands on the day it ran, once,
+ * occurrence's timestamp (`turn.timestamp`), so a Turn's cost lands on the day it ran, once,
  * however many files copy it (ADR-0011); sub-agent Turns are ordinary Turns and
  * are therefore included (`conversationId` is denormalized onto every row).
  * Every day of the range is emitted, zero-filled where nothing ran, so the axis
@@ -824,18 +824,16 @@ export async function getDailySpend(opts: DailySpendOptions = {}): Promise<Daily
         model: { not: null },
         // A NULL timestamp never satisfies a comparison, so this filter also
         // enforces the "no timestamp → excluded" policy.
-        message: {
-          timestamp: {
-            lt: BigInt(to.getTime()),
-            ...(from === null ? {} : { gte: BigInt(from.getTime()) }),
-          },
+        timestamp: {
+          lt: BigInt(to.getTime()),
+          ...(from === null ? {} : { gte: BigInt(from.getTime()) }),
         },
         ...(await conversationInFolderScope(prisma, opts)),
       },
-      select: { model: true, ...TOKEN_SUM, message: { select: { timestamp: true } } },
+      select: { timestamp: true, model: true, ...TOKEN_SUM },
     });
 
-    const byDay = foldByLocalDay(turns.map(({ message, ...turn }) => ({ ...turn, timestamp: message.timestamp })));
+    const byDay = foldByLocalDay(turns);
     return assembleDailySpend(byDay, {
       from: from ?? earliestDay(byDay, today),
       to: today,

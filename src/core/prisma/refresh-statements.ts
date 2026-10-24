@@ -170,6 +170,7 @@ const TURN_COLUMN_BY_FIELD = {
   cacheCreation1hTokens: "cache_creation_1h_tokens",
   cacheReadTokens: "cache_read_tokens",
   model: "model",
+  timestamp: "timestamp",
 } as const;
 
 /** A `project` row to insert. */
@@ -201,6 +202,8 @@ export type TurnRow = {
   cacheCreation1hTokens: number;
   cacheReadTokens: number;
   model: string | null;
+  /** Epoch ms. */
+  timestamp: number | null;
 };
 
 /** One occurrence of a Turn identified across the logs, as deciding its owner and usage needs it. */
@@ -217,6 +220,8 @@ export type TurnOccurrence = {
   cacheCreation1hTokens: number | null;
   cacheReadTokens: number | null;
   model: string | null;
+  /** Epoch ms. */
+  timestamp: number | null;
 };
 
 /** What deciding a stored Conversation's parent needs of it (log-format §10). */
@@ -425,7 +430,7 @@ export function prepareRefreshStatements(db: Database.Database) {
             "message"."input_tokens" AS "inputTokens", "message"."output_tokens" AS "outputTokens",
             "message"."cache_creation_5m_tokens" AS "cacheCreation5mTokens",
             "message"."cache_creation_1h_tokens" AS "cacheCreation1hTokens",
-            "message"."cache_read_tokens" AS "cacheReadTokens", "message"."model"
+            "message"."cache_read_tokens" AS "cacheReadTokens", "message"."model", "message"."timestamp"
        FROM "message" JOIN "agent" ON "agent"."id" = "message"."agent_id"
       WHERE "message"."message_id" = ? AND "message"."request_id" IS NOT NULL
       ORDER BY "message"."id"`,
@@ -457,7 +462,7 @@ export function prepareRefreshStatements(db: Database.Database) {
     `INSERT INTO "turn" (${turnColumns.map((column) => `"${column}"`).join(", ")})
      SELECT "id", "agent_id", "conversation_id", COALESCE("input_tokens", 0), COALESCE("output_tokens", 0),
             COALESCE("cache_creation_5m_tokens", 0), COALESCE("cache_creation_1h_tokens", 0),
-            COALESCE("cache_read_tokens", 0), "model"
+            COALESCE("cache_read_tokens", 0), "model", "timestamp"
        FROM "message"
       WHERE "conversation_id" = ? AND "role" = 'assistant' AND "request_id" IS NULL
       ORDER BY "id"

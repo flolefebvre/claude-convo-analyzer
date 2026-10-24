@@ -1761,7 +1761,7 @@ function isAncestorOccurrence(ancestor: TurnOccurrence, descendant: TurnOccurren
  * row id order, its owner is one held by an Agent none of the other holders is
  * an ancestor of (see `isAncestorOccurrence`) — of several, the one of the
  * smallest `agent.source_path`; its only holder owns it, copy or not. Its usage
- * is each bucket's highest value across every occurrence, its model the owner's.
+ * is each bucket's highest value across every occurrence, its model and timestamp the owner's.
  * Row ids never decide: they differ between a cold Refresh and an incremental one.
  */
 function turnRowOf(occurrences: TurnOccurrence[], lineage: LineageLookups): TurnRow {
@@ -1789,5 +1789,6 @@ function turnRowOf(occurrences: TurnOccurrence[], lineage: LineageLookups): Turn
     cacheCreation1hTokens: highest((occurrence) => occurrence.cacheCreation1hTokens),
     cacheReadTokens: highest((occurrence) => occurrence.cacheReadTokens),
     model: owner.model,
+    timestamp: owner.timestamp,
   };
 }

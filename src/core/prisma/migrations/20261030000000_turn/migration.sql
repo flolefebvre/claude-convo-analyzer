@@ -1,7 +1,8 @@
 -- A Turn is one API response (issue #302, ADR-0011): `message` keeps one row
 -- per occurrence, and `turn` holds one row per Turn — its owning occurrence,
 -- that occurrence's Agent and Conversation, the highest usage of each bucket
--- across every occurrence, and the owner's model. The Refresh's links pass
+-- across every occurrence, and the owner's model and timestamp (denormalized,
+-- so daily spend reads no join). The Refresh's links pass
 -- writes it; Cost and every total sum it. `message.request_id` keeps the
 -- record's `requestId`, which makes a Turn's identity global; `agent.source_path`
 -- keeps the path each Agent's file was read at, which breaks a tie between
@@ -26,6 +27,7 @@ CREATE TABLE "turn" (
     "cache_creation_1h_tokens" INTEGER NOT NULL,
     "cache_read_tokens" INTEGER NOT NULL,
     "model" TEXT,
+    "timestamp" BIGINT,
     CONSTRAINT "turn_message_id_fkey" FOREIGN KEY ("message_id") REFERENCES "message" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT "turn_agent_id_fkey" FOREIGN KEY ("agent_id") REFERENCES "agent" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT "turn_conversation_id_fkey" FOREIGN KEY ("conversation_id") REFERENCES "conversation" ("id") ON DELETE CASCADE ON UPDATE CASCADE
