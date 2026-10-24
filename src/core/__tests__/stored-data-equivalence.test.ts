@@ -28,6 +28,7 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type RecordedAttachment, writeRequestRecordsLog } from "@/core/__tests__/helpers/request-records-log";
+import { writeSessionLog } from "@/core/__tests__/helpers/session-log";
 import { refresh } from "@/core/refresh";
 
 const FIXTURES_DIR = path.join(import.meta.dirname, "fixtures");
@@ -422,6 +423,45 @@ describe("continuations", () => {
     expect(changedContent).toEqual(coldContent);
     // No record names sess-fam-c any more: it holds all of sess-fam-a's Messages.
     expect(continuedFromOf(coldContent, "sess-fam-c")).toBe("sess-fam-a");
+  });
+
+  it("are decided as a cold Refresh decides them when the owner of a Message three unlinked sessions hold is deleted", async () => {
+    // Near-forks: each holds a Message the others lack, and no record links them, so no lineage between them.
+    const unlinkedSessionIds = ["sess-unlinked-a", "sess-unlinked-b", "sess-unlinked-c"];
+    const unlinkedLogPaths: string[] = [];
+    /** Each unlinked session's occurrence of the Message they share, by session: the session it is copied from, or null. */
+    const ownerSessionIdBySessionId = (content: ReturnType<typeof continuationContent>) =>
+      Object.fromEntries(
+        (content.messages as { session_id: string; uuid: string; ownerSessionId: string | null }[])
+          .filter((m) => unlinkedSessionIds.includes(m.session_id) && m.uuid === "unlinked-shared-u1")
+          .map((m) => [m.session_id, m.ownerSessionId]),
+      );
+
+    const { changedContent, coldContent } = await changedAndCold(
+      (logsRoot) => {
+        for (const sessionId of unlinkedSessionIds) {
+          unlinkedLogPaths.push(
+            writeSessionLog(logsRoot, { sessionId, messageUuids: ["unlinked-shared-u1", `${sessionId}-u2`] }),
+          );
+        }
+      },
+      () => {
+        // Before: the smallest path owns it, the other two copy it.
+        expect(ownerSessionIdBySessionId(continuationContent(path.join(tmpDir, "changed.db")))).toEqual({
+          "sess-unlinked-a": null,
+          "sess-unlinked-b": "sess-unlinked-a",
+          "sess-unlinked-c": "sess-unlinked-a",
+        });
+        rmSync(unlinkedLogPaths[0]);
+      },
+    );
+
+    expect(changedContent).toEqual(coldContent);
+    // sess-unlinked-b and sess-unlinked-c are unchanged, and decided again all the same.
+    expect(ownerSessionIdBySessionId(coldContent)).toEqual({
+      "sess-unlinked-b": null,
+      "sess-unlinked-c": "sess-unlinked-b",
+    });
   });
 
   describe("of forked Sub-agents", () => {
