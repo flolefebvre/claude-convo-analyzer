@@ -229,10 +229,12 @@ describe("getTranscript core reader", () => {
     expect(view?.messages.every((m) => m.effort === null)).toBe(true);
   });
 
-  it("attaches sub-agents whose spawn ledgers form a cycle under the main thread", async () => {
+  // cyc1, the smaller path, is decided first, under the only other holder of its call; cyc2's only other holder then descends from it.
+  it("nests Sub-agents whose spawn ledgers form a cycle as a tree, under the Main thread", async () => {
     const view = await getTranscript("sess-cycle", { dbPath: db.dbPath });
     const kids = view?.tree.children ?? [];
-    expect(kids.map((k) => k.id).sort()).toEqual(["cyc1", "cyc2"]);
-    expect(kids.every((k) => k.children.length === 0)).toBe(true);
+    expect(kids.map((k) => k.id)).toEqual(["cyc2"]);
+    expect(kids[0]?.children.map((k) => k.id)).toEqual(["cyc1"]);
+    expect(kids[0]?.children[0]?.children).toEqual([]);
   });
 });

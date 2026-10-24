@@ -192,12 +192,20 @@ describe("a Refresh after an Agent's log file changed", () => {
     expect(storedContent(dbPath)).toEqual(await coldContent());
   });
 
-  it("parses a grown Sub-agent with the Main thread and its parent, and stores what a cold Refresh does", async () => {
-    const summary = await refreshAfter(() => appendLine("subc", subAgentTurnLine("subc", "ca9")));
+  // The Main thread and the grown file: not its parent, whose stored ledger names it, nor its kept child.
+  it.each([
+    { agentId: "subc", grown: "a grown Sub-agent, its parent's stored ledger deciding its lineage" },
+    { agentId: "subb", grown: "a grown parent Sub-agent without its kept child" },
+  ])("parses $grown with the Main thread alone, and stores what a cold Refresh does", async ({ agentId }) => {
+    const summary = await refreshAfter(() => appendLine(agentId, subAgentTurnLine(agentId, `${agentId}-a9`)));
 
-    // The Main thread, subc, and subb whose ledger names it.
-    expect(summary.logFilesParsed).toBe(3);
-    expect(storedContent(dbPath)).toEqual(await coldContent());
+    expect(summary.logFilesParsed).toBe(2);
+    const cold = await coldContent();
+    expect(nestedAgent(cold, "subc")).toMatchObject({
+      parent_agent_id: "sess-nested/subb",
+      resolved_model: "claude-sonnet-4-6",
+    });
+    expect(storedContent(dbPath)).toEqual(cold);
   });
 
   it("stores a new Sub-agent as a cold Refresh does", async () => {
@@ -226,19 +234,6 @@ describe("a Refresh after an Agent's log file changed", () => {
     expect(storedContent(dbPath)).toEqual(cold);
   });
 
-  it("rewrites a grown parent Sub-agent without parsing its kept child, and stores what a cold Refresh does", async () => {
-    const summary = await refreshAfter(() => appendLine("subb", subAgentTurnLine("subb", "ba9")));
-
-    // The Main thread, subb, and suba whose ledger names it: not subc.
-    expect(summary.logFilesParsed).toBe(3);
-    const cold = await coldContent();
-    expect(nestedAgent(cold, "subc")).toMatchObject({
-      parent_agent_id: "sess-nested/subb",
-      resolved_model: "claude-sonnet-4-6",
-    });
-    expect(storedContent(dbPath)).toEqual(cold);
-  });
-
   it("attaches a child to its parent once the parent logs the spawn after the child's file is complete", async () => {
     const completeSubb = linesOf("subb");
     // First seen before subb logged subc's result: subc is no one's spawn yet.
@@ -246,7 +241,8 @@ describe("a Refresh after an Agent's log file changed", () => {
 
     const summary = await refreshAfter(() => writeLines("subb", completeSubb));
 
-    expect(summary.logFilesParsed).toBe(3);
+    // The Main thread and subb: not suba, nor subc.
+    expect(summary.logFilesParsed).toBe(2);
     const cold = await coldContent();
     expect(nestedAgent(cold, "subc")).toMatchObject({
       parent_agent_id: "sess-nested/subb",

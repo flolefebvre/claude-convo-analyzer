@@ -5,6 +5,7 @@
 
 import path from "node:path";
 import type Database from "better-sqlite3";
+import type { LineageAgent, StoredAgentCall } from "@/core/sub-agent-lineage";
 
 /** A value SQLite stores; booleans are written as 0/1 (see `toSqlValue`). */
 type SqlValue = string | number | bigint | boolean | null;
@@ -65,7 +66,7 @@ const CONVERSATION_COLUMN_BY_FIELD = {
   continuedFromConversationId: "continued_from_conversation_id",
 } as const;
 
-/** The columns of an `agent` row its parent's spawn ledger decides (see `refresh.ts`). */
+/** The columns of a Sub-agent's `agent` row the links pass resolves (see `sub-agent-lineage.ts`). */
 const AGENT_LINEAGE_COLUMN_BY_FIELD = {
   parentAgentId: "parent_agent_id",
   spawnedByMessageId: "spawned_by_message_id",
@@ -73,10 +74,18 @@ const AGENT_LINEAGE_COLUMN_BY_FIELD = {
   resolvedModel: "resolved_model",
 } as const;
 
+/** The columns of a Sub-agent's `agent` row its meta file states, extracted again on every write of its Conversation. */
+const AGENT_META_COLUMN_BY_FIELD = {
+  spawnToolUseId: "spawn_tool_use_id",
+  agentType: "agent_type",
+} as const;
+
 const AGENT_COLUMN_BY_FIELD = {
   conversationId: "conversation_id",
   externalAgentId: "external_agent_id",
   ...AGENT_LINEAGE_COLUMN_BY_FIELD,
+  ...AGENT_META_COLUMN_BY_FIELD,
+  dominantModel: "dominant_model",
   sourceMtime: "source_mtime",
   sourceSize: "source_size",
   sourcePath: "source_path",
@@ -255,17 +264,15 @@ export type StoredAgent = {
   id: number;
   /** NULL for the Main thread. */
   externalAgentId: string | null;
-  parentAgentId: number | null;
-  spawnedByMessageId: number | null;
-  agentType: string | null;
-  resolvedModel: string | null;
   /** NULL: no change key recorded. */
   sourceMtime: number | null;
   sourceSize: number | null;
 };
 
-/** An `agent` row's lineage columns, to rewrite in place. */
-export type AgentLineageRow = InsertRow<keyof typeof AGENT_LINEAGE_COLUMN_BY_FIELD>;
+/** A JSON value read as the parser reads a ledger field: a non-empty string, else null. */
+function nonEmptyStringOrNull(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
 
 /** The statements of one Refresh, prepared once on its connection. */
 export type RefreshStatements = ReturnType<typeof prepareRefreshStatements>;
@@ -287,27 +294,26 @@ export function prepareRefreshStatements(db: Database.Database) {
   );
   const deleteConversation = db.prepare(`DELETE FROM "conversation" WHERE "id" = ?`);
   const selectStoredAgents = db.prepare(
-    `SELECT "id", "external_agent_id" AS "externalAgentId", "parent_agent_id" AS "parentAgentId",
-            "spawned_by_message_id" AS "spawnedByMessageId", "agent_type" AS "agentType",
-            "resolved_model" AS "resolvedModel", "source_mtime" AS "sourceMtime", "source_size" AS "sourceSize"
+    `SELECT "id", "external_agent_id" AS "externalAgentId", "source_mtime" AS "sourceMtime", "source_size" AS "sourceSize"
        FROM "agent" WHERE "conversation_id" = ?`,
   );
   const deleteAgent = db.prepare(`DELETE FROM "agent" WHERE "id" = ?`);
-  // Of several Tool calls with the id, the first in file order — as the
-  // Message holding it is the first in file order that does.
-  const selectSpawningMessageId = db
-    .prepare(`SELECT "message_id" FROM "tool_call" WHERE "agent_id" = ? AND "tool_use_id" = ? ORDER BY "id" LIMIT 1`)
-    .pluck();
-  const selectHoldingAgentIds = db
-    .prepare(`SELECT DISTINCT "agent_id" FROM "message" WHERE "uuid" = ? AND "conversation_id" = ?`)
-    .pluck();
-  // Through the `agent_id` index: `tool_use_id` has none of its own.
-  const selectToolUseHoldingAgentIds = db
-    .prepare(
-      `SELECT DISTINCT "agent_id" FROM "tool_call"
-        WHERE "agent_id" IN (SELECT "value" FROM json_each(?)) AND "tool_use_id" = ?`,
-    )
-    .pluck();
+  const selectLineageAgents = db.prepare(
+    `SELECT "id" AS "agentRowId", "external_agent_id" AS "externalAgentId", "source_path" AS "sourcePath",
+            "spawn_tool_use_id" AS "spawnToolUseId", "agent_type" AS "agentType", "dominant_model" AS "dominantModel"
+       FROM "agent" WHERE "conversation_id" = ?`,
+  );
+  // Through the `agent_id` index. The result is the serialized `toolUseResult`,
+  // its ledger keys read in one parse; a result stored as plain text names no one.
+  const selectAgentCallsOfConversation = db.prepare(
+    `SELECT "tool_use_id" AS "toolUseId", "agent_id" AS "agentRowId", "message_id" AS "messageRowId",
+            CASE WHEN json_valid("result_text")
+                 THEN json_extract("result_text", '$.agentId', '$.agentType', '$.resolvedModel') END AS "ledgerJson"
+       FROM "tool_call"
+      WHERE "agent_id" IN (SELECT "id" FROM "agent" WHERE "conversation_id" = ?)
+        AND "name" = 'Agent' AND "tool_use_id" IS NOT NULL
+      ORDER BY "id"`,
+  );
   const deletePrLinks = db.prepare(`DELETE FROM "pr_link" WHERE "conversation_id" = ?`);
   const deleteTurnDurations = db.prepare(`DELETE FROM "turn_duration" WHERE "conversation_id" = ?`);
   const deleteContinuedIn = db.prepare(`DELETE FROM "continued_in" WHERE "conversation_id" = ?`);
@@ -591,15 +597,33 @@ export function prepareRefreshStatements(db: Database.Database) {
     selectStoredAgents: (conversationId: number) => selectStoredAgents.all(conversationId) as StoredAgent[],
     /** Delete an Agent; its Messages, Tool calls and API requests go with it by cascade. */
     deleteAgent: (agentId: number) => void deleteAgent.run(agentId),
-    /** The Message row holding Agent `agentId`'s Tool call `toolUseId`, if any. */
-    selectSpawningMessageId: (agentId: number, toolUseId: string) =>
-      selectSpawningMessageId.get(agentId, toolUseId) as number | undefined,
-    /** The stored Agents of Conversation `conversationId` holding a Message with `uuid`. */
-    selectHoldingAgentIds: (uuid: string, conversationId: number) =>
-      selectHoldingAgentIds.all(uuid, conversationId) as number[],
-    /** Of the stored Agents `agentIds`, those holding a Tool call `toolUseId`. */
-    selectToolUseHoldingAgentIds: (toolUseId: string, agentIds: number[]) =>
-      selectToolUseHoldingAgentIds.all(JSON.stringify(agentIds), toolUseId) as number[],
+    /** Every Agent of a Conversation, with the facts deciding a Sub-agent's lineage. */
+    selectLineageAgents: (conversationId: number) => selectLineageAgents.all(conversationId) as LineageAgent[],
+    /** Every `Agent` Tool call of a Conversation's Agents, in file order within each Agent, with its spawn ledger. */
+    selectAgentCallsOfConversation: (conversationId: number) =>
+      (
+        selectAgentCallsOfConversation.all(conversationId) as {
+          toolUseId: string;
+          agentRowId: number;
+          messageRowId: number;
+          ledgerJson: string | null;
+        }[]
+      ).map(({ ledgerJson, ...call }): StoredAgentCall => {
+        const [agentId, agentType, resolvedModel] = ledgerJson === null ? [] : (JSON.parse(ledgerJson) as unknown[]);
+        return {
+          ...call,
+          ledger:
+            nonEmptyStringOrNull(agentId) === null
+              ? null
+              : {
+                  agentId: agentId as string,
+                  agentType: nonEmptyStringOrNull(agentType),
+                  resolvedModel: nonEmptyStringOrNull(resolvedModel),
+                },
+        };
+      }),
+    /** Rewrite the meta file's columns of the stored Sub-agent of row id `id` in place. */
+    updateAgentMetaFacts: prepareUpdate(db, "agent", AGENT_META_COLUMN_BY_FIELD),
     /**
      * Delete a Conversation's `pr_link`, `turn_duration` and `continued_in`
      * rows: what its Main thread's file gives it besides its Agent.

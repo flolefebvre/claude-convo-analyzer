@@ -131,14 +131,14 @@ describe("a cold Refresh of forked Sub-agents", () => {
   it("marks as copied a fork's copy of its spawning Sub-agent's Messages, its re-written spawn record included", async () => {
     // fork-a-a1 is the spawner's spawning Turn under a new uuid: the spawner owns it.
     expect(await copiedAndOwnUuids(db.dbPath, "sess-forks", "fork-a")).toEqual({
-      copied: ["lead-u1", "lead-a1", "fork-a-a1"],
+      copied: ["lead-u1", "lead-a1", "lead-a1b", "fork-a-a1"],
       own: ["fork-a-a2", "fork-a-a3", "fork-a-a4"],
     });
   });
 
   it("marks as copied a fork of a fork's copy, the first fork's own Messages and its re-written spawn record included", async () => {
     expect(await copiedAndOwnUuids(db.dbPath, "sess-forks", "fork-b")).toEqual({
-      copied: ["lead-u1", "lead-a1", "fork-a-a1", "fork-a-a2", "fork-b-a1"],
+      copied: ["lead-u1", "lead-a1", "lead-a1b", "fork-a-a1", "fork-a-a2", "fork-b-a1"],
       own: ["fork-b-a2"],
     });
   });
