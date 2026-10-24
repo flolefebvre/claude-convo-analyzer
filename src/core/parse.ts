@@ -475,6 +475,18 @@ function sumTurnDurations(earlierMs: number | null, laterMs: number | null): num
 }
 
 /**
+ * Raise each usage bucket of a Turn to a later Record's value when that is
+ * higher: a Turn's usage is the highest of each bucket across its Records.
+ */
+function raiseTurnUsageToHighest(turn: ParsedMessage, recordUsage: ReturnType<typeof parseUsage>): void {
+  turn.inputTokens = Math.max(turn.inputTokens ?? 0, recordUsage.inputTokens);
+  turn.outputTokens = Math.max(turn.outputTokens ?? 0, recordUsage.outputTokens);
+  turn.cacheCreation5mTokens = Math.max(turn.cacheCreation5mTokens ?? 0, recordUsage.cacheCreation5mTokens);
+  turn.cacheCreation1hTokens = Math.max(turn.cacheCreation1hTokens ?? 0, recordUsage.cacheCreation1hTokens);
+  turn.cacheReadTokens = Math.max(turn.cacheReadTokens ?? 0, recordUsage.cacheReadTokens);
+}
+
+/**
  * Lift `tool_use` blocks out of a `message.content` array (finding #6). Each
  * becomes one `tool_call` row. The full `input` is serialized as JSON — small,
  * and the canonical signal for skill/CLI detection (`Bash.command`,
@@ -632,8 +644,8 @@ const REQUEST_RECORD_TYPE_MARK = '"type":"api-request';
  * Parse the lines of one session file into a `ParsedSession`. Assistant turns are
  * split by Claude Code across several JSONL lines sharing one `message.id` — one
  * per content block (finding #4) — so records with a repeated id are MERGED into
- * a single message (text concatenated, all tool_use blocks collected) with the
- * usage, repeated identically across those records, counted once.
+ * a single message (text concatenated, all tool_use blocks collected) whose
+ * usage is counted once: each bucket's highest value across those records.
  */
 export function parseSessionLines(lines: readonly string[]): ParsedSession {
   const messages: ParsedMessage[] = [];
@@ -780,10 +792,12 @@ export function parseSessionLines(lines: readonly string[]): ParsedSession {
 
     // assistant — records sharing a message.id are ONE turn that Claude Code
     // split across content-block lines (a `thinking` line, a `text` line, then
-    // a `tool_use` line, …), each repeating the identical `usage` (finding #4).
-    // MERGE them: append every line's text + tool_use blocks onto the turn
-    // already built, and take usage/model/timestamp from the first line only
-    // (never summed). Keeping just the first line would drop the body and tool
+    // a `tool_use` line, …), each carrying the turn's `usage` as it stood when
+    // written: a Sub-agent's `output_tokens` grows line to line (log-format §3,
+    // GOTCHA 1). MERGE them: append every line's text + tool_use blocks onto
+    // the turn already built, take each usage bucket's highest value across
+    // the lines (never summed), and model/timestamp/attribution from the first
+    // line only. Keeping just the first line would drop the body and tool
     // calls of a thinking-first turn, surfacing as empty assistant rows.
     // Thinking merges like text, its duration summed: a turn with two thinking
     // lines logs a `thinkingDurationMs` on each, the second a few ms.
@@ -799,6 +813,7 @@ export function parseSessionLines(lines: readonly string[]): ParsedSession {
         existing.thinkingText = joinTurnTexts(existing.thinkingText, thinkingText);
         existing.thinkingDurationMs = sumTurnDurations(existing.thinkingDurationMs, thinkingDurationMs);
         existing.toolUses.push(...blockToolUses);
+        raiseTurnUsageToHighest(existing, parseUsage(message.usage as RawUsage | undefined));
         continue;
       }
     }
@@ -823,7 +838,7 @@ export function parseSessionLines(lines: readonly string[]): ParsedSession {
       isApiError: record.isApiErrorMessage === true,
       apiErrorMessage: asString(record.apiErrorStatus),
       // Top-level field, NOT inside `message`. Later lines of the same turn are
-      // merged above, so the first line's effort wins — as it does for usage.
+      // merged above, so the first line's effort wins — as it does for model.
       effort: asString(record.effort),
       thinkingText,
       thinkingDurationMs,

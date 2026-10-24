@@ -176,8 +176,11 @@ type RefreshOptions = {
  * 19 — a Sub-agent whose spawn ledger states no type takes the one its
  *     `agent-<id>.meta.json` states (`agent.agent_type`), and one no ledger
  *     names is linked to its spawner by the meta file's `toolUseId`.
+ * 20 — a Turn's usage is each bucket's highest value across its Records, not
+ *     its first Record's: a Sub-agent's output grows Record to Record
+ *     (`message.*_tokens`, log-format §3, GOTCHA 1).
  */
-export const PARSER_VERSION = 19;
+export const PARSER_VERSION = 20;
 
 /**
  * The version a conversation carries while it is written but NOT YET COMPLETE:
