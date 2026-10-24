@@ -792,11 +792,12 @@ type DailySpendOptions = FolderScope & {
 
 /**
  * Daily spend read API (ADR-0001, ADR-0002): per-day, per-model cost for the
- * Trends view. Messages are bucketed by the LOCAL calendar day of their own
- * timestamp, so an assistant Turn's cost lands on the day it ran; sub-agent
- * messages are ordinary Messages and are therefore included (no join needed —
- * `conversationId` is denormalized onto every row). Every day of the range is
- * emitted, zero-filled where nothing ran, so the axis is continuous.
+ * Trends view. Turns are bucketed by the LOCAL calendar day of their owning
+ * occurrence's timestamp, so a Turn's cost lands on the day it ran, once,
+ * however many files copy it (ADR-0011); sub-agent Turns are ordinary Turns and
+ * are therefore included (`conversationId` is denormalized onto every row).
+ * Every day of the range is emitted, zero-filled where nothing ran, so the axis
+ * is continuous.
  *
  * The range always ENDS on today's local day: `days` counts back from today
  * (inclusive), and omitting it spans from the earliest in-scope message day.
@@ -804,8 +805,8 @@ type DailySpendOptions = FolderScope & {
  *
  * Pricing is exact per tier (`priceSplitByType`, 5m and 1h cache writes priced
  * separately). Three row policies, all deliberate:
- *  - a message with a NULL timestamp is EXCLUDED — it cannot be bucketed;
- *  - a message with a NULL model is SKIPPED, as in every other rollup here;
+ *  - a Turn whose owning occurrence has a NULL timestamp is EXCLUDED — it cannot be bucketed;
+ *  - a Turn with a NULL model is SKIPPED, as in every other rollup here;
  *  - an unpriced model (`<synthetic>`/unknown) contributes `$0` and NO band,
  *    but its tokens still count in the day/range totals and raise `hasUnpriced`
  *    so the UI can mark the cost as a lower bound.
@@ -818,21 +819,23 @@ export async function getDailySpend(opts: DailySpendOptions = {}): Promise<Daily
     const from = opts.days === undefined ? null : addLocalDays(today, 1 - opts.days);
 
     const to = addLocalDays(today, 1);
-    const messageRows = await prisma.message.findMany({
+    const turns = await prisma.turn.findMany({
       where: {
         model: { not: null },
         // A NULL timestamp never satisfies a comparison, so this filter also
         // enforces the "no timestamp → excluded" policy.
-        timestamp: {
-          lt: BigInt(to.getTime()),
-          ...(from === null ? {} : { gte: BigInt(from.getTime()) }),
+        message: {
+          timestamp: {
+            lt: BigInt(to.getTime()),
+            ...(from === null ? {} : { gte: BigInt(from.getTime()) }),
+          },
         },
         ...(await conversationInFolderScope(prisma, opts)),
       },
-      select: { timestamp: true, model: true, ...TOKEN_SUM },
+      select: { model: true, ...TOKEN_SUM, message: { select: { timestamp: true } } },
     });
 
-    const byDay = foldByLocalDay(messageRows);
+    const byDay = foldByLocalDay(turns.map(({ message, ...turn }) => ({ ...turn, timestamp: message.timestamp })));
     return assembleDailySpend(byDay, {
       from: from ?? earliestDay(byDay, today),
       to: today,

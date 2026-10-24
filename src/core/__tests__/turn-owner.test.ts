@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildFamily } from "@/core/family";
-import { getConversation, getTranscript, listConversations } from "@/core/read";
+import { getConversation, getDailySpend, getTranscript, listConversations } from "@/core/read";
 import { refresh } from "@/core/refresh";
 
 const FIXTURES_DIR = path.join(import.meta.dirname, "fixtures");
@@ -109,6 +109,17 @@ describe("a Turn's owner", () => {
       // fam-a-msg-1 once, not five times: the family's tokens are its five distinct sittings' own.
       const familyTokens = rows.filter((row) => familyIds.has(row.id)).reduce((sum, row) => sum + row.tokens.total, 0);
       expect(familyTokens).toBe(26 + 40 + 60 + 80 + 114);
+    });
+
+    it("makes daily spend the sum of own spend", async () => {
+      const spend = await getDailySpend({ dbPath, now: Date.parse("2026-07-01T12:00:00.000Z") });
+      const rows = await listConversations({ dbPath });
+
+      expect(spend.totalTokens.total).toBe(390);
+      expect(spend.totalCostUsd).toBeCloseTo(
+        rows.reduce((sum, row) => sum + row.costUsd, 0),
+        12,
+      );
     });
   });
 
