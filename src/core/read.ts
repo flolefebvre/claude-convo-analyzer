@@ -270,7 +270,7 @@ export async function listConversations(opts: ListOptions = {}): Promise<Convers
   const { prisma, owned } = readClient(opts.dbPath);
   try {
     // O(1) queries regardless of conversation count (no per-conversation loop):
-    // one findMany + four batched groupBys + one continued-from resolve. Usage
+    // one findMany + batched groupBys + one continued-from resolve. Usage
     // buckets on the owning `turn.conversationId`, the rest on
     // `message.conversationId` (both denormalized, sub-agents included), then
     // per-conversation summaries are assembled in JS.
@@ -282,11 +282,11 @@ export async function listConversations(opts: ListOptions = {}): Promise<Convers
       by: ["conversationId", "model"],
       _sum: TOKEN_SUM,
     });
-    const timeSpans = await prisma.message.groupBy({
-      by: ["conversationId"],
-      _min: { timestamp: true },
-      _max: { timestamp: true },
-    });
+    const boundsById = await boundsOfOwnMessages(
+      prisma,
+      conversations.map((c) => c.id),
+      "every",
+    );
     const subAgentCounts = await prisma.agent.groupBy({
       by: ["conversationId"],
       where: { parentAgentId: { not: null } },
@@ -310,10 +310,6 @@ export async function listConversations(opts: ListOptions = {}): Promise<Convers
         modelRowsById.set(g.conversationId, rows);
       }
       rows.push(toModelSumRow(g));
-    }
-    const boundsById = new Map<number, { startedAt: string; endedAt: string }>();
-    for (const t of timeSpans) {
-      boundsById.set(t.conversationId, isoBounds(t._min.timestamp, t._max.timestamp));
     }
     const subCountById = new Map<number, number>();
     for (const c of subAgentCounts) {
@@ -1651,18 +1647,46 @@ function isoBounds(
   };
 }
 
-/** startedAt/endedAt ISO bounds from min/max message timestamps (all agents). */
-async function timeBounds(
+/**
+ * startedAt/endedAt ISO bounds of each Conversation's own Messages (all agents),
+ * keyed by conversation row id. A Conversation that owns no Message (resumed then
+ * quit before its first prompt) keeps the bounds of the copied Messages it holds;
+ * one holding no Message at all is absent. `"every"` says `conversationIds` is
+ * every Conversation, so the scan needs no id filter. Shared by the batched list
+ * path and the single-id path, so both produce the same bounds.
+ */
+async function boundsOfOwnMessages(
   prisma: PrismaClient,
-  conversationId: number,
-): Promise<{ startedAt: string; endedAt: string }> {
+  conversationIds: readonly number[],
+  scope: "every" | "these",
+): Promise<Map<number, { startedAt: string; endedAt: string }>> {
   // `conversationId` denormalization scopes every agent's messages — no join.
-  const bounds = await prisma.message.aggregate({
-    where: { conversationId },
+  const idFilter = scope === "every" ? {} : { conversationId: { in: [...conversationIds] } };
+  const owned = await prisma.message.groupBy({
+    by: ["conversationId"],
+    where: { ...idFilter, copiedFromMessageId: null },
     _min: { timestamp: true },
     _max: { timestamp: true },
   });
-  return isoBounds(bounds._min.timestamp, bounds._max.timestamp);
+  const boundsById = new Map<number, { startedAt: string; endedAt: string }>();
+  for (const t of owned) {
+    boundsById.set(t.conversationId, isoBounds(t._min.timestamp, t._max.timestamp));
+  }
+
+  // The few Conversations with no owned row get a second, narrow pass over
+  // every Message they hold, rather than a second scan of the whole table.
+  const unowned = conversationIds.filter((id) => !boundsById.has(id));
+  if (unowned.length === 0) return boundsById;
+  const held = await prisma.message.groupBy({
+    by: ["conversationId"],
+    where: { conversationId: { in: unowned } },
+    _min: { timestamp: true },
+    _max: { timestamp: true },
+  });
+  for (const t of held) {
+    boundsById.set(t.conversationId, isoBounds(t._min.timestamp, t._max.timestamp));
+  }
+  return boundsById;
 }
 
 /**
@@ -1735,7 +1759,10 @@ async function summarizeConversation(
   convo: ConversationRow,
 ): Promise<{ summary: ConversationSummary; groups: PricedGroup[] }> {
   const groups = await pricedGroupsByModel(prisma, convo.id);
-  const bounds = await timeBounds(prisma, convo.id);
+  const bounds = (await boundsOfOwnMessages(prisma, [convo.id], "these")).get(convo.id) ?? {
+    startedAt: "",
+    endedAt: "",
+  };
   const subAgentCount = await prisma.agent.count({
     where: { conversationId: convo.id, parentAgentId: { not: null } },
   });

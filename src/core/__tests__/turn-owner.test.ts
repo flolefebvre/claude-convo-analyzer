@@ -47,6 +47,8 @@ describe("a Turn's owner", () => {
         "sess-fam-d": 80,
         // Its own Turn and its own <synthetic> one.
         "sess-fam-e": 114,
+        // Resumed then quit: it holds only copies.
+        "sess-fam-f": 0,
         "sess-fam-solo": 18,
         "sess-legacy-a": 10,
         "sess-legacy-b": 12,
@@ -103,10 +105,12 @@ describe("a Turn's owner", () => {
 
       const family = buildFamily(rows, "sess-fam-c");
       const familyIds = new Set(family?.members.map((member) => member.id));
-      expect(familyIds).toEqual(new Set(["sess-fam-a", "sess-fam-b", "sess-fam-c", "sess-fam-d", "sess-fam-e"]));
+      expect(familyIds).toEqual(
+        new Set(["sess-fam-a", "sess-fam-b", "sess-fam-c", "sess-fam-d", "sess-fam-e", "sess-fam-f"]),
+      );
       const ownCostSum = rows.filter((row) => familyIds.has(row.id)).reduce((sum, row) => sum + row.costUsd, 0);
       expect(family?.totalCostUsd).toBeCloseTo(ownCostSum, 12);
-      // fam-a-msg-1 once, not five times: the family's tokens are its five distinct sittings' own.
+      // fam-a-msg-1 once, not six times: the family's tokens are its sittings' own, sess-fam-f owning none.
       const familyTokens = rows.filter((row) => familyIds.has(row.id)).reduce((sum, row) => sum + row.tokens.total, 0);
       expect(familyTokens).toBe(26 + 40 + 60 + 80 + 114);
     });
