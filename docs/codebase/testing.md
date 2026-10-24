@@ -87,8 +87,8 @@ per gotcha:
 - a **`<synthetic>`** / unknown model (priced $0 but flagged);
 - resumed and forked Conversations that **copy their parent's records**, named
   by a `continued-in` record or, in an older log, by no record, a copy of a
-  copy, a copied Sub-agent transcript, and a copy whose original is gone
-  (`family-logs/`, log-format §10);
+  copy, a copied Sub-agent transcript, a sitting resumed then quit that holds
+  only copies, and a copy whose original is gone (`family-logs/`, log-format §10);
 - a Sub-agent forked by another Sub-agent, and a fork of that fork, each
   transcript **copying its spawner's records** — a Sub-agent the spawner
   finished before forking among them, its call and ledger in all three

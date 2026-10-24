@@ -66,7 +66,9 @@ One continuous Claude Code session. On disk it is a single `<sessionId>.jsonl`
 file inside a log folder under `~/.claude/projects/`. Each line is a typed
 Record. A Conversation is the unit shown as one row in the conversation list.
 Its title is the one Claude Code shows: the last `custom-title` Record, else
-the last `ai-title` Record, else its first Prompt.
+the last `ai-title` Record, else its first Prompt. Its time bounds are its own
+Messages': the first and last it owns, not those it copies; a Conversation
+resumed then quit before its first own Message keeps its copied block's.
 
 ### Continuation family
 
