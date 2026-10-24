@@ -149,7 +149,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 15, sha256: "d79302a905b975c08cfd6c217e6ae3eaa17e44ca45bb318cdfeefa1ae7b0e329" },
-      conversation: { rowCount: 21, sha256: "059da97c1f23f7d64d7b06f18712b8d9748390d9bd60b65f5ad7fdea9b82b67c" },
+      conversation: { rowCount: 21, sha256: "c013217c7dc7f0b3486ae01efb32b088a64fe4323b0d512fc37a7f0bddb60abf" },
       agent: { rowCount: 35, sha256: "711e9837000a62cb2b2d1958c27c6aaeeeadab1ce7130ef41a5cf54f6ddfda6c" },
       message: { rowCount: 127, sha256: "f062d0ade17ffbd2e026dc923d65bc33e28cc68d1db40ccaa3c03a3f78d03959" },
       tool_call: { rowCount: 34, sha256: "1ebf6ceb68879e5e3dfbb37ddf59dce1699db2145274b17b09453577f97c8512" },
@@ -166,7 +166,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "5d55ed2d1c37a5a354777b7e27dfce7bb9f299e0e7237d17a32956fee0357675" },
-      conversation: { rowCount: 1, sha256: "866cbd8ef4ad20689f49090cfd2bdbbffbfa9afc2181530ac29fe35c30475a2d" },
+      conversation: { rowCount: 1, sha256: "5beaee2d1deee7d577d9cd1867e8d352ab087699955d7eb9419d02e2eb6881db" },
       agent: { rowCount: 2, sha256: "f5aba5caf67fb377381f3a6615b9a5b84ba42ad02870c04d39ae685c7f265e3e" },
       message: { rowCount: 28, sha256: "c0aa023f7b4bc513a093c1d6c99425c9ecee2e8f3b291ac29f2c99cc94ea9aa4" },
       tool_call: { rowCount: 1, sha256: "a7fdb225fda2bff0ca75f88a22789a86cd79a97f5ea4e2f952e1d4559aa8efd9" },
@@ -183,7 +183,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 9, sha256: "e740c951fb2b58e8b13902eea830681396ac5eea03a445a31d6fb998c250a3e1" },
-      conversation: { rowCount: 13, sha256: "2464bcc8613ed68c318e06a8010747299fc309adccbb8fa317df55d2e1582ca0" },
+      conversation: { rowCount: 13, sha256: "723ebc70c40e95d63238adeecf1b824013f79fdd5f5feefdf021e22d20e9a97b" },
       agent: { rowCount: 13, sha256: "05071b138ea90dac2a6f439c5ffdc80cf4ecde23d204d53599a57202eb17a230" },
       message: { rowCount: 22, sha256: "25a07cc59be5e565459a3225cfefcc2184607786a7a14353071035b07a770c3a" },
       tool_call: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
@@ -200,7 +200,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "c39a0134a2be51dcdd6348bf0657691be4b1d4092d6e1616117c4d0f4f58a771" },
-      conversation: { rowCount: 4, sha256: "bf0b3a757b7f0a867ef11d37ab5d625708c9f4cdd77bda56ddbc8ba6d8b7e860" },
+      conversation: { rowCount: 4, sha256: "05fe5d5cadf0e5a900659568c348d1879ce86295f54ef3cc270a2b189fad503b" },
       agent: { rowCount: 5, sha256: "3ad52bfa85815c31aed384550111d7e07207b1d7199175e9df9ca71a8fd41c21" },
       message: { rowCount: 17, sha256: "4a305e6648f6803b653d8c99880557c54a32685c31cb6bb5a73f6351934bbae5" },
       tool_call: { rowCount: 1, sha256: "e331ea30643c19a0602a2759f557187aacaf1729c796a955560799b9c4dbd73f" },
@@ -217,7 +217,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "8b9da1ddb86766f02f4a1ac8d582400f0f6c9e5071156b7b726e7b6d9bf11d31" },
-      conversation: { rowCount: 3, sha256: "66da8302de3ea8e8afc78fb63ca8461aa7dd26d3515cac39e8496755d36d4ca9" },
+      conversation: { rowCount: 3, sha256: "dc8ac5addef3cf1b3c226aa6a3d3f2916d25d18fbd61c41fef14f03e3839d4e4" },
       agent: { rowCount: 4, sha256: "236b6560485fe1af22869e5fa6c5ab02686684a00d3e90c411e2246519b775a9" },
       message: { rowCount: 19, sha256: "d3f9836aa555bd8b3e4a58a94f2bd44df57147a61af50e55170caec43e9259ed" },
       tool_call: { rowCount: 3, sha256: "e5f615b5d6290bc0dab75ea171da282d5e176e04be16438fc4d834c227f91b9d" },
@@ -240,7 +240,7 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "39d8e36d20227daa2cab6248635b86861d0a5bd0a9e19a0cf4c98eb4de3f7141" },
-      conversation: { rowCount: 4, sha256: "b904c7037c477ca0dcafbf8f81b0dd9283f17d347060f30f9c763f91f8b20672" },
+      conversation: { rowCount: 4, sha256: "b2433181598171d830d78bd4b40e8b6fd99196e14529d213cdbb86f1dafbe67b" },
       agent: { rowCount: 4, sha256: "5133ecce6c7b4babfbe5aaa102ae82698624764ec13272567e76b9a44f527e2a" },
       // The child's copied Turns name the requests of the copy's and the parent's files.
       message: { rowCount: 16, sha256: "0e48a1941588ca86d550b22852047a588add5dd14cbe49ee5379b889a9d6c54e" },
@@ -342,7 +342,7 @@ describe("continuations", () => {
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 4, sha256: "22e03dd6cdf94d1b50e8c393efeb02e01452e218a539f452ce79dda37d7e9a94" },
       // Each continuation names its parent; sess-orphan, sess-fam-solo and sess-legacy-fork name none.
-      conversation: { rowCount: 10, sha256: "b842345f468dca45be08595f86d0a446f5d7e858a41e6586241f2ab2ddc951ce" },
+      conversation: { rowCount: 10, sha256: "027b030bde6b7d46c22b4d5d432fd8645c1517a403a15625f00acca0cc92f923" },
       agent: { rowCount: 12, sha256: "02d3ec7fae2b56dab3693127d339937d9654818fa7970c6dd830ddb47d0769c4" },
       // The copies of the parents' Messages, sess-fam-b's copied Sub-agent included, are flagged.
       message: { rowCount: 43, sha256: "1accad12a52ba280e0be3a006249a3daefaaa7077cf86615647ff847c6af8770" },
@@ -452,7 +452,7 @@ describe("continuations", () => {
 
       expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
         project: { rowCount: 1, sha256: "feba540146d17e8b299b85b8b419edb0f24a80e6a19fb1209d37f6936f17c75a" },
-        conversation: { rowCount: 1, sha256: "7fefcbc6307e8bea43affd54778cd5a2382be3e301dfb4da7af9359a35dcec45" },
+        conversation: { rowCount: 1, sha256: "5972a11f5b4d7a16bd1f7f7e9669798ff55380927b71a075e396a17e331fb66d" },
         // fork-a under fork-lead, fork-b under fork-a: each stored under the Sub-agent that spawned it.
         agent: { rowCount: 4, sha256: "a4f026fc46ec435fff99e25e5e712dcaad530c883e03f24f42bea5b60a49d4e1" },
         // Each fork's copy of its spawner's Messages is flagged.
@@ -586,7 +586,7 @@ describe("Sub-agents typed or linked by their meta files", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "87e358d6df0ff2d8431ebc48333192a593bcdf98a954f03524498a21d5655677" },
-      conversation: { rowCount: 1, sha256: "539ba8db09b8fd0f74c37cc5eaba63af4193978e235fdf23ced9e5a0c59be7cf" },
+      conversation: { rowCount: 1, sha256: "2d522f2a0edae2c2615868c031359ee4dacd34f2018bb91ed1efb2e1978c883f" },
       // bg, loose, inner and c-fork typed by their meta files; loose, inner and c-fork linked by them:
       // inner under bg, not its fork; c-fork under s-spawner, not its own fork.
       agent: { rowCount: 11, sha256: "2b93136b6fd37035bb9bdb9d27a1216e2d4aa9e1dfeeb9ad9639a8736841ab63" },

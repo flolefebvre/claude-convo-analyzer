@@ -4,14 +4,15 @@ import { parseSessionLines } from "@/core/parse";
 /**
  * Claude Code writes ONE assistant turn (one `message.id`) across several JSONL
  * lines — one per content block (a `thinking` line, a `text` line, then a
- * `tool_use` line), each repeating the identical `usage`. The parser must MERGE
- * those records into a single assistant message: concatenated text, every
- * `tool_use` block collected, and usage counted exactly once. Keeping only the
+ * `tool_use` line), each carrying the Turn's `usage` as it stood when written. The
+ * parser must MERGE those records into a single assistant message: concatenated
+ * text, every `tool_use` block collected, and usage counted exactly once — the
+ * highest value of each bucket across the records, never summed. Keeping only the
  * first record (the old behaviour) dropped the body and tool calls of a
  * thinking-first turn, surfacing as empty "assistant" rows in the transcript.
  */
 describe("assistant content-block record merge", () => {
-  /** One assistant JSONL line carrying a single content block. */
+  /** One assistant JSONL line carrying a single content block; `extra` overrides `message` fields. */
   const line = (content: unknown, extra: Record<string, unknown> = {}) =>
     JSON.stringify({
       type: "assistant",
@@ -83,5 +84,22 @@ describe("assistant content-block record merge", () => {
     // Usage is identical on all three lines → taken once, never summed.
     expect(messages[0]?.inputTokens).toBe(4098);
     expect(messages[0]?.outputTokens).toBe(277);
+  });
+
+  it("takes a Turn's usage as the highest of its Records, bucket by bucket", () => {
+    const usage = (outputTokens: number, cacheReadTokens: number) => ({
+      usage: { input_tokens: 3, output_tokens: outputTokens, cache_read_input_tokens: cacheReadTokens },
+    });
+    const { messages } = parseSessionLines([
+      line({ type: "thinking", thinking: "" }, usage(12, 900)),
+      line({ type: "text", text: "Reading the file." }, usage(26, 900)),
+      line({ type: "tool_use", id: "t1", name: "Read", input: {} }, usage(40, 850)),
+    ]);
+    expect(messages).toHaveLength(1);
+    // Output grows as the response streams: the highest is the last Record's.
+    expect(messages[0]?.outputTokens).toBe(40);
+    // Each bucket keeps its own highest, wherever it was seen.
+    expect(messages[0]?.cacheReadTokens).toBe(900);
+    expect(messages[0]?.inputTokens).toBe(3);
   });
 });
