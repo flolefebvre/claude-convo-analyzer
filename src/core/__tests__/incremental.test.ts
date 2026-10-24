@@ -333,6 +333,40 @@ describe("incremental refresh", () => {
     expect(third.conversationsSkipped).toBe(repaired.length);
   });
 
+  it("gives a deleted owner's Turn to the holder left after an INTERRUPTED refresh, as a cold Refresh does", async () => {
+    // sess-shared-a and sess-shared-b hold one Turn, with no lineage between
+    // them: the smaller path, sess-shared-a, owns it. Deleting sess-shared-a
+    // cascades its row away; a run that dies before resolving it again must
+    // leave sess-shared-b re-parseable, or it would never count its Turn.
+    const sharedDir = path.join(logsRoot, "-Users-me-dev-shared");
+    mkdirSync(sharedDir);
+    const sharedSessionLog = (sessionId: string) =>
+      [
+        `{"type":"user","uuid":"${sessionId}-u1","timestamp":"2026-06-22T09:00:00.000Z","cwd":"/Users/me/dev/shared","version":"2.1.300","sessionId":"${sessionId}","message":{"role":"user","content":"same question"}}`,
+        `{"type":"assistant","uuid":"${sessionId}-a1","parentUuid":"${sessionId}-u1","requestId":"shared-req-1","timestamp":"2026-06-22T09:00:05.000Z","cwd":"/Users/me/dev/shared","version":"2.1.300","sessionId":"${sessionId}","message":{"id":"shared-msg-1","role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"same answer"}],"usage":{"input_tokens":5,"output_tokens":9,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}}}`,
+        "",
+      ].join("\n");
+    writeFileSync(path.join(sharedDir, "sess-shared-a.jsonl"), sharedSessionLog("sess-shared-a"));
+    writeFileSync(path.join(sharedDir, "sess-shared-b.jsonl"), sharedSessionLog("sess-shared-b"));
+    await refresh({ logsRoot, dbPath });
+    const outputTokensOf = async (db: string, sessionId: string) =>
+      (await listConversations({ dbPath: db })).find((c) => c.id === sessionId)?.tokens.output;
+    expect(await outputTokensOf(dbPath, "sess-shared-b")).toBe(0);
+
+    rmSync(path.join(sharedDir, "sess-shared-a.jsonl"));
+    // A written Conversation makes the links pass run, and the injected fault fire in it.
+    writeFileSync(path.join(logsRoot, "-Users-me-dev-resume", "sess-child.jsonl"), CHILD_OF_ORIGIN_LOG);
+    crash.armed = true;
+    await expect(refresh({ logsRoot, dbPath })).rejects.toThrow("simulated interruption");
+    expect(crash.armed).toBe(false);
+
+    await refresh({ logsRoot, dbPath });
+    const coldDbPath = path.join(tmpDir, "cold.db");
+    await refresh({ logsRoot, dbPath: coldDbPath });
+    expect(await outputTokensOf(coldDbPath, "sess-shared-b")).toBe(9);
+    expect(await outputTokensOf(dbPath, "sess-shared-b")).toBe(9);
+  });
+
   it("resolves continued_from to the smallest source path of several Conversations holding the copied Messages, as a cold Refresh does", async () => {
     // sess-holder-a and sess-holder-b hold the same Messages, and the
     // continuation copies them both: of the two, the smallest path is the

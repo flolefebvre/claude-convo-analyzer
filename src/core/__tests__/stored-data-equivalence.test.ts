@@ -511,6 +511,65 @@ describe("continuations", () => {
       },
     );
 
+    describe("holding a Turn whose spawner's file keeps a partial count", () => {
+      const GROWING_FIXTURE_ROOT_NAME = "growing-turn-usage-logs";
+      /** The path of the sess-growing log file of `agentId` under `logsRoot`: its Main thread for `main`. */
+      const growingLogPath = (logsRoot: string, agentId: string) =>
+        agentId === "main"
+          ? path.join(logsRoot, "-Users-me-dev-growing", "sess-growing.jsonl")
+          : path.join(logsRoot, "-Users-me-dev-growing", "sess-growing", "subagents", `agent-${agentId}.jsonl`);
+      const setAsideGrow2Path = () => path.join(tmpDir, "set-aside", "agent-grow2.jsonl");
+
+      /** The cold Refresh's spawn Turn: owned by its spawner, at the count its fork's copy holds. */
+      const expectSpawnTurnOwnedAtFinalCount = (coldContent: ReturnType<typeof continuationContent>) =>
+        expect(
+          (coldContent.turns as { message_id: string; external_agent_id: string | null; output_tokens: number }[]).find(
+            (turn) => turn.message_id === "gsmsg-2",
+          ),
+        ).toMatchObject({ external_agent_id: "grow1", output_tokens: 30 });
+
+      it("are resolved as a cold Refresh resolves them when the fork appears later", async () => {
+        const { changedContent, coldContent } = await changedAndCold(
+          (logsRoot) => renameSync(growingLogPath(logsRoot, "grow2"), setAsideGrow2Path()),
+          (logsRoot) => renameSync(setAsideGrow2Path(), growingLogPath(logsRoot, "grow2")),
+          GROWING_FIXTURE_ROOT_NAME,
+        );
+
+        expect(changedContent).toEqual(coldContent);
+        expectSpawnTurnOwnedAtFinalCount(coldContent);
+      });
+
+      it.each(["main", "grow1", "grow2"])(
+        "are resolved as a cold Refresh resolves them when %s alone is re-parsed",
+        async (agentId) => {
+          const { changedContent, coldContent } = await changedAndCold(
+            () => {},
+            (logsRoot) => appendUserMessage(growingLogPath(logsRoot, agentId), `${agentId}-u-appended`),
+            GROWING_FIXTURE_ROOT_NAME,
+          );
+
+          expect(changedContent).toEqual(coldContent);
+          expectSpawnTurnOwnedAtFinalCount(coldContent);
+        },
+      );
+
+      it("are resolved as a cold Refresh resolves them when the fork's file is gone", async () => {
+        const { changedContent, coldContent } = await changedAndCold(
+          () => {},
+          (logsRoot) => rmSync(growingLogPath(logsRoot, "grow2")),
+          GROWING_FIXTURE_ROOT_NAME,
+        );
+
+        expect(changedContent).toEqual(coldContent);
+        // Its spawner's own partial count is all that is left.
+        expect(
+          (coldContent.turns as { message_id: string; output_tokens: number }[]).find(
+            (turn) => turn.message_id === "gsmsg-2",
+          ),
+        ).toMatchObject({ output_tokens: 8 });
+      });
+    });
+
     it("are decided as a cold Refresh decides them when the Conversation is deleted, then added again", async () => {
       const logsRoot = path.join(tmpDir, "logs");
       const changedDbPath = path.join(tmpDir, "changed.db");
@@ -1092,7 +1151,8 @@ function lineageContent(dbPath: string) {
  * The continuations of the database at `dbPath`, keyed by stable fields only,
  * so they are the same whatever row ids the Refreshes gave: the session each
  * Conversation continues from, whether each Message of each Agent is a
- * Copied Message, and the Agent each Sub-agent was spawned by.
+ * Copied Message, the Agent each Sub-agent was spawned by, and each Turn's
+ * owner, usage and model.
  */
 function continuationContent(dbPath: string) {
   const db = new Database(dbPath, { readonly: true });
@@ -1126,7 +1186,20 @@ function continuationContent(dbPath: string) {
           ORDER BY "conversation"."session_id", "agent"."external_agent_id"`,
       )
       .all();
-    return { links, messages, spawns };
+    // Each Turn by its owning occurrence's Conversation, Agent and uuid, with its usage and model.
+    const turns = db
+      .prepare(
+        `SELECT "conversation"."session_id", "agent"."external_agent_id", "message"."message_id", "message"."uuid",
+                "turn"."input_tokens", "turn"."output_tokens", "turn"."cache_creation_5m_tokens",
+                "turn"."cache_creation_1h_tokens", "turn"."cache_read_tokens", "turn"."model"
+           FROM "turn"
+           JOIN "message" ON "message"."id" = "turn"."message_id"
+           JOIN "agent" ON "agent"."id" = "turn"."agent_id"
+           JOIN "conversation" ON "conversation"."id" = "turn"."conversation_id"
+          ORDER BY "conversation"."session_id", "agent"."external_agent_id", "message"."message_id", "message"."uuid"`,
+      )
+      .all();
+    return { links, messages, spawns, turns };
   } finally {
     db.close();
   }
