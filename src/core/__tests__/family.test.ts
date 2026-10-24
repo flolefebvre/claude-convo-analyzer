@@ -128,6 +128,28 @@ describe("buildFamily", () => {
     expect(buildFamily(rows, "does-not-exist")).toBeNull();
   });
 
+  // Not redundant: the fixture's siblings agree in session-id and chronological order, so only this pins the order.
+  it("orders a fork's continuations by their own start, not by session id", () => {
+    const row = (id: string, startedAt: string, continuedFromId: string | null): FamilyRow => ({
+      id,
+      title: null,
+      project: { path: "/Users/me/dev/fork" },
+      startedAt,
+      costUsd: 0,
+      unpriced: false,
+      continuedFromId,
+    });
+    const rows = [
+      row("sess-fork-root", "2026-06-21T09:00:00.000Z", null),
+      row("sess-fork-a", "2026-06-21T15:00:00.000Z", "sess-fork-root"),
+      row("sess-fork-b", "2026-06-21T11:00:00.000Z", "sess-fork-root"),
+    ];
+
+    const family = buildFamily(rows, "sess-fork-root");
+    expect(family?.children.map((c) => c.id)).toEqual(["sess-fork-b", "sess-fork-a"]);
+    expect(family?.members.map((m) => m.id)).toEqual(["sess-fork-root", "sess-fork-b", "sess-fork-a"]);
+  });
+
   it("terminates on a cyclic link structure, listing each member once", () => {
     // Two sessions continuing EACH OTHER — a shape copies cannot produce,
     // guarded against anyway.
