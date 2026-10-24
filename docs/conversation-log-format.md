@@ -217,58 +217,57 @@ Main-thread forks, whose meta files have no `toolUseId`.
 
 ### Where a Sub-agent's spawn comes from
 
-**The decided rule (ADR-0011): the meta file decides.** Its `toolUseId` names
-the spawning `Agent` call, and the spawner is the Agent that owns that call;
-its `agentType` is the type. The ledger is read for a Sub-agent's spawner and
-type only when its meta file states nothing. This inverts the procedure below,
-which reads the ledger first and the meta file second: that procedure, its
-holder order included, is the one in place until ADR-0011's next slice
-(#304) replaces it, and is not the decided rule.
+**The meta file decides (ADR-0011).** Its `toolUseId` names the spawning
+`Agent` call, and its `agentType` is the type. The ledger naming the
+Sub-agent is the fallback, read for a field only when the meta file states
+none for it; a malformed meta file states nothing, and the Refresh goes on.
 
-Today, two sources, per field: the **ledger** naming the Sub-agent, when it states a
-non-null value, else the **meta file**. The type is the ledger's `agentType`,
-else the meta file's. The resolved model is the ledger's, else the
-transcript's dominant model (the meta file's `model` is not read). A malformed
-meta file states nothing, and the Refresh goes on.
-
-The spawner is found in this order:
-
-1. The Agent whose file holds the ledger naming the Sub-agent: the Main
-   thread's, or another Sub-agent's for a nested one.
-2. Without a ledger, the Agent holding the `Agent` call the meta file's
-   `toolUseId` names, picked by the holder order below. `spawned_by_message_id`
-   is the Message holding that call.
-3. Without either, the Main thread, with no spawning Message.
-
-**The holder order.** Several Agents of a Conversation can hold the same spawn
-record, because a fork copies its spawner's records (§10). Of the holders:
-
-1. the Main thread first;
-2. never the Sub-agent itself, nor any of its descendants, because a spawner
-   cannot descend from what it spawned. A fork of the Sub-agent copies the
-   record too;
-3. then a holder that no other holder spawned (one spawned by another holder
-   copied the record from it);
-4. then the first in discovery order.
-
-Who spawned whom, for steps 2 and 3, is what the parsed ledgers say, else the
-stored lineage of a Sub-agent the Refresh keeps as it is.
-
-Step 2 above applies this order to the `Agent` call. A ledger claimed by
-several files is still settled by the Main thread first, then discovery order.
+- **The spawning call**: the meta file's `toolUseId`, else the `tool_use_id`
+  of a stored `Agent` call of the Conversation whose ledger names the
+  Sub-agent (of several, the smallest).
+- **The spawner**: the Agent owning that call, by the ownership rule of §10,
+  among the Agents of the same Conversation holding it — never the Sub-agent
+  itself nor one of its descendants, since a fork copies its own spawn record,
+  re-written, and a fork of a fork copies it again. A resumed session's copy
+  of the call lives in another Conversation and never counts. The Main
+  thread, when it holds the call, is everyone's ancestor and owns it.
+  `spawned_by_message_id` is the spawner's Message holding the call.
+- **Without a spawning call, or no other holder of it**: the Main thread, with
+  no spawning Message (the 2 Main-thread forks on this machine).
+- **The type**: the meta file's `agentType`, else the ledger's — the result of
+  the spawning call the spawner holds, when it names the Sub-agent.
+- **The resolved model**: that ledger's `resolvedModel`, else the
+  transcript's dominant model (the meta file's `model` is not read).
 
 The `isFork`, `parentAgentId`, `description` and `spawnDepth` keys are not read:
-the ledger and the `Agent` call already give the spawn link.
+the `Agent` call already gives the spawn link.
 
-An incremental Refresh reaches the same rows as a cold one. A new Sub-agent
-named by no parsed ledger has the stored Sub-agents holding its meta file's
-`Agent` call read, one indexed lookup. This also covers a nested Sub-agent whose
-file appears after its spawner's ledger was stored. A stored Sub-agent with
-neither a type nor a spawning Message that now has a meta file has its
-lineage decided again. A meta file is not part of the change key (ADR-0010):
-one that appears while no transcript of its Conversation changes waits for that
-Conversation's next change. Claude Code writes the meta file before the
-transcript, so this shape practically never happens.
+Who descends from whom is what the rule decides, so the Refresh decides a
+Conversation's Sub-agents together, in `source_path` order, until none is
+left: one is decided once the Agents holding its call have their own spawner
+settled down to the Main thread, the Main thread holds it, or at most one
+holder is left. A holder whose decided chain of spawners reaches the
+Sub-agent is never picked, so no link closes a cycle. Holders that each wait
+on another — which Claude Code never writes — are broken at the smallest
+`source_path`, decided among its settled holders only.
+
+**How it is stored.** A Sub-agent's file is parsed for what it states alone:
+its `agent` row keeps its meta file's `toolUseId` (`spawn_tool_use_id`) and
+`agentType`, and its own dominant model (`dominant_model`); its `Agent` calls
+keep their results whole, each a ledger (`tool_call.result_text`). The meta
+facts are extracted again on every write of the Conversation, a kept
+Sub-agent's included, so a meta file that appears counts once any file of
+its Conversation changes. A meta file is not part of the change key
+(ADR-0010): one that appears while no transcript of its Conversation changes
+waits for that Conversation's next change. Claude Code writes the meta file
+before the transcript, so this shape practically never happens.
+
+The links pass then resolves `parent_agent_id`, `spawned_by_message_id`,
+`agent_type` and `resolved_model` from those stored rows, for every
+Conversation the Refresh wrote: lineage never crosses a Conversation. No file
+is read for it, so a cold Refresh and an incremental one reach the same rows
+whatever files a run parsed, and a changed Sub-agent costs its own file's
+parse alone — its spawner's stays unread.
 
 ### GOTCHA 3 — sub-agent tokens are recorded twice; count them once
 
@@ -347,7 +346,8 @@ keep that property: each is interned, and a Refresh ends by deleting every
 interned value no request references, so a re-parse leaves the database a cold
 Refresh would write. So do a Turn's links to a request in another
 Conversation's file: a Refresh ends by linking every Turn left without one
-(§9, "How they are stored"). And so do continuations: a Refresh decides again
+(§9, "How they are stored"). So does a Sub-agent's spawner: a Refresh resolves
+it from stored rows for every Conversation it wrote (§4). And so do continuations: a Refresh decides again
 the parent of every Conversation its writes and deletes could change, the
 owner and usage of every Turn they could change, and the owner of every user
 Message they could change — which makes its other occurrences Copied Messages
@@ -816,12 +816,14 @@ October 2026:
 - The spawner carries on after the spawn, and so does each fork: every pair,
   spawner and fork or two sibling forks, is a near-fork, each holding a
   Message the other lacks. Containment would tell no original.
-- The spawn link tells it: the spawner's `Agent` call and its `toolUseResult`
-  name the fork, so the fork is stored under its spawner (`agent.parent_agent_id`,
-  `spawned_by_message_id` in the spawner), as any Sub-agent is (§4). Sibling
-  forks spawned by one Message share that `spawned_by` Message. Claude Code
-  also writes the relation into `agent-<id>.meta.json` (`"isFork": true`,
-  `"parentAgentId"`); the app does not read those two keys (§4).
+- The spawn link tells it: the fork's meta file names the spawner's `Agent`
+  call, which the spawner owns — the fork's re-written copy of it never makes
+  the fork its own spawner — so the fork is stored under its spawner
+  (`agent.parent_agent_id`, `spawned_by_message_id` in the spawner), as any
+  Sub-agent is (§4). Sibling forks spawned by one Message share that
+  `spawned_by` Message. Claude Code also writes the relation into the meta
+  file as `"isFork": true` and `"parentAgentId"`; the app does not read those
+  two keys (§4).
 - A fork of a fork copies its spawning fork's records, which begin with that
   fork's own copy: the direct spawner holds the whole copied run.
 - The re-written spawn record is the spawner's spawning Turn under a new
@@ -915,7 +917,6 @@ it deletes, whether its file is gone or written again, leaves the other
 Conversations holding one of its Messages unstamped until the pass commits,
 as continuations are.
 
-A fork's Copied Messages rest on its stored spawner, so a fork's file that appears
-while its spawner's is unchanged has the stored Sub-agents holding its first
-Message read for their ledgers, as a cold Refresh reads every file; any other
-new Sub-agent costs that one lookup.
+A fork's Copied Messages rest on its spawner, which the same pass resolves
+from stored rows before it decides any owner (§4, "How it is stored"), so a
+fork's file that appears while its spawner's is unchanged reads no other file.
