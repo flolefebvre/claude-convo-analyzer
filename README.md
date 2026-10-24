@@ -123,7 +123,10 @@ one you are looking at highlighted, sittings resumed from another project
 labelled, and the cumulative total of the entire piece of work at the bottom,
 which counts no turn twice. Click any
 member to jump to it. The Transcript view of a family member carries the same
-lineage as a one-line banner — what it continued from, and what continues it:
+lineage as a one-line banner — what it continued from, and what continues it —
+and marks each message it copied "from" the conversation that ran it, a link to
+that message there, where its cost shows; a forked sub-agent's copy of its
+spawner's turns is marked from that spawner the same way:
 
 ![Continuation family](https://raw.githubusercontent.com/flolefebvre/claude-convo-analyzer/main/docs/images/continuation-family.png)
 

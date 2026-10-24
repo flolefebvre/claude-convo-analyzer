@@ -889,6 +889,18 @@ html:has(.tview) {
   color: var(--muted-foreground);
   font-style: italic;
 }
+/* A Copied Message's owner, in the cost's place: one line, a long title cut. */
+.tview .copied-from {
+  max-width: 24rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tview .copied-from a {
+  text-decoration: underline;
+  text-decoration-color: var(--border);
+  text-underline-offset: 2px;
+}
 
 /* ---- Prompt ---- */
 .tview .prompt {

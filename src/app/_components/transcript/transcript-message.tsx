@@ -1,10 +1,12 @@
 import { ChevronRight } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { formatClock, formatLatency, formatModelName } from "@/app/_lib/format";
 import { type AgentLabel, parseSlashCommand, type TranscriptExport } from "@/app/_lib/transcript";
 import { messageAnchorId } from "@/app/_lib/transcript-url";
 import type { TranscriptMessage, TranscriptView } from "@/core/read";
 
+import { CopiedFrom } from "./copied-from";
 import { InterAgentMessageRow } from "./transcript-inter-agent-message";
 import { CostFigure, ErrorBadge, type MessageAnchor, MidTurnBadge, RowHead, labelledBy } from "./transcript-parts";
 import { TaskNotificationRow } from "./transcript-task-notification";
@@ -61,6 +63,16 @@ export function TranscriptMessageRow({
   // highlights the row server-side (a fragment never reaches the server), and
   // the pane's `ScrollToAnchor` scrolls to the id. Same idiom as `?call=`.
   const anchor = anchorProps(message, anchoredMessage);
+  const copiedFrom = message.copiedFrom && (
+    <CopiedFrom
+      owner={message.copiedFrom}
+      sessionId={view.sessionId}
+      rootAgentId={view.tree.id}
+      labels={labels}
+      listReturn={listReturn}
+      agentLinksAreInFile={agentLinksAreInFile}
+    />
+  );
 
   if (message.kind === "inter-agent") {
     return (
@@ -73,6 +85,7 @@ export function TranscriptMessageRow({
         labels={labels}
         listReturn={listReturn}
         agentLinksAreInFile={agentLinksAreInFile}
+        copiedFrom={copiedFrom}
       />
     );
   }
@@ -86,6 +99,7 @@ export function TranscriptMessageRow({
         labels={labels}
         listReturn={listReturn}
         agentLinksAreInFile={agentLinksAreInFile}
+        copiedFrom={copiedFrom}
       />
     );
   }
@@ -93,7 +107,7 @@ export function TranscriptMessageRow({
     // A Prompt sent while the agent was working is the person's, even in a
     // sub-agent's transcript, where the other prompts come from its parent.
     const author = message.origin?.midTurn ? null : promptAuthor;
-    return <PromptRow message={message} time={time} anchor={anchor} author={author} />;
+    return <PromptRow message={message} time={time} anchor={anchor} author={author} copiedFrom={copiedFrom} />;
   }
   return (
     <AssistantTurn
@@ -107,6 +121,7 @@ export function TranscriptMessageRow({
       anchor={anchor}
       listReturn={listReturn}
       transcriptExport={transcriptExport}
+      copiedFrom={copiedFrom}
     />
   );
 }
@@ -134,11 +149,14 @@ function PromptRow({
   time,
   anchor,
   author,
+  copiedFrom,
 }: {
   message: TranscriptMessage;
   time: string;
   anchor: MessageAnchor;
   author: string | null;
+  /** The marker of a Copied Message (see `CopiedFrom`); absent on one this Agent owns. */
+  copiedFrom: ReactNode;
 }) {
   const parsed = parseSlashCommand(message.text);
   const commandLabel =
@@ -154,6 +172,7 @@ function PromptRow({
         time={time}
         timestamp={message.timestamp}
         labelId={anchor.labelId}
+        trailing={copiedFrom}
       >
         {message.origin?.plugin && <span className="badge-note">via {message.origin.plugin}</span>}
         {message.origin?.midTurn && <MidTurnBadge />}
@@ -189,6 +208,7 @@ function AssistantTurn({
   anchor,
   listReturn,
   transcriptExport,
+  copiedFrom,
 }: {
   message: TranscriptMessage;
   time: string;
@@ -201,6 +221,8 @@ function AssistantTurn({
   anchor: MessageAnchor;
   listReturn: string | undefined;
   transcriptExport: TranscriptExport | undefined;
+  /** The marker of a Copied Message (see `CopiedFrom`), in place of the cost its owner counts. */
+  copiedFrom: ReactNode;
 }) {
   const text = message.text ?? "";
   const errorOnly = message.isApiError && text.trim() === "";
@@ -216,7 +238,7 @@ function AssistantTurn({
         time={time}
         timestamp={message.timestamp}
         labelId={anchor.labelId}
-        trailing={<TurnCost message={message} />}
+        trailing={copiedFrom || <TurnCost message={message} />}
       >
         {message.model && message.model !== agentModel && (
           <span className="model" title={message.model}>

@@ -1,4 +1,5 @@
 import { ChevronRight } from "lucide-react";
+import type { ReactNode } from "react";
 
 import type { AgentLabel } from "@/app/_lib/transcript";
 import { agentHref, agentSectionHref, withListReturn } from "@/app/_lib/transcript-url";
@@ -24,6 +25,7 @@ export function TaskNotificationRow({
   labels,
   listReturn,
   agentLinksAreInFile = false,
+  copiedFrom,
 }: {
   message: TranscriptMessage;
   time: string;
@@ -36,6 +38,8 @@ export function TaskNotificationRow({
   /** True in the Conversation export: the Sub-agent's link points at its
    *  section of the file, and is left out when it has none. */
   agentLinksAreInFile?: boolean;
+  /** The marker of a Copied Message (see `CopiedFrom`); absent on one this Agent owns. */
+  copiedFrom?: ReactNode;
 }) {
   const origin = message.origin;
   const status = origin?.taskStatus;
@@ -69,6 +73,7 @@ export function TaskNotificationRow({
       )}
       <span className="spacer" />
       <RowTime time={time} timestamp={message.timestamp} labelId={anchor.labelId} />
+      {copiedFrom}
       {message.text && (
         <details className="notice-result" open={anchor.anchored || undefined}>
           <summary>

@@ -1,4 +1,5 @@
 import { ChevronRight } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { PendingLink } from "@/app/_components/pending-link";
 import type { AgentLabel } from "@/app/_lib/transcript";
@@ -24,6 +25,7 @@ export function InterAgentMessageRow({
   labels,
   listReturn,
   agentLinksAreInFile = false,
+  copiedFrom,
 }: {
   message: TranscriptMessage;
   time: string;
@@ -37,6 +39,8 @@ export function InterAgentMessageRow({
   listReturn?: string;
   /** True in the Conversation export: the sender links to its section of the file. */
   agentLinksAreInFile?: boolean;
+  /** The marker of a Copied Message (see `CopiedFrom`); absent on one this Agent owns. */
+  copiedFrom?: ReactNode;
 }) {
   const origin = message.origin;
   const className = ["prompt", "is-agent", anchor.anchored && "anchored"].filter(Boolean).join(" ");
@@ -62,6 +66,7 @@ export function InterAgentMessageRow({
         time={time}
         timestamp={message.timestamp}
         labelId={anchor.labelId}
+        trailing={copiedFrom}
       >
         {origin?.handback && <span className="badge-note">hand-back</span>}
         {origin?.midTurn && <MidTurnBadge />}

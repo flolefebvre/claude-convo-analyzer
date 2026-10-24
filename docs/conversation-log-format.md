@@ -222,8 +222,8 @@ the spawning `Agent` call, and the spawner is the Agent that owns that call;
 its `agentType` is the type. The ledger is read for a Sub-agent's spawner and
 type only when its meta file states nothing. This inverts the procedure below,
 which reads the ledger first and the meta file second: that procedure, its
-holder order included, is the one in place until ADR-0011's slices (#303,
-#304) replace it, and is not the decided rule.
+holder order included, is the one in place until ADR-0011's next slice
+(#304) replaces it, and is not the decided rule.
 
 Today, two sources, per field: the **ledger** naming the Sub-agent, when it states a
 non-null value, else the **meta file**. The type is the ledger's `agentType`,
@@ -348,9 +348,10 @@ interned value no request references, so a re-parse leaves the database a cold
 Refresh would write. So do a Turn's links to a request in another
 Conversation's file: a Refresh ends by linking every Turn left without one
 (§9, "How they are stored"). And so do continuations: a Refresh decides again
-the parent and Copied Messages of every Conversation its writes and deletes
-could change, and the owner and usage of every Turn they could change (§10,
-"How they are stored").
+the parent of every Conversation its writes and deletes could change, the
+owner and usage of every Turn they could change, and the owner of every user
+Message they could change — which makes its other occurrences Copied Messages
+(§10, "How they are stored").
 
 ## 8. Who a user message is from: `origin`, and mid-turn delivery
 
@@ -825,16 +826,15 @@ October 2026:
   fork's own copy: the direct spawner holds the whole copied run.
 - The re-written spawn record is the spawner's spawning Turn under a new
   `uuid`: same `message.id`, `requestId` and `usage` (one fork's holds the
-  spawner's 1,199 output tokens). Matched by `uuid`, it is the fork's first
-  own Message, and the rule below leaves it unflagged; matched by its
-  `message.id`, it is an occurrence of the spawner's Turn, which the spawner
-  owns, so it counts once, in the spawner — 11 Turns on this machine that each
-  fork counted again before.
-- A fork the **Main thread** spawns copies nothing: its transcript opens with a
-  `fork-context-ref` record (`parentSessionId`, `parentLastUuid`,
-  `contextLength`) in place of the copied records (5 files, 2.1.218–2.1.280).
-  The rule below flags nothing there; a Main-thread fork that copies records
-  in a later version would be flagged by it unchanged.
+  spawner's 1,199 output tokens). Matched by its `message.id`, as every Turn
+  is, it is an occurrence of the spawner's Turn, which the spawner owns: it is
+  a Copied Message of the fork, and counts once, in the spawner — 11 Turns on
+  this machine that each fork counted again before.
+- A fork the **Main thread** spawns copies none of its records: its transcript
+  opens with a `fork-context-ref` record (`parentSessionId`, `parentLastUuid`,
+  `contextLength`) in place of them (5 files, 2.1.218–2.1.280), then the
+  re-written spawn record, an occurrence of the Main thread's spawning Turn —
+  a Copied Message, as a Sub-agent fork's is.
 
 ### The rule
 
@@ -844,9 +844,8 @@ meta file's `toolUseId` and `agentType` (§4) — that record decides. The
 prefix-containment rule below stays only for logs before 2.1.296, which carry
 no `continued-in` record, and gains no cases: a new log shape is met by reading
 the record Claude Code writes for it, not by a new matching rule. Which Messages
-are copies is decided by ownership: a Copied Message is an occurrence in an
-Agent that does not own it (Glossary, "Copied Message"). The procedure below
-is the one in place until ADR-0011's slices (#303, #304) replace it.
+are copies is decided by ownership, below, never by matching a copy against
+its original.
 
 A Conversation's **parent** is the Conversation whose `continued-in` record
 names it — of several, the smallest `source_path`. The record wins even when
@@ -865,43 +864,41 @@ ties go to the smallest `source_path`. A near-fork — each holds a Message the
 other lacks, and no record tells — stays unlinked rather than guessed: 6 of
 the 14 unnamed pairs on this machine.
 
-A **Copied Message** is a Message in its Agent's leading run of Messages that
-an Agent of the Conversation's parent, or the Agent that spawned it, also
-holds, matched by `uuid`. Main thread and Sub-agents follow the one rule: a
-Sub-agent transcript the child holds as a regular file, whole, has all of its
-Messages flagged, and a fork's copy of its spawner's records is flagged
-against its direct spawner, a fork of a fork's included. Without a parent
-Conversation or a spawning Agent holding its first Message, nothing is
-flagged — an original's Messages, held by its copies, are its own, and a
-spawner is never flagged against its forks. Within one Conversation the spawn
-link alone decides: a fork whose spawner's file is gone stays unflagged, and
-two Agents holding the same Messages with no spawn link between them are not
-compared.
+**One Agent owns each Message**, however many files hold it. A Turn is
+matched across the logs by its `message.id`, any other Message by its `uuid`;
+a Turn without a `requestId` (a mock API's) and a record without a `uuid` are
+their own file's. Of the Agents holding one, every one with another holder
+among its ancestors is dropped — the Conversations of its `continued_from`
+chain, and in its own Conversation the Agents that spawned it, at any depth —
+and of the rest the one with the smallest log path (`agent.source_path`)
+owns it; its only holder owns it, copy or not. A **Copied Message** is every
+other occurrence (Glossary, "Copied Message"): a continuation's copy of its
+parent's history, a Sub-agent transcript a continuation holds as a regular
+file, a fork's copy of its spawner's records and its re-written spawn record,
+a fork of a fork's copy — owned by the root spawner, not the fork it copied.
+An original's Messages, held by its copies, are its own; a copy whose original
+is gone owns that history, recorded nowhere else; and of two holders with no
+lineage between them — a near-fork, or two Agents of one Conversation with no
+spawn link — the one of the smallest log path owns what they share.
 
 ### How they are stored
-
-`message.is_copied` is the flag in place until ADR-0011's next slice (#303)
-derives it from the ownership `turn` records.
 
 - **`continued_in`**: one row per `continued-in` record of a Conversation's
   Main-thread file, the session it names.
 - **`conversation.continued_from_conversation_id`**: the parent, by the rule.
-- **`message.is_copied`**: whether the Message is a Copied Message.
 - **`turn`**: one row per Turn (§3, GOTCHA 1), however many files hold it: its
   owning occurrence's `message` row, that occurrence's Agent and Conversation,
   each usage bucket's highest value over every occurrence, and the owner's
-  model and timestamp. Cost and every token total sum it. Of the Agents holding a Turn, every
-  one with another holder among its ancestors is dropped — the Conversations
-  of its `continued_from` chain, and in its own Conversation the Agents that
-  spawned it, at any depth — and of the rest the one with the smallest log
-  path (`agent.source_path`) owns it; its only holder owns it, copy or not, so
-  a copier whose parent's file is gone keeps that history's spend, recorded
-  nowhere else. `message.request_id` keeps the record's `requestId`, which
-  makes the Turn's identity global.
+  model and timestamp. Cost and every token total sum it, so a copier keeps
+  the spend of the history it owns and no other. `message.request_id` keeps
+  the record's `requestId`, which makes the Turn's identity global.
+- **`message.copied_from_message_id`**: on a Copied Message, the owning
+  occurrence's row; NULL on the owner and on a Message only its file can own.
+  For a Turn it is written from the same decision as its `turn` row.
 
-The Refresh decides both in its links pass, from the database alone, so a
+The Refresh decides the parent in its links pass, from the database alone, so a
 skipped parent counts and the outcome is the same in a cold Refresh and an
-incremental one. It decides them for every Conversation it wrote, every one
+incremental one. It decides it for every Conversation it wrote, every one
 holding a written Conversation's first Message (every copy of a session, and
 every session it copies, holds that Message), every one a written
 Conversation's records name or that continues from it, and the continuations
@@ -909,15 +906,16 @@ of every Conversation it deleted. Like the written ones, those continuations
 stay unstamped until the pass commits, so an interrupted run leaves them
 re-parseable. A written Conversation with no copy costs a few indexed lookups.
 
-Once those links are final, the same pass writes the `turn` row of every Turn
-held by a Conversation it decided them for, and of every Turn an Agent it
+Once those links are final, the same pass decides the owner of every Message
+held by a Conversation it decided them for, and of every Message an Agent it
 deleted held, read before the delete: that set is collected, never found by
-scanning the database. Each is resolved against all its stored occurrences.
-An Agent it deletes, whether its file is gone or written again, leaves the
-other Conversations holding one of its Turns unstamped until the pass
-commits, as continuations are.
+scanning the database. Each is resolved against all its stored occurrences:
+a Turn's `turn` row is written, and each occurrence names its owner. An Agent
+it deletes, whether its file is gone or written again, leaves the other
+Conversations holding one of its Messages unstamped until the pass commits,
+as continuations are.
 
-A fork's flags rest on its stored spawner, so a fork's file that appears
+A fork's Copied Messages rest on its stored spawner, so a fork's file that appears
 while its spawner's is unchanged has the stored Sub-agents holding its first
 Message read for their ledgers, as a cold Refresh reads every file; any other
 new Sub-agent costs that one lookup.

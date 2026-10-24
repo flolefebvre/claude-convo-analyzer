@@ -16,7 +16,12 @@ const FOREIGN_KEYS_BY_TABLE = {
   project: {},
   conversation: { project_id: "project", continued_from_conversation_id: "conversation" },
   agent: { conversation_id: "conversation", parent_agent_id: "agent", spawned_by_message_id: "message" },
-  message: { conversation_id: "conversation", agent_id: "agent", api_request_id: "api_request" },
+  message: {
+    conversation_id: "conversation",
+    agent_id: "agent",
+    api_request_id: "api_request",
+    copied_from_message_id: "message",
+  },
   tool_call: { message_id: "message", agent_id: "agent" },
   pr_link: { conversation_id: "conversation" },
   turn_duration: { conversation_id: "conversation" },

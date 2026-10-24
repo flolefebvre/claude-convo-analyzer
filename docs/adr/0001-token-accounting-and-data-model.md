@@ -57,8 +57,8 @@ Model the domain as twelve tables:
   messages, which have no usage of their own), `model`, the per-turn
   attribution fields (`attribution_skill` / `_agent` / `_plugin` /
   `_mcp_server`), `permission_mode`, an API-error flag, `timestamp`, and
-  `is_copied` — whether a continuation copied it from its parent (a Copied
-  Message, log-format §10). FK to
+  `copied_from_message_id` — on a Copied Message, the occurrence that owns
+  it (ADR-0011, log-format §10). FK to
   `agent`. Main and sub-agents are parsed identically. Content (text) and
   accounting (tokens) deliberately co-locate here because they describe the
   same turn and share its key — a feature for a small read-mostly analytics DB.

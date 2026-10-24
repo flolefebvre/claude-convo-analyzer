@@ -206,14 +206,21 @@ export type TurnRow = {
   timestamp: number | null;
 };
 
-/** One occurrence of a Turn identified across the logs, as deciding its owner and usage needs it. */
-export type TurnOccurrence = {
+/** One occurrence of a Message several Agents may hold, as deciding which one owns it needs it (ADR-0011). */
+export type MessageOccurrence = {
   /** Its `message` row id. */
   id: number;
   agentId: number;
   conversationId: number;
   /** Its Agent's `source_path`; NULL only on rows predating the column. */
   sourcePath: string | null;
+};
+
+/** One occurrence of a user Message, matched across the logs by its `uuid`. */
+export type UserMessageOccurrence = MessageOccurrence & { uuid: string };
+
+/** One occurrence of a Turn identified across the logs, as deciding its owner and usage needs it. */
+export type TurnOccurrence = MessageOccurrence & {
   inputTokens: number | null;
   outputTokens: number | null;
   cacheCreation5mTokens: number | null;
@@ -380,34 +387,38 @@ export function prepareRefreshStatements(db: Database.Database) {
             9223372036854775807)`,
     )
     .pluck();
-  const clearCopiedMessages = db.prepare(
-    `UPDATE "message" SET "is_copied" = 0 WHERE "conversation_id" = ? AND "is_copied" = 1`,
+  // A user Message with a `uuid` is matched across the logs by it (ADR-0011):
+  // its key. One without is its own file's, and keyless.
+  const selectUserMessageUuidsOfAgent = db
+    .prepare(`SELECT DISTINCT "uuid" FROM "message" WHERE "agent_id" = ? AND "role" = 'user' AND "uuid" IS NOT NULL`)
+    .pluck();
+  const selectUserMessageUuidsOfConversation = db
+    .prepare(
+      `SELECT DISTINCT "uuid" FROM "message" WHERE "conversation_id" = ? AND "role" = 'user' AND "uuid" IS NOT NULL`,
+    )
+    .pluck();
+  const selectUserMessageUuidHolderConversationIds = db
+    .prepare(
+      `SELECT DISTINCT "conversation_id" FROM "message"
+        WHERE "uuid" IN (SELECT "value" FROM json_each(?)) AND "role" = 'user'
+          AND "conversation_id" <> ?`,
+    )
+    .pluck();
+  const selectUserMessageOccurrences = db.prepare(
+    `SELECT "message"."id", "message"."uuid", "message"."agent_id" AS "agentId",
+            "message"."conversation_id" AS "conversationId", "agent"."source_path" AS "sourcePath"
+       FROM "message" JOIN "agent" ON "agent"."id" = "message"."agent_id"
+      WHERE "message"."uuid" IN (SELECT "value" FROM json_each(?)) AND "message"."role" = 'user'
+      ORDER BY "message"."uuid", "message"."id"`,
   );
-  // THE RULE for a Copied Message (log-format §10): in its Agent's leading
-  // run of Messages that an Agent of the parent Conversation, or the Agent
-  // that spawned it, holds. Each Agent's first Message neither holds is found
-  // once. Without a parent Conversation, `@parentConversationId` is NULL and
-  // matches no Message.
-  const updateCopiedMessages = db.prepare(
-    `WITH "first_own" AS MATERIALIZED (
-       SELECT "agent"."id" AS "agent_id",
-              (SELECT "own"."id" FROM "message" AS "own"
-                WHERE "own"."agent_id" = "agent"."id"
-                  AND ("own"."uuid" IS NULL OR (
-                    NOT EXISTS (
-                      SELECT 1 FROM "message" AS "holding"
-                       WHERE "holding"."uuid" = "own"."uuid" AND "holding"."conversation_id" = @parentConversationId)
-                    AND NOT EXISTS (
-                      SELECT 1 FROM "message" AS "holding"
-                       WHERE "holding"."uuid" = "own"."uuid" AND "holding"."agent_id" = "agent"."parent_agent_id")))
-                ORDER BY "own"."id"
-                LIMIT 1) AS "message_id"
-         FROM "agent" WHERE "agent"."conversation_id" = @conversationId)
-     UPDATE "message" SET "is_copied" = 1
-      WHERE "conversation_id" = @conversationId
-        AND "id" < COALESCE(
-          (SELECT "message_id" FROM "first_own" WHERE "first_own"."agent_id" = "message"."agent_id"),
-          9223372036854775807)`,
+  // Rewritten only when it differs, so a Message re-resolved to what it was costs no write.
+  const updateCopiedFrom = db.prepare(
+    `UPDATE "message" SET "copied_from_message_id" = @ownerMessageId
+      WHERE "id" = @id AND "copied_from_message_id" IS NOT @ownerMessageId`,
+  );
+  const clearCopiedFrom = db.prepare(
+    `UPDATE "message" SET "copied_from_message_id" = NULL
+      WHERE "id" IN (SELECT "value" FROM json_each(?)) AND "copied_from_message_id" IS NOT NULL`,
   );
   // A Turn with a `requestId` is identified by its message id across all the
   // logs (ADR-0011): its key. One without is its own file's, and keyless.
@@ -444,6 +455,13 @@ export function prepareRefreshStatements(db: Database.Database) {
     `DELETE FROM "turn"
       WHERE "message_id" IN (SELECT "id" FROM "message" WHERE "message_id" = @turnKey AND "request_id" IS NOT NULL)
         AND "message_id" <> @ownerMessageId`,
+  );
+  // Each occurrence of a Turn whose owner is `@ownerMessageId` is copied from
+  // it, the owner from none; rewritten only where that differs.
+  const updateTurnCopiedFrom = db.prepare(
+    `UPDATE "message" SET "copied_from_message_id" = NULLIF(@ownerMessageId, "id")
+      WHERE "message_id" = @turnKey AND "request_id" IS NOT NULL
+        AND "copied_from_message_id" IS NOT NULLIF(@ownerMessageId, "id")`,
   );
   // Rewritten only when a value differs, so a Turn re-resolved to what it was costs no write.
   const turnColumns = Object.values(TURN_COLUMN_BY_FIELD);
@@ -620,14 +638,21 @@ export function prepareRefreshStatements(db: Database.Database) {
     /** How many of Agent `agentId`'s Messages, from its first, Agent `holdingAgentId` holds a Message with the uuid of. */
     selectSharedLeadingRunLength: (agentId: number, holdingAgentId: number) =>
       selectSharedLeadingRunLength.get({ agentId, holdingAgentId }) as number,
-    /**
-     * Flag Conversation `conversationId`'s Copied Messages: copies of
-     * `parentConversationId`'s, when it has a parent, and of each Agent's spawning Agent's.
-     */
-    updateCopiedMessages: (conversationId: number, parentConversationId: number | null) => {
-      clearCopiedMessages.run(conversationId);
-      updateCopiedMessages.run({ conversationId, parentConversationId });
-    },
+    /** The `uuid`s of the user Messages Agent `agentId` holds an occurrence of. */
+    selectUserMessageUuidsOfAgent: (agentId: number) => selectUserMessageUuidsOfAgent.all(agentId) as string[],
+    /** The `uuid`s of the user Messages Conversation `conversationId` holds an occurrence of. */
+    selectUserMessageUuidsOfConversation: (conversationId: number) =>
+      selectUserMessageUuidsOfConversation.all(conversationId) as string[],
+    /** The Conversations other than `excludedConversationId` holding an occurrence of any of the user Messages `uuids`. */
+    selectUserMessageUuidHolderConversationIds: (uuids: string[], excludedConversationId: number) =>
+      selectUserMessageUuidHolderConversationIds.all(JSON.stringify(uuids), excludedConversationId) as number[],
+    /** Every stored occurrence of the user Messages `uuids`, by `uuid`, then in row id order. */
+    selectUserMessageOccurrences: (uuids: string[]) =>
+      selectUserMessageOccurrences.all(JSON.stringify(uuids)) as UserMessageOccurrence[],
+    /** Mark Message row `id` as a copy of the occurrence `ownerMessageId`, or, with null, as its own. */
+    updateCopiedFrom: (id: number, ownerMessageId: number | null) => void updateCopiedFrom.run({ id, ownerMessageId }),
+    /** Mark each of the Message rows `ids` as its own. */
+    clearCopiedFrom: (ids: number[]) => void clearCopiedFrom.run(JSON.stringify(ids)),
     /** The keys of the Turns identified across the logs that Agent `agentId` holds an occurrence of. */
     selectTurnKeysOfAgent: (agentId: number) => selectTurnKeysOfAgent.all(agentId) as string[],
     /** The keys of the Turns identified across the logs that Conversation `conversationId` holds an occurrence of. */
@@ -643,10 +668,14 @@ export function prepareRefreshStatements(db: Database.Database) {
     /** The Conversation that Conversation `conversationId` continues from; null without one or when it is not stored. */
     selectContinuedFromId: (conversationId: number) =>
       (selectContinuedFromId.get(conversationId) as number | null | undefined) ?? null,
-    /** Write the row of a Turn identified across the logs, and delete the rows its other occurrences held. */
+    /**
+     * Write the row of a Turn identified across the logs, delete the rows its
+     * other occurrences held, and mark each of those as copied from its owner.
+     */
     writeTurn: (turnKey: string, row: TurnRow) => {
       deleteTurnsOfOtherOccurrences.run({ turnKey, ownerMessageId: row.messageId });
       upsertTurn.run(row);
+      updateTurnCopiedFrom.run({ turnKey, ownerMessageId: row.messageId });
     },
     /** Write a row for each Turn of Conversation `conversationId` that is its own file's and has none yet. */
     insertOwnFileTurns: (conversationId: number) => void insertOwnFileTurns.run(conversationId),

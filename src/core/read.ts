@@ -102,6 +102,18 @@ export type TranscriptMessageOrigin = MessageOrigin & {
   taskAgentId: string | null;
 };
 
+/** The occurrence that owns a Copied Message (ADR-0011): where its Transcript shows that Message. */
+export type CopiedMessageOwner = {
+  /** The owning Conversation's session id. */
+  sessionId: string;
+  /** The owning Conversation's title; null when it has none. */
+  title: string | null;
+  /** Tree key of the owning Agent (its `?agent=`); null when it is that Conversation's Main thread. */
+  agentId: string | null;
+  /** The owning occurrence's record `uuid`, its deep-link anchor; on a re-written spawn record, not the copy's. */
+  messageUuid: string | null;
+};
+
 /** One rendered message of a single agent's transcript. */
 export type TranscriptMessage = {
   /** `message` row id — stable per message; a spawn's `spawnedByMessageId` points here. */
@@ -145,8 +157,10 @@ export type TranscriptMessage = {
   unpriced: boolean;
   isApiError: boolean;
   apiErrorMessage: string | null;
-  /** A Copied Message (GLOSSARY.md): history this continuation copied from its parent, not its own. */
+  /** A Copied Message (GLOSSARY.md): history this Agent holds and another one owns, not its own work. */
   isCopied: boolean;
+  /** On a Copied Message, the occurrence that owns it; null on a Message this Agent owns. */
+  copiedFrom: CopiedMessageOwner | null;
   /** Record timestamp as an ISO string (null when absent). */
   timestamp: string | null;
   /** `tool_use` blocks on this (assistant) turn, in stored order. */
@@ -1293,7 +1307,14 @@ async function readAgentTranscript(
       apiErrorMessage: true,
       timestamp: true,
       apiRequestId: true,
-      isCopied: true,
+      // The owning occurrence of a Copied Message: one more query for the window, not one per row.
+      copiedFrom: {
+        select: {
+          uuid: true,
+          agent: { select: { externalAgentId: true } },
+          conversation: { select: { sessionId: true, title: true } },
+        },
+      },
     },
   });
 
@@ -1340,7 +1361,16 @@ async function readAgentTranscript(
       unpriced: turn.unpriced,
       isApiError: r.isApiError,
       apiErrorMessage: r.apiErrorMessage,
-      isCopied: r.isCopied,
+      isCopied: r.copiedFrom !== null,
+      copiedFrom:
+        r.copiedFrom === null
+          ? null
+          : {
+              sessionId: r.copiedFrom.conversation.sessionId,
+              title: r.copiedFrom.conversation.title,
+              agentId: r.copiedFrom.agent.externalAgentId,
+              messageUuid: r.copiedFrom.uuid,
+            },
       timestamp: r.timestamp === null ? null : new Date(Number(r.timestamp)).toISOString(),
       toolCalls: toolCallsByMsg.get(r.id) ?? [],
       apiRequestId: r.apiRequestId,
