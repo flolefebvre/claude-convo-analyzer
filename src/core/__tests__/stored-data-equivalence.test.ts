@@ -151,15 +151,15 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 15, sha256: "d79302a905b975c08cfd6c217e6ae3eaa17e44ca45bb318cdfeefa1ae7b0e329" },
-      conversation: { rowCount: 21, sha256: "d6166008873db76940afa88802d56ffaea6ee0f39211ec4ffb672cfed14076d2" },
-      agent: { rowCount: 35, sha256: "de42e5a7f156c16703ac5f7e15f98996a1f1aaa3b63f7c2a7720dadf72b47d47" },
-      message: { rowCount: 127, sha256: "3ebf833e085d20e611a6b2141444eb97a6b6c11f96038f6a98660721609b7e67" },
-      tool_call: { rowCount: 34, sha256: "1ebf6ceb68879e5e3dfbb37ddf59dce1699db2145274b17b09453577f97c8512" },
+      conversation: { rowCount: 21, sha256: "03033f4ad7f269f020a92a532abe75d2416b2ca9099700dedc8e0f9a34c3eda9" },
+      agent: { rowCount: 35, sha256: "246255821e1bfe657a83d5e0ed71651f5ba359a592926856e670d5662921d0f0" },
+      message: { rowCount: 127, sha256: "a9bef9749ce38b6d2915a2ab688cded576d494f051ef4e9c2087e3a2abc78160" },
+      tool_call: { rowCount: 34, sha256: "3d53813b02e88924a1f66d0b8ace48eb14d2b47fcb7962e14f64afb788a05a16" },
       pr_link: { rowCount: 1, sha256: "efff4b0f419e7b55d6dc8602b3503e06e81829e6fd868d216679845fa0970d16" },
       turn_duration: { rowCount: 1, sha256: "11a23dd83764e1de631b25b7b2fb8a6b5af397fe1503b2086f0404a57cb943c4" },
       ...NO_LOGGED_API_REQUESTS,
       continued_in: { rowCount: 1, sha256: "030772a8c9a88fd3802687086c9d1417d6ad731913d6b53c562bc02e78a1e62f" },
-      turn: { rowCount: 60, sha256: "66d9f6d2fe9dab8f10f6a3925a427dd151468803f7092f6c39fb24b1dc6394fa" },
+      turn: { rowCount: 60, sha256: "6abfeebb28dbd2fc18183da8c05b320b82caf535db1e130232cb507dd469bf53" },
     });
   });
 
@@ -169,8 +169,8 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "5d55ed2d1c37a5a354777b7e27dfce7bb9f299e0e7237d17a32956fee0357675" },
-      conversation: { rowCount: 1, sha256: "d727c04f6b716ba0510bfc5eaec61ef1e9ede76de314d007aed20eeac080cdbf" },
-      agent: { rowCount: 2, sha256: "713fcf5396f473f437c14c1f1b32d131ec6dc2a05a0f64b7e92473453b7915d7" },
+      conversation: { rowCount: 1, sha256: "7fa9d1847b2aa78a27f5253eaef6c06d1a1aaa09804f86be94ef0ed8e624af4a" },
+      agent: { rowCount: 2, sha256: "eaca0452743069f482836280bcd59090e332b1eed3430c2ec8e6967898d7b498" },
       message: { rowCount: 28, sha256: "45b2cb52e00f9e2d31cb3ad0bc8591b4d8bf68a8f240123093b2e94910333395" },
       tool_call: { rowCount: 1, sha256: "a7fdb225fda2bff0ca75f88a22789a86cd79a97f5ea4e2f952e1d4559aa8efd9" },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
@@ -187,8 +187,8 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 9, sha256: "e740c951fb2b58e8b13902eea830681396ac5eea03a445a31d6fb998c250a3e1" },
-      conversation: { rowCount: 13, sha256: "7f8c76ec67d5dea5586ade5263b6adf40a007ad3e4790fa3edf494bf17bcf6c9" },
-      agent: { rowCount: 13, sha256: "e7ac854b5bb32c8eed7800c23ea7885c9cec75c89f4805602c23cea19af38fcf" },
+      conversation: { rowCount: 13, sha256: "91aaa09788715f5015b2ebfcda30ed5a211ef8754ab59b41ce7123ed9a3eaeb9" },
+      agent: { rowCount: 13, sha256: "47a5da9f7296173cd7b9dc6b19768d3fff6ded5789235c02b4909262c5aa4797" },
       message: { rowCount: 22, sha256: "09af9c0ba2e4db45821984e45355aa682e69d4f841216971ddee35065030fb60" },
       tool_call: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
@@ -205,8 +205,8 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "c39a0134a2be51dcdd6348bf0657691be4b1d4092d6e1616117c4d0f4f58a771" },
-      conversation: { rowCount: 4, sha256: "20a97002308061e420eb3aefc0b84540b6a72fd68e411e7e02c6593c5456dfce" },
-      agent: { rowCount: 5, sha256: "c4b080955ead80f8ac49312c2adc19d6232c0b4b2252a9ef272fb81afc384c3b" },
+      conversation: { rowCount: 4, sha256: "4fc3284c547e90d2b9b56e1cd1acbfa2564480f14d7a9e8d931811078a66ff44" },
+      agent: { rowCount: 5, sha256: "2442bd8cc5db86991c30c1dbda50550ec717d088711eacbefee0fa3512ea0c6d" },
       message: { rowCount: 17, sha256: "5db9f8454263a965fa98f0fa5fbcbd397dc7ce1e88da6cdfd544145eea58bb9d" },
       tool_call: { rowCount: 1, sha256: "e331ea30643c19a0602a2759f557187aacaf1729c796a955560799b9c4dbd73f" },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
@@ -223,8 +223,8 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "8b9da1ddb86766f02f4a1ac8d582400f0f6c9e5071156b7b726e7b6d9bf11d31" },
-      conversation: { rowCount: 3, sha256: "87deff10261fbf2a6069e8528ac7238a3fafcbb0073886a7ee131a251cd76481" },
-      agent: { rowCount: 4, sha256: "b84ca3bc22285399954288b6ada107594fc072eb9664fe6cb7a7c5bc7356b65e" },
+      conversation: { rowCount: 3, sha256: "6c39ca75fb228f04a7342b8f9a4a5919b92158c24363968fb8b10c814679f91c" },
+      agent: { rowCount: 4, sha256: "0ebb256edcc865cf3064ad9c79d271c6174542968e4e4bfc666d4058da66aa07" },
       message: { rowCount: 19, sha256: "3f12c27157d5c0cdbe39117fefc913cda737a2fcbf388a025be95bf05054af29" },
       tool_call: { rowCount: 3, sha256: "e5f615b5d6290bc0dab75ea171da282d5e176e04be16438fc4d834c227f91b9d" },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
@@ -247,8 +247,8 @@ describe("stored data equivalence", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "39d8e36d20227daa2cab6248635b86861d0a5bd0a9e19a0cf4c98eb4de3f7141" },
-      conversation: { rowCount: 4, sha256: "9960b801415a5f3741cfd87c944b75eeb03c5bce7d3270e03525d644706c1d75" },
-      agent: { rowCount: 4, sha256: "7514b1d3c548431b2c19856159b3138aabda81ae301fbaac5dd95f9f74d189b3" },
+      conversation: { rowCount: 4, sha256: "b28f4bbd1fb3dd8153cf652e57a298094c9befd326c3a0c5c95c94a320d4a9e3" },
+      agent: { rowCount: 4, sha256: "aeb56cf5797c234a0ade0d729fb870a88da76f7d428da763449837088fb9372b" },
       // The child's copied Turns name the requests of the copy's and the parent's files.
       message: { rowCount: 16, sha256: "2aa0b44cb302aed4f3f19898350009d2a97e90294bf1ba163bc11123b06ca1f1" },
       tool_call: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
@@ -350,8 +350,8 @@ describe("continuations", () => {
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 4, sha256: "22e03dd6cdf94d1b50e8c393efeb02e01452e218a539f452ce79dda37d7e9a94" },
       // Each continuation names its parent; sess-orphan, sess-fam-solo and sess-legacy-fork name none.
-      conversation: { rowCount: 10, sha256: "65d4d5ad8fd2a79a961542e95a9567eb03a7a2aa7149b24725120744ce9aa9b5" },
-      agent: { rowCount: 12, sha256: "bd10b9860196d396e3e83ca161a19efed05c508af84c44a18526ca8c4327b612" },
+      conversation: { rowCount: 10, sha256: "3f518e6e23d31b5bf7312f07a393700614854967c8ba37bd1e0b4891ae6630fd" },
+      agent: { rowCount: 12, sha256: "9f677eb12d9b385413077033e91475ef776ec77024d40209936d34c02371f74f" },
       // The copies of the parents' Messages, sess-fam-b's copied Sub-agent included, name the occurrence that owns them.
       message: { rowCount: 43, sha256: "0a7ce9f14b68890c39c1eb2449e15f7cc9946241f5aa10c326053ec5891d1ac4" },
       tool_call: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
@@ -484,14 +484,16 @@ describe("continuations", () => {
     const expectForksCopied = (coldContent: ReturnType<typeof continuationContent>) => {
       expect(copiedUuidsOf(coldContent, "fork-lead")).toEqual([]);
       // fork-a-a1 is fork-lead's spawning Turn, re-written by fork-a under a new uuid.
-      expect(copiedUuidsOf(coldContent, "fork-a")).toEqual(["fork-a-a1", "lead-a1", "lead-u1"]);
+      expect(copiedUuidsOf(coldContent, "fork-a")).toEqual(["fork-a-a1", "lead-a1", "lead-a1b", "lead-u1", "lead-u1b"]);
       expect(copiedUuidsOf(coldContent, "fork-b")).toEqual([
         "fork-a-a1",
         "fork-a-a2",
         "fork-a-u1",
         "fork-b-a1",
         "lead-a1",
+        "lead-a1b",
         "lead-u1",
+        "lead-u1b",
       ]);
     };
 
@@ -503,23 +505,24 @@ describe("continuations", () => {
 
       expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
         project: { rowCount: 1, sha256: "feba540146d17e8b299b85b8b419edb0f24a80e6a19fb1209d37f6936f17c75a" },
-        conversation: { rowCount: 2, sha256: "a5e33db19163b8d7412cc9a50a37b0a96423e128aaa9ce0f1aa5bdc434b21412" },
-        // fork-a under fork-lead, fork-b under fork-a, main-fork under its Main thread: each stored under the Agent that spawned it.
-        agent: { rowCount: 6, sha256: "7bf6e718f6e8042961c38ddf4307717f088030069a2e831d2801d75e05aa6da9" },
+        conversation: { rowCount: 2, sha256: "02900eccb722a6a7adbcaec46039124e82416f21ee716a181ab0090fddb58413" },
+        // fork-a and lead-child under fork-lead, fork-b under fork-a, main-fork under its Main thread: each stored under the Agent that spawned it.
+        agent: { rowCount: 7, sha256: "86d1eeab6b0a3d9c631ce62daa76fc4b43e27084a08abf23660d07cce361743c" },
         // Each fork's copy of its spawner's Messages names its owner, its re-written spawn records included; so does a Main-thread fork's.
-        message: { rowCount: 32, sha256: "5e7842faca5014ff9fa6540528c38f7261511c8f2d8549cea78f2f518d107c5d" },
-        tool_call: { rowCount: 8, sha256: "9263bc458f46457916e05fce257ea3991fdb2648e4e223465c790b9782bbcc1f" },
+        message: { rowCount: 40, sha256: "44e7e74f42bf12e3ea44f3c3e764d0ba4b585ce9054e2e62eb0432a648c42804" },
+        tool_call: { rowCount: 11, sha256: "a04157abf8a159ecce19454603d488c78da9c28f168207e3265809f7614b77a9" },
         pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
         turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
         ...NO_LOGGED_API_REQUESTS,
         continued_in: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
         // One per Turn, each copied one owned by its spawner: fork-a-msg-2, re-written by fork-b, by fork-a.
-        turn: { rowCount: 12, sha256: "0d2b815f6f04e88e571f3216b7dbc28babbaa7bc294ce8dd57d01cc98fdf4b1a" },
+        turn: { rowCount: 14, sha256: "9e4c590901c2b7e406f4dc3fd39bc5633b54e04247ee105b4916af7aa31acfd7" },
       });
     });
 
-    // Each fork's spawn ledger is in its spawner's file, which stays unchanged and unread.
-    it.each(["fork-a", "fork-b"])(
+    // Each one's spawn ledger is in its spawner's file, which stays unchanged and unread;
+    // lead-child's is copied into both forks' files too.
+    it.each(["fork-a", "fork-b", "lead-child"])(
       "are decided as a cold Refresh decides them when %s appears later",
       async (agentId) => {
         const { changedContent, coldContent } = await changedAndCold(
@@ -549,17 +552,24 @@ describe("continuations", () => {
       },
     );
 
-    // The Main thread's file, the changed one, and the stored spawner of the changed one: the others stay unread.
+    // The Main thread's file and the changed one: the others, the changed one's stored spawner included, stay unread.
     it.each([
+      { agentId: "main", logFilesParsed: 1 },
       { agentId: "fork-lead", logFilesParsed: 2 },
-      { agentId: "fork-a", logFilesParsed: 3 },
-      { agentId: "fork-b", logFilesParsed: 3 },
+      { agentId: "fork-a", logFilesParsed: 2 },
+      { agentId: "fork-b", logFilesParsed: 2 },
     ])(
       "are decided as a cold Refresh decides them when $agentId alone is re-parsed",
       async ({ agentId, logFilesParsed }) => {
         const { changedContent, coldContent, changedSummary } = await changedAndCold(
           () => {},
-          (logsRoot) => appendUserMessage(forkLogPath(logsRoot, agentId), `${agentId}-u-appended`),
+          (logsRoot) =>
+            appendUserMessage(
+              agentId === "main"
+                ? path.join(logsRoot, FORKS_FOLDER, "sess-forks.jsonl")
+                : forkLogPath(logsRoot, agentId),
+              `${agentId}-u-appended`,
+            ),
           FORKS_FIXTURE_ROOT_NAME,
         );
 
@@ -714,30 +724,29 @@ describe("Sub-agents typed or linked by their meta files", () => {
 
     expect(fingerprintStoredData(dbPath, logsRoot)).toEqual({
       project: { rowCount: 1, sha256: "87e358d6df0ff2d8431ebc48333192a593bcdf98a954f03524498a21d5655677" },
-      conversation: { rowCount: 1, sha256: "a374f8e63f1e2ca70fd49edd3fa604a189daa6710e87ac9e740285714b5acada" },
-      // bg, loose, inner and c-fork typed by their meta files; loose, inner and c-fork linked by them:
-      // inner under bg, not its fork; c-fork under s-spawner, not its own fork.
-      agent: { rowCount: 11, sha256: "426f1d467ede218d985cbce20cdd1ba93effe77fe926f3e8581c1a9ab402e28a" },
-      message: { rowCount: 48, sha256: "72df8f2ed758992bcd63a3492693d3a2b5ef160ed369ec279b10829625c0e721" },
-      tool_call: { rowCount: 15, sha256: "f295985a25f659d9f3864305c7b893e8f647bbdb4d519e967dfb6d136111bf28" },
+      conversation: { rowCount: 1, sha256: "38a01d13fbb338fef6b52e968151fdb9bc0cdacbf0a827ecf3c9cd4c921f8eee" },
+      // Each typed and linked by its meta file, fg typed Plan over its ledger's general-purpose, bad by its
+      // ledger: inner under bg, not its fork; c-fork under s-spawner, not its own fork.
+      agent: { rowCount: 11, sha256: "ab818527a32b2d71e2666f400fb15672b2473dd45fadf94e2dfbb520f5cc506b" },
+      message: { rowCount: 48, sha256: "126accf03073cfdeda53e2b8b01a23890ae941e4f377889477c914ec21c150fb" },
+      tool_call: { rowCount: 15, sha256: "b299a4bd52ad9537d715345a2174dd825e3d9f9837f129a65baecaae8cb33e1c" },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       ...NO_LOGGED_API_REQUESTS,
       continued_in: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
-      turn: { rowCount: 19, sha256: "5a879efe61ca04cb68436f871996ef72ad3297b52e7c0d48c841e61af2453cb2" },
+      turn: { rowCount: 19, sha256: "20c2280ce59ff25c350ac60569e0ce544652caaa1838eba4c03aa16276dd235c" },
     });
   });
 
-  // fg's ledger names deep; fg's file is unchanged, so only a lookup of the Agent call deep's meta file names finds it.
+  // fg's ledger names deep; fg's file is unchanged, so its stored Agent call and ledger decide.
   it("store a nested Sub-agent whose file appears after its spawner's ledger was stored as a cold Refresh does", async () => {
     setAside(["agent-deep.jsonl", "agent-deep.meta.json"]);
     const { changedLineage, coldLineage, changedSummary } = await lineageAfterChangeAndCold(() =>
       restore(["agent-deep.jsonl", "agent-deep.meta.json"]),
     );
 
-    // The Main thread, deep, fg, which holds the Agent call, and loose, whose
-    // stored spawn no ledger makes (see `hasLostStoredSpawn`): not a cold re-parse.
-    expect(changedSummary.logFilesParsed).toBe(4);
+    // The Main thread and deep: not fg, which holds the Agent call.
+    expect(changedSummary.logFilesParsed).toBe(2);
     expect(lineageOf(coldLineage, "deep")).toMatchObject({
       spawner_external_agent_id: "fg",
       spawning_message_uuid: "fga1",
@@ -754,8 +763,8 @@ describe("Sub-agents typed or linked by their meta files", () => {
       restore(["agent-inner.jsonl"]),
     );
 
-    // The Main thread, inner, bg and bg-fork, which hold the Agent call, and loose (see above).
-    expect(changedSummary.logFilesParsed).toBe(5);
+    // The Main thread and inner: not bg nor bg-fork, which hold the Agent call.
+    expect(changedSummary.logFilesParsed).toBe(2);
     expect(lineageOf(coldLineage, "inner")).toMatchObject({
       spawner_external_agent_id: "bg",
       spawning_message_uuid: "bga1",
@@ -780,6 +789,7 @@ describe("Sub-agents typed or linked by their meta files", () => {
   );
 
   it.each([
+    "sess-meta.jsonl",
     "agent-bg.jsonl",
     "agent-bg-fork.jsonl",
     "agent-inner.jsonl",
@@ -789,8 +799,12 @@ describe("Sub-agents typed or linked by their meta files", () => {
     "agent-c-fork.jsonl",
     "agent-a-fork-of-fork.jsonl",
   ])("are stored as a cold Refresh stores them when %s alone is re-parsed", async (fileName) => {
-    const { changedLineage, coldLineage } = await lineageAfterChangeAndCold(() => appendTo(fileName, "appended"));
+    const { changedLineage, coldLineage, changedSummary } = await lineageAfterChangeAndCold(() =>
+      appendTo(fileName, "appended"),
+    );
 
+    // The Main thread and the changed file: not its spawner, nor its forks.
+    expect(changedSummary.logFilesParsed).toBe(fileName === "sess-meta.jsonl" ? 1 : 2);
     expect(lineageOf(coldLineage, "loose")).toMatchObject({ spawner_external_agent_id: null, agent_type: "Explore" });
     expect(changedLineage).toEqual(coldLineage);
   });

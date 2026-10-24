@@ -5,10 +5,8 @@
 accepted. Amends ADR-0005's "each Conversation is still deleted and rewritten
 in the same transaction" paragraph: a changed Conversation is now rewritten in
 place, one Agent's file at a time, still in one transaction. Amended by
-ADR-0011: the Agent's file stays the unit of re-parse, but a parse no longer
-reads a Sub-agent's parent for its lineage, which the Refresh resolves from
-stored facts, and the "known limit" paragraph in Consequences no longer
-applies.
+ADR-0011: the Agent's file stays the unit of re-parse, and a Sub-agent's
+lineage is resolved from stored facts, never from the files a run parsed.
 
 ## Context
 
@@ -43,13 +41,8 @@ NULL means none was recorded). In a changed Conversation:
 
 - The Main thread is always parsed. It holds the Conversation's own columns,
   its Project, and the spawn ledger of the Sub-agents it started.
-- A Sub-agent file is parsed when it is new or its key differs, and so is the
-  stored parent of each such Sub-agent, so the child's lineage comes from a
-  parsed ledger. The parent's parent is not parsed: its file did not change, and
-  neither did any row of it.
-- A kept Sub-agent is parsed too when its stored spawn is gone: its parent was
-  read or removed, and no parsed ledger names a model for it. It then falls back
-  to its own dominant model, as a cold Refresh's does.
+- A Sub-agent file is parsed when it is new or its key differs. No other file
+  is: a Sub-agent's lineage is resolved from stored rows (ADR-0011).
 - An Agent is rewritten only when its file changed: its row is deleted
   (cascading to its Messages, Tool calls and API requests) and written again. A
   Sub-agent whose file is gone is deleted. The Main thread's `pr_link` and
@@ -59,15 +52,15 @@ NULL means none was recorded). In a changed Conversation:
 - Rows written by another parser version, by an interrupted run, or from another
   file (a duplicate that took over the session id) have every Agent rewritten.
 
-**Cross-file links are set again, not rediscovered.** Whenever a parent is
-parsed, every Agent its ledger names, whatever its stored parent, has its
-lineage set from that ledger: `parentAgentId`, `spawnedByMessageId` (looked up
-in the parent's stored Tool calls, fresh or kept), `agentType` and
-`resolvedModel`. A spawn that names no model leaves a kept Agent's stored one.
-So a Sub-agent first stored before its parent logged the spawn joins its parent
-on the Refresh after the parent's file grows. A kept child of a parsed or
-removed parent is set again the same way. A Turn whose API request was in a
-rewritten file is linked again by the existing database-wide pass.
+**Cross-file links are resolved from stored rows.** A Sub-agent's lineage —
+`parentAgentId`, `spawnedByMessageId`, `agentType`, `resolvedModel` — is
+resolved for every Sub-agent of a written Conversation from its stored meta
+facts and the Conversation's stored `Agent` calls and ledgers, fresh or kept
+(ADR-0011, log-format §4). So a Sub-agent first stored before its parent
+logged the spawn joins its parent on the Refresh after the parent's file
+grows, and a kept child of a rewritten or removed parent is resolved again
+without its file being read. A Turn whose API request was in a rewritten file
+is linked again by the existing database-wide pass.
 
 Everything for one Conversation still happens in one transaction, and a new
 Conversation is still written in the cold path's order, so a fresh database gets
@@ -94,11 +87,6 @@ the Live update takes 346 ms, 243 ms of it the Main thread's parse.
 - A Live update costs what its changed files cost: the Main thread's parse and
   write, plus whichever Sub-agent files moved.
 - `RefreshSummary.logFilesParsed` counts the log files a Refresh read.
-- Known limit: ledgers are read only from parsed files, so a kept, unread
-  Sub-agent's ledger cannot decide a lineage. A cold Refresh may then store
-  another lineage in three cases: two ledgers claim one child, ledgers form a
-  cycle, or a child's file is restored after its parent's file was already
-  complete. None of them occurs as Claude Code writes its logs.
 - A Turn already linked to an API request in another file keeps that link when
   a rewritten file of its Conversation now holds a better-ranked copy of the
   request, as it already did across Conversations.

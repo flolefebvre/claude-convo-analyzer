@@ -80,17 +80,26 @@ model Agent {
   id             Int @id @default(autoincrement())
   conversationId Int @map("conversation_id")
 
-  /// NULL ⇒ root/main agent.
+  /// NULL ⇒ root/main agent. Resolved: for a Sub-agent, the Agent owning its
+  /// spawning `Agent` call (log-format §4), set by the Refresh's links pass.
   parentAgentId Int? @map("parent_agent_id")
 
   /// On-disk agent id from `agent-<id>.jsonl` (sub-agents only; NULL for root).
   externalAgentId    String? @map("external_agent_id")
-  /// For sub-agents: the main-thread message (Agent tool call) that launched it.
+  /// Resolved: for a Sub-agent, its spawner's Message holding the spawning
+  /// `Agent` call; NULL without one.
   spawnedByMessageId Int?    @map("spawned_by_message_id")
+  /// Extracted: the `toolUseId` its meta file states, the spawning `Agent`
+  /// call; NULL for the Main thread and when the meta file states none.
+  spawnToolUseId     String? @map("spawn_tool_use_id")
 
-  /// e.g. `Explore`, `Plan`; NULL for the main thread.
+  /// e.g. `Explore`, `Plan`; NULL for the main thread. Extracted from the meta
+  /// file's `agentType`; when that states none, resolved from the spawn ledger.
   agentType     String? @map("agent_type")
-  /// Concrete Anthropic model the agent ran on (sub-agents report once).
+  /// Extracted: the model of most of its own Turns' output.
+  dominantModel String? @map("dominant_model")
+  /// Resolved: the spawn ledger's `resolvedModel`, else `dominantModel` (the
+  /// Main thread's is its `dominantModel`).
   resolvedModel String? @map("resolved_model")
   durationMs    BigInt? @map("duration_ms")
   toolCallCount Int?    @map("tool_call_count")

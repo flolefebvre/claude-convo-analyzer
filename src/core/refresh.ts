@@ -19,9 +19,11 @@
 // file changing alone (the main file untouched) still triggers a re-parse.
 // Behind that first-level skip, the AGENT'S LOG FILE is the unit of re-parse
 // and rewrite (ADR-0010): each `agent` row keeps its own file's change key, and
-// a changed Conversation re-parses its Main thread, each Sub-agent file that
-// changed, and only what their lineage needs (see `parseConversation`); it
-// rewrites only the Agents whose file changed (see `writeConversation`).
+// a changed Conversation re-parses its Main thread and each Sub-agent file that
+// changed, and nothing else (see `parseConversation`); it rewrites only the
+// Agents whose file changed (see `writeConversation`). Who spawned each
+// Sub-agent is resolved from the stored rows by the links pass (ADR-0011, see
+// `resolveWrittenSubAgentLineage`).
 // The stored `parserVersion` is part of that decision too: rows produced by an
 // older parser are re-parsed once even when their source files are untouched
 // (see `PARSER_VERSION`). It doubles as the COMMIT MARK of a refresh: a
@@ -59,7 +61,6 @@ import {
   discoverSubAgents,
 } from "@/core/discovery";
 import {
-  type ParsedAgentSpawn,
   type ParsedApiRequest,
   parseSessionLines,
   type ParsedSession,
@@ -67,7 +68,6 @@ import {
   type ParsedSubAgentMeta,
 } from "@/core/parse";
 import {
-  type AgentLineageRow,
   type ContinuationCandidate,
   type ConversationRow,
   type MessageOccurrence,
@@ -78,6 +78,7 @@ import {
   type TurnOccurrence,
   type TurnRow,
 } from "@/core/prisma/refresh-statements";
+import { resolveSubAgentLineage } from "@/core/sub-agent-lineage";
 import { readFileUnlessVanished, statUnlessVanished } from "@/core/vanished-file";
 
 /**
@@ -191,8 +192,11 @@ type RefreshOptions = {
  * 22 — a Copied Message is an occurrence its Agent does not own, by the rule
  *     that decides a Turn's owner, and names the owning occurrence
  *     (`message.copied_from_message_id`, replacing `message.is_copied`).
+ * 23 — a Sub-agent's spawner and type come from its meta file, its spawn
+ *     ledger only when the meta file states none, resolved from stored rows
+ *     by the links pass (`agent.spawn_tool_use_id`, `agent.dominant_model`).
  */
-export const PARSER_VERSION = 22;
+export const PARSER_VERSION = 23;
 
 /**
  * The version a conversation carries while it is written but NOT YET COMPLETE:
@@ -260,23 +264,15 @@ type SubAgentToWrite = {
   stored: StoredAgent | null;
   /** Its parsed log file; null when it is kept without being read. */
   parsed: ParsedSession | null;
-  /** Its parsed meta file, once read (see `metaOf`); undefined until then. */
-  meta: ParsedSubAgentMeta | undefined;
+  /** What its meta file states, read on every write of its Conversation (see `readSubAgentMeta`). */
+  meta: ParsedSubAgentMeta;
   /** Its stored rows are deleted and written again from `parsed`. */
   isRewritten: boolean;
 };
 
-/** Who spawned a Sub-agent, by the spawn ledger that names it. */
-type SpawnLedgerEntry = {
-  /** External id of the spawning Sub-agent; null ⇒ the Main thread. */
-  parentExternalId: string | null;
-  spawn: ParsedAgentSpawn;
-};
-
 /**
  * A Conversation parsed as far as its write needs: its Main thread always,
- * each Sub-agent whose file changed, and each one whose lineage the write
- * must decide again (see `parseConversation`).
+ * and each Sub-agent whose file changed (see `parseConversation`).
  */
 type ParsedConversation = {
   session: DiscoveredSession;
@@ -289,8 +285,6 @@ type ParsedConversation = {
   subAgents: SubAgentToWrite[];
   /** The stored Sub-agents whose file is gone. */
   removedAgentRowIds: number[];
-  /** The spawn ledgers of every parsed log file, by spawned external id (see `indexSpawnLedgers`). */
-  spawnLedgerByAgentId: Map<string, SpawnLedgerEntry>;
   /** How many log files were read and parsed. */
   parsedLogFileCount: number;
   /** Row id of the stored conversation the write rewrites (null = new). */
@@ -313,12 +307,6 @@ type DeletedAgentMessages = {
    */
   holderConversationIds: Set<number>;
 };
-
-/** What deciding a Sub-agent's lineage looks at (see `isLineageDecidedAgain`). */
-type SubAgentLineageContext = Pick<
-  ParsedConversation,
-  "storedMainThread" | "subAgents" | "removedAgentRowIds" | "spawnLedgerByAgentId"
->;
 
 /** What linking and stamping need of a conversation this run has written. */
 type WrittenConversation = {
@@ -371,7 +359,9 @@ type DiscoveredWithKey = {
  * Conversation of their families — the ones holding their first Message, the
  * ones they name or that continue from them, and the continuations of every
  * deleted Conversation — against the persisted rows of ALL conversations, so
- * a skipped (unchanged) parent still resolves (see `resolveContinuations`), and link
+ * a skipped (unchanged) parent still resolves (see `resolveContinuations`),
+ * resolve the lineage of the written Conversations' Sub-agents from their stored
+ * rows (see `resolveWrittenSubAgentLineage`), and link
  * every Turn of the database with a `requestRef` and no API request to the
  * request of another file it names, if any, reading ids only (log-format §9,
  * "How they are stored") — a kept Agent's Turns included, whose links a
@@ -584,13 +574,18 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     statements.beginTransaction();
     // Pass 2 — decide the continuations of the (re)written conversations and
     // of their families, authoritatively against the persisted rows of ALL
-    // conversations; then link every Turn of the database whose API request
-    // is in another file — a skipped child's Turns included, whose links a
-    // rewritten parent's delete just nulled.
+    // conversations, and the lineage of the written conversations' Sub-agents
+    // from their stored rows; then link every Turn of the database whose API
+    // request is in another file — a skipped child's Turns included, whose
+    // links a rewritten parent's delete just nulled.
     const lineageDecidedConversationIds = resolveContinuations(
       statements,
       writtenConversations,
       orphanedContinuationIds,
+    );
+    resolveWrittenSubAgentLineage(
+      statements,
+      writtenConversations.map((written) => written.conversationId),
     );
     statements.updateUnlinkedTurnApiRequests();
     // Lineage is final: decide who owns each Turn and user Message this run may have changed.
@@ -714,29 +709,23 @@ function parseSession(sourcePath: string): ParsedSession | null {
 const EMPTY_SUB_AGENT_META: ParsedSubAgentMeta = { agentType: null, toolUseId: null };
 
 /**
- * What `subAgent`'s meta file states (log-format §4), read and parsed on first
- * use and kept on it: a few hundred bytes, read only for the Sub-agents whose
- * lineage a Refresh decides.
+ * What the meta file beside a Sub-agent's log `file` states (log-format §4): a
+ * few hundred bytes, read on every write of its Conversation, whether its log
+ * file is read or kept, so a meta file that appeared since counts.
  */
-function metaOf(subAgent: SubAgentToWrite): ParsedSubAgentMeta {
-  if (subAgent.meta !== undefined) return subAgent.meta;
-  const text = subAgent.file.metaPath === null ? null : readFileUnlessVanished(subAgent.file.metaPath);
-  subAgent.meta = text === null ? EMPTY_SUB_AGENT_META : parseSubAgentMeta(text);
-  return subAgent.meta;
+function readSubAgentMeta(file: SubAgentFile): ParsedSubAgentMeta {
+  const text = file.metaPath === null ? null : readFileUnlessVanished(file.metaPath);
+  return text === null ? EMPTY_SUB_AGENT_META : parseSubAgentMeta(text);
 }
 
 /**
  * Parse what writing a changed session needs (ADR-0010): its Main thread,
- * always; each Sub-agent file that is new or whose change key differs from its
- * stored Agent's, and the stored parent of each such stored Sub-agent, so its
- * lineage comes from a parsed ledger; then, until none is left, each kept
- * Sub-agent whose stored spawn is gone (see `hasLostStoredSpawn`), so it falls
- * back to its own dominant model as a cold Refresh's does, and each kept one
- * that may hold a new fork's spawn (see `unreadHoldersOfUnnamedNewFirstMessages`)
- * or the Agent call a meta file names (see `unreadHoldersOfMetaSpawnCalls`).
- * Every other Sub-agent is kept without being read. The conversation is null when the main
- * transcript vanished; a vanished sub-agent file is left out — removed, when
- * stored — and counted.
+ * always, and each Sub-agent file that is new or whose change key differs from
+ * its stored Agent's; every other Sub-agent is kept without being read. A
+ * Sub-agent's lineage is resolved from stored rows by the links pass (see
+ * `resolveSubAgentLineage`), so no other file is read for it; each Sub-agent's
+ * meta file is. The conversation is null when the main transcript vanished; a
+ * vanished sub-agent file is left out — removed, when stored — and counted.
  */
 function parseConversation(
   statements: RefreshStatements,
@@ -746,7 +735,6 @@ function parseConversation(
   if (parsed === null) return { parsedConversation: null, vanishedSubAgentFileCount: 0 };
 
   const storedAgents = priorConversationId === null ? [] : statements.selectStoredAgents(priorConversationId);
-  const storedAgentByRowId = new Map(storedAgents.map((agent) => [agent.id, agent]));
   const storedMainThread = storedAgents.find((agent) => agent.externalAgentId === null) ?? null;
   const storedSubAgentByAgentId = new Map(
     storedAgents.flatMap((agent) => (agent.externalAgentId === null ? [] : [[agent.externalAgentId, agent] as const])),
@@ -758,13 +746,6 @@ function parseConversation(
     stored.sourceMtime === fileKey.sourceMtime &&
     stored.sourceSize === fileKey.sourceSize;
 
-  let subAgents: SubAgentToWrite[] = subAgentFiles.map((file) => {
-    const stored = storedSubAgentByAgentId.get(file.agentId) ?? null;
-    return { file, stored, parsed: null, meta: undefined, isRewritten: !isStoredFromFileAsIs(stored, file) };
-  });
-  const subAgentByRowId = new Map(
-    subAgents.flatMap((sub) => (sub.stored === null ? [] : [[sub.stored.id, sub] as const])),
-  );
   const onDiskAgentIds = new Set(subAgentFiles.map((file) => file.agentId));
   const removedAgentRowIds = storedAgents
     .filter((agent) => agent.externalAgentId !== null && !onDiskAgentIds.has(agent.externalAgentId))
@@ -772,62 +753,18 @@ function parseConversation(
 
   let parsedLogFileCount = 1;
   let vanishedSubAgentFileCount = 0;
-  /** Parse each of `subAgentsToRead`: one whose file vanished is left out, and removed when stored. */
-  const read = (subAgentsToRead: Set<SubAgentToWrite>) => {
-    for (const subAgent of subAgentsToRead) {
-      subAgent.parsed = parseSession(subAgent.file.sourcePath);
-      if (subAgent.parsed !== null) {
-        parsedLogFileCount += 1;
-        continue;
-      }
+  const subAgents: SubAgentToWrite[] = [];
+  for (const file of subAgentFiles) {
+    const stored = storedSubAgentByAgentId.get(file.agentId) ?? null;
+    const isRewritten = !isStoredFromFileAsIs(stored, file);
+    const subAgentParsed = isRewritten ? parseSession(file.sourcePath) : null;
+    if (isRewritten && subAgentParsed === null) {
       vanishedSubAgentFileCount += 1;
-      if (subAgent.stored !== null) removedAgentRowIds.push(subAgent.stored.id);
+      if (stored !== null) removedAgentRowIds.push(stored.id);
+      continue;
     }
-    subAgents = subAgents.filter((sub) => !subAgentsToRead.has(sub) || sub.parsed !== null);
-  };
-
-  const changedSubAgentsAndParents = new Set<SubAgentToWrite>();
-  for (const subAgent of subAgents) {
-    if (!subAgent.isRewritten) continue;
-    changedSubAgentsAndParents.add(subAgent);
-    const storedParentRowId = subAgent.stored?.parentAgentId ?? null;
-    const storedParent = storedParentRowId === null ? undefined : subAgentByRowId.get(storedParentRowId);
-    if (storedParent !== undefined) changedSubAgentsAndParents.add(storedParent);
-  }
-  read(changedSubAgentsAndParents);
-
-  let spawnLedgerByAgentId = indexSpawnLedgers(parsed, subAgents);
-  for (;;) {
-    const readOrRemovedRowIds = new Set<number | undefined>([
-      storedMainThread?.id,
-      ...removedAgentRowIds,
-      ...subAgents.filter((sub) => sub.parsed !== null).map((sub) => sub.stored?.id),
-    ]);
-    const subAgentsWithLostSpawn = new Set(
-      subAgents.filter(
-        (sub) =>
-          sub.parsed === null && hasLostStoredSpawn(sub, storedAgentByRowId, readOrRemovedRowIds, spawnLedgerByAgentId),
-      ),
-    );
-    if (subAgentsWithLostSpawn.size > 0) {
-      read(subAgentsWithLostSpawn);
-    } else {
-      const forkSpawners = unreadHoldersOfUnnamedNewFirstMessages(
-        statements,
-        priorConversationId,
-        subAgents,
-        spawnLedgerByAgentId,
-      );
-      if (forkSpawners.size > 0) {
-        read(forkSpawners);
-      } else {
-        const lineage = { storedMainThread, subAgents, removedAgentRowIds, spawnLedgerByAgentId };
-        const spawnCallHolders = unreadHoldersOfMetaSpawnCalls(statements, parsed, lineage);
-        if (spawnCallHolders.size === 0) break;
-        read(spawnCallHolders);
-      }
-    }
-    spawnLedgerByAgentId = indexSpawnLedgers(parsed, subAgents);
+    if (subAgentParsed !== null) parsedLogFileCount += 1;
+    subAgents.push({ file, stored, parsed: subAgentParsed, meta: readSubAgentMeta(file), isRewritten });
   }
 
   return {
@@ -839,104 +776,11 @@ function parseConversation(
       isMainThreadRewritten: !isStoredFromFileAsIs(storedMainThread, mainThreadFileKey),
       subAgents,
       removedAgentRowIds,
-      spawnLedgerByAgentId,
       parsedLogFileCount,
       priorConversationId,
     },
     vanishedSubAgentFileCount,
   };
-}
-
-/**
- * The kept, unread Sub-agents of stored Conversation `priorConversationId`
- * holding the first Message of a new Sub-agent no parsed ledger names: a fork's
- * file starts with a copy of its spawner's records (log-format §10), so these
- * may hold its spawn ledger. A new Sub-agent that is no fork costs one indexed
- * lookup, and reads nothing more.
- */
-function unreadHoldersOfUnnamedNewFirstMessages(
-  statements: RefreshStatements,
-  priorConversationId: number | null,
-  subAgents: SubAgentToWrite[],
-  spawnLedgerByAgentId: Map<string, SpawnLedgerEntry>,
-): Set<SubAgentToWrite> {
-  const holders = new Set<SubAgentToWrite>();
-  if (priorConversationId === null) return holders;
-  const unreadSubAgentByRowId = new Map(
-    subAgents.flatMap((sub) => (sub.parsed === null && sub.stored !== null ? [[sub.stored.id, sub] as const] : [])),
-  );
-  for (const sub of subAgents) {
-    if (sub.stored !== null || spawnLedgerByAgentId.has(sub.file.agentId)) continue;
-    const firstMessageUuid = sub.parsed?.messages[0]?.uuid;
-    if (firstMessageUuid == null) continue;
-    for (const agentRowId of statements.selectHoldingAgentIds(firstMessageUuid, priorConversationId)) {
-      const holder = unreadSubAgentByRowId.get(agentRowId);
-      if (holder !== undefined) holders.add(holder);
-    }
-  }
-  return holders;
-}
-
-/**
- * The kept, unread Sub-agents holding the Agent call that spawned a Sub-agent
- * whose lineage this run decides, no parsed ledger names, and whose meta file
- * names a call the Main thread does not hold (log-format §4): its spawner is
- * among them, and reading them makes it, and its ledger if any, known as a cold
- * Refresh knows them (see `spawnerOfAgentCall`). One indexed lookup per such
- * Sub-agent, rare: nearly every spawn is named by a ledger.
- */
-function unreadHoldersOfMetaSpawnCalls(
-  statements: RefreshStatements,
-  mainThread: ParsedSession,
-  lineage: SubAgentLineageContext,
-): Set<SubAgentToWrite> {
-  const holders = new Set<SubAgentToWrite>();
-  const unreadSubAgentByRowId = new Map(
-    lineage.subAgents.flatMap((sub) =>
-      sub.parsed === null && sub.stored !== null ? [[sub.stored.id, sub] as const] : [],
-    ),
-  );
-  if (unreadSubAgentByRowId.size === 0) return holders;
-  const unreadRowIds = [...unreadSubAgentByRowId.keys()];
-  for (const sub of lineage.subAgents) {
-    if (lineage.spawnLedgerByAgentId.has(sub.file.agentId) || !isLineageDecidedAgain(sub, lineage)) continue;
-    const toolUseId = metaOf(sub).toolUseId;
-    if (toolUseId === null || holdsToolUse(mainThread, toolUseId)) continue;
-    for (const agentRowId of statements.selectToolUseHoldingAgentIds(toolUseId, unreadRowIds)) {
-      const holder = unreadSubAgentByRowId.get(agentRowId)!;
-      if (holder !== sub) holders.add(holder);
-    }
-  }
-  return holders;
-}
-
-/** Whether `parsed` holds a `tool_use` with id `toolUseId`. */
-function holdsToolUse(parsed: ParsedSession, toolUseId: string): boolean {
-  return parsed.messages.some((message) => message.toolUses.some((toolUse) => toolUse.toolUseId === toolUseId));
-}
-
-/**
- * Whether the kept, unread `subAgent` was stored as a spawn that no ledger now
- * makes: its stored row names a spawning Sub-agent, an Agent type or a
- * spawning Message; its stored parent was read or removed this run; and no
- * parsed ledger names a resolved model for it. Its stored resolved model may
- * then be the lost spawn's, where a cold Refresh takes its own dominant one.
- */
-function hasLostStoredSpawn(
-  subAgent: SubAgentToWrite,
-  storedAgentByRowId: Map<number, StoredAgent>,
-  readOrRemovedRowIds: Set<number | undefined>,
-  spawnLedgerByAgentId: Map<string, SpawnLedgerEntry>,
-): boolean {
-  const stored = subAgent.stored;
-  if (stored === null || stored.parentAgentId === null) return false;
-  const isStoredParentSubAgent = storedAgentByRowId.get(stored.parentAgentId)?.externalAgentId != null;
-  const wasStoredAsSpawn = isStoredParentSubAgent || stored.agentType !== null || stored.spawnedByMessageId !== null;
-  return (
-    wasStoredAsSpawn &&
-    readOrRemovedRowIds.has(stored.parentAgentId) &&
-    spawnLedgerByAgentId.get(subAgent.file.agentId)?.spawn.resolvedModel == null
-  );
 }
 
 /**
@@ -1187,16 +1031,13 @@ function failedAttemptOwners(
  * Agent (ADR-0010): its row updated; each Agent whose file changed, and each
  * Sub-agent whose file is gone, deleted (cascading); each changed Agent written
  * again, the Main thread's pr_links, turn_durations and continued_in rows with it; and each kept
- * Sub-agent whose lineage this run decided again (see `isLineageDecidedAgain`)
- * updated in place.
+ * Sub-agent's meta file columns updated in place.
  *
- * A Sub-agent's lineage comes from the spawn ledger naming it (log-format §4) —
- * in whichever log file it lives, main thread or another sub-agent (see
- * `orderParentsFirst`): its parent, its `spawnedByMessageId` (the parent's
- * Message holding the spawning `Agent` tool_use), its `agentType` and
- * `resolvedModel`; its meta file fills in what the ledger leaves out, and
- * without a ledger names the Agent call whose holder is its parent (see
- * `spawnOf`); without either, the Main thread and its own dominant model.
+ * Each Sub-agent row carries what its files state — its meta file's
+ * `toolUseId` and `agentType`, NULL included, and its own dominant model —
+ * and is written under the Main thread with no spawning Message: the links
+ * pass resolves its lineage from those stored facts (see
+ * `resolveWrittenSubAgentLineage`).
  *
  * A new conversation's rows go in this exact order, so a fresh database gets
  * the same row ids on every run (`stored-data-equivalence.test.ts` pins them).
@@ -1246,7 +1087,9 @@ function writeConversation(
       parentAgentId: null,
       externalAgentId: null,
       spawnedByMessageId: null,
+      spawnToolUseId: null,
       agentType: null, // root/main thread
+      dominantModel: parsed.dominantModel,
       resolvedModel: parsed.dominantModel,
       ...parsedConversation.mainThreadFileKey,
       sourcePath: session.sourcePath,
@@ -1257,50 +1100,32 @@ function writeConversation(
   }
 
   // Sub-agents: each log file is its own agent row (single source of truth
-  // for its tokens — the parent aggregate is NOT summed), written parents-first
-  // so a child's parent row and Messages exist when its lineage is set.
-  const agentRowIdByAgentId = new Map(
-    subAgents.flatMap((sub) => (sub.isRewritten ? [] : [[sub.file.agentId, sub.stored!.id] as const])),
-  );
-  const subAgentByAgentId = new Map(subAgents.map((sub) => [sub.file.agentId, sub]));
-  const isDecidedAgain = (sub: SubAgentToWrite) => isLineageDecidedAgain(sub, parsedConversation);
-  const plans = orderParentsFirst(
-    new Map(
-      subAgents.filter(isDecidedAgain).map((sub) => [sub.file.agentId, spawnOf(sub, parsedConversation)] as const),
-    ),
-    new Set(subAgents.filter((sub) => !isDecidedAgain(sub)).map((sub) => sub.file.agentId)),
-  );
-  for (const plan of plans) {
-    const subAgent = subAgentByAgentId.get(plan.agentId)!;
-    const parentAgentRowId =
-      plan.parentExternalId === null ? mainThreadRowId : agentRowIdByAgentId.get(plan.parentExternalId)!;
-    const toolUseId = plan.spawn.toolUseId;
-    const lineage: AgentLineageRow = {
-      parentAgentId: parentAgentRowId,
-      spawnedByMessageId:
-        toolUseId === null ? null : (statements.selectSpawningMessageId(parentAgentRowId, toolUseId) ?? null),
-      agentType: plan.spawn.agentType,
-      // A kept Sub-agent left unread kept its spawn, or never had one: its
-      // stored model is what its file and that spawn gave (`parseConversation`).
-      resolvedModel:
-        plan.spawn.resolvedModel ??
-        (subAgent.parsed === null ? subAgent.stored!.resolvedModel : subAgent.parsed.dominantModel),
-    };
+  // for its tokens — the parent aggregate is NOT summed), in discovery order.
+  for (const subAgent of subAgents) {
+    const metaFacts = { spawnToolUseId: subAgent.meta.toolUseId, agentType: subAgent.meta.agentType };
     if (!subAgent.isRewritten) {
-      statements.updateAgentLineage(subAgent.stored!.id, lineage);
+      statements.updateAgentMetaFacts(subAgent.stored!.id, metaFacts);
       continue;
     }
+    const dominantModel = subAgent.parsed!.dominantModel;
     const subAgentRowId = statements.insertAgent({
       conversationId,
-      externalAgentId: plan.agentId,
-      ...lineage,
+      externalAgentId: subAgent.file.agentId,
+      parentAgentId: mainThreadRowId,
+      spawnedByMessageId: null,
+      ...metaFacts,
+      dominantModel,
+      resolvedModel: dominantModel,
       sourceMtime: subAgent.file.sourceMtime,
       sourceSize: subAgent.file.sourceSize,
       sourcePath: subAgent.file.sourcePath,
     });
     writeAgentContent(statements, subAgent.parsed!, conversationId, subAgentRowId);
-    agentRowIdByAgentId.set(plan.agentId, subAgentRowId);
   }
+  // A kept Sub-agent whose spawner was just deleted lost its parent: under the
+  // Main thread until the links pass resolves it, as a rewritten one is, so a
+  // reader in between finds one Agent with no parent, the Main thread.
+  statements.updateParentlessSubAgents(conversationId, mainThreadRowId);
 
   if (!isMainThreadRewritten) return conversationId;
   for (const prLink of parsed.prLinks) {
@@ -1385,28 +1210,6 @@ function setDeletedAgentMessagesAside(
   }
 }
 
-/**
- * Whether this run decides `subAgent`'s lineage again: it is written anew, a
- * parsed ledger names it, its stored parent was read, rewritten or removed, or
- * it was stored with neither a type nor a spawning Message and now has a meta
- * file, which may give it both (log-format §4). A kept Sub-agent under a parent
- * left unread, and named by no parsed ledger, keeps its stored lineage.
- */
-function isLineageDecidedAgain(
-  subAgent: SubAgentToWrite,
-  { storedMainThread, subAgents, removedAgentRowIds, spawnLedgerByAgentId }: SubAgentLineageContext,
-): boolean {
-  if (subAgent.isRewritten || spawnLedgerByAgentId.has(subAgent.file.agentId)) return true;
-  const stored = subAgent.stored!;
-  if (stored.agentType === null && stored.spawnedByMessageId === null && subAgent.file.metaPath !== null) return true;
-  const storedParentRowId = stored.parentAgentId;
-  return (
-    storedParentRowId === storedMainThread?.id ||
-    removedAgentRowIds.includes(storedParentRowId!) ||
-    subAgents.some((sub) => sub.parsed !== null && sub.stored?.id === storedParentRowId)
-  );
-}
-
 /** Write one Agent's Messages, Tool calls and API requests, from its parsed log file. */
 function writeAgentContent(
   statements: RefreshStatements,
@@ -1420,189 +1223,22 @@ function writeAgentContent(
 }
 
 /**
- * A Sub-agent's spawn, each field from the ledger naming it when the ledger
- * states it, else from its meta file (log-format §4).
+ * Pass 2: resolve the lineage of every Sub-agent of each Conversation in
+ * `writtenConversationIds` (log-format §4, see `resolveSubAgentLineage`) from
+ * its stored rows alone: its Agents' meta facts and dominant models, and its
+ * `Agent` Tool calls with their ledgers, read once per Conversation. Lineage
+ * never crosses a Conversation, so the ones this run wrote are all it can have
+ * changed for: a Sub-agent written again, a spawner whose rewrite nulled its
+ * children's spawning Message, a ledger gone with its file.
  */
-type SubAgentSpawn = {
-  /** External id of the spawning Sub-agent; null ⇒ the Main thread, or no spawner found. */
-  parentExternalId: string | null;
-  /** The `tool_use_id` of the spawning Agent call; null when no spawner holds one. */
-  toolUseId: string | null;
-  agentType: string | null;
-  /** The ledger's; a meta file's is never read (the transcript's dominant model is exact). */
-  resolvedModel: string | null;
-};
-
-/** One sub-agent resolved to its true parent, in write order. */
-type SubAgentPlan = {
-  agentId: string;
-  /** External id of the spawning SUB-agent; null ⇒ spawned by the main thread. */
-  parentExternalId: string | null;
-  spawn: SubAgentSpawn;
-};
-
-/**
- * `subAgent`'s spawn: the ledger naming it, its type and Agent call filled in
- * from its meta file where the ledger states none; without a ledger, the meta
- * file's type, and the Agent holding the call the meta file names as its
- * spawner (see `spawnerOfAgentCall`); without either, no spawner and no type.
- * The meta file is read only when the ledger leaves a field to fill.
- */
-function spawnOf(
-  subAgent: SubAgentToWrite,
-  { parsed, subAgents, spawnLedgerByAgentId }: ParsedConversation,
-): SubAgentSpawn {
-  const ledger = spawnLedgerByAgentId.get(subAgent.file.agentId);
-  if (ledger !== undefined) {
-    const { toolUseId, agentType, resolvedModel } = ledger.spawn;
-    return {
-      parentExternalId: ledger.parentExternalId,
-      toolUseId: toolUseId ?? metaOf(subAgent).toolUseId,
-      agentType: agentType ?? metaOf(subAgent).agentType,
-      resolvedModel,
-    };
+function resolveWrittenSubAgentLineage(statements: RefreshStatements, writtenConversationIds: number[]): void {
+  for (const conversationId of writtenConversationIds) {
+    const subAgentLineages = resolveSubAgentLineage(
+      statements.selectLineageAgents(conversationId),
+      statements.selectAgentCallsOfConversation(conversationId),
+    );
+    for (const { agentRowId, ...lineage } of subAgentLineages) statements.updateAgentLineage(agentRowId, lineage);
   }
-  const { agentType, toolUseId } = metaOf(subAgent);
-  const spawner =
-    toolUseId === null ? undefined : spawnerOfAgentCall(toolUseId, subAgent, parsed, subAgents, spawnLedgerByAgentId);
-  return spawner === undefined
-    ? { parentExternalId: null, toolUseId: null, agentType, resolvedModel: null }
-    : { parentExternalId: spawner.externalAgentId, toolUseId, agentType, resolvedModel: null };
-}
-
-/**
- * The Agent holding the Agent call `toolUseId` that spawned `subAgent`, by
- * external id (null ⇒ the Main thread), or undefined when no parsed log file
- * holds it. Several may hold it — a fork's file copies its spawner's records,
- * its spawner's Agent calls included (log-format §10) — so, in order:
- *   1. the Main thread, when it holds it;
- *   2. never `subAgent` itself, nor any of its descendants: a spawner cannot
- *      descend from what it spawned;
- *   3. of the Sub-agents left, not one spawned by another of them, which
- *      copied the call from that spawner;
- *   4. then the first in discovery order.
- * Who spawned a Sub-agent, for 2 and 3, is what this run's ledgers say, else
- * the stored lineage of a Sub-agent kept as it is (see `spawnerExternalIdOf`).
- */
-function spawnerOfAgentCall(
-  toolUseId: string,
-  subAgent: SubAgentToWrite,
-  mainThread: ParsedSession,
-  subAgents: SubAgentToWrite[],
-  spawnLedgerByAgentId: Map<string, SpawnLedgerEntry>,
-): { externalAgentId: string | null } | undefined {
-  if (holdsToolUse(mainThread, toolUseId)) return { externalAgentId: null };
-  const spawnerIdOf = spawnerExternalIdOf(subAgents, spawnLedgerByAgentId);
-  /** Whether Sub-agent `agentId` is `subAgent` or descends from it. */
-  const isSubAgentOrDescendant = (agentId: string) => {
-    const visited = new Set<string>();
-    for (let id: string | null = agentId; id !== null && !visited.has(id); id = spawnerIdOf(id)) {
-      if (id === subAgent.file.agentId) return true;
-      visited.add(id);
-    }
-    return false;
-  };
-  const holderIds = subAgents
-    .filter((sub) => sub.parsed !== null && holdsToolUse(sub.parsed, toolUseId))
-    .map((sub) => sub.file.agentId)
-    .filter((holderId) => !isSubAgentOrDescendant(holderId));
-  const isCopiedFromAnotherHolder = (holderId: string) => {
-    const spawnerId = spawnerIdOf(holderId);
-    return spawnerId !== null && spawnerId !== holderId && holderIds.includes(spawnerId);
-  };
-  const spawnerId = holderIds.find((holderId) => !isCopiedFromAnotherHolder(holderId)) ?? holderIds[0];
-  return spawnerId === undefined ? undefined : { externalAgentId: spawnerId };
-}
-
-/**
- * A lookup of the external id of the Sub-agent that spawned Sub-agent
- * `agentId` (null ⇒ the Main thread, or none known): the parsed ledger naming
- * it, else, for a Sub-agent kept as it is, its stored parent.
- */
-function spawnerExternalIdOf(
-  subAgents: SubAgentToWrite[],
-  spawnLedgerByAgentId: Map<string, SpawnLedgerEntry>,
-): (agentId: string) => string | null {
-  const externalIdByRowId = new Map(
-    subAgents.flatMap((sub) => (sub.stored === null ? [] : [[sub.stored.id, sub.file.agentId] as const])),
-  );
-  const storedParentRowIdByAgentId = new Map(
-    subAgents.flatMap((sub) =>
-      sub.isRewritten || sub.stored === null ? [] : [[sub.file.agentId, sub.stored.parentAgentId] as const],
-    ),
-  );
-  return (agentId) => {
-    const ledger = spawnLedgerByAgentId.get(agentId);
-    if (ledger !== undefined) return ledger.parentExternalId;
-    const storedParentRowId = storedParentRowIdByAgentId.get(agentId);
-    return storedParentRowId == null ? null : (externalIdByRowId.get(storedParentRowId) ?? null);
-  };
-}
-
-/**
- * Index the spawn ledgers of the Main thread and of every parsed Sub-agent by
- * the external id they spawned. A grandchild's ledger lives in its parent
- * sub-agent's log file, not the root's. The root's ledgers win over a
- * sub-agent's on a (malformed) duplicate claim, then the first in discovery
- * order; a Sub-agent claiming itself is ignored.
- */
-function indexSpawnLedgers(root: ParsedSession, subAgents: SubAgentToWrite[]): Map<string, SpawnLedgerEntry> {
-  const spawnLedgerByAgentId = new Map<string, SpawnLedgerEntry>();
-  for (const [agentId, spawn] of root.agentSpawns) {
-    spawnLedgerByAgentId.set(agentId, { parentExternalId: null, spawn });
-  }
-  for (const sub of subAgents) {
-    if (sub.parsed === null) continue;
-    for (const [agentId, spawn] of sub.parsed.agentSpawns) {
-      if (agentId === sub.file.agentId || spawnLedgerByAgentId.has(agentId)) continue;
-      spawnLedgerByAgentId.set(agentId, { parentExternalId: sub.file.agentId, spawn });
-    }
-  }
-  return spawnLedgerByAgentId;
-}
-
-/**
- * Resolve each Sub-agent of `pendingSpawnByAgentId` to its true parent by its
- * spawn (see `spawnOf`), and order them PARENTS-FIRST: a child comes after its
- * parent, so the parent's row and message rows exist when the child is written.
- * A parent in `settledAgentIds` — a kept Sub-agent whose lineage stays — is
- * already there.
- *
- * Unresolvable parentage — no spawner found, or a spawn CYCLE — falls back
- * to the main thread, matching the defensive nesting in `buildAgentTree`
- * (read.ts). The leftover pass is what makes a cycle terminate instead of
- * looping forever.
- */
-function orderParentsFirst(
-  pendingSpawnByAgentId: Map<string, SubAgentSpawn>,
-  settledAgentIds: Set<string>,
-): SubAgentPlan[] {
-  const ordered: SubAgentPlan[] = [];
-  const emitted = new Set(settledAgentIds);
-  const pending = [...pendingSpawnByAgentId.keys()];
-
-  // Repeatedly emit every sub-agent whose parent is the main thread or has
-  // already been emitted, until a full sweep makes no progress.
-  for (let progress = true; progress;) {
-    progress = false;
-    for (let i = pending.length - 1; i >= 0; i -= 1) {
-      const agentId = pending[i];
-      if (agentId === undefined) continue;
-      const spawn = pendingSpawnByAgentId.get(agentId)!;
-      const parentExternalId = spawn.parentExternalId;
-      if (parentExternalId !== null && !emitted.has(parentExternalId)) continue;
-      ordered.push({ agentId, parentExternalId, spawn });
-      emitted.add(agentId);
-      pending.splice(i, 1);
-      progress = true;
-    }
-  }
-
-  // Leftovers: a cycle → attach under the main thread.
-  for (const agentId of pending) {
-    ordered.push({ agentId, parentExternalId: null, spawn: pendingSpawnByAgentId.get(agentId)! });
-  }
-  return ordered;
 }
 
 /**

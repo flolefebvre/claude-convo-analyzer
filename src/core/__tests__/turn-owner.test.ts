@@ -141,13 +141,15 @@ describe("a Turn's owner", () => {
         (detail?.subAgents ?? []).map((subAgent) => [subAgent.agentId, subAgent.tokens.total]),
       );
       expect(totalBySubAgent).toEqual({
-        "fork-lead": 30,
+        // lead-msg-1b, its spawn of lead-child, which both forks copy, counts here.
+        "fork-lead": 36,
+        "lead-child": 8,
         // fork-a-msg-2, its spawn of fork-b, which fork-b re-writes under a new uuid, counts here.
         "fork-a": 24,
         "fork-b": 6,
       });
       // The Main thread's 40, and each Turn once.
-      expect(detail?.tokens.total).toBe(100);
+      expect(detail?.tokens.total).toBe(114);
     });
   });
 });
