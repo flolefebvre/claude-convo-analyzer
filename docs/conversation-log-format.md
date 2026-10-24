@@ -206,7 +206,15 @@ Main-thread forks, whose meta files have no `toolUseId`.
 
 ### Where a Sub-agent's spawn comes from
 
-Two sources, per field: the **ledger** naming the Sub-agent, when it states a
+**The decided rule (ADR-0011): the meta file decides.** Its `toolUseId` names
+the spawning `Agent` call, and the spawner is the Agent that owns that call;
+its `agentType` is the type. The ledger is read for a Sub-agent's spawner and
+type only when its meta file states nothing. This inverts the procedure below,
+which reads the ledger first and the meta file second: that procedure, its
+holder order included, is the one in place until ADR-0011's slices (#302,
+#303, #304) replace it, and is not the decided rule.
+
+Today, two sources, per field: the **ledger** naming the Sub-agent, when it states a
 non-null value, else the **meta file**. The type is the ledger's `agentType`,
 else the meta file's. The resolved model is the ledger's, else the
 transcript's dominant model (the meta file's `model` is not read). A malformed
@@ -816,6 +824,16 @@ October 2026:
 
 ### The rule
 
+**Explicit records decide; content matching is frozen (ADR-0011).** Where
+Claude Code writes the relation down — `continued-in`, `fork-context-ref`, the
+meta file's `toolUseId` and `agentType` (§4) — that record decides. The
+prefix-containment rule below stays only for logs before 2.1.296, which carry
+no `continued-in` record, and gains no cases: a new log shape is met by reading
+the record Claude Code writes for it, not by a new matching rule. Which Messages
+are copies is decided by ownership: a Copied Message is an occurrence in an
+Agent that does not own it (Glossary, "Copied Message"). The procedure below
+is the one in place until ADR-0011's slices (#302, #303, #304) replace it.
+
 A Conversation's **parent** is the Conversation whose `continued-in` record
 names it — of several, the smallest `source_path`. The record wins even when
 the child holds none of the parent's Messages (a compacted copy, or a child
@@ -847,6 +865,10 @@ two Agents holding the same Messages with no spawn link between them are not
 compared.
 
 ### How they are stored
+
+This is the storage in place until ADR-0011's slices land; ADR-0011's Storage
+section gives the `turn` table and the ownership that decides which occurrences
+are Copied Messages.
 
 - **`continued_in`**: one row per `continued-in` record of a Conversation's
   Main-thread file, the session it names.
