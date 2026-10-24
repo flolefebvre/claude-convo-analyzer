@@ -189,7 +189,7 @@ describe("Slice 4 side tables", () => {
 
     // Both remain DISTINCT rows; tokens are NOT merged.
     expect(origin.tokens.output).toBe(10);
-    // The copied Turn still counts in the resumed session's total; #285 will change that.
-    expect(resumed.tokens.output).toBe(30);
+    // The copied Turn counts in the origin's total only: the resumed session's is its own spend.
+    expect(resumed.tokens.output).toBe(20);
   });
 });

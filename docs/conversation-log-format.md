@@ -147,6 +147,17 @@ change between records, and the last record's values are always the highest.
 So **a turn's usage is the highest value of each bucket across its records**;
 its model, timestamp, effort and attribution are the first record's.
 
+The same holds across files (ADR-0011): a resumed or forked session, and a
+forked Sub-agent, copy the records of Turns they did not make (§10), and a
+spawner's file can keep a partial `output_tokens` where its fork's copy holds
+the final one. A Turn is one API response, identified by its `message.id`
+across all the logs when its record carries a `requestId` — a mock API's
+(`msg_fake*`, no `requestId`) reuses ids across unrelated sessions, so such a
+Turn is its own file's. Each file holding it holds an **occurrence**; its
+usage is the highest value of each bucket over every occurrence, and it counts
+once, in the Cost of the Conversation whose Agent owns it (§10, "How they are
+stored").
+
 ### GOTCHA 2 — `usage` is per-turn, not cumulative
 
 Sum across the (deduplicated) turns to get a conversation total. It is not a
@@ -211,8 +222,8 @@ the spawning `Agent` call, and the spawner is the Agent that owns that call;
 its `agentType` is the type. The ledger is read for a Sub-agent's spawner and
 type only when its meta file states nothing. This inverts the procedure below,
 which reads the ledger first and the meta file second: that procedure, its
-holder order included, is the one in place until ADR-0011's slices (#302,
-#303, #304) replace it, and is not the decided rule.
+holder order included, is the one in place until ADR-0011's slices (#303,
+#304) replace it, and is not the decided rule.
 
 Today, two sources, per field: the **ledger** naming the Sub-agent, when it states a
 non-null value, else the **meta file**. The type is the ledger's `agentType`,
@@ -338,7 +349,8 @@ Refresh would write. So do a Turn's links to a request in another
 Conversation's file: a Refresh ends by linking every Turn left without one
 (§9, "How they are stored"). And so do continuations: a Refresh decides again
 the parent and Copied Messages of every Conversation its writes and deletes
-could change (§10, "How they are stored").
+could change, and the owner and usage of every Turn they could change (§10,
+"How they are stored").
 
 ## 8. Who a user message is from: `origin`, and mid-turn delivery
 
@@ -814,8 +826,10 @@ October 2026:
 - The re-written spawn record is the spawner's spawning Turn under a new
   `uuid`: same `message.id`, `requestId` and `usage` (one fork's holds the
   spawner's 1,199 output tokens). Matched by `uuid`, it is the fork's first
-  own Message, so each fork still counts its spawner's spawning Turn once —
-  11 Turns on this machine. The rule below leaves it unflagged.
+  own Message, and the rule below leaves it unflagged; matched by its
+  `message.id`, it is an occurrence of the spawner's Turn, which the spawner
+  owns, so it counts once, in the spawner — 11 Turns on this machine that each
+  fork counted again before.
 - A fork the **Main thread** spawns copies nothing: its transcript opens with a
   `fork-context-ref` record (`parentSessionId`, `parentLastUuid`,
   `contextLength`) in place of the copied records (5 files, 2.1.218–2.1.280).
@@ -832,7 +846,7 @@ no `continued-in` record, and gains no cases: a new log shape is met by reading
 the record Claude Code writes for it, not by a new matching rule. Which Messages
 are copies is decided by ownership: a Copied Message is an occurrence in an
 Agent that does not own it (Glossary, "Copied Message"). The procedure below
-is the one in place until ADR-0011's slices (#302, #303, #304) replace it.
+is the one in place until ADR-0011's slices (#303, #304) replace it.
 
 A Conversation's **parent** is the Conversation whose `continued-in` record
 names it — of several, the smallest `source_path`. The record wins even when
@@ -866,14 +880,24 @@ compared.
 
 ### How they are stored
 
-This is the storage in place until ADR-0011's slices land; ADR-0011's Storage
-section gives the `turn` table and the ownership that decides which occurrences
-are Copied Messages.
+`message.is_copied` is the flag in place until ADR-0011's next slice (#303)
+derives it from the ownership `turn` records.
 
 - **`continued_in`**: one row per `continued-in` record of a Conversation's
   Main-thread file, the session it names.
 - **`conversation.continued_from_conversation_id`**: the parent, by the rule.
 - **`message.is_copied`**: whether the Message is a Copied Message.
+- **`turn`**: one row per Turn (§3, GOTCHA 1), however many files hold it: its
+  owning occurrence's `message` row, that occurrence's Agent and Conversation,
+  each usage bucket's highest value over every occurrence, and the owner's
+  model and timestamp. Cost and every token total sum it. Of the Agents holding a Turn, every
+  one with another holder among its ancestors is dropped — the Conversations
+  of its `continued_from` chain, and in its own Conversation the Agents that
+  spawned it, at any depth — and of the rest the one with the smallest log
+  path (`agent.source_path`) owns it; its only holder owns it, copy or not, so
+  a copier whose parent's file is gone keeps that history's spend, recorded
+  nowhere else. `message.request_id` keeps the record's `requestId`, which
+  makes the Turn's identity global.
 
 The Refresh decides both in its links pass, from the database alone, so a
 skipped parent counts and the outcome is the same in a cold Refresh and an
@@ -884,6 +908,14 @@ Conversation's records name or that continues from it, and the continuations
 of every Conversation it deleted. Like the written ones, those continuations
 stay unstamped until the pass commits, so an interrupted run leaves them
 re-parseable. A written Conversation with no copy costs a few indexed lookups.
+
+Once those links are final, the same pass writes the `turn` row of every Turn
+held by a Conversation it decided them for, and of every Turn an Agent it
+deleted held, read before the delete: that set is collected, never found by
+scanning the database. Each is resolved against all its stored occurrences.
+An Agent it deletes, whether its file is gone or written again, leaves the
+other Conversations holding one of its Turns unstamped until the pass
+commits, as continuations are.
 
 A fork's flags rest on its stored spawner, so a fork's file that appears
 while its spawner's is unchanged has the stored Sub-agents holding its first

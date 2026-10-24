@@ -13,6 +13,11 @@ path is configurable. Nothing is ever sent anywhere.
 > cost through the public API"_. If you're on a Pro or Max subscription you
 > don't actually pay per token — so treat the number as the equivalent API
 > value of your usage, not a bill.
+>
+> A conversation counts only what it spent itself, never the history it copied
+> when it was resumed or forked: each turn is priced once, in the conversation
+> that ran it, and a forked sub-agent's copy of its spawner's turns costs
+> nothing either.
 
 ## Quick start
 
@@ -113,9 +118,10 @@ Work rarely fits in one sitting. When you resume a session (or fork it), Claude
 Code starts a new conversation that copies the previous one — so the app groups
 them into a **continuation family**: rows that belong to one show a badge with
 the family size, and the expanded panel draws the whole family as a tree,
-chronological and indented by fork, with each sitting's date and cost, the one
-you are looking at highlighted, sittings resumed from another project labelled,
-and the cumulative total of the entire piece of work at the bottom. Click any
+chronological and indented by fork, with each sitting's date and own cost, the
+one you are looking at highlighted, sittings resumed from another project
+labelled, and the cumulative total of the entire piece of work at the bottom,
+which counts no turn twice. Click any
 member to jump to it. The Transcript view of a family member carries the same
 lineage as a one-line banner — what it continued from, and what continues it:
 

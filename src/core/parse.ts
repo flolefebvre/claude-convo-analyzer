@@ -272,6 +272,13 @@ export type ParsedMessage = {
   /** Dedup key: assistant `message.id`, else the record's `requestId`; null on user Messages. */
   messageId: string | null;
   /**
+   * The assistant record's `requestId`, verbatim, the first line's that
+   * carries one for a turn split across lines: with one, the Turn is
+   * identified by its message id across all the logs; without one, it is its
+   * own file's (ADR-0011). Null on user Messages.
+   */
+  requestId: string | null;
+  /**
    * The assistant record's `requestRef` (2.1.300+), the first line's for a
    * turn split across lines: the `id` of the `api-request` record it answers.
    * Null on user Messages and older records.
@@ -813,6 +820,7 @@ export function parseSessionLines(lines: readonly string[]): ParsedSession {
         existing.thinkingText = joinTurnTexts(existing.thinkingText, thinkingText);
         existing.thinkingDurationMs = sumTurnDurations(existing.thinkingDurationMs, thinkingDurationMs);
         existing.toolUses.push(...blockToolUses);
+        existing.requestId ??= asString(record.requestId);
         raiseTurnUsageToHighest(existing, parseUsage(message.usage as RawUsage | undefined));
         continue;
       }
@@ -821,6 +829,7 @@ export function parseSessionLines(lines: readonly string[]): ParsedSession {
     const usage = parseUsage(message.usage as RawUsage | undefined);
     const parsed: ParsedMessage = {
       messageId,
+      requestId: asString(record.requestId),
       requestRef: asString(record.requestRef),
       uuid: asString(record.uuid),
       role: "assistant",
@@ -1168,6 +1177,7 @@ function userMessage(
 ): ParsedMessage {
   return {
     messageId: null,
+    requestId: null,
     requestRef: null,
     uuid: asString(record.uuid),
     role: "user",

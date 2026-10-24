@@ -1,5 +1,5 @@
 // Ingest spine (ADR-0001, ADR-0002). `refresh()` discovers top-level session
-// files + their sub-agent transcripts, parses them, and writes ALL twelve
+// files + their sub-agent transcripts, parses them, and writes ALL thirteen
 // tables.
 // The read seams (`listConversations()`, `getConversation()`) live in `read.ts`.
 // It writes through a bare better-sqlite3 connection, not Prisma (ADR-0005);
@@ -42,9 +42,11 @@
 // transcript is left out of its Conversation (its stored Agent deleted). Only ENOENT counts as vanished; any
 // other error fails the run (see `vanished-file.ts`).
 //
-// ROLLUP DESIGN (ADR-0001): conversation totals/cost are SUM queries over ALL
-// messages of ALL agents in the conversation — so sub-agent tokens roll up
-// automatically, counted ONCE (the parent Agent aggregate is never summed in).
+// ROLLUP DESIGN (ADR-0001, ADR-0011): conversation totals/cost are SUM queries
+// over the `turn` rows the conversation owns — one per API response, however
+// many log files hold it, written by the links pass (see `resolveTurns`) — so
+// sub-agent tokens roll up automatically, counted ONCE (the parent Agent
+// aggregate is never summed in), and copied history never counts twice.
 
 import path from "node:path";
 import { performance } from "node:perf_hooks";
@@ -72,6 +74,8 @@ import {
   prepareRefreshStatements,
   type RefreshStatements,
   type StoredAgent,
+  type TurnOccurrence,
+  type TurnRow,
 } from "@/core/prisma/refresh-statements";
 import { readFileUnlessVanished, statUnlessVanished } from "@/core/vanished-file";
 
@@ -179,8 +183,12 @@ type RefreshOptions = {
  * 20 — a Turn's usage is each bucket's highest value across its Records, not
  *     its first Record's: a Sub-agent's output grows Record to Record
  *     (`message.*_tokens`, log-format §3, GOTCHA 1).
+ * 21 — a Turn is one API response, however many files hold it (ADR-0011): one
+ *     `turn` row each, owned by one Agent, its usage the highest across its
+ *     occurrences, so a Conversation's Cost is its own spend, never the
+ *     history it copied (`turn`, `message.request_id`, `agent.source_path`).
  */
-export const PARSER_VERSION = 20;
+export const PARSER_VERSION = 21;
 
 /**
  * The version a conversation carries while it is written but NOT YET COMPLETE:
@@ -283,6 +291,21 @@ type ParsedConversation = {
   parsedLogFileCount: number;
   /** Row id of the stored conversation the write rewrites (null = new). */
   priorConversationId: number | null;
+};
+
+/**
+ * The Turns the Agents this run deletes held (see `setDeletedAgentTurnsAside`),
+ * read before their delete cascades their rows away.
+ */
+type DeletedAgentTurns = {
+  /** The keys of the Turns identified across the logs they held: the links pass resolves each again. */
+  turnKeys: Set<string>;
+  /**
+   * The other Conversations holding one: unstamped until the links pass has
+   * resolved them, so an interrupted run leaves them re-parseable; pass 3
+   * stamps them back.
+   */
+  holderConversationIds: Set<number>;
 };
 
 /** What deciding a Sub-agent's lineage looks at (see `isLineageDecidedAgain`). */
@@ -404,11 +427,18 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     // theirs again. Until it has, they are unstamped, so an interrupted run
     // leaves them re-parseable; pass 3 stamps them back.
     const orphanedContinuationIds = new Set<number>();
-    /** Delete a Conversation (its rows go by cascade), setting its continuations aside. */
+    const deletedAgentTurns: DeletedAgentTurns = { turnKeys: new Set(), holderConversationIds: new Set() };
+    /** Delete a Conversation (its rows go by cascade), setting its continuations and its Turns aside. */
     const deleteConversation = (conversationId: number) => {
       const continuationIds = statements.selectContinuationIds([conversationId]);
       for (const continuationId of continuationIds) orphanedContinuationIds.add(continuationId);
       statements.updateParserVersion(continuationIds, UNSTAMPED_PARSER_VERSION);
+      setDeletedAgentTurnsAside(
+        statements,
+        statements.selectTurnKeysOfConversation(conversationId),
+        conversationId,
+        deletedAgentTurns,
+      );
       statements.deleteConversation(conversationId);
     };
 
@@ -521,7 +551,7 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
 
       const currentBatchOpenedAt = openBatchIfNone();
       writtenConversations.push({
-        conversationId: writeConversation(statements, parsedConversation),
+        conversationId: writeConversation(statements, parsedConversation, deletedAgentTurns),
         firstMessageUuid: parsedConversation.parsed.messages[0]?.uuid ?? null,
         continuedInSessionIds: parsedConversation.parsed.continuedInSessionIds,
       });
@@ -544,8 +574,14 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     // conversations; then link every Turn of the database whose API request
     // is in another file — a skipped child's Turns included, whose links a
     // rewritten parent's delete just nulled.
-    resolveContinuations(statements, writtenConversations, orphanedContinuationIds);
+    const lineageDecidedConversationIds = resolveContinuations(
+      statements,
+      writtenConversations,
+      orphanedContinuationIds,
+    );
     statements.updateUnlinkedTurnApiRequests();
+    // Lineage is final: decide who owns each Turn this run may have changed.
+    resolveTurns(statements, lineageDecidedConversationIds, deletedAgentTurns.turnKeys);
     endPhase("links");
 
     // Pass 3 — only NOW are these conversations complete: stamp them, so the
@@ -554,6 +590,7 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     stampParserVersion(statements, [
       ...writtenConversations.map((written) => written.conversationId),
       ...orphanedContinuationIds,
+      ...deletedAgentTurns.holderConversationIds,
     ]);
     // A re-parse or a vanished file can leave a Project with no Conversation,
     // a system prompt or tool set no API request references, and a sent
@@ -918,6 +955,7 @@ function messageRow(m: ParsedSession["messages"][number], conversationId: number
     conversationId,
     agentId,
     messageId: m.messageId,
+    requestId: m.requestId,
     uuid: m.uuid,
     role: m.role,
     kind: m.kind,
@@ -1148,7 +1186,11 @@ function failedAttemptOwners(
  * A new conversation's rows go in this exact order, so a fresh database gets
  * the same row ids on every run (`stored-data-equivalence.test.ts` pins them).
  */
-function writeConversation(statements: RefreshStatements, parsedConversation: ParsedConversation): number {
+function writeConversation(
+  statements: RefreshStatements,
+  parsedConversation: ParsedConversation,
+  deletedAgentTurns: DeletedAgentTurns,
+): number {
   const { session, parsed, storedMainThread, isMainThreadRewritten, subAgents, priorConversationId } =
     parsedConversation;
 
@@ -1179,7 +1221,7 @@ function writeConversation(statements: RefreshStatements, parsedConversation: Pa
   } else {
     conversationId = priorConversationId;
     statements.updateConversation(conversationId, conversationRow);
-    deleteRewrittenAndRemovedAgents(statements, conversationId, parsedConversation);
+    deleteRewrittenAndRemovedAgents(statements, conversationId, parsedConversation, deletedAgentTurns);
   }
 
   let mainThreadRowId: number;
@@ -1192,6 +1234,7 @@ function writeConversation(statements: RefreshStatements, parsedConversation: Pa
       agentType: null, // root/main thread
       resolvedModel: parsed.dominantModel,
       ...parsedConversation.mainThreadFileKey,
+      sourcePath: session.sourcePath,
     });
     writeAgentContent(statements, parsed, conversationId, mainThreadRowId);
   } else {
@@ -1238,6 +1281,7 @@ function writeConversation(statements: RefreshStatements, parsedConversation: Pa
       ...lineage,
       sourceMtime: subAgent.file.sourceMtime,
       sourceSize: subAgent.file.sourceSize,
+      sourcePath: subAgent.file.sourcePath,
     });
     writeAgentContent(statements, subAgent.parsed!, conversationId, subAgentRowId);
     agentRowIdByAgentId.set(plan.agentId, subAgentRowId);
@@ -1265,20 +1309,54 @@ function writeConversation(statements: RefreshStatements, parsedConversation: Pa
 
 /**
  * Delete, from a stored Conversation, each Agent whose file changed or is gone
- * — its Messages, Tool calls and API requests by cascade, which also clears the
- * lineage of its kept children and the API request links of Turns in other
- * files — and, when the Main thread changed, its pr_links, turn_durations and continued_in rows.
+ * — its Messages, Tool calls, API requests and Turns by cascade, which also
+ * clears the lineage of its kept children and the API request links of Turns
+ * in other files, its Turns set aside first (see `setDeletedAgentTurnsAside`)
+ * — and, when the Main thread changed, its pr_links, turn_durations and continued_in rows.
  */
 function deleteRewrittenAndRemovedAgents(
   statements: RefreshStatements,
   conversationId: number,
   { storedMainThread, isMainThreadRewritten, subAgents, removedAgentRowIds }: ParsedConversation,
+  deletedAgentTurns: DeletedAgentTurns,
 ): void {
-  for (const agentRowId of removedAgentRowIds) statements.deleteAgent(agentRowId);
-  for (const sub of subAgents) if (sub.isRewritten && sub.stored !== null) statements.deleteAgent(sub.stored.id);
+  const deleteAgent = (agentRowId: number) => {
+    setDeletedAgentTurnsAside(
+      statements,
+      statements.selectTurnKeysOfAgent(agentRowId),
+      conversationId,
+      deletedAgentTurns,
+    );
+    statements.deleteAgent(agentRowId);
+  };
+  for (const agentRowId of removedAgentRowIds) deleteAgent(agentRowId);
+  for (const sub of subAgents) if (sub.isRewritten && sub.stored !== null) deleteAgent(sub.stored.id);
   if (!isMainThreadRewritten) return;
-  if (storedMainThread !== null) statements.deleteAgent(storedMainThread.id);
+  if (storedMainThread !== null) deleteAgent(storedMainThread.id);
   statements.deletePrLinksTurnDurationsAndContinuedIn(conversationId);
+}
+
+/**
+ * Set aside the Turns `turnKeys` an Agent of Conversation `conversationId`
+ * held, before its delete cascades their rows away: the links pass resolves
+ * each again among the occurrences left. Whether its file is gone or written
+ * again, its next parse may hold none of them, so the other Conversations
+ * holding one are unstamped until that pass has run (see `DeletedAgentTurns`):
+ * an interrupted run leaves no Turn owned by nobody.
+ */
+function setDeletedAgentTurnsAside(
+  statements: RefreshStatements,
+  turnKeys: string[],
+  conversationId: number,
+  deletedAgentTurns: DeletedAgentTurns,
+): void {
+  for (const turnKey of turnKeys) deletedAgentTurns.turnKeys.add(turnKey);
+  if (turnKeys.length === 0) return;
+  const holderConversationIds = statements.selectTurnKeyHolderConversationIds(turnKeys, conversationId);
+  statements.updateParserVersion(holderConversationIds, UNSTAMPED_PARSER_VERSION);
+  for (const holderConversationId of holderConversationIds) {
+    deletedAgentTurns.holderConversationIds.add(holderConversationId);
+  }
 }
 
 /**
@@ -1516,13 +1594,15 @@ function orderParentsFirst(
  * Every decision reads the DATABASE, never what this run parsed, so a skipped
  * parent still counts and the outcome is the same in a cold Refresh and an
  * incremental one, whatever order the files were written in. Lookups are by
- * indexed uuid or session id: an unrelated Conversation costs a few.
+ * indexed uuid or session id: an unrelated Conversation costs a few. Returns
+ * the Conversations it decided, deleted ones included: lineage changes who
+ * owns a Turn (see `resolveTurns`).
  */
 function resolveContinuations(
   statements: RefreshStatements,
   writtenConversations: WrittenConversation[],
   orphanedContinuationIds: Set<number>,
-): void {
+): Set<number> {
   const writtenConversationIds = writtenConversations.map((written) => written.conversationId);
   const conversationIdsToResolve = new Set([...writtenConversationIds, ...orphanedContinuationIds]);
   for (const { conversationId, firstMessageUuid } of writtenConversations) {
@@ -1544,6 +1624,7 @@ function resolveContinuations(
     statements.updateContinuedFrom(continuation.id, parentId);
     statements.updateCopiedMessages(continuation.id, parentId);
   }
+  return conversationIdsToResolve;
 }
 
 /**
@@ -1586,4 +1667,126 @@ function selectParentByCopy(statements: RefreshStatements, continuation: Continu
  */
 function stampParserVersion(statements: RefreshStatements, conversationIds: number[]): void {
   statements.updateParserVersion(conversationIds, PARSER_VERSION);
+}
+
+/**
+ * Pass 2, once lineage is final: write the `turn` row of each Turn this run may
+ * have changed (ADR-0011) — every Turn held by a Conversation in
+ * `lineageDecidedConversationIds` (each one written, and each one whose
+ * `continued_from` was decided again: lineage changes who owns a Turn), and
+ * `deletedTurnKeys`, the Turns an Agent this run deleted held. The set is
+ * collected, never found by scanning the database.
+ *
+ * A Turn with a `requestId` is identified by its message id across all the
+ * logs: it is resolved against every stored occurrence (see `turnRowOf`). One
+ * without is its own file's, its one occurrence owning it with its own usage.
+ * Keys go in sorted, so a cold Refresh writes the same rows on every run.
+ */
+function resolveTurns(
+  statements: RefreshStatements,
+  lineageDecidedConversationIds: Set<number>,
+  deletedTurnKeys: Set<string>,
+): void {
+  const turnKeys = new Set(deletedTurnKeys);
+  for (const conversationId of lineageDecidedConversationIds) {
+    statements.insertOwnFileTurns(conversationId);
+    for (const turnKey of statements.selectTurnKeysOfConversation(conversationId)) turnKeys.add(turnKey);
+  }
+  const lineage = lineageLookups(statements);
+  for (const turnKey of [...turnKeys].sort()) {
+    const occurrences = statements.selectTurnOccurrences(turnKey);
+    // No occurrence left: the deletes that removed them cascaded to its row.
+    if (occurrences.length > 0) statements.writeTurn(turnKey, turnRowOf(occurrences, lineage));
+  }
+}
+
+/** The lineage lookups deciding a Turn's owner needs, each stored row read once per run. */
+type LineageLookups = {
+  /** The Conversation Conversation `conversationId` continues from; null without one. */
+  continuedFromIdOf: (conversationId: number) => number | null;
+  /** The Agent that spawned Agent `agentId`; null for a Main thread or without one. */
+  parentAgentIdOf: (agentId: number) => number | null;
+};
+
+/** {@link LineageLookups} over the stored rows, memoized. */
+function lineageLookups(statements: RefreshStatements): LineageLookups {
+  const continuedFromIdByConversationId = new Map<number, number | null>();
+  const parentAgentIdByAgentId = new Map<number, number | null>();
+  return {
+    continuedFromIdOf: (conversationId) => {
+      if (!continuedFromIdByConversationId.has(conversationId)) {
+        continuedFromIdByConversationId.set(conversationId, statements.selectContinuedFromId(conversationId));
+      }
+      return continuedFromIdByConversationId.get(conversationId)!;
+    },
+    parentAgentIdOf: (agentId) => {
+      if (!parentAgentIdByAgentId.has(agentId)) {
+        parentAgentIdByAgentId.set(agentId, statements.selectParentAgentId(agentId));
+      }
+      return parentAgentIdByAgentId.get(agentId)!;
+    },
+  };
+}
+
+/**
+ * Whether `ancestor`'s Agent is an ancestor of `descendant`'s: its Conversation
+ * is in the `continued_from` chain of `descendant`'s, or both are in one
+ * Conversation and it is in the chain of Agents that spawned `descendant`'s.
+ * A chain is walked once per link, so a cyclic one ends.
+ */
+function isAncestorOccurrence(ancestor: TurnOccurrence, descendant: TurnOccurrence, lineage: LineageLookups): boolean {
+  const isInChain = (start: number | null, target: number, next: (id: number) => number | null) => {
+    const visited = new Set<number>();
+    for (let id = start; id !== null && !visited.has(id); id = next(id)) {
+      if (id === target) return true;
+      visited.add(id);
+    }
+    return false;
+  };
+  if (
+    isInChain(lineage.continuedFromIdOf(descendant.conversationId), ancestor.conversationId, lineage.continuedFromIdOf)
+  ) {
+    return true;
+  }
+  return (
+    ancestor.conversationId === descendant.conversationId &&
+    isInChain(lineage.parentAgentIdOf(descendant.agentId), ancestor.agentId, lineage.parentAgentIdOf)
+  );
+}
+
+/**
+ * THE RULE for a Turn several files hold (ADR-0011): of its `occurrences`, in
+ * row id order, its owner is one held by an Agent none of the other holders is
+ * an ancestor of (see `isAncestorOccurrence`) — of several, the one of the
+ * smallest `agent.source_path`; its only holder owns it, copy or not. Its usage
+ * is each bucket's highest value across every occurrence, its model and timestamp the owner's.
+ * Row ids never decide: they differ between a cold Refresh and an incremental one.
+ */
+function turnRowOf(occurrences: TurnOccurrence[], lineage: LineageLookups): TurnRow {
+  const holders = occurrences.filter(
+    (occurrence, index) => occurrences.findIndex((other) => other.agentId === occurrence.agentId) === index,
+  );
+  const rootHolders = holders.filter(
+    (holder) =>
+      !holders.some((other) => other.agentId !== holder.agentId && isAncestorOccurrence(other, holder, lineage)),
+  );
+  // Every holder an ancestor of another only through a cyclic link: none is dropped.
+  const candidates = rootHolders.length > 0 ? rootHolders : holders;
+  const owner = candidates.reduce((smallest, candidate) =>
+    (candidate.sourcePath ?? "") < (smallest.sourcePath ?? "") ? candidate : smallest,
+  );
+  const highest = (bucket: (occurrence: TurnOccurrence) => number | null) =>
+    Math.max(...occurrences.map((occurrence) => bucket(occurrence) ?? 0));
+  return {
+    messageId: owner.id,
+    agentId: owner.agentId,
+    conversationId: owner.conversationId,
+    inputTokens: highest((occurrence) => occurrence.inputTokens),
+    outputTokens: highest((occurrence) => occurrence.outputTokens),
+    cacheCreation5mTokens: highest((occurrence) => occurrence.cacheCreation5mTokens),
+    cacheCreation1hTokens: highest((occurrence) => occurrence.cacheCreation1hTokens),
+    cacheReadTokens: highest((occurrence) => occurrence.cacheReadTokens),
+    model: owner.model,
+    timestamp: owner.timestamp,
+  };
 }

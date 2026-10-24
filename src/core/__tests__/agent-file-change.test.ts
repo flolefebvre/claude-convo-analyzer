@@ -21,6 +21,7 @@ const FOREIGN_KEYS_BY_TABLE = {
   pr_link: { conversation_id: "conversation" },
   turn_duration: { conversation_id: "conversation" },
   api_request: { conversation_id: "conversation", agent_id: "agent", failed_attempt_of_message_id: "message" },
+  turn: { message_id: "message", agent_id: "agent", conversation_id: "conversation" },
 } as const;
 
 /** The interned tables: keyed by their hash, which is already natural. */
@@ -70,7 +71,7 @@ function storedContent(dbPath: string): Record<string, Row[]> {
       rankWithin((row) => keyOf("agent", row.agent_id)!),
     );
     keyBy("api_request", (row) => `${keyOf("agent", row.agent_id)}@${String(row.position_in_file)}`);
-    for (const table of ["tool_call", "pr_link", "turn_duration"]) keyBy(table, () => "");
+    for (const table of ["tool_call", "pr_link", "turn_duration", "turn"]) keyBy(table, () => "");
 
     const content: Record<string, Row[]> = {};
     for (const [table, foreignKeys] of Object.entries(FOREIGN_KEYS_BY_TABLE)) {
