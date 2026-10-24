@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildFamily } from "@/core/family";
-import { getConversation, listConversations } from "@/core/read";
+import { getConversation, getTranscript, listConversations } from "@/core/read";
 import { refresh } from "@/core/refresh";
 
 const FIXTURES_DIR = path.join(import.meta.dirname, "fixtures");
@@ -73,6 +73,27 @@ describe("a Turn's owner", () => {
       expect(parent?.subAgents).toEqual([
         expect.objectContaining({ agentId: "fam-helper", tokens: expect.objectContaining({ total: 6 }) }),
       ]);
+    });
+
+    it("prices a Turn in its owner's Transcript only, so a page's per-Turn costs sum to its Conversation's Cost", async () => {
+      const copier = await getTranscript("sess-fam-b", { dbPath, page: "all" });
+      const turnTokensByUuid = Object.fromEntries(
+        (copier?.messages ?? []).filter((m) => m.role === "assistant").map((m) => [m.uuid, m.tokens?.total ?? null]),
+      );
+      // Its copy of fam-a-a1 shows no tokens, as a user row does.
+      expect(turnTokensByUuid).toEqual({ "fam-a-a1": null, "fam-b-a1": 40 });
+
+      for (const sessionId of ["sess-fam-a", "sess-fam-b"]) {
+        const detail = await getConversation(sessionId, { dbPath });
+        const agentIds = [undefined, ...(detail?.subAgents ?? []).map((subAgent) => subAgent.agentId)];
+        let pagesCostUsd = 0;
+        for (const agentId of agentIds) {
+          const view = await getTranscript(sessionId, { dbPath, agentId, page: "all" });
+          pagesCostUsd += (view?.messages ?? []).reduce((sum, m) => sum + m.costUsd, 0);
+        }
+        expect(pagesCostUsd).toBeCloseTo(detail!.costUsd, 12);
+        expect(detail!.costUsd).toBeGreaterThan(0);
+      }
     });
 
     it("makes the Overview the sum of own spend and a family's cumulative total count no Turn twice", async () => {

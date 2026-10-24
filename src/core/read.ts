@@ -135,9 +135,12 @@ export type TranscriptMessage = {
   thinkingText: string | null;
   /** How long this Turn spent thinking; null when its log did not record it, and on user rows. */
   thinkingDurationMs: number | null;
-  /** Merged per-turn token split; null on user prompts (they have no usage). */
+  /**
+   * Its Turn's merged token split, on the occurrence that owns the Turn; null
+   * on user prompts (they have no usage) and on a copy another occurrence owns.
+   */
   tokens: Tokens | null;
-  /** Exact per-tier cost of this turn ($0 on user prompts and unpriced models). */
+  /** Exact per-tier cost of its Turn, on the owning occurrence ($0 on user prompts, copies and unpriced models). */
   costUsd: number;
   unpriced: boolean;
   isApiError: boolean;
@@ -1283,11 +1286,8 @@ async function readAgentTranscript(
       effort: true,
       thinkingText: true,
       thinkingDurationMs: true,
-      inputTokens: true,
-      outputTokens: true,
-      cacheCreation5mTokens: true,
-      cacheCreation1hTokens: true,
-      cacheReadTokens: true,
+      // The Turn this occurrence owns; none when another occurrence owns it (ADR-0011).
+      turn: { select: { ...TOKEN_SUM, model: true } },
       isApiError: true,
       apiErrorMessage: true,
       timestamp: true,
@@ -1319,7 +1319,7 @@ async function readAgentTranscript(
   });
 
   return rows.map((r) => {
-    const turn = priceTurn(r);
+    const turn = priceTurn(r.turn);
     const origin = readOrigin(r.origin);
     const failedAttempts = failedAttemptsByMessageId.get(r.id) ?? [];
     const knownLostMs = failedAttempts.flatMap((attempt) => (attempt.lostMs === null ? [] : [attempt.lostMs]));
@@ -1366,35 +1366,35 @@ function readOrigin(stored: string | null): MessageOrigin | null {
   return parsed.success ? parsed.data : null;
 }
 
-/** One assistant turn's row shape for per-turn pricing. */
-type TurnRow = {
-  role: string;
+/** The `turn` row a Transcript message owns, as per-turn pricing reads it. */
+type OwnedTurn = {
   model: string | null;
-  inputTokens: number | null;
-  outputTokens: number | null;
-  cacheCreation5mTokens: number | null;
-  cacheCreation1hTokens: number | null;
-  cacheReadTokens: number | null;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreation5mTokens: number;
+  cacheCreation1hTokens: number;
+  cacheReadTokens: number;
 };
 
 /**
- * Price ONE turn exactly (per-tier, matching the rollups). User prompts carry no
- * usage → `tokens: null`, `costUsd: 0`. Assistant turns always report `tokens`;
- * an assistant turn with no resolved model is `unpriced` at `$0`.
+ * Price ONE Turn exactly (per-tier, matching the rollups), on the occurrence
+ * that owns it. A user prompt, and an assistant occurrence another one owns (a
+ * copy), carry none → `tokens: null`, `costUsd: 0`: a page's per-Turn figures
+ * sum to its Cost. A Turn with no resolved model is `unpriced` at `$0`.
  */
-function priceTurn(row: TurnRow): {
+function priceTurn(turn: OwnedTurn | null): {
   tokens: Tokens | null;
   costUsd: number;
   unpriced: boolean;
 } {
-  if (row.role !== "assistant") {
+  if (turn === null) {
     return { tokens: null, costUsd: 0, unpriced: false };
   }
-  const input = row.inputTokens ?? 0;
-  const output = row.outputTokens ?? 0;
-  const cw5m = row.cacheCreation5mTokens ?? 0;
-  const cw1h = row.cacheCreation1hTokens ?? 0;
-  const cr = row.cacheReadTokens ?? 0;
+  const input = turn.inputTokens;
+  const output = turn.outputTokens;
+  const cw5m = turn.cacheCreation5mTokens;
+  const cw1h = turn.cacheCreation1hTokens;
+  const cr = turn.cacheReadTokens;
   const cacheWrite = cw5m + cw1h;
   const tokens: Tokens = {
     input,
@@ -1403,10 +1403,10 @@ function priceTurn(row: TurnRow): {
     cacheRead: cr,
     total: input + output + cacheWrite + cr,
   };
-  if (row.model === null) {
+  if (turn.model === null) {
     return { tokens, costUsd: 0, unpriced: true };
   }
-  const cost = priceSplitByType({ input, output, cacheWrite5m: cw5m, cacheWrite1h: cw1h, cacheRead: cr }, row.model);
+  const cost = priceSplitByType({ input, output, cacheWrite5m: cw5m, cacheWrite1h: cw1h, cacheRead: cr }, turn.model);
   return { tokens, costUsd: cost.usd, unpriced: cost.unpriced };
 }
 
