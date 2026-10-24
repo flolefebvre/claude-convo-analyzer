@@ -288,8 +288,12 @@ function ThinkingLine({ text, durationMs }: { text: string | null; durationMs: n
   );
 }
 
-/** The turn's own cost, or "unpriced" for a model without a known price. */
+/**
+ * The turn's own cost, or "unpriced" for a model without a known price; nothing
+ * on a copy whose Turn another occurrence owns (it has no tokens of its own).
+ */
 function TurnCost({ message }: { message: TranscriptMessage }) {
+  if (message.tokens === null) return null;
   if (message.unpriced) {
     return (
       <span className="turn-cost is-unpriced" title="No known price for this model: counted as $0 in every total.">

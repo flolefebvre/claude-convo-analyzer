@@ -301,9 +301,9 @@ type DeletedAgentTurns = {
   /** The keys of the Turns identified across the logs they held: the links pass resolves each again. */
   turnKeys: Set<string>;
   /**
-   * The other Conversations holding one, when the Agent is gone for good:
-   * unstamped until the links pass has resolved them, so an interrupted run
-   * leaves them re-parseable; pass 3 stamps them back.
+   * The other Conversations holding one: unstamped until the links pass has
+   * resolved them, so an interrupted run leaves them re-parseable; pass 3
+   * stamps them back.
    */
   holderConversationIds: Set<number>;
 };
@@ -433,11 +433,12 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
       const continuationIds = statements.selectContinuationIds([conversationId]);
       for (const continuationId of continuationIds) orphanedContinuationIds.add(continuationId);
       statements.updateParserVersion(continuationIds, UNSTAMPED_PARSER_VERSION);
-      setDeletedAgentTurnsAside(statements, statements.selectTurnKeysOfConversation(conversationId), {
+      setDeletedAgentTurnsAside(
+        statements,
+        statements.selectTurnKeysOfConversation(conversationId),
         conversationId,
-        isGone: true,
         deletedAgentTurns,
-      });
+      );
       statements.deleteConversation(conversationId);
     };
 
@@ -1319,41 +1320,38 @@ function deleteRewrittenAndRemovedAgents(
   { storedMainThread, isMainThreadRewritten, subAgents, removedAgentRowIds }: ParsedConversation,
   deletedAgentTurns: DeletedAgentTurns,
 ): void {
-  const deleteAgent = (agentRowId: number, isGone: boolean) => {
-    setDeletedAgentTurnsAside(statements, statements.selectTurnKeysOfAgent(agentRowId), {
+  const deleteAgent = (agentRowId: number) => {
+    setDeletedAgentTurnsAside(
+      statements,
+      statements.selectTurnKeysOfAgent(agentRowId),
       conversationId,
-      isGone,
       deletedAgentTurns,
-    });
+    );
     statements.deleteAgent(agentRowId);
   };
-  for (const agentRowId of removedAgentRowIds) deleteAgent(agentRowId, true);
-  for (const sub of subAgents) if (sub.isRewritten && sub.stored !== null) deleteAgent(sub.stored.id, false);
+  for (const agentRowId of removedAgentRowIds) deleteAgent(agentRowId);
+  for (const sub of subAgents) if (sub.isRewritten && sub.stored !== null) deleteAgent(sub.stored.id);
   if (!isMainThreadRewritten) return;
-  if (storedMainThread !== null) deleteAgent(storedMainThread.id, false);
+  if (storedMainThread !== null) deleteAgent(storedMainThread.id);
   statements.deletePrLinksTurnDurationsAndContinuedIn(conversationId);
 }
 
 /**
  * Set aside the Turns `turnKeys` an Agent of Conversation `conversationId`
  * held, before its delete cascades their rows away: the links pass resolves
- * each again among the occurrences left. When the Agent is gone for good —
- * its file, or its Conversation's, is gone — no re-parse of it would find
- * them again, so the other Conversations holding one are unstamped until that
- * pass has run (see `DeletedAgentTurns`). A rewritten Agent's own
- * Conversation is unstamped already, and its re-parse finds its Turns again.
+ * each again among the occurrences left. Whether its file is gone or written
+ * again, its next parse may hold none of them, so the other Conversations
+ * holding one are unstamped until that pass has run (see `DeletedAgentTurns`):
+ * an interrupted run leaves no Turn owned by nobody.
  */
 function setDeletedAgentTurnsAside(
   statements: RefreshStatements,
   turnKeys: string[],
-  {
-    conversationId,
-    isGone,
-    deletedAgentTurns,
-  }: { conversationId: number; isGone: boolean; deletedAgentTurns: DeletedAgentTurns },
+  conversationId: number,
+  deletedAgentTurns: DeletedAgentTurns,
 ): void {
   for (const turnKey of turnKeys) deletedAgentTurns.turnKeys.add(turnKey);
-  if (!isGone || turnKeys.length === 0) return;
+  if (turnKeys.length === 0) return;
   const holderConversationIds = statements.selectTurnKeyHolderConversationIds(turnKeys, conversationId);
   statements.updateParserVersion(holderConversationIds, UNSTAMPED_PARSER_VERSION);
   for (const holderConversationId of holderConversationIds) {

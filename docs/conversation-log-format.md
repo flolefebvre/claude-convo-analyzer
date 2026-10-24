@@ -913,8 +913,8 @@ Once those links are final, the same pass writes the `turn` row of every Turn
 held by a Conversation it decided them for, and of every Turn an Agent it
 deleted held, read before the delete: that set is collected, never found by
 scanning the database. Each is resolved against all its stored occurrences.
-An Agent deleted for good — its file, or its Conversation's, gone — leaves
-the other Conversations holding one of its Turns unstamped until the pass
+An Agent it deletes, whether its file is gone or written again, leaves the
+other Conversations holding one of its Turns unstamped until the pass
 commits, as continuations are.
 
 A fork's flags rest on its stored spawner, so a fork's file that appears
