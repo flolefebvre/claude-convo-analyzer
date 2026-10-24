@@ -176,11 +176,22 @@ describe("Sub-agents holding each other's spawning calls", () => {
     path.join(logsRoot, "-Users-me-dev-held", SESSION_ID, "subagents", `agent-${agentId}.jsonl`);
 
   /**
-   * Write a Conversation whose Main thread spawns no one, and one Sub-agent per
-   * key of `heldCallsByAgentId`: its meta file names `toolu-<its id>` as its
-   * spawning call, and its one Turn holds an `Agent` call of each id listed.
+   * Write a Conversation whose Main thread's one Turn holds the `Agent` call of
+   * each of `mainThreadHeldAgentIds`, and one Sub-agent per key of
+   * `heldCallsByAgentId`: its meta file names `toolu-<its id>` as its spawning
+   * call, and its one Turn holds the `Agent` call of each id listed.
    */
-  function writeConversation(heldCallsByAgentId: Record<string, string[]>): void {
+  function writeConversation(
+    heldCallsByAgentId: Record<string, string[]>,
+    mainThreadHeldAgentIds: string[] = [],
+  ): void {
+    const agentCalls = (heldAgentIds: string[]) =>
+      heldAgentIds.map((heldAgentId) => ({
+        type: "tool_use",
+        id: `toolu-${heldAgentId}`,
+        name: "Agent",
+        input: { description: heldAgentId, subagent_type: "Explore", prompt: "go" },
+      }));
     const record = (uuid: string, minute: number, extras: Record<string, unknown>) =>
       JSON.stringify({
         uuid,
@@ -208,19 +219,13 @@ describe("Sub-agents holding each other's spawning calls", () => {
     writeFileSync(
       mainThreadPath,
       `${record("main-u1", 0, { type: "user", message: { role: "user", content: "start" } })}\n` +
-        `${assistant("main-a1", 1, [{ type: "text", text: "started" }])}\n`,
+        `${assistant("main-a1", 1, [{ type: "text", text: "started" }, ...agentCalls(mainThreadHeldAgentIds)])}\n`,
     );
     Object.entries(heldCallsByAgentId).forEach(([agentId, heldAgentIds], index) => {
-      const calls = heldAgentIds.map((heldAgentId) => ({
-        type: "tool_use",
-        id: `toolu-${heldAgentId}`,
-        name: "Agent",
-        input: { description: heldAgentId, subagent_type: "Explore", prompt: "go" },
-      }));
       writeFileSync(
         subAgentLogPath(agentId),
         `${record(`${agentId}-u1`, 2 + index, { type: "user", isSidechain: true, agentId, message: { role: "user", content: "go" } })}\n` +
-          `${assistant(`${agentId}-a1`, 2 + index, calls, agentId)}\n`,
+          `${assistant(`${agentId}-a1`, 2 + index, agentCalls(heldAgentIds), agentId)}\n`,
       );
       writeFileSync(
         subAgentLogPath(agentId).replace(/\.jsonl$/, ".meta.json"),
@@ -285,5 +290,30 @@ describe("Sub-agents holding each other's spawning calls", () => {
     expect(placeIn(tree, "tri-a")).toEqual({ parentId: "main", spawnedByToolUseId: null });
     expect(placeIn(tree, "tri-b")).toEqual({ parentId: "tri-a", spawnedByToolUseId: "toolu-tri-b" });
     expect(placeIn(tree, "tri-c")).toEqual({ parentId: "tri-a", spawnedByToolUseId: "toolu-tri-c" });
+  });
+
+  // fork forks twice: fork-1 copies its spawn record, fork-2 copies that and fork-1's spawn too. No sweep
+  // decides fork or fork-1, each waiting on the other; fork, whose spawner is settled, is decided first.
+  it.each([
+    { order: "with the first fork sorting first", firstForkId: "fs-a-fork-1" },
+    { order: "with the first fork sorting last", firstForkId: "fs-z-fork-1" },
+  ])("are the forking Agent for a fork that forks twice, $order", async ({ firstForkId }) => {
+    writeConversation(
+      {
+        "fs-spawner": ["fs-fork"],
+        "fs-fork": ["fs-fork", firstForkId, "fs-fork-2"],
+        [firstForkId]: ["fs-fork", firstForkId],
+        "fs-fork-2": ["fs-fork", firstForkId, "fs-fork-2"],
+      },
+      ["fs-spawner"],
+    );
+
+    const tree = await agentTreeAfterAppendAndCold(firstForkId);
+
+    expect(placeIn(tree, "fs-spawner")).toEqual({ parentId: "main", spawnedByToolUseId: "toolu-fs-spawner" });
+    expect(placeIn(tree, "fs-fork")).toEqual({ parentId: "fs-spawner", spawnedByToolUseId: "toolu-fs-fork" });
+    // fs-fork's one Turn holds both forks' calls, which the tree pairs with them by spawn time, not by id.
+    expect(placeIn(tree, firstForkId).parentId).toBe("fs-fork");
+    expect(placeIn(tree, "fs-fork-2").parentId).toBe("fs-fork");
   });
 });

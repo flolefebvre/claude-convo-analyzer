@@ -192,6 +192,37 @@ describe("a Refresh after an Agent's log file changed", () => {
     expect(storedContent(dbPath)).toEqual(await coldContent());
   });
 
+  // A reader between the write's commit and the links pass's finds one Agent with no parent: the Main thread.
+  it.each(["main", "subb"])(
+    "keeps each kept Sub-agent under an Agent once %s is rewritten, before the links pass resolves it",
+    async (agentId) => {
+      await refresh({ logsRoot, dbPath });
+      appendLine(agentId, subAgentTurnLine(agentId, `${agentId}-a9`));
+      let parentlessAgentIdsAfterWrite: (string | null)[] = [];
+      await refresh({
+        logsRoot,
+        dbPath,
+        onProgress: ({ done }) => {
+          if (done === 0) return;
+          const reader = new Database(dbPath, { readonly: true });
+          try {
+            parentlessAgentIdsAfterWrite = reader
+              .prepare(
+                `SELECT a.external_agent_id FROM agent a JOIN conversation c ON c.id = a.conversation_id
+                  WHERE c.session_id = 'sess-nested' AND a.parent_agent_id IS NULL`,
+              )
+              .pluck()
+              .all() as (string | null)[];
+          } finally {
+            reader.close();
+          }
+        },
+      });
+
+      expect(parentlessAgentIdsAfterWrite).toEqual([null]);
+    },
+  );
+
   // The Main thread and the grown file: not its parent, whose stored ledger names it, nor its kept child.
   it.each([
     { agentId: "subc", grown: "a grown Sub-agent, its parent's stored ledger deciding its lineage" },

@@ -298,6 +298,10 @@ export function prepareRefreshStatements(db: Database.Database) {
        FROM "agent" WHERE "conversation_id" = ?`,
   );
   const deleteAgent = db.prepare(`DELETE FROM "agent" WHERE "id" = ?`);
+  const updateParentlessSubAgents = db.prepare(
+    `UPDATE "agent" SET "parent_agent_id" = ?
+      WHERE "conversation_id" = ? AND "external_agent_id" IS NOT NULL AND "parent_agent_id" IS NULL`,
+  );
   const selectLineageAgents = db.prepare(
     `SELECT "id" AS "agentRowId", "external_agent_id" AS "externalAgentId", "source_path" AS "sourcePath",
             "spawn_tool_use_id" AS "spawnToolUseId", "agent_type" AS "agentType", "dominant_model" AS "dominantModel"
@@ -597,6 +601,9 @@ export function prepareRefreshStatements(db: Database.Database) {
     selectStoredAgents: (conversationId: number) => selectStoredAgents.all(conversationId) as StoredAgent[],
     /** Delete an Agent; its Messages, Tool calls and API requests go with it by cascade. */
     deleteAgent: (agentId: number) => void deleteAgent.run(agentId),
+    /** Put each Sub-agent of Conversation `conversationId` left with no parent under its Main thread `mainThreadId`. */
+    updateParentlessSubAgents: (conversationId: number, mainThreadId: number) =>
+      void updateParentlessSubAgents.run(mainThreadId, conversationId),
     /** Every Agent of a Conversation, with the facts deciding a Sub-agent's lineage. */
     selectLineageAgents: (conversationId: number) => selectLineageAgents.all(conversationId) as LineageAgent[],
     /** Every `Agent` Tool call of a Conversation's Agents, in file order within each Agent, with its spawn ledger. */

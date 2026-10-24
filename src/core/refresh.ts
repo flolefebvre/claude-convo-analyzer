@@ -1122,6 +1122,10 @@ function writeConversation(
     });
     writeAgentContent(statements, subAgent.parsed!, conversationId, subAgentRowId);
   }
+  // A kept Sub-agent whose spawner was just deleted lost its parent: under the
+  // Main thread until the links pass resolves it, as a rewritten one is, so a
+  // reader in between finds one Agent with no parent, the Main thread.
+  statements.updateParentlessSubAgents(conversationId, mainThreadRowId);
 
   if (!isMainThreadRewritten) return conversationId;
   for (const prLink of parsed.prLinks) {

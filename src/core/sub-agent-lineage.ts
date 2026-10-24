@@ -61,8 +61,12 @@ export type SubAgentLineage = {
  * Who descends from whom is what is being decided, so the decision is a
  * fixpoint: in `source_path` order, a Sub-agent is decided once its holders'
  * lineage is settled down to the Main thread, the Main thread is among them,
- * or at most one holder is left; a sweep that decides none decides the first
- * pending one among its settled holders only. A holder whose decided chain
+ * or at most one holder is left. A sweep that decides none decides the first
+ * pending one with a settled holder, among its settled holders only — exact,
+ * not a tiebreak: a settled holder cannot descend from it, and in consistent
+ * logs a settled holder that is no descendant means its spawner is settled
+ * too, so the owner among them is it. With no settled holder anywhere, the
+ * first pending one goes under the Main thread. A holder whose decided chain
  * reaches the Sub-agent is never picked, so no link closes a cycle, and no
  * step depends on row ids or discovery order.
  *
@@ -153,16 +157,14 @@ export function resolveSubAgentLineage(agents: LineageAgent[], agentCalls: Store
       } else stillPending.push(subAgent);
     }
     if (stillPending.length === pending.length) {
-      // No progress: only a cycle of holders is left. Break it at the smallest path, among settled holders only.
-      const [first, ...rest] = stillPending;
-      const toolUseId = spawnToolUseIdOf(first!)!;
-      const settledRowIds = candidateRowIdsOf(first!, toolUseId).filter(isSettled);
-      decide(
-        first!,
-        settledRowIds.length === 0 ? null : ownerOf(settledRowIds),
-        settledRowIds.length === 0 ? null : toolUseId,
-      );
-      pending = rest;
+      // No progress: holders waiting on each other. Decide the first with a settled holder, among those only;
+      // with none anywhere, the first goes under the Main thread.
+      const settledRowIdsOf = (subAgent: LineageAgent) =>
+        candidateRowIdsOf(subAgent, spawnToolUseIdOf(subAgent)!).filter(isSettled);
+      const unblocked = stillPending.find((subAgent) => settledRowIdsOf(subAgent).length > 0);
+      if (unblocked === undefined) decide(stillPending[0]!, null, null);
+      else decide(unblocked, ownerOf(settledRowIdsOf(unblocked)), spawnToolUseIdOf(unblocked));
+      pending = stillPending.filter((subAgent) => !lineageByRowId.has(subAgent.agentRowId));
     } else {
       pending = stillPending;
     }

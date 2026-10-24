@@ -247,9 +247,12 @@ Conversation's Sub-agents together, in `source_path` order, until none is
 left: one is decided once the Agents holding its call have their own spawner
 settled down to the Main thread, the Main thread holds it, or at most one
 holder is left. A holder whose decided chain of spawners reaches the
-Sub-agent is never picked, so no link closes a cycle. Holders that each wait
-on another — which Claude Code never writes — are broken at the smallest
-`source_path`, decided among its settled holders only.
+Sub-agent is never picked, so no link closes a cycle. When holders each wait
+on another — a fork that forks twice, its first fork holding its spawn record
+and the second holding both — the first pending Sub-agent with a settled
+holder is decided among its settled holders only: a settled holder cannot
+descend from it, so its spawner is among them. With none anywhere, which
+Claude Code never writes, the first goes under the Main thread.
 
 **How it is stored.** A Sub-agent's file is parsed for what it states alone:
 its `agent` row keeps its meta file's `toolUseId` (`spawn_tool_use_id`) and
