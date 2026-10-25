@@ -4,13 +4,20 @@ import { Fragment } from "react";
 import { PendingLink } from "@/app/_components/pending-link";
 import { formatCount, formatModelName } from "@/app/_lib/format";
 import { type AgentLabel, agentLineage, effortSummary, type TranscriptExport } from "@/app/_lib/transcript";
+import {
+  TRANSCRIPT_FILTER_EVERYTHING,
+  type TranscriptFilter,
+  applyTranscriptFilter,
+  transcriptFilterKey,
+} from "@/app/_lib/transcript-filter";
 import { groupTurnsIntoReplies } from "@/app/_lib/transcript-replies";
 import { agentHref, agentSectionHref, callAnchorId, messageAnchorId, withListReturn } from "@/app/_lib/transcript-url";
 import type { ConversationFamily } from "@/core/family";
-import type { TranscriptView } from "@/core/read";
+import type { TranscriptMessage, TranscriptView } from "@/core/read";
 
 import { FamilyBanner } from "./family-banner";
 import { ScrollToAnchor } from "./scroll-to-anchor";
+import { TranscriptFold } from "./transcript-fold";
 import { TranscriptMessageRow } from "./transcript-message";
 import { TranscriptPager } from "./transcript-pager";
 import { TranscriptReply } from "./transcript-reply";
@@ -30,7 +37,9 @@ import { AgentName, CostFigure, PaneHeader, agentLabelText } from "./transcript-
  * continuation family, a one-line banner names the sitting before and the
  * sitting(s) after. The Conversation export renders the same pane over each
  * Agent's whole transcript (`transcriptExport`); there a Sub-agent's pane opens
- * with a link back to the Agent call that spawned it.
+ * with a link back to the Agent call that spawned it. The page renders under
+ * the reader's Transcript filter: what it hides folds into lines that reveal it
+ * in place, and the one holding a `?call=`/`?msg=` target renders revealed.
  */
 export function TranscriptPane({
   view,
@@ -39,6 +48,7 @@ export function TranscriptPane({
   anchoredCall,
   anchoredMessage,
   listReturn,
+  transcriptFilter = TRANSCRIPT_FILTER_EVERYTHING,
   transcriptExport,
 }: {
   view: TranscriptView;
@@ -55,6 +65,8 @@ export function TranscriptPane({
   /** The list view this transcript was opened from (`?from=`), carried on
    *  every link to another transcript. */
   listReturn?: string;
+  /** The reader's Transcript filter; Everything when unset, as in the Conversation export. */
+  transcriptFilter?: TranscriptFilter;
   /** Set in the Conversation export: every Tool call body inlined, agent links
    *  to their sections of the file, every other link into the app as plain
    *  text, no What was sent. */
@@ -85,6 +97,11 @@ export function TranscriptPane({
       : anchoredCall !== undefined
         ? callAnchorId(anchoredCall)
         : undefined;
+  const filterKey = transcriptFilterKey(transcriptFilter);
+  const entries = applyTranscriptFilter(groupTurnsIntoReplies(view.messages, view), transcriptFilter, {
+    anchoredCall,
+    anchoredMessage,
+  });
 
   return (
     <>
@@ -166,22 +183,26 @@ export function TranscriptPane({
 
       <h2 className="sr-only">{agentLabelText(selectedLabel)} transcript</h2>
       <div className="transcript">
-        {groupTurnsIntoReplies(view.messages, view).map((entry) =>
-          entry.kind === "reply" ? (
-            <TranscriptReply
-              key={`reply-${entry.reply.turns[0]?.id}`}
-              reply={entry.reply}
-              speaker={parent === null ? "Assistant" : agentLabelText(selectedLabel)}
-              view={view}
-              labels={labels}
-              agentModel={selected.resolvedModel}
-              effortChangedIds={effort.changedIds}
-              anchoredCall={anchoredCall}
-              anchoredMessage={anchoredMessage}
-              listReturn={listReturn}
-              transcriptExport={transcriptExport}
-            />
-          ) : (
+        {entries.map((entry) => {
+          if (entry.kind === "reply")
+            return (
+              <TranscriptReply
+                key={`reply-${entry.reply.turns[0]?.id}`}
+                reply={entry.reply}
+                items={entry.items}
+                filterKey={filterKey}
+                speaker={parent === null ? "Assistant" : agentLabelText(selectedLabel)}
+                view={view}
+                labels={labels}
+                agentModel={selected.resolvedModel}
+                effortChangedIds={effort.changedIds}
+                anchoredCall={anchoredCall}
+                anchoredMessage={anchoredMessage}
+                listReturn={listReturn}
+                transcriptExport={transcriptExport}
+              />
+            );
+          const row = (
             <TranscriptMessageRow
               key={entry.message.id}
               message={entry.message}
@@ -192,8 +213,19 @@ export function TranscriptPane({
               listReturn={listReturn}
               transcriptExport={transcriptExport}
             />
-          ),
-        )}
+          );
+          if (entry.fold === null) return row;
+          return (
+            <TranscriptFold
+              key={`${entry.message.id}-${filterKey}`}
+              label={hiddenMessageLabel(entry.message, labels)}
+              layout="row"
+              isInitiallyRevealed={entry.fold.isRevealed}
+            >
+              {row}
+            </TranscriptFold>
+          );
+        })}
         {view.metaHiddenCount > 0 && view.page === view.pageCount && (
           <div className="meta-hidden">
             {view.metaHiddenCount} meta record
@@ -205,4 +237,12 @@ export function TranscriptPane({
       {anchorId !== undefined && <ScrollToAnchor id={anchorId} />}
     </>
   );
+}
+
+/** What the fold line of a hidden Message addressed to the Agent holds: its kind, and an Inter-agent message's sender when this Conversation holds it. */
+function hiddenMessageLabel(message: TranscriptMessage, labels: Map<string, AgentLabel>): string {
+  if (message.kind === "task-notification") return "Task notification";
+  const senderAgentId = message.origin?.senderAgentId;
+  const sender = senderAgentId == null ? undefined : labels.get(senderAgentId);
+  return sender === undefined ? "Inter-agent message" : `Inter-agent message from ${agentLabelText(sender)}`;
 }

@@ -14,11 +14,19 @@ import {
   formatModelName,
 } from "@/app/_lib/format";
 import type { AgentLabel, TranscriptExport } from "@/app/_lib/transcript";
+import {
+  type FilteredTurn,
+  type Fold,
+  type HiddenTurnRun,
+  hiddenTurnsLabel,
+  toolCallCountLabel,
+} from "@/app/_lib/transcript-filter";
 import type { Reply } from "@/app/_lib/transcript-replies";
 import type { TranscriptMessage, TranscriptView } from "@/core/read";
 
 import { CopiedFrom } from "./copied-from";
 import { SpeakerAvatar } from "./speaker-row";
+import { TranscriptFold } from "./transcript-fold";
 import { CostFigure, ErrorBadge, anchorProps } from "./transcript-parts";
 import { TranscriptToolCallRow } from "./transcript-tool-call";
 import { WhatWasSentPanel, WhatWasSentProvider, WhatWasSentTrigger } from "./transcript-what-was-sent";
@@ -30,12 +38,16 @@ import { TurnMarkdown } from "./turn-markdown";
  * range and cost, or "copied from <owner>" when every Turn is copied — and its
  * Turns. Its figures describe the whole Reply, even when part of it lies on
  * another page; one begun on an earlier page says it continues from there.
- * Named by its header, so a Turn inside it is heard under its speaker.
+ * Named by its header, so a Turn inside it is heard under its speaker. Its
+ * Turns show as the Transcript filter leaves them (`items`): a run of Turns
+ * left with nothing to show is one fold line, and the header still counts it.
  *
- * @example <TranscriptReply reply={entry.reply} speaker="Assistant" view={view} labels={labels} agentModel={null} effortChangedIds={new Set()} />
+ * @example <TranscriptReply reply={entry.reply} items={entry.items} filterKey="11111" speaker="Assistant" view={view} labels={labels} agentModel={null} effortChangedIds={new Set()} />
  */
 export function TranscriptReply({
   reply,
+  items,
+  filterKey,
   speaker,
   view,
   labels,
@@ -47,6 +59,10 @@ export function TranscriptReply({
   transcriptExport,
 }: {
   reply: Reply;
+  /** Its Turns under the Transcript filter, from `applyTranscriptFilter`. */
+  items: (FilteredTurn | HiddenTurnRun)[];
+  /** The Transcript filter's `transcriptFilterKey`: its fold lines are keyed on it. */
+  filterKey: string;
   /** The Agent whose Transcript this is: "Assistant" on the Main thread, else its own label. */
   speaker: string;
   view: TranscriptView;
@@ -117,30 +133,51 @@ export function TranscriptReply({
           )}
         </div>
         <div className="turns">
-          {reply.turns.map((turn) => (
-            <ReplyTurn
-              key={turn.id}
-              message={turn}
-              view={view}
-              labels={labels}
-              agentModel={agentModel}
-              effortChanged={effortChangedIds.has(turn.id)}
-              anchoredCall={anchoredCall}
-              anchoredMessage={anchoredMessage}
-              listReturn={listReturn}
-              transcriptExport={transcriptExport}
-              copiedFrom={isWhollyCopied ? null : copiedFrom(turn)}
-            />
-          ))}
+          {items.map((item) => {
+            const replyTurn = ({ turn, showsThinking, showsWhatWasSent, toolCallsFold }: FilteredTurn) => (
+              <ReplyTurn
+                key={turn.id}
+                message={turn}
+                showsThinking={showsThinking}
+                showsWhatWasSent={showsWhatWasSent}
+                toolCallsFold={toolCallsFold}
+                filterKey={filterKey}
+                view={view}
+                labels={labels}
+                agentModel={agentModel}
+                effortChanged={effortChangedIds.has(turn.id)}
+                anchoredCall={anchoredCall}
+                anchoredMessage={anchoredMessage}
+                listReturn={listReturn}
+                transcriptExport={transcriptExport}
+                copiedFrom={isWhollyCopied ? null : copiedFrom(turn)}
+              />
+            );
+            if (item.kind === "turn") return replyTurn(item);
+            return (
+              <TranscriptFold
+                key={`hidden-${item.turns[0]?.turn.id}-${filterKey}`}
+                label={hiddenTurnsLabel({ turnCount: item.turns.length, toolCallCount: item.toolCallCount })}
+                layout="inline"
+                isInitiallyRevealed={item.isRevealed}
+              >
+                {item.turns.map(replyTurn)}
+              </TranscriptFold>
+            );
+          })}
         </div>
       </div>
     </div>
   );
 }
 
-/** One Turn of a Reply: its dot on the rail, its marker line, its thinking, its text (or the API error when it failed), its tool calls, and, when the logs hold its own API request, what that request sent, opened from the marker line. */
+/** One Turn of a Reply: its dot on the rail, its marker line, its thinking, its text (or the API error when it failed), its tool calls — or the fold line standing in for them — and, when the logs hold its own API request, what that request sent, opened from the marker line. */
 function ReplyTurn({
   message,
+  showsThinking,
+  showsWhatWasSent,
+  toolCallsFold,
+  filterKey,
   view,
   labels,
   agentModel,
@@ -152,6 +189,11 @@ function ReplyTurn({
   copiedFrom,
 }: {
   message: TranscriptMessage;
+  showsThinking: boolean;
+  showsWhatWasSent: boolean;
+  /** The fold line standing in for its hidden Tool calls; null when they show. */
+  toolCallsFold: Fold | null;
+  filterKey: string;
   view: TranscriptView;
   labels: Map<string, AgentLabel>;
   agentModel: string | null;
@@ -178,7 +220,24 @@ function ReplyTurn({
   // The export leaves What was sent out: it holds the user's CLAUDE.md files,
   // environment and system prompt. A copied Turn's request is its owner's.
   const whatWasSentRequestId =
-    transcriptExport === undefined && message.copiedFrom === null ? message.apiRequestId : null;
+    transcriptExport === undefined && message.copiedFrom === null && showsWhatWasSent ? message.apiRequestId : null;
+  const toolCalls = message.toolCalls.length > 0 && (
+    <div className="calls">
+      {message.toolCalls.map((call) => (
+        <TranscriptToolCallRow
+          key={call.id}
+          call={call}
+          messageId={message.id}
+          isAnchorTarget={isAnchorTarget}
+          view={view}
+          labels={labels}
+          anchoredCall={anchoredCall}
+          listReturn={listReturn}
+          transcriptExport={transcriptExport}
+        />
+      ))}
+    </div>
+  );
 
   const content = (
     <>
@@ -206,7 +265,7 @@ function ReplyTurn({
       </div>
 
       <div className="turn-body">
-        <ThinkingLine text={message.thinkingText} durationMs={message.thinkingDurationMs} />
+        {showsThinking && <ThinkingLine text={message.thinkingText} durationMs={message.thinkingDurationMs} />}
         {errorOnly ? (
           <p className="api-error-note">Turn failed{message.apiErrorMessage ? `: ${message.apiErrorMessage}` : "."}</p>
         ) : (
@@ -214,22 +273,17 @@ function ReplyTurn({
         )}
       </div>
 
-      {message.toolCalls.length > 0 && (
-        <div className="calls">
-          {message.toolCalls.map((call) => (
-            <TranscriptToolCallRow
-              key={call.id}
-              call={call}
-              messageId={message.id}
-              isAnchorTarget={isAnchorTarget}
-              view={view}
-              labels={labels}
-              anchoredCall={anchoredCall}
-              listReturn={listReturn}
-              transcriptExport={transcriptExport}
-            />
-          ))}
-        </div>
+      {toolCallsFold === null ? (
+        toolCalls
+      ) : (
+        <TranscriptFold
+          key={`calls-${filterKey}`}
+          label={toolCallCountLabel(message.toolCalls.length)}
+          layout="inline"
+          isInitiallyRevealed={toolCallsFold.isRevealed}
+        >
+          {toolCalls}
+        </TranscriptFold>
       )}
 
       {whatWasSentRequestId !== null && <WhatWasSentPanel />}

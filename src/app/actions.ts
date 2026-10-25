@@ -1,7 +1,7 @@
 "use server";
 
-// Server Actions for the app: the Refresh, the Live switch, the Favorite star
-// and the favorites' order, its mutations — reads (the list, the expanded row's
+// Server Actions for the app: the Refresh, the Live switch, the Favorite star,
+// the favorites' order and the Transcript filter, its mutations — reads (the list, the expanded row's
 // detail) are served by the server components via the `_lib` seams, driven by
 // the URL.
 // A mutation with nothing to compose calls the core directly (this is a server
@@ -14,6 +14,7 @@ import { error, success } from "@flefebvre/next-pipe/server";
 import { z } from "zod";
 
 import { favoriteFolder, moveFavoriteFolder, unfavoriteFolder } from "@/core/favorites";
+import { updateSettings } from "@/core/settings";
 import { isAbsolutePath } from "@/lib/project-path";
 import { getLive, switchLive } from "@/app/_lib/live";
 import { getPublishedRefreshRunner, startOrJoinRefresh } from "@/app/_lib/refresh-events";
@@ -103,6 +104,33 @@ export const moveFavorite = actionPipe(favoriteMoveSchema).handle(async ({ input
     return error("favoriteNotMoved", { message: messageOf(cause) });
   }
   return success({ path: input.path, before: input.before });
+});
+
+/** What `setTranscriptFilter` reads: whether each kind of content shows in a Transcript. */
+const transcriptFilterSchema = z.object({
+  toolCalls: z.boolean(),
+  thinking: z.boolean(),
+  whatWasSent: z.boolean(),
+  interAgentMessages: z.boolean(),
+  taskNotifications: z.boolean(),
+});
+
+/**
+ * Save the Transcript filter the reader chose, for every Transcript and every
+ * Agent. Returns the filter saved; a save that failed comes back as an error
+ * with the reason. The caller re-renders the page to see it applied.
+ *
+ * @example
+ * const result = await setTranscriptFilter({ ...filter, toolCalls: false });
+ * if (result.status === "success") router.refresh();
+ */
+export const setTranscriptFilter = actionPipe(transcriptFilterSchema).handle(async ({ input }) => {
+  try {
+    await updateSettings({ transcriptFilter: input });
+  } catch (cause) {
+    return error("transcriptFilterNotSaved", { message: messageOf(cause) });
+  }
+  return success({ transcriptFilter: input });
 });
 
 function messageOf(cause: unknown): string {

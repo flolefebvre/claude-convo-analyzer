@@ -26,6 +26,7 @@ import {
   listConversations,
 } from "@/core/read";
 import { searchConversations } from "@/core/search";
+import { readSettings } from "@/core/settings";
 import { getToolCallSamples, getToolStats } from "@/core/tool-stats";
 import { getRawApiRequest, getWhatWasSent } from "@/core/what-was-sent";
 
@@ -59,6 +60,18 @@ export const loadConversations = cache(async () => {
 export const loadFavoriteFolderPaths = cache(async () => {
   await connection();
   return listFavoriteFolders();
+});
+
+/**
+ * Read the reader's Transcript filter from the settings file, once per
+ * request. Same request-time gating as {@link loadFavoriteFolderPaths}: a
+ * filter baked into the prerender would outlive the next toggle.
+ *
+ * @example applyTranscriptFilter(entries, await loadTranscriptFilter(), deepLink)
+ */
+export const loadTranscriptFilter = cache(async () => {
+  await connection();
+  return (await readSettings()).transcriptFilter;
 });
 
 /**
