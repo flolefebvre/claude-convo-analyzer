@@ -1073,6 +1073,26 @@ html:has(.tview) {
   padding: 0 6px;
   font-size: var(--text-2xs);
 }
+/* The marker line's last item: the button opening What was sent under the Turn. */
+.tview .sent-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  padding: 1px 7px;
+  border-radius: 5px;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.tview .sent-trigger svg {
+  width: 11px;
+  height: 11px;
+}
+.tview .sent-trigger:hover,
+.tview .sent-trigger[aria-expanded="true"] {
+  background: var(--muted);
+  color: var(--foreground);
+}
 .tview .turn-body {
   overflow-wrap: break-word;
 }
@@ -1502,13 +1522,42 @@ html:has(.tview) {
   font-size: var(--text-xs);
   color: var(--muted-foreground);
 }
-/* "What was sent" on a Turn: a `details.call` whose body stops at a
-   fixed height and scrolls inside itself, like an io-block, so one open panel
-   never buries the transcript. Its blocks are plain text, never markdown. */
-.tview .sent-body {
+/* "What was sent" on a Turn: a panel under the Turn, opened from its marker
+   line, that stops at a fixed height and scrolls inside itself, like an
+   io-block, so one open panel never buries the transcript. On the card, not
+   muted: its blocks and hovered rows are muted. Its blocks are plain text,
+   never markdown. */
+.tview .sent-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
   max-height: 36rem;
   overflow: auto;
   overscroll-behavior: contain;
+}
+.tview .sent-panel[hidden] {
+  display: none;
+}
+.tview .sent-panel summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+.tview .sent-panel summary::-webkit-details-marker {
+  display: none;
+}
+.tview .sent-panel summary:focus-visible {
+  @apply focus-inset;
+  border-radius: 4px;
+}
+.tview .sent-panel summary:hover {
+  background: var(--muted);
 }
 .tview .sent-section {
   display: flex;
@@ -1579,8 +1628,8 @@ html:has(.tview) {
   overflow-wrap: anywhere;
 }
 /* The request in reading order: one summary line per part, each a nested
-   `details` (the `details.call summary` rule gives it its padding, hover and
-   focus ring) or a static line, with the New for this Turn divider. */
+   `details` (the `.sent-panel summary` rule gives it its hover and focus
+   ring) or a static line, with the New for this Turn divider. */
 .tview .sent-rows {
   display: flex;
   flex-direction: column;
@@ -1590,7 +1639,7 @@ html:has(.tview) {
 .tview .sent-rows > * + * {
   border-top: 1px solid var(--border);
 }
-.tview details.call details.sent-row > summary {
+.tview .sent-panel details.sent-row > summary {
   gap: 8px;
   padding: 5px 10px;
   min-width: 0;
@@ -1648,7 +1697,7 @@ html:has(.tview) {
   display: flex;
   justify-content: flex-end;
 }
-.tview details.call details.sent-tool > summary {
+.tview .sent-panel details.sent-tool > summary {
   gap: 6px;
   padding: 2px 4px;
   border-radius: 4px;
