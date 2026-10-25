@@ -6,7 +6,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { favoriteFolder, listFavoriteFolders, moveFavoriteFolder, unfavoriteFolder } from "@/core/favorites";
-import { readSettings, writeSettings } from "@/core/settings";
+import { TRANSCRIPT_FILTER_EVERYTHING, readSettings, writeSettings } from "@/core/settings";
 
 describe("favorites", () => {
   let tmpDir: string;
@@ -75,7 +75,11 @@ describe("favorites", () => {
   describe("moving a favorite", () => {
     beforeEach(async () => {
       await writeSettings(
-        { live: true, favorites: ["/home/me/dev/web", "/home/me/dev/api", "/home/me/dev/docs"] },
+        {
+          live: true,
+          favorites: ["/home/me/dev/web", "/home/me/dev/api", "/home/me/dev/docs"],
+          transcriptFilter: TRANSCRIPT_FILTER_EVERYTHING,
+        },
         settingsPath,
       );
     });
@@ -151,15 +155,20 @@ describe("favorites", () => {
       await expect(readSettings(settingsPath)).resolves.toEqual({
         live: true,
         favorites: ["/home/me/dev/docs", "/home/me/dev/web", "/home/me/dev/api", "/home/me/dev/cli"],
+        transcriptFilter: TRANSCRIPT_FILTER_EVERYTHING,
       });
     });
   });
 
   it("keeps the user's Live choice when favoriting", async () => {
-    await writeSettings({ live: true, favorites: [] }, settingsPath);
+    await writeSettings({ live: true, favorites: [], transcriptFilter: TRANSCRIPT_FILTER_EVERYTHING }, settingsPath);
 
     await favoriteFolder("/home/me/dev/web", settingsPath);
 
-    await expect(readSettings(settingsPath)).resolves.toEqual({ live: true, favorites: ["/home/me/dev/web"] });
+    await expect(readSettings(settingsPath)).resolves.toEqual({
+      live: true,
+      favorites: ["/home/me/dev/web"],
+      transcriptFilter: TRANSCRIPT_FILTER_EVERYTHING,
+    });
   });
 });

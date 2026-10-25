@@ -7,7 +7,7 @@ import { rmSync } from "node:fs";
 import path from "node:path";
 
 import { refresh, type RefreshSummary } from "@/core/refresh";
-import { writeSettings } from "@/core/settings";
+import { TRANSCRIPT_FILTER_EVERYTHING, writeSettings } from "@/core/settings";
 
 import { type FakeLogsCounts, generateFakeLogs, SEED_FAVORITE_PATHS } from "./fake-logs";
 
@@ -17,7 +17,7 @@ export type SeedEnvironment = {
   dbPath: string;
   /** The persisted fake logs, `<dir>/projects` — a later refresh re-reads them. */
   logsRoot: string;
-  /** The seeded app's settings file, `<dir>/settings.json`: Live off, and {@link SEED_FAVORITE_PATHS} favorited. */
+  /** The seeded app's settings file, `<dir>/settings.json`: Live off, {@link SEED_FAVORITE_PATHS} favorited, every kind of Transcript content shown. */
   settingsPath: string;
   /** What the generator wrote. */
   generated: FakeLogsCounts;
@@ -42,6 +42,9 @@ export async function seedEnvironment(opts: { dir: string; now: Date }): Promise
   const generated = generateFakeLogs({ logsRoot, now: opts.now });
   const summary = await refresh({ logsRoot, dbPath });
   const settingsPath = path.join(dir, "settings.json");
-  await writeSettings({ live: false, favorites: [...SEED_FAVORITE_PATHS] }, settingsPath);
+  await writeSettings(
+    { live: false, favorites: [...SEED_FAVORITE_PATHS], transcriptFilter: TRANSCRIPT_FILTER_EVERYTHING },
+    settingsPath,
+  );
   return { dbPath, logsRoot, settingsPath, generated, summary };
 }

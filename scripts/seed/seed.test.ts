@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PAGE_SIZE } from "@/app/_lib/list-view";
 import { DEFAULT_SORT, sortConversations } from "@/app/_lib/sort";
 import { type TranscriptMessage, getToolCallBody, getTranscript, listConversations } from "@/core/read";
-import { readSettings, writeSettings } from "@/core/settings";
+import { TRANSCRIPT_FILTER_EVERYTHING, readSettings, writeSettings } from "@/core/settings";
 import { getWhatWasSent } from "@/core/what-was-sent";
 
 import { seedEnvironment } from "./environment";
@@ -75,17 +75,21 @@ describe("seedEnvironment", () => {
     expect(familyRoots).toHaveLength(3);
   });
 
-  it("keeps its own settings file inside the seed, reset to Live off and the seeded favorites after each re-seed", async () => {
+  it("keeps its own settings file inside the seed, reset to Live off, the seeded favorites and the Transcript filter showing everything after each re-seed", async () => {
     const seedDir = path.join(tmpDir, "seed");
     const firstSeed = await seedEnvironment({ dir: seedDir, now: NOW });
     expect(path.dirname(firstSeed.settingsPath)).toBe(seedDir);
-    await writeSettings({ live: true, favorites: [] }, firstSeed.settingsPath);
+    await writeSettings(
+      { live: true, favorites: [], transcriptFilter: TRANSCRIPT_FILTER_EVERYTHING },
+      firstSeed.settingsPath,
+    );
 
     const reseed = await seedEnvironment({ dir: seedDir, now: NOW });
 
     await expect(readSettings(reseed.settingsPath)).resolves.toEqual({
       live: false,
       favorites: [...SEED_FAVORITE_PATHS],
+      transcriptFilter: TRANSCRIPT_FILTER_EVERYTHING,
     });
   });
 

@@ -7,19 +7,49 @@ import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
 
+/** Whether a kind of content shows in a Transcript; a missing or unreadable choice shows it. */
+const shownKind = z.boolean().catch(true);
+
+/** The Transcript filter (GLOSSARY.md): which kinds of content a Transcript shows, each on or off. */
+const transcriptFilterSchema = z.object({
+  toolCalls: shownKind,
+  thinking: shownKind,
+  whatWasSent: shownKind,
+  interAgentMessages: shownKind,
+  taskNotifications: shownKind,
+});
+
+/** The reader's Transcript filter (GLOSSARY.md): true for each kind of content a Transcript shows. */
+export type TranscriptFilter = z.infer<typeof transcriptFilterSchema>;
+
+/**
+ * The Transcript filter that shows every kind of content: a fresh install's.
+ *
+ * @example await updateSettings({ transcriptFilter: TRANSCRIPT_FILTER_EVERYTHING });
+ */
+export const TRANSCRIPT_FILTER_EVERYTHING: TranscriptFilter = {
+  toolCalls: true,
+  thinking: true,
+  whatWasSent: true,
+  interAgentMessages: true,
+  taskNotifications: true,
+};
+
 /** What the settings file holds; each setting falls back to its default on its own. */
 const settingsSchema = z.object({
   /** Whether the user switched Live on. */
   live: z.boolean().catch(false),
   /** The favorited Folders' absolute paths, in the user's order: favorited order, until one is moved. */
   favorites: z.array(z.string()).catch([]),
+  /** Which kinds of content every Transcript shows. */
+  transcriptFilter: transcriptFilterSchema.catch(TRANSCRIPT_FILTER_EVERYTHING),
 });
 
 /** The user's saved choices. */
 export type Settings = z.infer<typeof settingsSchema>;
 
-/** What a fresh install starts with: Live off, no favorites. */
-const DEFAULT_SETTINGS: Settings = { live: false, favorites: [] };
+/** What a fresh install starts with: Live off, no favorites, every kind of Transcript content shown. */
+const DEFAULT_SETTINGS: Settings = { live: false, favorites: [], transcriptFilter: TRANSCRIPT_FILTER_EVERYTHING };
 
 /**
  * The settings file: `CCA_SETTINGS_PATH` (empty counts as unset) resolved
@@ -57,7 +87,7 @@ export async function readSettings(settingsPath = defaultSettingsPath()): Promis
  * sees a half-written file.
  *
  * @example
- * await writeSettings({ live: true, favorites: [] });
+ * await writeSettings({ live: true, favorites: [], transcriptFilter: TRANSCRIPT_FILTER_EVERYTHING });
  */
 export function writeSettings(settings: Settings, settingsPath = defaultSettingsPath()): Promise<void> {
   return inWriteOrder(() => saveSettings(settings, settingsPath));
