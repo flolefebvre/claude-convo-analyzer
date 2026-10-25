@@ -1,5 +1,5 @@
 // Ingest spine (ADR-0001, ADR-0002). `refresh()` discovers top-level session
-// files + their sub-agent transcripts, parses them, and writes ALL thirteen
+// files + their sub-agent transcripts, parses them, and writes ALL fourteen
 // tables.
 // The read seams (`listConversations()`, `getConversation()`) live in `read.ts`.
 // It writes through a bare better-sqlite3 connection, not Prisma (ADR-0005);
@@ -74,6 +74,7 @@ import {
 import {
   type ContinuationCandidate,
   type ConversationRow,
+  type InternedValueHashes,
   type MessageOccurrence,
   type MessageRow,
   prepareRefreshStatements,
@@ -305,10 +306,11 @@ type ParsedConversation = {
 };
 
 /**
- * The Turns and user Messages the Agents this run deletes held (see
- * `setDeletedAgentMessagesAside`), read before their delete cascades their rows away.
+ * The Turns and user Messages the Agents this run deletes held, and the
+ * interned values their API requests referenced (see
+ * `setDeletedAgentContentAside`), read before their delete cascades their rows away.
  */
-type DeletedAgentMessages = {
+type DeletedAgentContent = {
   /** The keys of the Turns identified across the logs they held: the links pass resolves each again. */
   turnKeys: Set<string>;
   /** The `uuid`s of the user Messages they held: the links pass decides each one's owner again. */
@@ -319,6 +321,13 @@ type DeletedAgentMessages = {
    * stamps them back.
    */
   holderConversationIds: Set<number>;
+  /**
+   * The hashes of the system prompts, tool sets and sent messages their API
+   * requests referenced, since the open transaction began: each one nothing
+   * references any more is deleted before it commits (see `commitTransaction`
+   * in `refresh`), so no commit leaves one behind.
+   */
+  internedValueHashes: Record<keyof InternedValueHashes, Set<string>>;
 };
 
 /** What linking and stamping need of a conversation this run has written. */
@@ -382,9 +391,11 @@ type DiscoveredWithKey = {
  * "How they are stored") — a kept Agent's Turns included, whose links a
  * rewritten Agent's delete just nulled; (3) stamp the
  * current `parserVersion` on that set — the commit mark that lets a later run
- * skip them — and delete every Project left without a Conversation, and every
- * system prompt and tool set no API request references, and every sent
- * message no tail names. Passes 2 and 3 share one final transaction. The
+ * skip them — and delete every Project left without a Conversation. Passes 2
+ * and 3 share one final transaction. Every transaction that deletes Agents
+ * also deletes, before it commits, each system prompt and tool set their API
+ * requests referenced that no API request references any more, and each sent
+ * message their tails named that no tail names any more. The
  * sub-agent transcript is the single source of truth for its tokens (GOTCHA 3) — the
  * parent aggregate is a cross-check only.
  *
@@ -438,24 +449,40 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     // theirs again. Until it has, they are unstamped, so an interrupted run
     // leaves them re-parseable; pass 3 stamps them back.
     const orphanedContinuationIds = new Set<number>();
-    const deletedAgentMessages: DeletedAgentMessages = {
+    const deletedAgentContent: DeletedAgentContent = {
       turnKeys: new Set(),
       messageUuids: new Set(),
       holderConversationIds: new Set(),
+      internedValueHashes: { systemPromptHashes: new Set(), toolSetHashes: new Set(), sentMessageHashes: new Set() },
     };
-    /** Delete a Conversation (its rows go by cascade), setting its continuations, Turns and user Messages aside. */
+    /**
+     * Commit the open transaction, once the interned values the Agents it
+     * deleted referenced, and nothing references any more, are deleted with it.
+     */
+    const commitTransaction = () => {
+      const { systemPromptHashes, toolSetHashes, sentMessageHashes } = deletedAgentContent.internedValueHashes;
+      statements.deleteUnreferencedInternedValues({
+        systemPromptHashes: [...systemPromptHashes],
+        toolSetHashes: [...toolSetHashes],
+        sentMessageHashes: [...sentMessageHashes],
+      });
+      for (const hashes of [systemPromptHashes, toolSetHashes, sentMessageHashes]) hashes.clear();
+      statements.commitTransaction();
+    };
+    /** Delete a Conversation (its rows go by cascade), setting its continuations and its Agents' content aside. */
     const deleteConversation = (conversationId: number) => {
       const continuationIds = statements.selectContinuationIds([conversationId]);
       for (const continuationId of continuationIds) orphanedContinuationIds.add(continuationId);
       statements.updateParserVersion(continuationIds, UNSTAMPED_PARSER_VERSION);
-      setDeletedAgentMessagesAside(
+      setDeletedAgentContentAside(
         statements,
         {
           turnKeys: statements.selectTurnKeysOfConversation(conversationId),
           messageUuids: statements.selectUserMessageUuidsOfConversation(conversationId),
+          internedValueHashes: statements.selectInternedValueHashesOfConversation(conversationId),
         },
         conversationId,
-        deletedAgentMessages,
+        deletedAgentContent,
       );
       statements.deleteConversation(conversationId);
     };
@@ -468,7 +495,7 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
       deleteConversation(row.id);
       conversationsDeleted += 1;
     }
-    statements.commitTransaction();
+    commitTransaction();
 
     // Compare — pick the NEW or CHANGED sessions, without parsing anything, so
     // the run knows its total before its first write.
@@ -523,7 +550,7 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     const writtenConversations: WrittenConversation[] = [];
     let batchOpenedAt: number | null = null;
     const commitBatch = () => {
-      statements.commitTransaction();
+      commitTransaction();
       batchOpenedAt = null;
       // A batch holding only the deletes of vanished sessions moves no count.
       const isDoneUnchanged = conversationsParsed === writtenConversations.length;
@@ -570,7 +597,7 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
 
       const currentBatchOpenedAt = openBatchIfNone();
       writtenConversations.push({
-        conversationId: writeConversation(statements, parsedConversation, deletedAgentMessages),
+        conversationId: writeConversation(statements, parsedConversation, deletedAgentContent),
         firstMessageUuid: parsedConversation.parsed.messages[0]?.uuid ?? null,
         continuedInSessionIds: parsedConversation.parsed.continuedInSessionIds,
       });
@@ -606,8 +633,8 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     statements.updateUnlinkedTurnApiRequests();
     // Lineage is final: decide who owns each Turn and user Message this run may have changed.
     const lineage = lineageLookups(statements);
-    resolveTurns(statements, lineageDecidedConversationIds, deletedAgentMessages.turnKeys, lineage);
-    resolveCopiedUserMessages(statements, lineageDecidedConversationIds, deletedAgentMessages.messageUuids, lineage);
+    resolveTurns(statements, lineageDecidedConversationIds, deletedAgentContent.turnKeys, lineage);
+    resolveCopiedUserMessages(statements, lineageDecidedConversationIds, deletedAgentContent.messageUuids, lineage);
     endPhase("links");
 
     // Pass 3 — only NOW are these conversations complete: stamp them, so the
@@ -616,14 +643,12 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
     stampParserVersion(statements, [
       ...writtenConversations.map((written) => written.conversationId),
       ...orphanedContinuationIds,
-      ...deletedAgentMessages.holderConversationIds,
+      ...deletedAgentContent.holderConversationIds,
     ]);
-    // A re-parse or a vanished file can leave a Project with no Conversation,
-    // a system prompt or tool set no API request references, and a sent
-    // message no tail names: gone, as a cold Refresh would never have stored them.
+    // A re-parse or a vanished file can leave a Project with no Conversation:
+    // gone, as a cold Refresh would never have stored it.
     statements.deleteProjectsWithoutConversations();
-    statements.deleteUnreferencedInternedValues();
-    statements.commitTransaction();
+    commitTransaction();
     endPhase("stamp");
   } finally {
     // Closing rolls back a transaction left open by a throw — that batch only:
@@ -960,7 +985,7 @@ function writeAgentMessages(
  * Write one agent's log file's request records (log-format §9): each distinct
  * system prompt, tool set and sent message under its hash, unless already
  * stored, then one `api_request` row per `api-request` record, in file
- * order; then link each Turn of the file to the request of the file its
+ * order, each with a row per message of its tail; then link each Turn of the file to the request of the file its
  * `requestRef` names. A Turn whose `requestRef` names a request of another
  * file is linked by the links pass (`refresh`).
  */
@@ -980,19 +1005,28 @@ function writeApiRequests(
       messageRowIdByRequestRef.set(message.requestRef, messageRowId);
     }
   }
-  for (const [hash, blocksJson] of parsed.systemPromptJsonByHash) statements.insertSystemPrompt(hash, blocksJson);
-  for (const [hash, toolsJson] of parsed.toolSetJsonByHash) statements.insertToolSet(hash, toolsJson);
+  // Only those a request of the file references: a request's shape is its own
+  // file's, so a shape no request of the file names is referenced by no
+  // request anywhere, and storing its system prompt or tool set would leave a
+  // row nothing references — one no later delete would ever look at.
+  const referencedSystemPromptHashes = new Set(parsed.apiRequests.map((request) => request.systemPromptHash));
+  const referencedToolSetHashes = new Set(parsed.apiRequests.map((request) => request.toolSetHash));
+  for (const [hash, blocksJson] of parsed.systemPromptJsonByHash) {
+    if (referencedSystemPromptHashes.has(hash)) statements.insertSystemPrompt(hash, blocksJson);
+  }
+  for (const [hash, toolsJson] of parsed.toolSetJsonByHash) {
+    if (referencedToolSetHashes.has(hash)) statements.insertToolSet(hash, toolsJson);
+  }
   for (const [hash, sentMessage] of parsed.sentMessageByHash) statements.insertSentMessage(hash, sentMessage);
   const failedAttemptOfMessageRowIds = failedAttemptOwners(parsed.apiRequests, messageRowIdByRequestRef);
   parsed.apiRequests.forEach((request, positionInFile) => {
-    statements.insertApiRequest({
+    const apiRequestId = statements.insertApiRequest({
       conversationId,
       agentId,
       failedAttemptOfMessageId: failedAttemptOfMessageRowIds[positionInFile]!,
       recordId: request.recordId,
       baseRecordId: request.baseRecordId,
       keptMessageCount: request.keptMessageCount,
-      tailMessageHashesJson: JSON.stringify(request.tailMessageHashes),
       parametersJson: JSON.stringify(request.parameters),
       cacheBreakpointsJson: JSON.stringify(request.cacheBreakpoints),
       querySource: request.querySource,
@@ -1002,6 +1036,7 @@ function writeApiRequests(
       systemPromptHash: request.systemPromptHash,
       toolSetHash: request.toolSetHash,
     });
+    statements.insertApiRequestTail(apiRequestId, request.tailMessageHashes);
   });
   statements.updateTurnApiRequestsInFile(agentId);
 }
@@ -1064,7 +1099,7 @@ function failedAttemptOwners(
 function writeConversation(
   statements: RefreshStatements,
   parsedConversation: ParsedConversation,
-  deletedAgentMessages: DeletedAgentMessages,
+  deletedAgentContent: DeletedAgentContent,
 ): number {
   const { session, parsed, storedMainThread, isMainThreadRewritten, subAgents, priorConversationId } =
     parsedConversation;
@@ -1096,7 +1131,7 @@ function writeConversation(
   } else {
     conversationId = priorConversationId;
     statements.updateConversation(conversationId, conversationRow);
-    deleteRewrittenAndRemovedAgents(statements, conversationId, parsedConversation, deletedAgentMessages);
+    deleteRewrittenAndRemovedAgents(statements, conversationId, parsedConversation, deletedAgentContent);
   }
 
   let mainThreadRowId: number;
@@ -1172,25 +1207,26 @@ function writeConversation(
  * Delete, from a stored Conversation, each Agent whose file changed or is gone
  * — its Messages, Tool calls, API requests and Turns by cascade, which also
  * clears the lineage of its kept children and the API request links of Turns
- * in other files and the owner of their copies, its Turns and user Messages
- * set aside first (see `setDeletedAgentMessagesAside`) — and, when the Main
- * thread changed, its pr_links, turn_durations and continued_in rows.
+ * in other files and the owner of their copies, its Turns, user Messages and
+ * interned values set aside first (see `setDeletedAgentContentAside`) — and,
+ * when the Main thread changed, its pr_links, turn_durations and continued_in rows.
  */
 function deleteRewrittenAndRemovedAgents(
   statements: RefreshStatements,
   conversationId: number,
   { storedMainThread, isMainThreadRewritten, subAgents, removedAgentRowIds }: ParsedConversation,
-  deletedAgentMessages: DeletedAgentMessages,
+  deletedAgentContent: DeletedAgentContent,
 ): void {
   const deleteAgent = (agentRowId: number) => {
-    setDeletedAgentMessagesAside(
+    setDeletedAgentContentAside(
       statements,
       {
         turnKeys: statements.selectTurnKeysOfAgent(agentRowId),
         messageUuids: statements.selectUserMessageUuidsOfAgent(agentRowId),
+        internedValueHashes: statements.selectInternedValueHashesOfAgent(agentRowId),
       },
       conversationId,
-      deletedAgentMessages,
+      deletedAgentContent,
     );
     statements.deleteAgent(agentRowId);
   };
@@ -1203,21 +1239,31 @@ function deleteRewrittenAndRemovedAgents(
 
 /**
  * Set aside the Turns `turnKeys` and the user Messages `messageUuids` an Agent
- * of Conversation `conversationId` held, before its delete cascades their rows
- * away: the links pass decides each one's owner again among the occurrences
- * left. Whether its file is gone or written again, its next parse may hold
- * none of them, so the other Conversations holding one are unstamped until
- * that pass has run (see `DeletedAgentMessages`): an interrupted run leaves
- * no Turn owned by nobody, and no copy marked as its own.
+ * of Conversation `conversationId` held, and the interned values
+ * `internedValueHashes` its API requests referenced, before its delete
+ * cascades their rows away: the links pass decides each Turn's and Message's
+ * owner again among the occurrences left. Whether its file is gone or written
+ * again, its next parse may hold none of them, so the other Conversations
+ * holding one are unstamped until that pass has run (see
+ * `DeletedAgentContent`): an interrupted run leaves no Turn owned by nobody,
+ * and no copy marked as its own. Each interned value nothing references once
+ * the transaction's writes are done is deleted before it commits.
  */
-function setDeletedAgentMessagesAside(
+function setDeletedAgentContentAside(
   statements: RefreshStatements,
-  { turnKeys, messageUuids }: { turnKeys: string[]; messageUuids: string[] },
+  {
+    turnKeys,
+    messageUuids,
+    internedValueHashes,
+  }: { turnKeys: string[]; messageUuids: string[]; internedValueHashes: InternedValueHashes },
   conversationId: number,
-  deletedAgentMessages: DeletedAgentMessages,
+  deletedAgentContent: DeletedAgentContent,
 ): void {
-  for (const turnKey of turnKeys) deletedAgentMessages.turnKeys.add(turnKey);
-  for (const messageUuid of messageUuids) deletedAgentMessages.messageUuids.add(messageUuid);
+  for (const turnKey of turnKeys) deletedAgentContent.turnKeys.add(turnKey);
+  for (const messageUuid of messageUuids) deletedAgentContent.messageUuids.add(messageUuid);
+  for (const kind of Object.keys(internedValueHashes) as (keyof InternedValueHashes)[]) {
+    for (const hash of internedValueHashes[kind]) deletedAgentContent.internedValueHashes[kind].add(hash);
+  }
   const holderConversationIds = [
     ...(turnKeys.length === 0 ? [] : statements.selectTurnKeyHolderConversationIds(turnKeys, conversationId)),
     ...(messageUuids.length === 0
@@ -1227,7 +1273,7 @@ function setDeletedAgentMessagesAside(
   if (holderConversationIds.length === 0) return;
   statements.updateParserVersion(holderConversationIds, UNSTAMPED_PARSER_VERSION);
   for (const holderConversationId of holderConversationIds) {
-    deletedAgentMessages.holderConversationIds.add(holderConversationId);
+    deletedAgentContent.holderConversationIds.add(holderConversationId);
   }
 }
 

@@ -4,7 +4,7 @@
 // its whole system prompt and tools, its parameters, and the body the logs
 // rebuild so far — read from the database.
 
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -1024,6 +1024,60 @@ describe("What was sent, request by request", () => {
       expect(preview).toHaveLength(121);
       expect(preview).toMatch(/^\{"command":"y+…$/);
     });
+  });
+});
+
+describe("What was sent by a Conversation the Refresh skips", () => {
+  let scratchDir = "";
+
+  beforeEach(() => {
+    scratchDir = mkdtempSync(path.join(tmpdir(), "cca-what-was-sent-shared-"));
+  });
+
+  afterEach(() => rmSync(scratchDir, { recursive: true, force: true }));
+
+  const DATE_CHANGE: RequestRecordMessage = { role: "system", content: "Today's date is now 2026-10-22." };
+  /** What both Conversations send at first: the same system prompt, tool set and messages. */
+  const SHARED_REQUEST: RecordedRequest = { system: SYSTEM, tools: [BASH_TOOL], messages: [PROMPT, DATE_CHANGE] };
+
+  /**
+   * Write Conversation `sessionId` sending `request`, its Turn, Message and
+   * record ids prefixed with it, so no other Conversation holds a copy of them.
+   */
+  function writeConversationSending(logsRoot: string, sessionId: string, request: RecordedRequest): void {
+    writeRequestRecordsLog(logsRoot, sessionId, [request]);
+    const logPath = path.join(logsRoot, "-Users-me-dev-sent", `${sessionId}.jsonl`);
+    writeFileSync(
+      logPath,
+      readFileSync(logPath, "utf8").replace(/"(turn|msg|req)-/g, (_, idKind: string) => `"${sessionId}-${idKind}-`),
+    );
+  }
+
+  /** The API request raw of the one Turn of Conversation `sessionId`. */
+  async function rawApiRequestOf(sessionId: string, dbPath: string) {
+    const turn = ((await getTranscript(sessionId, { dbPath }))?.messages ?? []).find((m) => m.role === "assistant");
+    return getRawApiRequest(turn!.apiRequestId!, { dbPath });
+  }
+
+  it("keeps the system prompt, tools and messages it shares with a Conversation re-parsed to send others", async () => {
+    const logsRoot = path.join(scratchDir, "projects");
+    const dbPath = path.join(scratchDir, "analyzer.db");
+    writeConversationSending(logsRoot, "sess-kept", SHARED_REQUEST);
+    writeConversationSending(logsRoot, "sess-changing", SHARED_REQUEST);
+    await refresh({ logsRoot, dbPath });
+    const before = await rawApiRequestOf("sess-kept", dbPath);
+
+    writeConversationSending(logsRoot, "sess-changing", {
+      system: "Answer briefly.",
+      tools: [],
+      messages: [{ role: "user", content: "something else" }],
+    });
+    const summary = await refresh({ logsRoot, dbPath });
+
+    expect(summary.conversationsSkipped).toBe(1);
+    expect(before?.missingMessageCount).toBe(0);
+    expect(before?.requestBody).toMatchObject({ system: SYSTEM, tools: [BASH_TOOL], messages: [PROMPT, DATE_CHANGE] });
+    expect(await rawApiRequestOf("sess-kept", dbPath)).toEqual(before);
   });
 });
 

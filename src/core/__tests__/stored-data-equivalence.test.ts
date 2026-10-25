@@ -1,6 +1,6 @@
 // Stored data is pinned: a Refresh of each fixture root into a fresh database
 // writes exactly these rows — same count, same ids, same column values and
-// storage types — in all thirteen tables. The write path is free to change; what
+// storage types — in all fourteen tables. The write path is free to change; what
 // it stores is not.
 //
 // A MISMATCH means the write path now stores something different: a column
@@ -8,11 +8,13 @@
 // autoincrement ids), a schema change the writer did not follow. Fix the
 // writer, not the goldens. Regenerate the goldens ONLY alongside a deliberate
 // parser change that alters stored content — that is, together with a
-// `PARSER_VERSION` bump in refresh.ts: replace each literal below with the
-// value the failing assertion reports.
+// `PARSER_VERSION` bump in refresh.ts — or a schema change whose migration
+// carries every stored value over: replace each literal below with the value
+// the failing assertion reports.
 
 import { createHash } from "node:crypto";
 import {
+  appendFileSync,
   cpSync,
   mkdirSync,
   mkdtempSync,
@@ -26,14 +28,39 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type RecordedAttachment, writeRequestRecordsLog } from "@/core/__tests__/helpers/request-records-log";
 import { writeSessionLog } from "@/core/__tests__/helpers/session-log";
 import { refresh } from "@/core/refresh";
 
+/**
+ * When armed, the next Refresh throws once, at the statement linking Turns to
+ * the API requests of other files: the links pass, which opens the final
+ * transaction once every write batch has committed.
+ */
+const interruption = vi.hoisted(() => ({ isArmed: false }));
+
+vi.mock("@/core/db", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/core/db")>();
+  const { hookStatements } = await import("./helpers/refresh-connection");
+  return {
+    ...actual,
+    openRefreshConnection: (dbPath?: string) =>
+      hookStatements(
+        actual.openRefreshConnection(dbPath),
+        (sql) => sql.includes('WHERE "api_request_id" IS NULL AND "request_ref" IS NOT NULL'),
+        () => {
+          if (!interruption.isArmed) return;
+          interruption.isArmed = false;
+          throw new Error("simulated interruption");
+        },
+      ),
+  };
+});
+
 const FIXTURES_DIR = path.join(import.meta.dirname, "fixtures");
 
-/** The thirteen tables of ADR-0001 and ADR-0011, each pinned by its row count and checksum. */
+/** The fourteen tables of ADR-0001 and ADR-0011, each pinned by its row count and checksum. */
 const STORED_TABLES = [
   "project",
   "conversation",
@@ -43,6 +70,7 @@ const STORED_TABLES = [
   "pr_link",
   "turn_duration",
   "api_request",
+  "api_request_tail_message",
   "system_prompt",
   "tool_set",
   "sent_message",
@@ -64,6 +92,7 @@ const EMPTY_TABLE_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495
 /** The request-record tables of logs written before Claude Code 2.1.300: all empty. */
 const NO_LOGGED_API_REQUESTS = {
   api_request: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
+  api_request_tail_message: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
   system_prompt: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
   tool_set: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
   sent_message: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
@@ -92,20 +121,23 @@ function copyWithPinnedMtimes(fixtureRoot: string, logsRoot: string): void {
 const PATH_UNDER_LOGS_ROOT = new RegExp(`${LOGS_ROOT_PLACEHOLDER}[^'\\t]*`, "g");
 
 /**
- * Fingerprint one table: rows ordered by their primary key (`id`, or a
- * interned row's `hash`), every column through SQLite's `quote()` — which keeps
+ * Fingerprint one table: rows ordered by their primary key (`id`, an
+ * interned row's `hash`, or a tail message's request and place), every column
+ * through SQLite's `quote()` — which keeps
  * integer, real, text and NULL distinct — one line per row, hashed with
  * sha256. The temp logs root is replaced by a placeholder, and the paths below
  * it are written with `/`, whatever the separator of the OS the suite runs on.
  */
 function fingerprintTable(db: Database.Database, table: StoredTable, logsRoot: string): TableFingerprint {
-  const columns = (db.prepare(`PRAGMA table_info("${table}")`).all() as { name: string; pk: number }[]).map((c) => ({
-    name: c.name,
-    isPrimaryKey: c.pk > 0,
-  }));
+  const columns = db.prepare(`PRAGMA table_info("${table}")`).all() as { name: string; pk: number }[];
   const quotedColumns = columns.map((column) => `quote("${column.name}")`).join(", ");
-  const primaryKey = columns.find((column) => column.isPrimaryKey)!.name;
-  const rows = db.prepare(`SELECT ${quotedColumns} FROM "${table}" ORDER BY "${primaryKey}"`).raw().all() as string[][];
+  // `pk` is a column's 1-based place in the primary key, 0 outside it.
+  const primaryKey = columns
+    .filter((column) => column.pk > 0)
+    .sort((a, b) => a.pk - b.pk)
+    .map((column) => `"${column.name}"`)
+    .join(", ");
+  const rows = db.prepare(`SELECT ${quotedColumns} FROM "${table}" ORDER BY ${primaryKey}`).raw().all() as string[][];
   const hash = createHash("sha256");
   for (const row of rows) {
     const line = row
@@ -117,7 +149,7 @@ function fingerprintTable(db: Database.Database, table: StoredTable, logsRoot: s
   return { rowCount: rows.length, sha256: hash.digest("hex") };
 }
 
-/** Fingerprint all thirteen tables of the database at `dbPath`. */
+/** Fingerprint all fourteen tables of the database at `dbPath`. */
 function fingerprintStoredData(dbPath: string, logsRoot: string): Record<StoredTable, TableFingerprint> {
   const db = new Database(dbPath, { readonly: true });
   try {
@@ -229,7 +261,11 @@ describe("stored data equivalence", () => {
       tool_call: { rowCount: 3, sha256: "e5f615b5d6290bc0dab75ea171da282d5e176e04be16438fc4d834c227f91b9d" },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
-      api_request: { rowCount: 8, sha256: "f2b2765cde9997e6021bd73f168b81bb41f9a044b5b187d967506cc37c8c722c" },
+      api_request: { rowCount: 8, sha256: "4210ed9d90219a2c2fa483c9f3ef6d75f0649ec173a5cd1f73a87f98ab291efd" },
+      api_request_tail_message: {
+        rowCount: 16,
+        sha256: "2ba1b6c7e640da221f3e1d801996685d9d3204b524058a792fb9694f186c9140",
+      },
       // Four system prompts and three tool sets: the Sub-agent shares the Main thread's first one.
       system_prompt: { rowCount: 4, sha256: "179129a51d494cdd6ea7fb72cf50d62900d9163160ed521f850dc233dae050bf" },
       tool_set: { rowCount: 3, sha256: "6b550b32e7738d046dd3c9f444e69eeba02357a973be985eac064674d0326323" },
@@ -254,7 +290,11 @@ describe("stored data equivalence", () => {
       tool_call: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       pr_link: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
       turn_duration: { rowCount: 0, sha256: EMPTY_TABLE_SHA256 },
-      api_request: { rowCount: 7, sha256: "602aaa25ea9dd2816613a1f081b7df94f30494eedecc1af51b465a62f657cfa1" },
+      api_request: { rowCount: 7, sha256: "8ae1ea9d3b1697894b4dc2420d0c88106affb60943a9bc75a92ef086257d39da" },
+      api_request_tail_message: {
+        rowCount: 12,
+        sha256: "742d8f2bc9c2f365ca2e76fc90e19e473b1cfb7faf9d049a07b5b68656a8ab6a",
+      },
       system_prompt: { rowCount: 1, sha256: "0f7e364790e4ce8c6d0837f9bcc1c05c5b20e0d58615364250247c0885a47532" },
       tool_set: { rowCount: 1, sha256: "bd38eccd26f4c9604aad98fcff1f9643ab0523b07da230a857569e163247ac0e" },
       sent_message: { rowCount: 5, sha256: "e7b8ba8a7395036a9c885011145c435f535f212957dcb9f5b24aa330ebc79025" },
@@ -930,11 +970,25 @@ describe("a re-parse", () => {
   });
 
   /**
-   * Refresh the logged request logs, rewrite the main log's lines with
-   * `rewrite`, then Refresh again — and cold, into a second database: the
-   * request-record tables of each, and of the first Refresh.
+   * `lines` with the request that sent the date-change reminder no longer
+   * naming it in its tail: its blob is then sent by nothing.
    */
-  async function reparsedAndCold(rewrite: (lines: string[]) => string[]) {
+  function withoutTheDateChangeInAnyTail(lines: string[]): string[] {
+    const blobLine = lines.find((line) => line.includes('"type":"api-request-blob"') && line.includes("date changed"));
+    const { hash } = JSON.parse(blobLine!) as { hash: string };
+    return lines.map((line) => line.replace(`"${hash}",`, ""));
+  }
+
+  /**
+   * Refresh the logged request logs, rewrite the main log's lines with
+   * `rewrite`, then Refresh again — with `isFirstReparseInterrupted`, twice,
+   * the first one interrupted once its writes have committed — and cold, into
+   * a second database: the request-record tables of each, and of the first Refresh.
+   */
+  async function reparsedAndCold(
+    rewrite: (lines: string[]) => string[],
+    { isFirstReparseInterrupted = false }: { isFirstReparseInterrupted?: boolean } = {},
+  ) {
     const logsRoot = path.join(tmpDir, "logs");
     const reparsedDbPath = path.join(tmpDir, "reparsed.db");
     const coldDbPath = path.join(tmpDir, "cold.db");
@@ -943,6 +997,10 @@ describe("a re-parse", () => {
     const beforeContent = apiRequestContent(reparsedDbPath, logsRoot);
     const mainLogPath = path.join(logsRoot, "-Users-me-dev-logged", "sess-logged.jsonl");
     writeFileSync(mainLogPath, rewrite(readFileSync(mainLogPath, "utf8").split("\n")).join("\n"));
+    if (isFirstReparseInterrupted) {
+      interruption.isArmed = true;
+      await expect(refresh({ logsRoot, dbPath: reparsedDbPath })).rejects.toThrow("simulated interruption");
+    }
     await refresh({ logsRoot, dbPath: reparsedDbPath });
     await refresh({ logsRoot, dbPath: coldDbPath });
     return {
@@ -965,13 +1023,15 @@ describe("a re-parse", () => {
   });
 
   it("stores what a cold Refresh does, even when the change leaves a sent message named by no tail", async () => {
-    // The request that sent the date-change reminder no longer names it: its blob is sent by nothing.
-    const { beforeContent, reparsedContent, coldContent } = await reparsedAndCold((lines) => {
-      const blobLine = lines.find(
-        (line) => line.includes('"type":"api-request-blob"') && line.includes("date changed"),
-      );
-      const { hash } = JSON.parse(blobLine!) as { hash: string };
-      return lines.map((line) => line.replace(`"${hash}",`, ""));
+    const { beforeContent, reparsedContent, coldContent } = await reparsedAndCold(withoutTheDateChangeInAnyTail);
+
+    expect(reparsedContent).toEqual(coldContent);
+    expect(coldContent.sent_message.rowCount).toBe(beforeContent.sent_message.rowCount - 1);
+  });
+
+  it("stores what a cold Refresh does after a run interrupted once the re-parse was committed, even when it left a sent message named by no tail", async () => {
+    const { beforeContent, reparsedContent, coldContent } = await reparsedAndCold(withoutTheDateChangeInAnyTail, {
+      isFirstReparseInterrupted: true,
     });
 
     expect(reparsedContent).toEqual(coldContent);
@@ -1084,6 +1144,24 @@ describe("a tool set two logs spell in two key orders", () => {
       { hash: expect.any(String), tools_json: smallestSpelling },
     ]);
     expect(storedToolSets(nameFirstThenSchemaFirst)).toEqual(storedToolSets(schemaFirstThenNameFirst));
+  });
+
+  it("is not stored from a shape no API request of its log sends", async () => {
+    const logsRoot = path.join(tmpDir, "logs");
+    const dbPath = path.join(tmpDir, "analyzer.db");
+    writeSessionSending(logsRoot, "sess-a", [BASH_NAME_FIRST]);
+    const unsentShape = {
+      type: "api-request-shape",
+      sessionId: "sess-a",
+      shapeHash: "shape-unsent",
+      shape: { system: [], tools: [{ name: "Read", description: "Read a file.", input_schema: { type: "object" } }] },
+    };
+    appendFileSync(path.join(logsRoot, "-Users-me-dev-spelling", "sess-a.jsonl"), `${JSON.stringify(unsentShape)}\n`);
+    await refresh({ logsRoot, dbPath });
+
+    expect(storedToolSets(dbPath)).toEqual([
+      { hash: expect.any(String), tools_json: JSON.stringify([BASH_NAME_FIRST]) },
+    ]);
   });
 });
 
@@ -1285,15 +1363,19 @@ function continuationContent(dbPath: string) {
 /**
  * The request-record tables of the database at `dbPath`, whatever row ids the
  * Refreshes gave: the interned rows whole, the requests without their row id and
- * foreign keys, but whether a Turn answered them, and the `uuid` of the Turn's
- * Message owning one as a Failed attempt.
+ * foreign keys, but with their tail, whether a Turn answered them, and the
+ * `uuid` of the Turn's Message owning one as a Failed attempt.
  */
 function apiRequestContent(dbPath: string, logsRoot: string) {
   const db = new Database(dbPath, { readonly: true });
   try {
     const requests = db
       .prepare(
-        `SELECT "record_id", "base_record_id", "kept_message_count", "tail_message_hashes_json", "parameters_json",
+        `SELECT "record_id", "base_record_id", "kept_message_count",
+                (SELECT json_group_array("message_hash") FROM
+                   (SELECT "message_hash" FROM "api_request_tail_message"
+                     WHERE "api_request_id" = "api_request"."id" ORDER BY "position")) AS "tailMessageHashes",
+                "parameters_json",
                 "cache_breakpoints_json", "query_source", "request_digest", "sent_at", "position_in_file",
                 "system_prompt_hash", "tool_set_hash",
                 NOT EXISTS (SELECT 1 FROM "message" WHERE "api_request_id" = "api_request"."id") AS "isUnanswered",

@@ -178,6 +178,54 @@ describe("migration idempotency", () => {
     }
   });
 
+  it("moves each API request's tail into a row per message hash, in order, keeping the request's indexes and foreign keys", async () => {
+    const target = committedMigrations().find((m) => m.endsWith("_api_request_tail_message"));
+    expect(target).toBeDefined();
+    createPrismaClient(dbPath);
+
+    // A database from before it: each tail a JSON array on its request.
+    let db = new Database(dbPath);
+    db.prepare("DELETE FROM _cca_migrations WHERE migration_name = ?").run(target);
+    db.exec(`DROP TABLE "api_request_tail_message"`);
+    db.exec(`ALTER TABLE "api_request" ADD COLUMN "tail_message_hashes_json" TEXT NOT NULL DEFAULT '[]'`);
+    db.pragma("foreign_keys = OFF");
+    const insertRequest = db.prepare(
+      `INSERT INTO "api_request" ("conversation_id", "agent_id", "record_id", "kept_message_count",
+         "tail_message_hashes_json", "parameters_json", "cache_breakpoints_json", "position_in_file")
+       VALUES (1, 1, ?, 0, ?, '{}', '[]', 0)`,
+    );
+    insertRequest.run("req-1", JSON.stringify(["hash-c", "hash-a", "hash-b"]));
+    insertRequest.run("req-2", "[]");
+    const indexesBefore = db.prepare(`PRAGMA index_list("api_request")`).all();
+    const foreignKeysBefore = db.prepare(`PRAGMA foreign_key_list("api_request")`).all();
+    db.close();
+
+    const prisma = createPrismaClient(dbPath);
+    await prisma.$disconnect();
+
+    db = new Database(dbPath);
+    try {
+      const tailMessages = db
+        .prepare(
+          `SELECT "record_id", "position", "message_hash" FROM "api_request_tail_message"
+             JOIN "api_request" ON "api_request"."id" = "api_request_id" ORDER BY "record_id", "position"`,
+        )
+        .all();
+      expect(tailMessages).toEqual([
+        { record_id: "req-1", position: 0, message_hash: "hash-c" },
+        { record_id: "req-1", position: 1, message_hash: "hash-a" },
+        { record_id: "req-1", position: 2, message_hash: "hash-b" },
+      ]);
+      const columns = (db.prepare(`PRAGMA table_info("api_request")`).all() as { name: string }[]).map((c) => c.name);
+      expect(columns).not.toContain("tail_message_hashes_json");
+      expect(indexesBefore).toHaveLength(6);
+      expect(db.prepare(`PRAGMA index_list("api_request")`).all()).toEqual(indexesBefore);
+      expect(db.prepare(`PRAGMA foreign_key_list("api_request")`).all()).toEqual(foreignKeysBefore);
+    } finally {
+      db.close();
+    }
+  });
+
   it("drops the API requests Recordings fed, and keeps the logs' under the plain name, from a database that still holds both", async () => {
     const targets = committedMigrations().filter(
       (m) => m.endsWith("_drop_recorded_api_request") || m.endsWith("_api_request_from_logged_api_request"),
@@ -192,6 +240,8 @@ describe("migration idempotency", () => {
     db.exec(`ALTER TABLE "api_request" RENAME TO "logged_api_request"`);
     // Its Turn link of then, which a later migration moved onto `message`.
     db.exec(`ALTER TABLE "logged_api_request" ADD COLUMN "message_id" INTEGER`);
+    // Its tail of then, which a later migration moved into rows of its own.
+    db.exec(`ALTER TABLE "logged_api_request" ADD COLUMN "tail_message_hashes_json" TEXT NOT NULL DEFAULT '[]'`);
     db.pragma("foreign_keys = OFF");
     db.exec(
       `INSERT INTO "logged_api_request" ("conversation_id", "agent_id", "record_id", "kept_message_count",
