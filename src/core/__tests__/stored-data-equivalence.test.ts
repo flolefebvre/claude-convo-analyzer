@@ -14,6 +14,7 @@
 
 import { createHash } from "node:crypto";
 import {
+  appendFileSync,
   cpSync,
   mkdirSync,
   mkdtempSync,
@@ -27,10 +28,35 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type RecordedAttachment, writeRequestRecordsLog } from "@/core/__tests__/helpers/request-records-log";
 import { writeSessionLog } from "@/core/__tests__/helpers/session-log";
 import { refresh } from "@/core/refresh";
+
+/**
+ * When armed, the next Refresh throws once, at the statement linking Turns to
+ * the API requests of other files: the links pass, which opens the final
+ * transaction once every write batch has committed.
+ */
+const interruption = vi.hoisted(() => ({ isArmed: false }));
+
+vi.mock("@/core/db", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/core/db")>();
+  const { hookStatements } = await import("./helpers/refresh-connection");
+  return {
+    ...actual,
+    openRefreshConnection: (dbPath?: string) =>
+      hookStatements(
+        actual.openRefreshConnection(dbPath),
+        (sql) => sql.includes('WHERE "api_request_id" IS NULL AND "request_ref" IS NOT NULL'),
+        () => {
+          if (!interruption.isArmed) return;
+          interruption.isArmed = false;
+          throw new Error("simulated interruption");
+        },
+      ),
+  };
+});
 
 const FIXTURES_DIR = path.join(import.meta.dirname, "fixtures");
 
@@ -944,11 +970,25 @@ describe("a re-parse", () => {
   });
 
   /**
-   * Refresh the logged request logs, rewrite the main log's lines with
-   * `rewrite`, then Refresh again — and cold, into a second database: the
-   * request-record tables of each, and of the first Refresh.
+   * `lines` with the request that sent the date-change reminder no longer
+   * naming it in its tail: its blob is then sent by nothing.
    */
-  async function reparsedAndCold(rewrite: (lines: string[]) => string[]) {
+  function withoutTheDateChangeInAnyTail(lines: string[]): string[] {
+    const blobLine = lines.find((line) => line.includes('"type":"api-request-blob"') && line.includes("date changed"));
+    const { hash } = JSON.parse(blobLine!) as { hash: string };
+    return lines.map((line) => line.replace(`"${hash}",`, ""));
+  }
+
+  /**
+   * Refresh the logged request logs, rewrite the main log's lines with
+   * `rewrite`, then Refresh again — with `isFirstReparseInterrupted`, twice,
+   * the first one interrupted once its writes have committed — and cold, into
+   * a second database: the request-record tables of each, and of the first Refresh.
+   */
+  async function reparsedAndCold(
+    rewrite: (lines: string[]) => string[],
+    { isFirstReparseInterrupted = false }: { isFirstReparseInterrupted?: boolean } = {},
+  ) {
     const logsRoot = path.join(tmpDir, "logs");
     const reparsedDbPath = path.join(tmpDir, "reparsed.db");
     const coldDbPath = path.join(tmpDir, "cold.db");
@@ -957,6 +997,10 @@ describe("a re-parse", () => {
     const beforeContent = apiRequestContent(reparsedDbPath, logsRoot);
     const mainLogPath = path.join(logsRoot, "-Users-me-dev-logged", "sess-logged.jsonl");
     writeFileSync(mainLogPath, rewrite(readFileSync(mainLogPath, "utf8").split("\n")).join("\n"));
+    if (isFirstReparseInterrupted) {
+      interruption.isArmed = true;
+      await expect(refresh({ logsRoot, dbPath: reparsedDbPath })).rejects.toThrow("simulated interruption");
+    }
     await refresh({ logsRoot, dbPath: reparsedDbPath });
     await refresh({ logsRoot, dbPath: coldDbPath });
     return {
@@ -979,13 +1023,15 @@ describe("a re-parse", () => {
   });
 
   it("stores what a cold Refresh does, even when the change leaves a sent message named by no tail", async () => {
-    // The request that sent the date-change reminder no longer names it: its blob is sent by nothing.
-    const { beforeContent, reparsedContent, coldContent } = await reparsedAndCold((lines) => {
-      const blobLine = lines.find(
-        (line) => line.includes('"type":"api-request-blob"') && line.includes("date changed"),
-      );
-      const { hash } = JSON.parse(blobLine!) as { hash: string };
-      return lines.map((line) => line.replace(`"${hash}",`, ""));
+    const { beforeContent, reparsedContent, coldContent } = await reparsedAndCold(withoutTheDateChangeInAnyTail);
+
+    expect(reparsedContent).toEqual(coldContent);
+    expect(coldContent.sent_message.rowCount).toBe(beforeContent.sent_message.rowCount - 1);
+  });
+
+  it("stores what a cold Refresh does after a run interrupted once the re-parse was committed, even when it left a sent message named by no tail", async () => {
+    const { beforeContent, reparsedContent, coldContent } = await reparsedAndCold(withoutTheDateChangeInAnyTail, {
+      isFirstReparseInterrupted: true,
     });
 
     expect(reparsedContent).toEqual(coldContent);
@@ -1098,6 +1144,24 @@ describe("a tool set two logs spell in two key orders", () => {
       { hash: expect.any(String), tools_json: smallestSpelling },
     ]);
     expect(storedToolSets(nameFirstThenSchemaFirst)).toEqual(storedToolSets(schemaFirstThenNameFirst));
+  });
+
+  it("is not stored from a shape no API request of its log sends", async () => {
+    const logsRoot = path.join(tmpDir, "logs");
+    const dbPath = path.join(tmpDir, "analyzer.db");
+    writeSessionSending(logsRoot, "sess-a", [BASH_NAME_FIRST]);
+    const unsentShape = {
+      type: "api-request-shape",
+      sessionId: "sess-a",
+      shapeHash: "shape-unsent",
+      shape: { system: [], tools: [{ name: "Read", description: "Read a file.", input_schema: { type: "object" } }] },
+    };
+    appendFileSync(path.join(logsRoot, "-Users-me-dev-spelling", "sess-a.jsonl"), `${JSON.stringify(unsentShape)}\n`);
+    await refresh({ logsRoot, dbPath });
+
+    expect(storedToolSets(dbPath)).toEqual([
+      { hash: expect.any(String), tools_json: JSON.stringify([BASH_NAME_FIRST]) },
+    ]);
   });
 });
 

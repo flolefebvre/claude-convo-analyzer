@@ -269,6 +269,48 @@ export type StoredAgent = {
   sourceSize: number | null;
 };
 
+/** The hashes of interned values: system prompts, tool sets and sent messages. */
+export type InternedValueHashes = {
+  systemPromptHashes: string[];
+  toolSetHashes: string[];
+  sentMessageHashes: string[];
+};
+
+/**
+ * Prepare the select of the hashes of the interned values the API requests of
+ * one Agent, or one Conversation, reference — the latter's tails included —
+ * by the `api_request` column naming their owner.
+ */
+function prepareSelectInternedValueHashes(
+  db: Database.Database,
+  ownerColumn: "agent_id" | "conversation_id",
+): (ownerId: number) => InternedValueHashes {
+  const selectSystemPromptHashes = db
+    .prepare(
+      `SELECT DISTINCT "system_prompt_hash" FROM "api_request"
+        WHERE "${ownerColumn}" = ? AND "system_prompt_hash" IS NOT NULL`,
+    )
+    .pluck();
+  const selectToolSetHashes = db
+    .prepare(
+      `SELECT DISTINCT "tool_set_hash" FROM "api_request" WHERE "${ownerColumn}" = ? AND "tool_set_hash" IS NOT NULL`,
+    )
+    .pluck();
+  const selectSentMessageHashes = db
+    .prepare(
+      `SELECT DISTINCT "api_request_tail_message"."message_hash"
+         FROM "api_request"
+         JOIN "api_request_tail_message" ON "api_request_tail_message"."api_request_id" = "api_request"."id"
+        WHERE "api_request"."${ownerColumn}" = ?`,
+    )
+    .pluck();
+  return (ownerId) => ({
+    systemPromptHashes: selectSystemPromptHashes.all(ownerId) as string[],
+    toolSetHashes: selectToolSetHashes.all(ownerId) as string[],
+    sentMessageHashes: selectSentMessageHashes.all(ownerId) as string[],
+  });
+}
+
 /** A JSON value read as the parser reads a ledger field: a non-empty string, else null. */
 function nonEmptyStringOrNull(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
@@ -547,16 +589,18 @@ export function prepareRefreshStatements(db: Database.Database) {
                    OR (length("excluded"."injected_context_pieces_json") = length("sent_message"."injected_context_pieces_json")
                        AND "excluded"."injected_context_pieces_json" < "sent_message"."injected_context_pieces_json")))`,
   );
+  // Of the given hashes, each one nothing references any more: an indexed
+  // probe per hash, whatever the size of the database.
   const deleteUnreferencedSystemPrompts = db.prepare(
-    `DELETE FROM "system_prompt" WHERE NOT EXISTS
+    `DELETE FROM "system_prompt" WHERE "hash" IN (SELECT "value" FROM json_each(?)) AND NOT EXISTS
        (SELECT 1 FROM "api_request" WHERE "system_prompt_hash" = "system_prompt"."hash")`,
   );
   const deleteUnreferencedToolSets = db.prepare(
-    `DELETE FROM "tool_set" WHERE NOT EXISTS
+    `DELETE FROM "tool_set" WHERE "hash" IN (SELECT "value" FROM json_each(?)) AND NOT EXISTS
        (SELECT 1 FROM "api_request" WHERE "tool_set_hash" = "tool_set"."hash")`,
   );
   const deleteUnnamedSentMessages = db.prepare(
-    `DELETE FROM "sent_message" WHERE NOT EXISTS
+    `DELETE FROM "sent_message" WHERE "hash" IN (SELECT "value" FROM json_each(?)) AND NOT EXISTS
        (SELECT 1 FROM "api_request_tail_message" WHERE "message_hash" = "sent_message"."hash")`,
   );
   const insertApiRequestTailMessage = db.prepare(
@@ -767,11 +811,18 @@ export function prepareRefreshStatements(db: Database.Database) {
      */
     insertSentMessage: (hash: string, sentMessage: { messageJson: string; injectedContextPiecesJson: string | null }) =>
       void insertSentMessage.run(hash, sentMessage.messageJson, sentMessage.injectedContextPiecesJson),
-    /** Delete every system prompt and tool set no API request references any more, and every sent message no tail names. */
-    deleteUnreferencedInternedValues: () => {
-      deleteUnreferencedSystemPrompts.run();
-      deleteUnreferencedToolSets.run();
-      deleteUnnamedSentMessages.run();
+    /** The hashes of the interned values the API requests of Agent `agentId` reference. */
+    selectInternedValueHashesOfAgent: prepareSelectInternedValueHashes(db, "agent_id"),
+    /** The hashes of the interned values the API requests of Conversation `conversationId` reference. */
+    selectInternedValueHashesOfConversation: prepareSelectInternedValueHashes(db, "conversation_id"),
+    /**
+     * Of `candidateHashes`, delete each system prompt and tool set no API
+     * request references any more, and each sent message no tail names.
+     */
+    deleteUnreferencedInternedValues: (candidateHashes: InternedValueHashes) => {
+      deleteUnreferencedSystemPrompts.run(JSON.stringify(candidateHashes.systemPromptHashes));
+      deleteUnreferencedToolSets.run(JSON.stringify(candidateHashes.toolSetHashes));
+      deleteUnnamedSentMessages.run(JSON.stringify(candidateHashes.sentMessageHashes));
     },
   };
 }
