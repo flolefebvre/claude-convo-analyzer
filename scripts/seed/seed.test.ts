@@ -25,6 +25,7 @@ import {
   FAMILY_WORKTREE_PROJECT_PATH,
   FORKED_AGENTS_TITLE,
   LONG_PAGE_TWO_TEXT,
+  LOGGED_REQUESTS_CONTINUATION_TITLE,
   LOGGED_REQUESTS_SUB_AGENT_THINKING_TEXT,
   LOGGED_REQUESTS_THINKING_TEXT,
   LOGGED_REQUESTS_TITLE,
@@ -60,18 +61,18 @@ describe("seedEnvironment", () => {
     expect(seed.summary.duplicateSessionsSkipped).toEqual([]);
 
     const conversations = await listConversations({ dbPath: seed.dbPath });
-    expect(conversations).toHaveLength(73);
+    expect(conversations).toHaveLength(74);
     // Each Sub-agent counted under every Conversation holding it, a continuation's links included.
     expect(conversations.reduce((sum, c) => sum + c.subAgentCount, 0)).toBe(
       seed.generated.subAgents + seed.generated.linkedSubAgents,
     );
 
     const continued = conversations.filter((c) => c.continuedFromId !== null);
-    expect(continued).toHaveLength(5);
+    expect(continued).toHaveLength(6);
     const familyRoots = conversations.filter(
       (c) => c.continuedFromId === null && continued.some((d) => d.continuedFromId === c.id),
     );
-    expect(familyRoots).toHaveLength(2);
+    expect(familyRoots).toHaveLength(3);
   });
 
   it("keeps its own settings file inside the seed, reset to Live off and the seeded favorites after each re-seed", async () => {
@@ -173,6 +174,24 @@ describe("seedEnvironment", () => {
       const turnSent = await getWhatWasSent(turn.apiRequestId!, { dbPath: seed.dbPath });
       expect(turnSent?.missingMessageCount).toBe(0);
     }
+  });
+
+  it("seeds a continuation of it whose copied Turns name the API requests their owner's log holds", async () => {
+    const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
+
+    const conversations = await listConversations({ dbPath: seed.dbPath });
+    const [logged, continuation] = [LOGGED_REQUESTS_TITLE, LOGGED_REQUESTS_CONTINUATION_TITLE].map((title) =>
+      conversations.find((c) => c.title === title),
+    );
+    expect(continuation?.continuedFromId).toBe(logged?.id);
+    // On the list's first page, where the e2e spec opens it.
+    expect(sortConversations(conversations, DEFAULT_SORT).slice(0, PAGE_SIZE)).toContain(continuation);
+    const view = await getTranscript(continuation!.id, { dbPath: seed.dbPath });
+    const copiedTurns = view!.messages.filter((m) => m.role === "assistant" && m.isCopied);
+    expect(copiedTurns).toHaveLength(4);
+    expect(copiedTurns.every((turn) => turn.apiRequestId !== null && turn.copiedFrom?.sessionId === logged?.id)).toBe(
+      true,
+    );
   });
 
   it("seeds Turns that thought, with a summary and without, on the Main thread and in a Sub-agent", async () => {
@@ -325,7 +344,7 @@ describe("seedEnvironment", () => {
     const continuation = await getTranscript(idOf(CHAIN_END_TITLE), { dbPath: seed.dbPath });
     const parentAgentIds = parent?.tree.children.map((child) => child.id) ?? [];
 
-    expect(seed.generated.linkedSubAgents).toBe(4);
+    expect(seed.generated.linkedSubAgents).toBe(5);
     expect(parentAgentIds.length).toBeGreaterThan(0);
     const continuationAgentIds = continuation?.tree.children.map((child) => child.id) ?? [];
     expect(continuationAgentIds).toEqual(expect.arrayContaining(parentAgentIds));
@@ -428,7 +447,7 @@ describe("seedEnvironment", () => {
     const after = await seedEnvironment({ dir, now: NOW });
 
     expect(existsSync(leftover)).toBe(false);
-    expect(await listConversations({ dbPath: after.dbPath })).toHaveLength(73);
+    expect(await listConversations({ dbPath: after.dbPath })).toHaveLength(74);
   });
 });
 
