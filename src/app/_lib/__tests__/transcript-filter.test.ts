@@ -11,6 +11,7 @@ import {
 } from "@/app/_lib/transcript-filter";
 import { groupTurnsIntoReplies } from "@/app/_lib/transcript-replies";
 import type { TranscriptMessage } from "@/core/read";
+import { TRANSCRIPT_FILTER_EVERYTHING as SETTINGS_DEFAULT_TRANSCRIPT_FILTER } from "@/core/settings";
 
 import { message, prompt, toolCalls, turn } from "./helpers/transcript-messages";
 
@@ -203,6 +204,12 @@ describe("applyTranscriptFilter", () => {
     expect(filtered([prompt(), notification], filter, { anchoredMessage: notification.uuid! })[1]).toMatchObject({
       fold: { isRevealed: true },
     });
+  });
+});
+
+describe("TRANSCRIPT_FILTER_EVERYTHING", () => {
+  it("is the settings file's default, so a fresh install reads as Everything", () => {
+    expect(TRANSCRIPT_FILTER_EVERYTHING).toEqual(SETTINGS_DEFAULT_TRANSCRIPT_FILTER);
   });
 });
 

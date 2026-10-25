@@ -1638,7 +1638,7 @@ function atLoggedRequestsVersion(line: string, requestRef?: string): string {
  * Sub-agent's own skill list. It ends hours before the agent-messages one, so
  * the anchor does not move.
  *
- * Drawn last, so every earlier Conversation keeps its draws.
+ * Drawn after every randomly placed Conversation, so each of them keeps its draws.
  */
 function loggedRequestsConversation(g: Gen, index: number): Conversation {
   const cwd = PROJECTS[4].path;
