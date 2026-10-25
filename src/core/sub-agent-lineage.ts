@@ -40,6 +40,8 @@ export type SubAgentLineage = {
   parentAgentId: number;
   /** The spawner's Message holding the spawning call; null without one. */
   spawnedByMessageId: number | null;
+  /** The spawning call's `tool_use_id`; null exactly when `spawnedByMessageId` is. */
+  spawnedByToolUseId: string | null;
   agentType: string | null;
   resolvedModel: string | null;
 };
@@ -131,6 +133,7 @@ export function resolveSubAgentLineage(agents: LineageAgent[], agentCalls: Store
       agentRowId: subAgent.agentRowId,
       parentAgentId,
       spawnedByMessageId: spawningCall?.messageRowId ?? null,
+      spawnedByToolUseId: spawningCall?.toolUseId ?? null,
       agentType: subAgent.agentType ?? ledger?.agentType ?? null,
       resolvedModel: ledger?.resolvedModel ?? subAgent.dominantModel,
     });

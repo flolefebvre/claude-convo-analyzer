@@ -140,14 +140,15 @@ describe("a Sub-agent's spawner", () => {
       expect(placeIn(tree, "deep")).toEqual({ parentId: "fg", spawnedByToolUseId: "toolu-deep" });
     });
 
-    // bg, fg and bad are spawned by one Message, whose calls the tree pairs with them by spawn time, not by id.
+    // bg, fg and bad are spawned by one Message: each by its own call of it, whatever their spawn order.
     it("is the Main thread for a background Sub-agent, and for one whose meta file states nothing, by its ledger", async () => {
       const tree = await agentTreeOf("agent-meta-logs", "sess-meta", renames);
       const spawningMessageIdOf = (agentId: string) =>
         tree.children.find((node) => node.id === agentId)?.spawnedByMessageId;
 
-      expect(placeIn(tree, "bg").parentId).toBe("main");
-      expect(placeIn(tree, "bad").parentId).toBe("main");
+      expect(placeIn(tree, "bg")).toEqual({ parentId: "main", spawnedByToolUseId: "toolu-bg" });
+      expect(placeIn(tree, "fg")).toEqual({ parentId: "main", spawnedByToolUseId: "toolu-fg" });
+      expect(placeIn(tree, "bad")).toEqual({ parentId: "main", spawnedByToolUseId: "toolu-bad" });
       expect(spawningMessageIdOf("bg")).not.toBeNull();
       expect(spawningMessageIdOf("bad")).toBe(spawningMessageIdOf("bg"));
       expect(spawningMessageIdOf("fg")).toBe(spawningMessageIdOf("bg"));
@@ -312,8 +313,8 @@ describe("Sub-agents holding each other's spawning calls", () => {
 
     expect(placeIn(tree, "fs-spawner")).toEqual({ parentId: "main", spawnedByToolUseId: "toolu-fs-spawner" });
     expect(placeIn(tree, "fs-fork")).toEqual({ parentId: "fs-spawner", spawnedByToolUseId: "toolu-fs-fork" });
-    // fs-fork's one Turn holds both forks' calls, which the tree pairs with them by spawn time, not by id.
-    expect(placeIn(tree, firstForkId).parentId).toBe("fs-fork");
-    expect(placeIn(tree, "fs-fork-2").parentId).toBe("fs-fork");
+    // fs-fork's one Turn holds both forks' calls: each fork by its own.
+    expect(placeIn(tree, firstForkId)).toEqual({ parentId: "fs-fork", spawnedByToolUseId: `toolu-${firstForkId}` });
+    expect(placeIn(tree, "fs-fork-2")).toEqual({ parentId: "fs-fork", spawnedByToolUseId: "toolu-fs-fork-2" });
   });
 });

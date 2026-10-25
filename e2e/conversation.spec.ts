@@ -134,6 +134,33 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     for (const turn of await ownTurns.all()) await expect(turn).toContainText(/\$\d+\.\d{2,4}/);
   });
 
+  test("links each Agent call of a Turn that forks twice to its own fork", async ({ page }) => {
+    await openConversation(page, FORKED_AGENTS_TITLE);
+    const agents = page.getByRole("navigation", { name: "Agents" });
+    await agents.getByTitle("general-purpose", { exact: true }).click();
+    await page.waitForURL((url) => url.searchParams.has("agent"));
+
+    // The lead's forking Turn: its two calls, each named after the fork it spawned and opening that fork.
+    const forkCalls = page
+      .getByRole("main")
+      .getByRole("group")
+      .filter({ hasText: /^Agentfork #\d/ });
+    await expect(forkCalls).toHaveCount(2);
+    const forkNames: string[] = [];
+    for (const call of await forkCalls.all()) {
+      const forkName = (await call.textContent())!.match(/fork #\d/)![0];
+      forkNames.push(forkName);
+      // Its summary: the body holds the description too.
+      await call
+        .getByText(/^Audit \w+'s failed run$/)
+        .first()
+        .click();
+      const forkHref = await agents.getByTitle(forkName, { exact: true }).getAttribute("href");
+      await expect(call.getByRole("link", { name: "Open transcript" })).toHaveAttribute("href", forkHref!);
+    }
+    expect(forkNames.sort()).toEqual(["fork #1", "fork #2"]);
+  });
+
   test("publishes the chrome's measured height, which the agent tree fits under", async ({ page }) => {
     await openConversation(page, TITLE);
 

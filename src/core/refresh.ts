@@ -195,8 +195,11 @@ type RefreshOptions = {
  * 23 — a Sub-agent's spawner and type come from its meta file, its spawn
  *     ledger only when the meta file states none, resolved from stored rows
  *     by the links pass (`agent.spawn_tool_use_id`, `agent.dominant_model`).
+ * 24 — the links pass stores the spawning call it decides, so the Transcript
+ *     tree reads which `Agent` call spawned a Sub-agent rather than pairing
+ *     a Message's calls with its children (`agent.spawned_by_tool_use_id`).
  */
-export const PARSER_VERSION = 23;
+export const PARSER_VERSION = 24;
 
 /**
  * The version a conversation carries while it is written but NOT YET COMPLETE:
@@ -1087,6 +1090,7 @@ function writeConversation(
       parentAgentId: null,
       externalAgentId: null,
       spawnedByMessageId: null,
+      spawnedByToolUseId: null,
       spawnToolUseId: null,
       agentType: null, // root/main thread
       dominantModel: parsed.dominantModel,
@@ -1113,6 +1117,7 @@ function writeConversation(
       externalAgentId: subAgent.file.agentId,
       parentAgentId: mainThreadRowId,
       spawnedByMessageId: null,
+      spawnedByToolUseId: null,
       ...metaFacts,
       dominantModel,
       resolvedModel: dominantModel,

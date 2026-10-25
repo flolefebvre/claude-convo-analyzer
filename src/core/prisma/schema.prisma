@@ -89,6 +89,9 @@ model Agent {
   /// Resolved: for a Sub-agent, its spawner's Message holding the spawning
   /// `Agent` call; NULL without one.
   spawnedByMessageId Int?    @map("spawned_by_message_id")
+  /// Resolved: for a Sub-agent, the `tool_use_id` of its spawning `Agent`
+  /// call, the one its spawner holds; NULL exactly when `spawned_by_message_id` is.
+  spawnedByToolUseId String? @map("spawned_by_tool_use_id")
   /// Extracted: the `toolUseId` its meta file states, the spawning `Agent`
   /// call; NULL for the Main thread and when the meta file states none.
   spawnToolUseId     String? @map("spawn_tool_use_id")

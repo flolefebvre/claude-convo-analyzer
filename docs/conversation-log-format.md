@@ -234,9 +234,10 @@ none for it; a malformed meta file states nothing, and the Refresh goes on.
   re-written, and a fork of a fork copies it again. A resumed session's copy
   of the call lives in another Conversation and never counts. The Main
   thread, when it holds the call, is everyone's ancestor and owns it.
-  `spawned_by_message_id` is the spawner's Message holding the call.
+  `spawned_by_message_id` is the spawner's Message holding the call, and
+  `spawned_by_tool_use_id` the call's id.
 - **Without a spawning call, or no other holder of it**: the Main thread, with
-  no spawning Message (the 2 older Main-thread forks on this machine).
+  no spawning Message nor call (the 2 older Main-thread forks on this machine).
 - **The type**: the meta file's `agentType`, else the ledger's — the result of
   the spawning call the spawner holds, when it names the Sub-agent.
 - **The resolved model**: that ledger's `resolvedModel`, else the
@@ -269,8 +270,12 @@ waits for that Conversation's next change. Claude Code writes the meta file
 before the transcript, so this shape practically never happens.
 
 The links pass then resolves `parent_agent_id`, `spawned_by_message_id`,
-`agent_type` and `resolved_model` from those stored rows, for every
-Conversation the Refresh wrote: lineage never crosses a Conversation. No file
+`spawned_by_tool_use_id`, `agent_type` and `resolved_model` from those stored
+rows, for every Conversation the Refresh wrote: lineage never crosses a
+Conversation. `spawn_tool_use_id` stays what the meta file states, the input;
+`spawned_by_tool_use_id` is the call decided, the ledger's when the meta file
+names none, so a reader links an `Agent` call to the Sub-agent it spawned by
+id, however many calls one Turn holds. No file
 is read for it, so a cold Refresh and an incremental one reach the same rows
 whatever files a run parsed, and a changed Sub-agent costs its own file's
 parse alone — its spawner's stays unread.

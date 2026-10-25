@@ -70,6 +70,7 @@ const CONVERSATION_COLUMN_BY_FIELD = {
 const AGENT_LINEAGE_COLUMN_BY_FIELD = {
   parentAgentId: "parent_agent_id",
   spawnedByMessageId: "spawned_by_message_id",
+  spawnedByToolUseId: "spawned_by_tool_use_id",
   agentType: "agent_type",
   resolvedModel: "resolved_model",
 } as const;
@@ -299,7 +300,7 @@ export function prepareRefreshStatements(db: Database.Database) {
   );
   const deleteAgent = db.prepare(`DELETE FROM "agent" WHERE "id" = ?`);
   const updateParentlessSubAgents = db.prepare(
-    `UPDATE "agent" SET "parent_agent_id" = ?
+    `UPDATE "agent" SET "parent_agent_id" = ?, "spawned_by_tool_use_id" = NULL
       WHERE "conversation_id" = ? AND "external_agent_id" IS NOT NULL AND "parent_agent_id" IS NULL`,
   );
   const selectLineageAgents = db.prepare(
@@ -601,7 +602,7 @@ export function prepareRefreshStatements(db: Database.Database) {
     selectStoredAgents: (conversationId: number) => selectStoredAgents.all(conversationId) as StoredAgent[],
     /** Delete an Agent; its Messages, Tool calls and API requests go with it by cascade. */
     deleteAgent: (agentId: number) => void deleteAgent.run(agentId),
-    /** Put each Sub-agent of Conversation `conversationId` left with no parent under its Main thread `mainThreadId`. */
+    /** Put each Sub-agent of Conversation `conversationId` left with no parent under its Main thread `mainThreadId`, with no spawning call, as its lost spawning Message already says. */
     updateParentlessSubAgents: (conversationId: number, mainThreadId: number) =>
       void updateParentlessSubAgents.run(mainThreadId, conversationId),
     /** Every Agent of a Conversation, with the facts deciding a Sub-agent's lineage. */
