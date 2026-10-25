@@ -79,7 +79,7 @@ import {
   type TurnRow,
 } from "@/core/prisma/refresh-statements";
 import { resolveSubAgentLineage } from "@/core/sub-agent-lineage";
-import { readFileUnlessVanished, statUnlessVanished } from "@/core/vanished-file";
+import { readFileUnlessVanished, realpathUnlessVanished } from "@/core/vanished-file";
 
 /**
  * One `.jsonl` file dropped because another file already claimed its session id
@@ -677,21 +677,20 @@ function dedupeBySessionId(discovered: DiscoveredWithKey[]): {
  * shifts the composite (max mtime / summed size), so the Conversation re-parses.
  */
 function discoverWithKeys(logsRoot: string): DiscoveredWithKey[] {
+  const sessions = discoverSessions(logsRoot);
+  if (sessions.length === 0) return [];
+  // Sub-agent links are followed only inside the root, compared with every link resolved.
+  const logsRootRealPath = realpathUnlessVanished(logsRoot) ?? logsRoot;
   const out: DiscoveredWithKey[] = [];
-  for (const session of discoverSessions(logsRoot)) {
+  for (const session of sessions) {
     const projectDir = path.dirname(session.sourcePath);
-    const subAgentFiles: SubAgentFile[] = [];
+    const { subAgents: subAgentFiles } = discoverSubAgents(projectDir, session.sessionId, logsRootRealPath);
 
     let compositeMtime = session.sourceMtime;
     let compositeSize = session.sourceSize;
-    for (const sub of discoverSubAgents(projectDir, session.sessionId)) {
-      // Gone between its listing and its stat: absent at discovery.
-      const stat = statUnlessVanished(sub.sourcePath);
-      if (stat === null) continue;
-      const sourceMtime = Math.floor(stat.mtimeMs);
-      subAgentFiles.push({ ...sub, sourceMtime, sourceSize: stat.size });
-      compositeMtime = Math.max(compositeMtime, sourceMtime);
-      compositeSize += stat.size;
+    for (const sub of subAgentFiles) {
+      compositeMtime = Math.max(compositeMtime, sub.sourceMtime);
+      compositeSize += sub.sourceSize;
     }
     out.push({ session, subAgentFiles, compositeMtime, compositeSize });
   }

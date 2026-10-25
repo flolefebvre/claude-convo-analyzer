@@ -9,7 +9,7 @@
 // after the compare put it in the re-parse set, it is counted in
 // `RefreshSummary.vanishedLogFilesSkipped`.
 
-import { readFileSync, type Stats, statSync } from "node:fs";
+import { readFileSync, realpathSync, type Stats, statSync } from "node:fs";
 
 /**
  * Whether `error` says the file is no longer there (ENOENT). Every other error —
@@ -48,4 +48,15 @@ export function readFileUnlessVanished(filePath: string): string | null {
  */
 export function statUnlessVanished(filePath: string): Stats | null {
   return nullIfVanished(() => statSync(filePath));
+}
+
+/**
+ * The canonical path of `filePath`, every link resolved, or null when it or a
+ * link on its way is gone.
+ *
+ * @example
+ * const target = realpathUnlessVanished(linkPath);
+ */
+export function realpathUnlessVanished(filePath: string): string | null {
+  return nullIfVanished(() => realpathSync(filePath));
 }
