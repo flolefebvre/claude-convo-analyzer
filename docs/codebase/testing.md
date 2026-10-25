@@ -42,11 +42,13 @@ This project uses TDD. The rules that matter here:
 - Query the seeded data (`scripts/seed/fake-logs.ts`) with role and text
   locators. Don't add test ids.
 - The exception to one spec per route: a spec with side effects on state
-  every open page shares — `e2e/active-now.spec.ts`, which switches Live on.
-  `playwright.config.ts` runs such specs as the `shared-state` project, after
-  every other spec and one file at a time. A Live Refresh re-renders every open
-  page, and that re-render lands inside other workers' `instant()` scopes and
-  breaks them. The `shared-state` project holds no `instant()` check, and a
+  every open page shares — `e2e/active-now.spec.ts`, which switches Live on,
+  and `e2e/transcript-filter.spec.ts`, which changes the Transcript filter in
+  the seeded settings file. `playwright.config.ts` runs such specs as the
+  `shared-state` project, after every other spec and one file at a time. A Live
+  Refresh re-renders every open page, and that re-render lands inside other
+  workers' `instant()` scopes and breaks them; a filter left switched off would
+  hide what other specs assert on. The `shared-state` project holds no `instant()` check, and a
   failure elsewhere skips it.
 - The other exception: `e2e/server-binding.spec.ts` is about the server, not a
   route. It checks that the e2e server binds loopback only: refused on this

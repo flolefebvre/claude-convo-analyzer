@@ -61,8 +61,9 @@ directory you run it from:
 - `CCA_LOGS_ROOT` — the logs root that **Refresh** scans (default
   `~/.claude/projects`). In WSL, point it at the logs Claude Code writes on the
   Windows side, such as `CCA_LOGS_ROOT=/mnt/c/Users/<you>/.claude/projects`.
-- `CCA_SETTINGS_PATH` — the settings file that keeps whether **Live** is on
-  and your **Favorites** (default `~/.claude-convo-analyzer/settings.json`).
+- `CCA_SETTINGS_PATH` — the settings file that keeps whether **Live** is on,
+  your **Favorites** and the transcript's **Show** choice (default
+  `~/.claude-convo-analyzer/settings.json`).
   It sits outside the database, so a Refresh or a deleted database never loses
   them.
 
@@ -158,7 +159,24 @@ same Task prompt, rendered as Markdown too. A SendMessage call renders its
 message as Markdown under its recipient and summary, and an ExitPlanMode call
 renders its plan; "Raw" shows any call's stored JSON. A turn the model thought
 on opens with a "Thinking · 1.3s" line, which unfolds the summary of that
-thinking when Claude Code logged one. Your own prompts stay plain text:
+thinking when Claude Code logged one. Your own prompts stay plain text.
+
+The **Show** section, below the conversation total in the agent tree, chooses
+what a transcript shows: Tool calls, Thinking, What was sent, Inter-agent
+messages and Task notifications each switch on and off, with how many of each
+the selected agent's whole transcript holds. "Messages only" keeps just the
+conversation (Inter-agent messages included, since they are speech), and
+"Everything" brings it all back. Prompts, the agent's own text and a failed
+turn's notice always show. What the filter hides folds into a dashed line that
+says what it holds — "3 tool calls hidden · show" where a turn's calls would be,
+"2 turns · 4 tool calls hidden · show" for a run of turns left with nothing to
+show, "Task notification hidden · show" — and clicking it reveals that spot in
+place, the same line then hiding it again; hidden turns keep their numbers. The
+choice applies at once, without leaving the page, and holds for every
+conversation and agent across restarts: it is kept in the settings file beside
+your favorites. A link to one tool call or message always reveals it, and the
+HTML export always shows everything. On a narrow screen the section folds away
+under its own "Show" caption:
 
 ![Transcript view](https://raw.githubusercontent.com/flolefebvre/claude-convo-analyzer/main/docs/images/transcript-view.png)
 

@@ -70,6 +70,8 @@ const conversation: RouteShell = {
   ],
   data: (page) => [
     page.getByRole("navigation", { name: "Agents" }),
+    // The Transcript filter: request-time settings and whole-Transcript counts, drawn by the tree's skeleton.
+    page.getByRole("group", { name: "Show in the transcript" }),
     page.getByRole("heading", { level: 1, name: TITLE }),
   ],
 };

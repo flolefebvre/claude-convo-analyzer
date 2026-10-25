@@ -4,8 +4,9 @@ import { E2E_PORT } from "./e2e/ports";
 
 const baseURL = `http://127.0.0.1:${E2E_PORT}`;
 
-// The specs with side effects on state every open page shares, by their exact paths: Live switched on.
-const SHARED_STATE_SPECS = [/[\\/]e2e[\\/]active-now\.spec\.ts$/];
+// The specs with side effects on state every open page shares, by their exact paths: Live switched on, and the
+// Transcript filter changed.
+const SHARED_STATE_SPECS = [/[\\/]e2e[\\/]active-now\.spec\.ts$/, /[\\/]e2e[\\/]transcript-filter\.spec\.ts$/];
 
 export default defineConfig({
   testDir: "e2e",
