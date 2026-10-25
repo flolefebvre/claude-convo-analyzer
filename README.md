@@ -124,6 +124,7 @@ labelled, and the cumulative total of the entire piece of work at the bottom,
 which counts no turn twice. Click any
 member to jump to it. The Transcript view of a family member carries the same
 lineage as a one-line banner — what it continued from, and what continues it —
+lists in its agent tree, at no cost, the sub-agents its copied history ran,
 and marks each message it copied "from" the conversation that ran it, a link to
 that message there, where its cost shows; a forked sub-agent's copy of its
 spawner's turns is marked from that spawner the same way:

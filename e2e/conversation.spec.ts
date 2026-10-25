@@ -26,6 +26,10 @@ const FORKED_AGENTS_TITLE = "Audit last week's pipeline runs with forked agents"
 
 // A seeded continuation of TITLE, whose copied history TITLE owns (`continuationFamilies` in `scripts/seed/fake-logs.ts`).
 const CONTINUATION_TITLE = "Billing split — extract the invoice writer";
+// A seeded continuation whose `subagents/` links to its parent's two Explore Sub-agents, and that parent
+// (`continuationFamilies` in `scripts/seed/fake-logs.ts`).
+const LINKING_CONTINUATION_TITLE = "Nightly export — finish the retry path";
+const LINKED_PARENT_TITLE = "Make the nightly export idempotent";
 
 const titleLink = (page: Page) => page.getByRole("link", { name: TITLE, exact: true });
 
@@ -101,6 +105,29 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     const ownerMessage = page.locator(`article[id="msg-${messageUuid}"]`).filter({ visible: true });
     await expect(ownerMessage).toHaveClass(/\banchored\b/);
     await expect(ownerMessage).toBeInViewport();
+  });
+
+  test("shows a continuation's linked Sub-agents under its Main thread, every row copied from the parent that ran them", async ({
+    page,
+    baseURL,
+  }) => {
+    await page.goto("/");
+    const parentHref = await page.getByRole("link", { name: LINKED_PARENT_TITLE, exact: true }).getAttribute("href");
+    const parentPathname = new URL(parentHref!, baseURL).pathname;
+    await openConversation(page, LINKING_CONTINUATION_TITLE);
+    const agents = page.getByRole("navigation", { name: "Agents" });
+    for (const name of ["Explore #1", "Explore #2"])
+      await expect(agents.getByTitle(name, { exact: true })).toHaveAttribute("style", /--depth:\s*1\b/);
+
+    await agents.getByTitle("Explore #1", { exact: true }).click();
+    await page.waitForURL((url) => url.searchParams.has("agent"));
+    const rows = page.getByRole("main").getByRole("article");
+    const ownerLinks = rows.getByRole("link", { name: LINKED_PARENT_TITLE, exact: true });
+    await expect(rows.first()).toBeVisible();
+    await expect(ownerLinks).toHaveCount(await rows.count());
+    // Each names the parent's own Sub-agent, the Message's owner.
+    const agentId = new URL(page.url()).searchParams.get("agent")!;
+    await expect(ownerLinks.first()).toHaveAttribute("href", new RegExp(`^${parentPathname}\\?agent=${agentId}&`));
   });
 
   test("nests a Sub-agent's forks under it, their copied rows marked from it and their own Turns costed", async ({

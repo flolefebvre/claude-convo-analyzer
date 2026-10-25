@@ -38,6 +38,9 @@ import {
 } from "./fake-logs";
 
 const NOW = new Date("2026-06-22T17:00:00.000Z");
+// The seeded two-sitting chain: its continuation links to the first sitting's Sub-agents (`continuationFamilies`).
+const CHAIN_START_TITLE = "Make the nightly export idempotent";
+const CHAIN_END_TITLE = "Nightly export — finish the retry path";
 
 describe("seedEnvironment", () => {
   let tmpDir = "";
@@ -58,7 +61,10 @@ describe("seedEnvironment", () => {
 
     const conversations = await listConversations({ dbPath: seed.dbPath });
     expect(conversations).toHaveLength(73);
-    expect(conversations.reduce((sum, c) => sum + c.subAgentCount, 0)).toBe(91);
+    // Each Sub-agent counted under every Conversation holding it, a continuation's links included.
+    expect(conversations.reduce((sum, c) => sum + c.subAgentCount, 0)).toBe(
+      seed.generated.subAgents + seed.generated.linkedSubAgents,
+    );
 
     const continued = conversations.filter((c) => c.continuedFromId !== null);
     expect(continued).toHaveLength(5);
@@ -289,11 +295,11 @@ describe("seedEnvironment", () => {
     expect(worker?.agentType).toMatch(/.+/);
   });
 
-  it("writes a meta file beside each Sub-agent transcript, dated at its spawn", async () => {
+  it("writes a meta file beside each Sub-agent transcript and each link to one, dated at its spawn", async () => {
     const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
 
     const metaFiles = Object.entries(readTree(seed.logsRoot)).filter(([file]) => file.endsWith(".meta.json"));
-    expect(metaFiles).toHaveLength(seed.generated.subAgents);
+    expect(metaFiles).toHaveLength(seed.generated.subAgents + seed.generated.linkedSubAgents);
     for (const [file, text] of metaFiles) {
       const transcript = readFileSync(path.join(seed.logsRoot, file.replace(/\.meta\.json$/, ".jsonl")), "utf8");
       // A Main-thread fork's transcript opens with a `fork-context-ref`, which has no timestamp.
@@ -307,6 +313,26 @@ describe("seedEnvironment", () => {
         file,
         mtime: Date.parse(firstTimestamp),
       });
+    }
+  });
+
+  it("links each continuation to its parent's Sub-agent transcripts, every Message of them copied", async () => {
+    const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
+
+    const conversations = await listConversations({ dbPath: seed.dbPath });
+    const idOf = (title: string) => conversations.find((c) => c.title === title)?.id ?? "";
+    const parent = await getTranscript(idOf(CHAIN_START_TITLE), { dbPath: seed.dbPath });
+    const continuation = await getTranscript(idOf(CHAIN_END_TITLE), { dbPath: seed.dbPath });
+    const parentAgentIds = parent?.tree.children.map((child) => child.id) ?? [];
+
+    expect(seed.generated.linkedSubAgents).toBe(4);
+    expect(parentAgentIds.length).toBeGreaterThan(0);
+    const continuationAgentIds = continuation?.tree.children.map((child) => child.id) ?? [];
+    expect(continuationAgentIds).toEqual(expect.arrayContaining(parentAgentIds));
+    for (const agentId of parentAgentIds) {
+      const linked = await getTranscript(idOf(CHAIN_END_TITLE), { dbPath: seed.dbPath, agentId, page: "all" });
+      expect(linked?.messages.length).toBeGreaterThan(0);
+      expect(linked?.messages.every((m) => m.isCopied)).toBe(true);
     }
   });
 
@@ -374,8 +400,10 @@ describe("seedEnvironment", () => {
     const second = await seedEnvironment({ dir: path.join(tmpDir, "second"), now: NOW });
 
     const files = readTree(first.logsRoot);
-    // A log per Conversation and per Sub-agent, and a meta file beside each Sub-agent's.
-    expect(Object.keys(files)).toHaveLength(first.generated.conversations + 2 * first.generated.subAgents);
+    // A log per Conversation and per Sub-agent, and a meta file beside each Sub-agent's log and each link to one.
+    expect(Object.keys(files)).toHaveLength(
+      first.generated.conversations + 2 * first.generated.subAgents + first.generated.linkedSubAgents,
+    );
     expect(readTree(second.logsRoot)).toEqual(files);
   });
 

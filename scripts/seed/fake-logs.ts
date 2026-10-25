@@ -7,7 +7,7 @@
 // PRNG, the id counter, the timeline anchor), so two calls with the same `now`
 // write byte-identical files, in one process or across runs.
 
-import { mkdirSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -673,9 +673,18 @@ type Conversation = {
   sessionId: string;
   mainLines: string[];
   subAgents: SubAgent[];
+  /**
+   * Sub-agents of the Conversations it continues from, which its `subagents/`
+   * holds as links to their owner's files, as Claude Code writes them
+   * (log-format §10). Unset on a Conversation that continues none.
+   */
+  linkedSubAgents?: LinkedSubAgent[];
   /** The point a continuation of this conversation attaches to. */
   resumePoint: ResumePoint;
 };
+
+/** A Sub-agent a continuation links to, and the Conversation whose `subagents/` holds its file. */
+type LinkedSubAgent = { sub: SubAgent; owner: Conversation };
 
 function buildConversation(
   g: Gen,
@@ -811,8 +820,14 @@ function buildConversation(
     sessionId,
     mainLines: lines,
     subAgents,
+    linkedSubAgents: opts.resumeFrom === undefined ? undefined : linkedSubAgentsOfContinuation(opts.resumeFrom),
     resumePoint: { uuid: lastAssistantUuid(lines), ms: t },
   };
+}
+
+/** What a continuation of `parent` links to: every Sub-agent `parent` holds, its own and those it links to. */
+function linkedSubAgentsOfContinuation(parent: Conversation): LinkedSubAgent[] {
+  return [...(parent.linkedSubAgents ?? []), ...parent.subAgents.map((sub) => ({ sub, owner: parent }))];
 }
 
 /** The user and assistant records of `conversation` up to its resume point:
@@ -2184,6 +2199,8 @@ export type FakeLogsCounts = {
   conversations: number;
   /** Sub-agent transcripts, across every Conversation. */
   subAgents: number;
+  /** Links to another Conversation's Sub-agent transcript, each with a meta file beside it. */
+  linkedSubAgents: number;
   /** Distinct Projects (by path) the Conversations belong to. */
   projects: number;
 };
@@ -2191,7 +2208,8 @@ export type FakeLogsCounts = {
 /**
  * Write the fake logs under `logsRoot`, their timeline ending at `now`: 30
  * standalone Conversations across six Projects, two continuation families
- * (seven more), 23 covering pagination, unpriced usage and API errors, one
+ * (seven more, each continuation linking to its parent's Sub-agent
+ * transcripts), 23 covering pagination, unpriced usage and API errors, one
  * where agents message each other, one long enough to span three Transcript
  * pages, one that enters a worktree and one that states no cwd, three in
  * per-session scratch directories under `/tmp`, two of two prompts each,
@@ -2209,26 +2227,37 @@ export function generateFakeLogs(opts: { logsRoot: string; now: Date }): FakeLog
   const now = opts.now.getTime();
   const conversations = buildCorpus(now + (now - latestTimestamp(buildCorpus(now))));
 
+  const logsRoot = path.resolve(opts.logsRoot);
+  /** The `subagents/` directory of `convo`. */
+  const subagentsDirOf = (convo: Conversation) =>
+    path.join(logsRoot, convo.logFolderName, convo.sessionId, "subagents");
   let subAgents = 0;
+  let linkedSubAgents = 0;
   for (const convo of conversations) {
-    const projectDir = path.join(opts.logsRoot, convo.logFolderName);
+    const projectDir = path.join(logsRoot, convo.logFolderName);
     mkdirSync(projectDir, { recursive: true });
     writeLog(path.join(projectDir, `${convo.sessionId}.jsonl`), convo.mainLines);
 
-    if (convo.subAgents.length > 0) {
-      const subDir = path.join(projectDir, convo.sessionId, "subagents");
-      mkdirSync(subDir, { recursive: true });
-      for (const sub of convo.subAgents) {
-        writeLog(path.join(subDir, `agent-${sub.agentId}.jsonl`), sub.lines);
-        writeSubAgentMeta(path.join(subDir, `agent-${sub.agentId}.meta.json`), sub);
-        subAgents += 1;
-      }
+    const linked = convo.linkedSubAgents ?? [];
+    if (convo.subAgents.length + linked.length > 0) mkdirSync(subagentsDirOf(convo), { recursive: true });
+    for (const sub of convo.subAgents) {
+      writeLog(path.join(subagentsDirOf(convo), `agent-${sub.agentId}.jsonl`), sub.lines);
+      writeSubAgentMeta(path.join(subagentsDirOf(convo), `agent-${sub.agentId}.meta.json`), sub);
+      subAgents += 1;
+    }
+    // An absolute link to the owner's transcript, and a copy of its meta file.
+    for (const { sub, owner } of linked) {
+      const fileName = `agent-${sub.agentId}.jsonl`;
+      symlinkSync(path.join(subagentsDirOf(owner), fileName), path.join(subagentsDirOf(convo), fileName));
+      writeSubAgentMeta(path.join(subagentsDirOf(convo), `agent-${sub.agentId}.meta.json`), sub);
+      linkedSubAgents += 1;
     }
   }
 
   return {
     conversations: conversations.length,
     subAgents,
+    linkedSubAgents,
     projects: new Set(conversations.map((c) => c.projectPath)).size,
   };
 }
