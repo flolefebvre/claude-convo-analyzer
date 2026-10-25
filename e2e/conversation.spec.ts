@@ -1,6 +1,7 @@
 import { instant } from "@next/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
+import { openConversation } from "./open-conversation";
 import { type RouteShell, expectData, expectInstantLoad, expectShell } from "./route-shell";
 
 // A seeded conversation title (`scripts/seed/fake-logs.ts`).
@@ -53,13 +54,6 @@ async function openWhatWasSent(turn: Locator): Promise<Locator> {
 }
 /** The copied-from markers of the Transcript's rows and Turns. */
 const copiedMarkers = (page: Page) => page.getByRole("main").getByText(/^copied from /);
-
-/** Open the seeded Conversation titled `title` from the Conversations list. */
-async function openConversation(page: Page, title: string): Promise<void> {
-  await page.goto("/");
-  await page.getByRole("link", { name: title, exact: true }).click();
-  await page.waitForURL((url) => url.pathname.startsWith("/conversation/"));
-}
 
 const conversation: RouteShell = {
   shell: (page) => [

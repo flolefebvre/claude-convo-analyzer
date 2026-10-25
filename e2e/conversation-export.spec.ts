@@ -2,7 +2,9 @@ import { readFile } from "node:fs/promises";
 import os from "node:os";
 import { pathToFileURL } from "node:url";
 
-import { expect, test, type Page } from "@playwright/test";
+import { type Download, expect, test, type Page } from "@playwright/test";
+
+import { openConversation } from "./open-conversation";
 
 // The export page (`/conversation/[sessionId]/export`) is `instant = false` and gets no `instant()` spec
 // (docs/codebase/testing.md): this spec downloads what it becomes through the Transcript view's button.
@@ -30,6 +32,13 @@ const CONTINUED_FROM_TITLE = "Split the billing service out of the monolith";
 // forks too (`forkedAgentsConversation` in `scripts/seed/fake-logs.ts`).
 const FORKED_AGENTS_TITLE = "Audit last week's pipeline runs with forked agents";
 
+/** The export route, as `page.route` matches it. */
+const EXPORT_ROUTE = "**/api/conversation/*/export";
+
+/** The agent tree's Export as HTML control, whatever it reads while exporting. */
+const exportControl = (page: Page) =>
+  page.getByRole("complementary", { name: "Agent tree" }).getByRole("link", { name: /^Export/ });
+
 /**
  * Open the seeded Conversation titled `title`, download its export, save it under its own name, and return
  * that name, the saved file's path and its HTML.
@@ -38,13 +47,8 @@ async function downloadExport(
   page: Page,
   title: string,
 ): Promise<{ fileName: string; filePath: string; html: string }> {
-  await page.goto("/");
-  await page.getByRole("link", { name: title, exact: true }).click();
-  await page.waitForURL((url) => url.pathname.startsWith("/conversation/"));
-  const [download] = await Promise.all([
-    page.waitForEvent("download"),
-    page.getByRole("link", { name: "Export as HTML" }).click(),
-  ]);
+  await openConversation(page, title);
+  const [download] = await Promise.all([page.waitForEvent("download"), exportControl(page).click()]);
   const fileName = download.suggestedFilename();
   // Saved under its `.html` name: the download's own path has no extension, so a browser wouldn't read it as HTML.
   const filePath = test.info().outputPath(fileName);
@@ -256,5 +260,58 @@ test.describe("Conversation export (/api/conversation/[sessionId]/export)", () =
 
     expect(html).toContain(LOGGED_REQUESTS_THINKING_TEXT);
     expect(html).not.toContain("What was sent");
+  });
+
+  test("shows that it is exporting until the download starts, and ignores a click meanwhile", async ({ page }) => {
+    await openConversation(page, LONG_TITLE);
+    let releaseExport = () => {};
+    const isExportReleased = new Promise<void>((resolve) => (releaseExport = resolve));
+    let exportRequestCount = 0;
+    await page.route(EXPORT_ROUTE, async (route) => {
+      exportRequestCount += 1;
+      await isExportReleased;
+      await route.continue();
+    });
+    const downloads: Download[] = [];
+    page.on("download", (download) => downloads.push(download));
+
+    await exportControl(page).click();
+    await expect(exportControl(page)).toHaveAccessibleName("Exporting…");
+    await expect(exportControl(page)).toHaveAttribute("aria-disabled", "true");
+    await expect(exportControl(page)).toBeFocused();
+    // Forced: Playwright waits for an `aria-disabled` control to be enabled before clicking it.
+    await exportControl(page).click({ force: true });
+
+    const download = page.waitForEvent("download");
+    releaseExport();
+    expect((await download).suggestedFilename()).toMatch(
+      /^port-every-report-to-the-new-rendering-engine-\d{4}-\d{2}-\d{2}\.html$/,
+    );
+    await expect(exportControl(page)).toHaveAccessibleName("Export as HTML");
+    await expect(exportControl(page)).not.toHaveAttribute("aria-disabled", "true");
+    expect(exportRequestCount).toBe(1);
+    expect(downloads).toHaveLength(1);
+  });
+
+  test("says so beside itself when the export fails, downloads nothing, and clears it on the next attempt", async ({
+    page,
+  }) => {
+    await openConversation(page, LONG_TITLE);
+    await page.route(EXPORT_ROUTE, (route) => route.fulfill({ status: 502, body: "The export page answered 500" }));
+    const downloads: Download[] = [];
+    page.on("download", (download) => downloads.push(download));
+    const exportError = page.getByRole("complementary", { name: "Agent tree" }).getByRole("alert");
+
+    await exportControl(page).click();
+    await expect(exportError).toHaveText("Couldn’t export — try again.");
+    await expect(exportControl(page)).toHaveAccessibleName("Export as HTML");
+    await expect(exportControl(page)).not.toHaveAttribute("aria-disabled", "true");
+
+    await page.unroute(EXPORT_ROUTE);
+    const download = page.waitForEvent("download");
+    await exportControl(page).click();
+    await expect(exportError).toHaveCount(0);
+    await download;
+    expect(downloads).toHaveLength(1);
   });
 });

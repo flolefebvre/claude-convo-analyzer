@@ -164,7 +164,8 @@ thinking when Claude Code logged one. Your own prompts stay plain text:
 
 "Export as HTML", under the conversation's title in the agent tree, downloads
 the whole conversation as one self-contained `.html` file, for someone who
-doesn't have the app. It has the Transcript view's two panes: the agent tree on
+doesn't have the app; it reads "Exporting…" until the download starts, a few
+seconds on a long conversation. It has the Transcript view's two panes: the agent tree on
 the left, with every agent's cost and the total, and on the right one agent's
 whole transcript (the main thread first) with its thinking, costs and every
 tool call's input and stored result, rendered as the Transcript view renders

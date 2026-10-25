@@ -519,16 +519,37 @@ html:has(.tview) {
 .tview .export-link:hover {
   color: var(--foreground);
 }
-/* The download of the Conversation export, under the session id. */
+/* The download of the Conversation export, under the session id, with what
+   went wrong beside it when an export failed. */
+.tview .export-control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+  margin-top: 8px;
+}
+/* A shadcn Button (for its pending behaviour) that reads as a quiet link. */
 .tview .export-link {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-top: 8px;
+  height: auto;
+  padding: 0;
+  border: 0;
   font-size: var(--text-xs);
+  font-weight: 400;
   line-height: 1rem;
   color: var(--muted-foreground);
+  background: none;
   border-radius: 4px;
+}
+.tview .export-link:hover {
+  background: none;
+}
+.tview .export-error {
+  font-size: var(--text-xs);
+  line-height: 1rem;
+  color: var(--destructive-foreground);
 }
 /* The Conversation export's header lines, in the export's tree header. */
 .tview .export-facts {
