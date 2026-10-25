@@ -805,8 +805,19 @@ on 2,722 Main-thread files (2.1.143–2.1.309), October 2026:
   one more, an in-flight Turn the copy left out. A child is never a subset of
   its parent. 10 more named children hold no Message (resumed, then quit).
 - Sub-agent transcripts are not copied: the child's `subagents/agent-<id>.jsonl`
-  is a symlink to the parent's file (6 pairs). Discovery reads regular files
-  only, so the app does not ingest these.
+  is an absolute symlink to the parent's file (6 pairs, every target a regular
+  file in the parent's `subagents/`, in the same log folder). The meta file
+  beside the link is a regular file, a copy of the parent's.
+- Discovery follows these links. An `agent-<id>.jsonl` entry that is not a
+  regular file by its directory listing is `stat`ed, which follows a symlink,
+  and a junction on Windows, alike. It is kept when it resolves to a regular
+  file whose real path lies inside the logs root's real path. Its Agent is
+  stored under the copier at the link's own path, with the meta file beside the
+  link, and its change key is the target's. Every Message in it is a Copied
+  Message owned by the parent's Sub-agent, so the copier's Cost does not move.
+  A link that dangles or resolves outside the logs root is skipped and counted
+  as a vanished log file when its Conversation is re-parsed. Meta files are
+  read only when they are regular files.
 
 ### Forked Sub-agents copy their spawning Agent
 

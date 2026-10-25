@@ -1,17 +1,16 @@
-// Log discovery (ADR-0002, finding #1). Walks a Claude Code logs root and yields
-// only TOP-LEVEL session files: `<logsRoot>/<project>/<sessionId>.jsonl`.
+// Log discovery (ADR-0002, finding #1). Walks a Claude Code logs root.
 //
-// Sub-agent transcripts live three levels deep at
-// `<project>/<sessionId>/subagents/agent-<agentId>.jsonl` and MUST be skipped
-// here (finding #1) — a later slice ingests them. We identify them by the
-// `/subagents/` path segment and by their nesting depth (they are not direct
-// children of a log folder), so a naive recursive walk does not conflate
-// them with sessions.
+// `discoverSessions` yields only TOP-LEVEL session files,
+// `<logsRoot>/<project>/<sessionId>.jsonl`: direct children of a log folder,
+// with no `/subagents/` path segment, so a Sub-agent transcript is never taken
+// for a session. `discoverSubAgents` finds one session's Sub-agent transcripts,
+// `<project>/<sessionId>/subagents/agent-<agentId>.jsonl`, links to another
+// session's included (log-format §10).
 
 import { readdirSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { statUnlessVanished } from "@/core/vanished-file";
+import { realpathUnlessVanished, statUnlessVanished } from "@/core/vanished-file";
 
 /**
  * The logs root `refresh()` scans when given none: `CCA_LOGS_ROOT` (empty counts
@@ -103,45 +102,90 @@ export function discoverSessions(logsRoot: string): DiscoveredSession[] {
 export type DiscoveredSubAgent = {
   /** The spawned agent id (file stem `agent-<agentId>.jsonl`). */
   agentId: string;
-  /** Absolute path to the sub-agent `.jsonl` file. */
+  /** Absolute path the transcript is read at: a link's own path, not its target's. */
   sourcePath: string;
   /** Absolute path to its `agent-<agentId>.meta.json` beside it; null when there is none. */
   metaPath: string | null;
+  /** The file's mtime in epoch ms, floored; a link's target's. */
+  sourceMtime: number;
+  /** The file's size in bytes; a link's target's. */
+  sourceSize: number;
 };
 
+/** One session's discovered sub-agent transcripts, and the links among its entries that were not followed. */
+export type DiscoveredSubAgents = {
+  subAgents: DiscoveredSubAgent[];
+  /** Links that dangle, or resolve outside the logs root (see {@link discoverSubAgents}). */
+  unfollowedLinkCount: number;
+};
+
+/** Whether `realPath` lies inside the directory `rootRealPath`, both with every link resolved. */
+function isInsideRoot(realPath: string, rootRealPath: string): boolean {
+  const rootWithSep = rootRealPath.endsWith(path.sep) ? rootRealPath : rootRealPath + path.sep;
+  return realPath.startsWith(rootWithSep);
+}
+
 /**
- * Discover every sub-agent transcript for one session: the files at
+ * Discover every sub-agent transcript for one session: the entries at
  * `<projectDir>/<sessionId>/subagents/agent-<agentId>.jsonl` (finding #1), each
- * with the meta file beside it, if any, found in the same directory listing.
- * The parent sessionId/agentId live in the PATH; the caller already holds the
- * session, so we return only the agentId + paths. Missing dirs → empty list.
+ * with its change key and the meta file beside it, if any, found in the same
+ * directory listing. The parent sessionId/agentId live in the PATH; the caller
+ * already holds the session, so we return only the agentId + paths. Missing
+ * dirs → empty list.
+ *
+ * An entry that is not a regular file by its listing — a symlink a resumed
+ * session holds to its parent's transcript, a junction on Windows — is
+ * followed (log-format §10): kept when it resolves to a regular file inside
+ * `logsRootRealPath` (the logs root, every link resolved), its change key the
+ * target's. One that dangles or resolves outside the root is counted in
+ * `unfollowedLinkCount`; one that resolves to anything else is skipped.
+ *
+ * @example
+ * const { subAgents } = discoverSubAgents(projectDir, "sess-1", realpathSync(logsRoot));
  */
-export function discoverSubAgents(projectDir: string, sessionId: string): DiscoveredSubAgent[] {
+export function discoverSubAgents(
+  projectDir: string,
+  sessionId: string,
+  logsRootRealPath: string,
+): DiscoveredSubAgents {
   const subagentsDir = path.join(projectDir, sessionId, "subagents");
   let entries;
   try {
     entries = readdirSync(subagentsDir, { withFileTypes: true });
   } catch {
-    return []; // no subagents/ dir → no sub-agents (not fatal)
+    return { subAgents: [], unfollowedLinkCount: 0 }; // no subagents/ dir → no sub-agents (not fatal)
   }
 
   const metaFileNames = new Set(
     entries.filter((entry) => entry.isFile() && entry.name.endsWith(".meta.json")).map((entry) => entry.name),
   );
-  const out: DiscoveredSubAgent[] = [];
+  const subAgents: DiscoveredSubAgent[] = [];
+  let unfollowedLinkCount = 0;
   for (const entry of entries) {
-    if (!entry.isFile()) continue;
     const name = entry.name;
     if (!name.startsWith("agent-") || !name.endsWith(".jsonl")) continue;
+    const sourcePath = path.join(subagentsDir, name);
+    const stat = statUnlessVanished(sourcePath);
+    if (!entry.isFile()) {
+      const realPath = stat === null ? null : realpathUnlessVanished(sourcePath);
+      if (realPath === null || !isInsideRoot(realPath, logsRootRealPath)) {
+        unfollowedLinkCount += 1;
+        continue;
+      }
+    }
+    // A regular file gone between its listing and its stat is absent at discovery.
+    if (stat === null || !stat.isFile()) continue;
     const agentId = name.slice("agent-".length, -".jsonl".length);
     const metaFileName = `agent-${agentId}.meta.json`;
-    out.push({
+    subAgents.push({
       agentId,
-      sourcePath: path.join(subagentsDir, name),
+      sourcePath,
       metaPath: metaFileNames.has(metaFileName) ? path.join(subagentsDir, metaFileName) : null,
+      sourceMtime: Math.floor(stat.mtimeMs),
+      sourceSize: stat.size,
     });
   }
-  return out;
+  return { subAgents, unfollowedLinkCount };
 }
 
 /** The log folder name of a Windows path: its drive letter, then `--` for `:\`. */
