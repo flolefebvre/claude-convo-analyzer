@@ -62,7 +62,11 @@ export function TranscriptMessageRow({
   // A search result links here as `?msg=<uuid>#msg-<uuid>`: the query
   // highlights the row server-side (a fragment never reaches the server), and
   // the pane's `ScrollToAnchor` scrolls to the id. Same idiom as `?call=`.
-  const anchor = anchorProps(message, anchoredMessage);
+  // The export holds every Agent's transcript in one document, where a Copied
+  // Message repeats its owner's uuid and `tool_use` ids: only the owner's
+  // rendering carries the anchors, so each lands on the owner (ADR-0011).
+  const isAnchorTarget = transcriptExport === undefined || message.copiedFrom === null;
+  const anchor = anchorProps(message, anchoredMessage, isAnchorTarget);
   const copiedFrom = message.copiedFrom && (
     <CopiedFrom
       owner={message.copiedFrom}
@@ -119,6 +123,7 @@ export function TranscriptMessageRow({
       effortChanged={effortChanged}
       anchoredCall={anchoredCall}
       anchor={anchor}
+      isAnchorTarget={isAnchorTarget}
       listReturn={listReturn}
       transcriptExport={transcriptExport}
       copiedFrom={copiedFrom}
@@ -127,12 +132,17 @@ export function TranscriptMessageRow({
 }
 
 /** The element id + highlight flag for one row, given the `?msg=` target, and
- *  the id prefix of its speaker/time labels. */
-function anchorProps(message: TranscriptMessage, anchoredMessage: string | undefined): MessageAnchor {
+ *  the id prefix of its speaker/time labels. A row that is no anchor target
+ *  carries no element id. */
+function anchorProps(
+  message: TranscriptMessage,
+  anchoredMessage: string | undefined,
+  isAnchorTarget: boolean,
+): MessageAnchor {
   const labelId = `turn-${message.id}`;
   if (message.uuid === null) return { anchored: false, labelId };
   return {
-    id: messageAnchorId(message.uuid),
+    id: isAnchorTarget ? messageAnchorId(message.uuid) : undefined,
     anchored: message.uuid === anchoredMessage,
     labelId,
   };
@@ -206,6 +216,7 @@ function AssistantTurn({
   effortChanged,
   anchoredCall,
   anchor,
+  isAnchorTarget,
   listReturn,
   transcriptExport,
   copiedFrom,
@@ -219,6 +230,8 @@ function AssistantTurn({
   /** The `?call=` deep-link target, threaded down to the tool calls. */
   anchoredCall?: string;
   anchor: MessageAnchor;
+  /** False when another rendering of this Turn carries its anchors: its tool calls then carry no element id. */
+  isAnchorTarget: boolean;
   listReturn: string | undefined;
   transcriptExport: TranscriptExport | undefined;
   /** The marker of a Copied Message (see `CopiedFrom`), in place of the cost its owner counts. */
@@ -267,6 +280,7 @@ function AssistantTurn({
               key={call.id}
               call={call}
               messageId={message.id}
+              isAnchorTarget={isAnchorTarget}
               view={view}
               labels={labels}
               anchoredCall={anchoredCall}
