@@ -416,6 +416,8 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     // A Tool call that succeeded: its summary carries the result size.
     const size = page.getByText(/^[\d,]+ chars$/);
     const call = disclosures(page).filter({ has: size }).first();
+    // A call that is neither an Agent call nor a skill load carries no kind chip.
+    await expect(call.getByText("Tool", { exact: true })).toHaveCount(0);
     await call.locator(size).click();
     await expect(call.getByText(/export function handler/)).toBeVisible();
     await expect(call.getByText("Input", { exact: true })).toBeVisible();

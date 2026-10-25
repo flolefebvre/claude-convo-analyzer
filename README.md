@@ -204,8 +204,9 @@ agent. Quoted phrases work too:
 ## What was sent
 
 Since Claude Code 2.1.300 the logs record each request Claude Code sends, and
-every turn of such a conversation, sub-agents included, shows **What was
-sent**, in the order the model read it. One line gives the request
+every turn of such a conversation, sub-agents included, has a **What was
+sent** button on its marker line, opening under the turn what its request
+sent, in the order the model read it. One line gives the request
 parameters and when it was sent. Below it, each part collapses to one line
 and opens for detail: the system prompt, flagged when it changed since the
 previous request (a change of only the date, git status or working directory

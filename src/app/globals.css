@@ -1280,42 +1280,34 @@ html:has(.tview) {
   background: var(--cost-muted);
   box-shadow: inset 3px 0 0 var(--cost);
 }
-.tview details.call.anchored {
-  border-color: var(--cost);
+.tview details.call.anchored > summary {
+  background: var(--cost-muted);
   box-shadow: 0 0 0 1px var(--cost);
 }
 
-/* ---- Tool calls ---- */
+/* ---- Tool calls: one quiet container per Turn, a borderless line per call
+   (work, not speech: quieter than the Agent's text) ---- */
 .tview .calls {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-top: 10px;
+  margin-top: 8px;
+  border-left: 2px solid var(--border);
+  padding-left: 4px;
 }
-.tview details.call {
-  border: 1px solid var(--border);
-  border-radius: calc(var(--radius) * 0.8);
-  background: var(--card);
-  overflow: hidden;
-}
-.tview details.call summary {
+.tview details.call > summary {
   list-style: none;
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 7px 12px;
+  min-height: 30px;
+  padding: 4px 10px;
+  border-radius: 6px;
   cursor: pointer;
 }
 .tview details.call summary::-webkit-details-marker {
   display: none;
 }
-/* `details.call` clips overflow (for its rounded corners), so its summary rings
-   inside itself rather than around. */
-.tview details.call summary:focus-visible {
-  @apply focus-inset;
-  border-radius: calc(var(--radius) * 0.8 - 1px);
-}
-.tview details.call summary:hover {
+.tview details.call > summary:hover {
   background: var(--muted);
 }
 .tview .chev {
@@ -1334,7 +1326,7 @@ html:has(.tview) {
   padding: 2px 7px;
   flex-shrink: 0;
 }
-.tview .kind-tool {
+.tview .kind-task {
   background: var(--muted);
   color: var(--muted-foreground);
 }
@@ -1371,9 +1363,9 @@ html:has(.tview) {
   flex-shrink: 0;
   white-space: nowrap;
 }
+/* An opened call's body, under its line, aligned with the call's name. */
 .tview .call-body {
-  border-top: 1px solid var(--border);
-  padding: 10px 12px 12px;
+  padding: 6px 10px 12px 33px;
   display: flex;
   flex-direction: column;
   gap: 10px;
