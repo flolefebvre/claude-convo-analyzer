@@ -144,7 +144,12 @@ them, composing with the folder scope and the sort:
 
 Open any conversation for the Transcript view — an IDE-like two-pane view with
 the agent tree (main plus every sub-agent, each with its own cost) on the left
-and one agent's turn-by-turn transcript on the right. Click a row's title to
+and one agent's turn-by-turn transcript on the right. The transcript reads as a
+conversation between speakers, each told apart by its avatar's shape and icon:
+the turns the agent ran in answer to one message group into one reply, headed
+by its turn and tool-call counts, time range and cost, and each turn keeps its
+own marker line — its number across the whole transcript, time and cost, then
+its model, effort change, API error or failed attempts when it has them. Click a row's title to
 land on the main agent, or a sub-agent in the cost breakdown to jump straight
 into its transcript. Open a tool call for its full input and result; an Agent
 call shows the Task prompt it gave its sub-agent and what that sub-agent handed

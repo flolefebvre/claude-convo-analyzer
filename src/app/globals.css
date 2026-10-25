@@ -193,6 +193,8 @@
   --agent: oklch(0.55 0.13 250);
   --agent-muted: oklch(0.55 0.13 250 / 10%);
   --agent-foreground: oklch(0.5 0.13 250);
+  /* The ring of a Turn's dot on the Transcript's rail. */
+  --rail-dot: oklch(0.72 0 0);
 }
 
 /* The dark tokens, under the `dark` variant's two conditions. */
@@ -245,6 +247,7 @@
     --agent: oklch(0.72 0.11 250);
     --agent-muted: oklch(0.72 0.11 250 / 14%);
     --agent-foreground: oklch(0.72 0.11 250);
+    --rail-dot: oklch(0.5 0 0);
   }
 }
 
@@ -850,13 +853,75 @@ html:has(.tview) {
   margin-top: 12px;
 }
 
-/* ---- Row head (speaker, badges, time, cost) ---- */
+/* ---- The Rail: a speaker gutter, then the row ---- */
+/* Every row but a Task notification's has an avatar in the gutter; under a
+   Reply's, a thin rail runs down, with one dot per Turn at its marker line. */
+.tview .row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  column-gap: 14px;
+}
+.tview .gutter {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+.tview .reply > .gutter::after {
+  content: "";
+  position: absolute;
+  top: 34px;
+  bottom: 2px;
+  left: 21px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--border);
+}
+/* Speakers differ by shape and icon, not by colour alone: round for the person
+   and the Agent itself, a rounded square for every other agent, outlined for
+   another Conversation's. */
+.tview .avatar {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: var(--background);
+}
+.tview .avatar-icon {
+  width: 15px;
+  height: 15px;
+}
+.tview .avatar.is-person {
+  background: var(--foreground);
+}
+.tview .avatar.is-assistant {
+  background: var(--cost);
+}
+.tview .avatar.is-agent {
+  background: var(--agent);
+  border-radius: 8px;
+}
+.tview .avatar.is-other-conversation {
+  background: var(--agent-muted);
+  color: var(--agent-foreground);
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1.5px var(--agent);
+}
+.tview .reply.is-copied .avatar.is-assistant {
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+
+/* ---- Row head (speaker, notes, time, cost) ---- */
 .tview .row-head {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
+  align-items: center;
   gap: 4px 10px;
-  margin-bottom: 4px;
+  min-height: 28px;
+  margin-bottom: 2px;
   font-size: var(--text-xs);
   line-height: var(--text-xs--line-height);
   color: var(--muted-foreground);
@@ -865,25 +930,20 @@ html:has(.tview) {
   flex: 1;
 }
 .tview .speaker {
-  font-weight: 500;
+  font-size: var(--text-ui);
+  font-weight: 600;
 }
 .tview .prompt .speaker {
   color: var(--foreground);
 }
-.tview .prompt.is-agent .speaker {
-  color: var(--agent-foreground);
+.tview .reply .speaker {
+  color: var(--cost-foreground);
 }
-.tview .row-head .model {
-  font-family: var(--font-mono);
+.tview :is(.prompt.is-agent, .inter) .speaker {
+  color: var(--agent-foreground);
 }
 .tview .row-time {
   white-space: nowrap;
-}
-/* The turn's cost: plain figures, right-aligned in a fixed slot so 2- and
-   4-decimal amounts end on one edge. */
-.tview .turn-cost {
-  min-width: 3.5rem;
-  text-align: right;
 }
 .tview .turn-cost.is-unpriced {
   color: var(--muted-foreground);
@@ -902,16 +962,34 @@ html:has(.tview) {
   text-underline-offset: 2px;
 }
 
-/* ---- Prompt ---- */
-.tview .prompt {
-  border-left: 3px solid var(--foreground);
-  background: var(--muted);
-  border-radius: 0 var(--radius) var(--radius) 0;
-  padding: 10px 16px 12px;
+/* ---- Bubbles: Prompts and Inter-agent messages ---- */
+/* It hugs its text, whose prose keeps the reading measure; code in a Task
+   prompt may widen it to the column. */
+.tview .bubble {
+  width: fit-content;
+  max-width: 100%;
+  border-radius: 4px 14px 14px 14px;
+  padding: 10px 14px;
+  overflow-wrap: anywhere;
 }
-/* Written by the parent agent, not the person: the agent accent. */
-.tview .prompt.is-agent {
-  border-left-color: var(--agent);
+/* The person's Prompt: the loudest thing on screen, a touch larger. */
+.tview .prompt .bubble {
+  background: var(--muted);
+  font-size: 15px;
+}
+/* Written by an agent, not the person: the agent tint. */
+.tview :is(.prompt.is-agent, .inter) .bubble {
+  background: var(--agent-muted);
+  font-size: var(--text-sm);
+}
+.tview .inter.is-other-conversation .bubble {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--agent-muted);
+}
+/* History another Agent owns fades slightly. */
+.tview :is(.prompt, .inter).is-copied .bubble,
+.tview .reply.is-copied .turn-body {
+  opacity: 0.78;
 }
 .tview .prompt-body {
   max-width: var(--container-measure);
@@ -937,16 +1015,63 @@ html:has(.tview) {
   color: var(--muted-foreground);
 }
 
-/* ---- Assistant turn ---- */
-/* Reasoning-effort change marker, and the notes on a user row (via plugin,
-   sent while working, hand-back): same chip as `.badge-err` but NEUTRAL —
-   information, not a problem. */
-.tview :is(.badge-effort, .badge-note) {
+/* ---- Turn ---- */
+.tview .turns > * + * {
+  margin-top: 14px;
+}
+/* Its dot on the rail, centred in the gutter, level with its marker line. */
+.tview .turn {
+  position: relative;
+}
+.tview .turn::before {
+  content: "";
+  position: absolute;
+  left: -42px;
+  top: 5px;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: var(--background);
+  border: 2px solid var(--rail-dot);
+}
+.tview .turn.is-failed::before {
+  border-color: var(--destructive-foreground);
+}
+/* A faint marker line, always visible: Turn N, time, cost, then chips only
+   when they apply. */
+.tview .turn-marker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin-bottom: 3px;
+  font-size: 11.5px;
+  line-height: var(--text-xs--line-height);
+  color: var(--muted-foreground);
+}
+.tview .turn-number {
+  font-weight: 500;
+}
+/* The marker line's chips (model, effort change, Failed attempts) and the
+   notes on a row head (via plugin, sent while working, hand-back): same chip
+   as `.badge-err` but NEUTRAL — information, not a problem. */
+.tview :is(.chip, .badge-note) {
   border-radius: 4px;
-  padding: 1px 6px;
+  padding: 0 6px;
   white-space: nowrap;
   color: var(--muted-foreground);
   background: var(--muted);
+}
+.tview .chip {
+  font-size: var(--text-2xs);
+}
+.tview .chip.is-model {
+  font-family: var(--font-mono);
+}
+.tview .turn-marker .badge-err {
+  padding: 0 6px;
+  font-size: var(--text-2xs);
 }
 .tview .turn-body {
   overflow-wrap: break-word;
@@ -1126,9 +1251,14 @@ html:has(.tview) {
   background: var(--cost-muted);
   box-shadow: inset 3px 0 0 var(--cost);
 }
-.tview .prompt.anchored {
-  border-left-color: var(--cost);
+/* The padding moves the Turn's box, so its dot moves back onto the rail. */
+.tview .turn.anchored::before {
+  left: -28px;
+  top: 15px;
+}
+.tview :is(.prompt, .inter).anchored .bubble {
   background: var(--cost-muted);
+  box-shadow: inset 3px 0 0 var(--cost);
 }
 .tview details.call.anchored {
   border-color: var(--cost);
@@ -1745,7 +1875,7 @@ html:has(.tview) {
 .tview .notice-result[open] > summary {
   font-size: var(--text-xs);
 }
-.tview .notice.anchored {
+.tview .task.anchored .notice {
   margin-inline: -10px;
   padding: 6px 10px;
   border-radius: var(--radius);
@@ -1796,5 +1926,8 @@ html:has(.tview) {
   .tview .turn.anchored {
     margin-inline: -10px;
     padding-inline: 10px;
+  }
+  .tview .turn.anchored::before {
+    left: -32px;
   }
 }

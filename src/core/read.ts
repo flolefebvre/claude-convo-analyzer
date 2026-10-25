@@ -19,7 +19,7 @@ import { type MessageOrigin, messageOriginSchema } from "@/core/parse";
 import type { Prisma, PrismaClient } from "@/core/prisma/generated/client";
 import { PARSER_VERSION } from "@/core/refresh";
 import { toolCallBodyParts, type ToolCallBodyParts } from "@/core/tool-call-views";
-import { orderedBefore, REVERSE_TRANSCRIPT_ORDER, TRANSCRIPT_ORDER } from "@/core/transcript-order";
+import { orderedAfter, orderedBefore, REVERSE_TRANSCRIPT_ORDER, TRANSCRIPT_ORDER } from "@/core/transcript-order";
 import { failedAttemptsByMessage } from "@/core/what-was-sent";
 
 export type ConversationSummary = {
@@ -163,6 +163,8 @@ export type TranscriptMessage = {
   copiedFrom: CopiedMessageOwner | null;
   /** Record timestamp as an ISO string (null when absent). */
   timestamp: string | null;
+  /** This Turn's 1-based place among the Agent's whole Transcript's Turns, across every page; null on user Messages. */
+  turnNumber: number | null;
   /** `tool_use` blocks on this (assistant) turn, in stored order. */
   toolCalls: TranscriptToolCall[];
   /**
@@ -249,6 +251,35 @@ export type TranscriptView = {
   effortBefore: string | null;
   /** Meta user records hidden from the selected agent's whole transcript. */
   metaHiddenCount: number;
+  /**
+   * The whole Reply this page opens inside, begun on an earlier page; null
+   * when the page opens on a Message addressed to the Agent, or on a Reply's
+   * first Turn.
+   */
+  openingReply: ReplyFigures | null;
+  /**
+   * The whole Reply this page ends inside, continued on a later page; null
+   * when the page ends on a Message addressed to the Agent, or on a Reply's
+   * last Turn. The same Reply as {@link openingReply} on a page lying wholly
+   * inside one.
+   */
+  closingReply: ReplyFigures | null;
+};
+
+/** What a Reply's header says about the whole Reply (GLOSSARY.md), whatever part of it a page holds. */
+export type ReplyFigures = {
+  turnCount: number;
+  toolCallCount: number;
+  /** Its first dated Turn's timestamp (ISO); null when none of its Turns is dated. */
+  startedAt: string | null;
+  /** Its last dated Turn's timestamp (ISO); null when none of its Turns is dated. */
+  endedAt: string | null;
+  /** The cost of the Turns it owns; its Copied Messages cost nothing here. */
+  costUsd: number;
+  /** True when some Turn it owns is on a model without a known price. */
+  unpriced: boolean;
+  /** How many of its Turns are Copied Messages. */
+  copiedTurnCount: number;
 };
 
 /** How many rendered messages one Transcript page holds. */
@@ -1100,6 +1131,8 @@ type TranscriptPage = Pick<
   | "toolCallCount"
   | "effortLevels"
   | "effortBefore"
+  | "openingReply"
+  | "closingReply"
 >;
 
 /** The page of a conversation with no agent rows (should not occur). */
@@ -1114,6 +1147,8 @@ function emptyTranscriptPage(pageSize: number): TranscriptPage {
     toolCallCount: 0,
     effortLevels: [],
     effortBefore: null,
+    openingReply: null,
+    closingReply: null,
   };
 }
 
@@ -1141,7 +1176,7 @@ async function readTranscriptPage(
   const rendered = renderedMessages(agent.id);
   const [messageCount, turnCount, toolCallCount, effortRows, anchorIndex] = await Promise.all([
     prisma.message.count({ where: rendered }),
-    prisma.message.count({ where: { agentId: agent.id, role: "assistant" } }),
+    prisma.message.count({ where: assistantTurns(agent.id) }),
     prisma.toolCall.count({ where: { agentId: agent.id } }),
     prisma.message.groupBy({
       by: ["effort"],
@@ -1158,9 +1193,22 @@ async function readTranscriptPage(
     opts.page === "all" ? 1 : (opts.page ?? (anchorIndex === undefined ? 1 : Math.floor(anchorIndex / pageSize) + 1));
   const page = Math.min(Math.max(1, requested), pageCount);
 
-  const messages = await readAgentTranscript(prisma, agent, agents, { skip: (page - 1) * pageSize, take: pageSize });
-  const first = messages[0];
-  const effortBefore = page === 1 || first === undefined ? null : await effortBeforeMessage(prisma, rendered, first);
+  const window = await readAgentTranscript(prisma, agent, agents, { skip: (page - 1) * pageSize, take: pageSize });
+  const first = window[0];
+  const last = window.at(-1);
+  const [effortBefore, turnsBefore, openingReply, closingReply] = await Promise.all([
+    page === 1 || first === undefined ? null : effortBeforeMessage(prisma, rendered, first),
+    first === undefined
+      ? 0
+      : prisma.message.count({ where: { AND: [assistantTurns(agent.id), orderedBefore(orderKey(first))] } }),
+    page === 1 || first === undefined ? null : replyContinuedAcross(prisma, agent.id, first, "previous"),
+    page === pageCount || last === undefined ? null : replyContinuedAcross(prisma, agent.id, last, "next"),
+  ]);
+
+  let turnNumber = turnsBefore;
+  const messages = window.map((message) =>
+    message.role === "assistant" ? { ...message, turnNumber: ++turnNumber } : message,
+  );
 
   return {
     messages,
@@ -1172,6 +1220,101 @@ async function readTranscriptPage(
     toolCallCount,
     effortLevels: effortRows.flatMap((r) => (r.effort === null ? [] : [r.effort])),
     effortBefore,
+    openingReply,
+    closingReply,
+  };
+}
+
+/** The Turns of an agent's transcript: its assistant Messages, every one rendered. */
+function assistantTurns(agentId: number): Prisma.MessageWhereInput {
+  return { agentId, role: "assistant" };
+}
+
+/** The Messages addressed to an agent: the user Messages its transcript renders, each one a Reply's boundary. */
+function messagesAddressedTo(agentId: number): Prisma.MessageWhereInput {
+  return { agentId, role: "user", kind: { in: RENDERED_USER_KINDS } };
+}
+
+/** A read message's place in {@link TRANSCRIPT_ORDER}, as `orderedBefore`/`orderedAfter` take it. */
+function orderKey(message: TranscriptMessage): { id: number; timestamp: bigint | null } {
+  return { id: message.id, timestamp: message.timestamp === null ? null : BigInt(Date.parse(message.timestamp)) };
+}
+
+/**
+ * The whole Reply holding `edge`, a page's first or last message, when that
+ * Reply carries on to the `previous` or `next` page — that is, when `edge` is
+ * a Turn and so is the rendered message beyond it. Null otherwise.
+ */
+async function replyContinuedAcross(
+  prisma: PrismaClient,
+  agentId: number,
+  edge: TranscriptMessage,
+  side: "previous" | "next",
+): Promise<ReplyFigures | null> {
+  if (edge.role !== "assistant") return null;
+  const beyond = await prisma.message.findFirst({
+    where: {
+      AND: [
+        renderedMessages(agentId),
+        side === "previous" ? orderedBefore(orderKey(edge)) : orderedAfter(orderKey(edge)),
+      ],
+    },
+    orderBy: side === "previous" ? REVERSE_TRANSCRIPT_ORDER : TRANSCRIPT_ORDER,
+    select: { role: true },
+  });
+  return beyond?.role === "assistant" ? replyHolding(prisma, agentId, edge) : null;
+}
+
+/** The figures of the whole Reply holding the Turn `turn`: every Turn between the Messages addressed to the agent around it. */
+async function replyHolding(prisma: PrismaClient, agentId: number, turn: TranscriptMessage): Promise<ReplyFigures> {
+  const select = { id: true, timestamp: true } as const;
+  const [addressedBefore, addressedAfter] = await Promise.all([
+    prisma.message.findFirst({
+      where: { AND: [messagesAddressedTo(agentId), orderedBefore(orderKey(turn))] },
+      orderBy: REVERSE_TRANSCRIPT_ORDER,
+      select,
+    }),
+    prisma.message.findFirst({
+      where: { AND: [messagesAddressedTo(agentId), orderedAfter(orderKey(turn))] },
+      orderBy: TRANSCRIPT_ORDER,
+      select,
+    }),
+  ]);
+  const turns = await prisma.message.findMany({
+    where: {
+      AND: [
+        assistantTurns(agentId),
+        ...(addressedBefore === null ? [] : [orderedAfter(addressedBefore)]),
+        ...(addressedAfter === null ? [] : [orderedBefore(addressedAfter)]),
+      ],
+    },
+    orderBy: TRANSCRIPT_ORDER,
+    select: {
+      timestamp: true,
+      copiedFromMessageId: true,
+      turn: { select: { ...TOKEN_SUM, model: true } },
+      _count: { select: { toolCalls: true } },
+    },
+  });
+
+  const dated = turns.flatMap((row) => (row.timestamp === null ? [] : [row.timestamp]));
+  const isoOf = (timestamp: bigint | undefined) =>
+    timestamp === undefined ? null : new Date(Number(timestamp)).toISOString();
+  let costUsd = 0;
+  let unpriced = false;
+  for (const row of turns) {
+    const priced = priceTurn(row.turn);
+    costUsd += priced.costUsd;
+    if (priced.unpriced) unpriced = true;
+  }
+  return {
+    turnCount: turns.length,
+    toolCallCount: turns.reduce((total, row) => total + row._count.toolCalls, 0),
+    startedAt: isoOf(dated[0]),
+    endedAt: isoOf(dated.at(-1)),
+    costUsd,
+    unpriced,
+    copiedTurnCount: turns.filter((row) => row.copiedFromMessageId !== null).length,
   };
 }
 
@@ -1181,9 +1324,8 @@ async function effortBeforeMessage(
   rendered: Prisma.MessageWhereInput,
   message: TranscriptMessage,
 ): Promise<string | null> {
-  const timestamp = message.timestamp === null ? null : BigInt(Date.parse(message.timestamp));
   const row = await prisma.message.findFirst({
-    where: { AND: [rendered, { effort: { not: null } }, orderedBefore({ id: message.id, timestamp })] },
+    where: { AND: [rendered, { effort: { not: null } }, orderedBefore(orderKey(message))] },
     orderBy: REVERSE_TRANSCRIPT_ORDER,
     select: { effort: true },
   });
@@ -1316,6 +1458,8 @@ async function readAgentTranscript(
               messageUuid: r.copiedFrom.uuid,
             },
       timestamp: r.timestamp === null ? null : new Date(Number(r.timestamp)).toISOString(),
+      // Numbered by the page, which knows the Turns before its window.
+      turnNumber: null,
       toolCalls: toolCallsByMsg.get(r.id) ?? [],
       apiRequestId: r.apiRequestId,
       failedAttemptCount: failedAttempts.length,

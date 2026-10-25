@@ -4,6 +4,7 @@ import {
   formatBytes,
   formatChars,
   formatClock,
+  formatClockRange,
   formatCompactTokens,
   formatCost,
   formatCount,
@@ -11,6 +12,7 @@ import {
   formatDateRange,
   formatDayKey,
   formatDuration,
+  formatFailedAttempts,
   formatGrandTotalCost,
   formatLatency,
   formatModelName,
@@ -27,6 +29,29 @@ describe("formatClock", () => {
   it("returns '' for a missing or unparseable timestamp", () => {
     expect(formatClock(null)).toBe("");
     expect(formatClock("not-a-date")).toBe("");
+  });
+});
+
+describe("formatClockRange", () => {
+  it("joins two different clock times with an en dash", () => {
+    expect(formatClockRange("2026-06-19T14:02:10Z", "2026-06-19T14:05:00Z")).toBe("14:02–14:05");
+  });
+
+  it("reads as one time when both ends show the same minute", () => {
+    expect(formatClockRange("2026-06-19T14:02:10Z", "2026-06-19T14:02:50Z")).toBe("14:02");
+  });
+
+  it("returns '' when either end is missing or unparseable", () => {
+    expect(formatClockRange(null, null)).toBe("");
+    expect(formatClockRange("2026-06-19T14:02:10Z", "not-a-date")).toBe("");
+  });
+});
+
+describe("formatFailedAttempts", () => {
+  it("counts the Failed attempts, then the time they lost when known", () => {
+    expect(formatFailedAttempts(1, 300)).toBe("1 failed attempt · 300ms lost");
+    expect(formatFailedAttempts(2, 9_400)).toBe("2 failed attempts · 9.4s lost");
+    expect(formatFailedAttempts(3, null)).toBe("3 failed attempts");
   });
 });
 

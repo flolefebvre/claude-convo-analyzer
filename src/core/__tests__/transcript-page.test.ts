@@ -114,4 +114,111 @@ describe("getTranscript — Transcript pages", () => {
     expect((await read({ page: 2 }))?.effortBefore).toBe("high");
     expect((await read({ page: 3 }))?.effortBefore).toBe("high");
   });
+
+  it("numbers each Turn across the Agent's whole Transcript, so the last Turn's number is its turn count", async () => {
+    const turnNumbers = (view: Awaited<ReturnType<typeof read>>) => view?.messages.map((m) => m.turnNumber);
+    expect(turnNumbers(await read({ page: 1 }))).toEqual([null, null, 1]);
+    expect(turnNumbers(await read({ page: 2 }))).toEqual([null, 2, 3]);
+    const last = await read({ page: 3 });
+    expect(turnNumbers(last)).toEqual([null, 4]);
+    expect(last?.messages.at(-1)?.turnNumber).toBe(last?.turnCount);
+    expect(turnNumbers(await read({ page: "all" }))).toEqual([null, null, 1, null, 2, 3, null, 4]);
+  });
+
+  it("describes a Reply split across pages whole, on both pages, a Tool-result carrier inside it", async () => {
+    // At five a page, the Reply pa2 · pa3 (pr2 between them) ends page 1 and opens page 2.
+    const whole = await read({ page: "all" });
+    const costOf = (uuid: string) => whole?.messages.find((m) => m.uuid === uuid)?.costUsd ?? Number.NaN;
+    const reply = {
+      turnCount: 2,
+      toolCallCount: 1,
+      startedAt: "2026-06-22T09:00:20.000Z",
+      endedAt: "2026-06-22T09:00:40.000Z",
+      costUsd: costOf("pa2") + costOf("pa3"),
+      unpriced: false,
+      copiedTurnCount: 0,
+    };
+
+    const first = await read({ page: 1, pageSize: 5 });
+    expect(uuids(first)).toEqual(["pu0", "pu00", "pa1", "pu1", "pa2"]);
+    expect(first?.openingReply).toBeNull();
+    expect(first?.closingReply).toEqual(reply);
+
+    const second = await read({ page: 2, pageSize: 5 });
+    expect(uuids(second)).toEqual(["pa3", "pu2", "pa4"]);
+    expect(second?.openingReply).toEqual(reply);
+    expect(second?.closingReply).toBeNull();
+  });
+
+  it("names no split Reply where a page boundary falls between a Reply and a Message addressed to the Agent", async () => {
+    // At two a page: pu0 pu00 | pa1 pu1 | pa2 pa3 | pu2 pa4.
+    for (const page of [1, 2, 3, 4]) {
+      const view = await read({ page, pageSize: 2 });
+      expect(view?.openingReply).toBeNull();
+      expect(view?.closingReply).toBeNull();
+    }
+  });
+});
+
+describe("getTranscript — Replies of undated Turns", () => {
+  // `sess-undated-turns` renders uu0 · ua1 · ua2 · ua3 · uu1 · ua4: the prompt
+  // and the first two Turns are undated (they sort first, by log order), ua3 is
+  // the first dated one, and ur1, a Tool-result carrier, is hidden.
+  const db = seededTempDb({ prefix: "cca-transcript-undated-", logsRoot: LOGS_ROOT });
+  const read = (opts: { page?: number | "all"; pageSize?: number } = {}) =>
+    getTranscript("sess-undated-turns", { dbPath: db.dbPath, ...opts });
+
+  it("numbers undated Turns by their place in the Transcript", async () => {
+    const view = await read({ page: "all" });
+    expect(view?.messages.map((m) => [m.uuid, m.turnNumber])).toEqual([
+      ["uu0", null],
+      ["ua1", 1],
+      ["ua2", 2],
+      ["ua3", 3],
+      ["uu1", null],
+      ["ua4", 4],
+    ]);
+    expect(view?.turnCount).toBe(4);
+  });
+
+  it("bounds a split Reply's time range by its dated Turns only", async () => {
+    const view = await read({ page: 1, pageSize: 2 });
+    expect(view?.closingReply).toMatchObject({
+      turnCount: 3,
+      toolCallCount: 1,
+      startedAt: "2026-06-22T10:00:05.000Z",
+      endedAt: "2026-06-22T10:00:05.000Z",
+    });
+    const second = await read({ page: 2, pageSize: 2 });
+    expect(second?.messages.map((m) => m.turnNumber)).toEqual([2, 3]);
+    expect(second?.openingReply).toEqual(view?.closingReply);
+  });
+
+  it("describes a page lying wholly inside one Reply by that Reply, as it opens and as it closes", async () => {
+    // At one a page, page 3 is ua2 alone, inside the Reply ua1 · ua2 · ua3.
+    const view = await read({ page: 3, pageSize: 1 });
+    expect(view?.messages.map((m) => m.uuid)).toEqual(["ua2"]);
+    expect(view?.openingReply?.turnCount).toBe(3);
+    expect(view?.closingReply).toEqual(view?.openingReply);
+  });
+});
+
+describe("getTranscript — a split Reply partly copied", () => {
+  // fork-a opens on its spawner's Prompt and three Turns it copies (the last,
+  // its spawning Turn, re-written), then runs three of its own: one Reply.
+  const db = seededTempDb({
+    prefix: "cca-transcript-copied-reply-",
+    logsRoot: path.join(import.meta.dirname, "fixtures", "forked-agent-logs"),
+  });
+
+  it("counts the copied Turns of the whole Reply, and only its own Turns' cost", async () => {
+    const read = (page: number | "all") =>
+      getTranscript("sess-forks", { dbPath: db.dbPath, agentId: "fork-a", page, pageSize: 2 });
+    const whole = await read("all");
+    const ownCost = whole?.messages.reduce((total, m) => total + m.costUsd, 0);
+
+    const first = await read(1);
+    expect(first?.messages.map((m) => m.uuid)).toEqual(["lead-u1", "lead-a1"]);
+    expect(first?.closingReply).toMatchObject({ turnCount: 6, copiedTurnCount: 3, costUsd: ownCost });
+  });
 });

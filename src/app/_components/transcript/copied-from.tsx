@@ -10,7 +10,7 @@ import type { CopiedMessageOwner } from "@/core/read";
 import { agentLabelText } from "./transcript-parts";
 
 /**
- * "from <owner>" on a Copied Message, the owner a link to its Transcript at
+ * "copied from <owner>" on a Copied Message, the owner a link to its Transcript at
  * that Message: named by its Agent when it is in this Conversation (the
  * spawner a fork copied), by its Conversation's title otherwise (the parent a
  * continuation copied). In the Conversation export an owner of this
@@ -64,7 +64,7 @@ export function CopiedFrom({
   }
   return (
     <span className="copied-from" title={title}>
-      from {ownerLink}
+      copied from {ownerLink}
     </span>
   );
 }

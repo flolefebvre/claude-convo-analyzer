@@ -2,8 +2,7 @@
 
 // The "What was sent" disclosure of one Turn. The page ships only where to
 // read it — the `api_request` row id of the Turn's API request in the
-// logs — and the Turn's failed-attempt count and lost time; what it sent is
-// fetched from `GET /api/api-request/<id>` the first time the reader
+// logs; what it sent is fetched from `GET /api/api-request/<id>` the first time the reader
 // opens it, and kept for every later open. Native `<details>` stays the
 // disclosure, as for tool calls. Under the parameters line, the request reads
 // in the order the model read it: the system prompt, the tools, the earlier
@@ -22,7 +21,7 @@ import { useState } from "react";
 
 import { CopyButton } from "@/app/_components/copy-button";
 import { JsonTree } from "@/app/_components/json-tree";
-import { formatBytes, formatClock, formatCompactTokens, formatLatency } from "@/app/_lib/format";
+import { formatBytes, formatClock, formatCompactTokens, formatFailedAttempts, formatLatency } from "@/app/_lib/format";
 import type { DiffLine, FailedAttempt, RawApiRequest, SentMessage, SentTool, WhatWasSent } from "@/app/_lib/transcript";
 import { Skeleton } from "@/components/ui/skeleton";
 import { routes } from "@/generated/routes";
@@ -39,28 +38,12 @@ const BLOCK_CLAMP_CHARS = 2_000;
 
 /**
  * A Turn's "What was sent" `<details>`, fetched on the first open from its API
- * request in the logs, `apiRequestId`; its summary counts the Turn's
- * failed attempts and the time they lost, which the page ships.
+ * request in the logs, `apiRequestId`.
  *
  * @example
- * {message.apiRequestId !== null && (
- *   <WhatWasSentDisclosure
- *     apiRequestId={message.apiRequestId}
- *     failedAttemptCount={message.failedAttemptCount}
- *     failedAttemptsLostMs={message.failedAttemptsLostMs}
- *   />
- * )}
+ * {message.apiRequestId !== null && <WhatWasSentDisclosure apiRequestId={message.apiRequestId} />}
  */
-export function WhatWasSentDisclosure({
-  apiRequestId,
-  failedAttemptCount,
-  failedAttemptsLostMs,
-}: {
-  apiRequestId: number;
-  failedAttemptCount: number;
-  /** The time the failed attempts lost in all; null when unknown, or without any. */
-  failedAttemptsLostMs: number | null;
-}) {
+export function WhatWasSentDisclosure({ apiRequestId }: { apiRequestId: number }) {
   const { state, onToggle, detailsRef } = useReadOnFirstOpen<WhatWasSent>(() =>
     callRoute(routes.api["api-request"](String(apiRequestId)).GET()),
   );
@@ -70,12 +53,6 @@ export function WhatWasSentDisclosure({
       <summary>
         <ChevronRight aria-hidden className="chev" />
         <span className="call-name">What was sent</span>
-        {failedAttemptCount > 0 && (
-          <span className="call-meta">
-            {failedAttemptCountLabel(failedAttemptCount)}
-            {failedAttemptsLostMs !== null && ` · lost ${formatLatency(failedAttemptsLostMs)}`}
-          </span>
-        )}
       </summary>
       <div className="call-body sent-body">
         <ReadBody state={state} subject="what was sent">
@@ -114,11 +91,6 @@ function ReadBody<Value>({
     case "loaded":
       return children(state.value);
   }
-}
-
-/** "1 failed attempt", "2 failed attempts". */
-function failedAttemptCountLabel(failedAttemptCount: number): string {
-  return `${failedAttemptCount} failed attempt${failedAttemptCount === 1 ? "" : "s"}`;
 }
 
 /** "1 message", "3 system blocks": `count`, then `noun`, plural past one. */
@@ -163,7 +135,7 @@ function WhatWasSentView({ whatWasSent, apiRequestId }: { whatWasSent: WhatWasSe
 
       {failedAttempts.length > 0 && (
         <section className="sent-section">
-          <h4 className="io-label">{failedAttemptCountLabel(failedAttempts.length)} before this request</h4>
+          <h4 className="io-label">{formatFailedAttempts(failedAttempts.length, null)} before this request</h4>
           {failedAttempts.map((attempt, index) => (
             <FailedAttemptLine key={index} attempt={attempt} />
           ))}

@@ -33,6 +33,17 @@ const LINKED_PARENT_TITLE = "Make the nightly export idempotent";
 
 const titleLink = (page: Page) => page.getByRole("link", { name: TITLE, exact: true });
 
+/** The Transcript's disclosures — Tool calls, What was sent, Thinking — not the Replies around them, which hold Turns. */
+const disclosures = (page: Page) =>
+  page
+    .getByRole("main")
+    .getByRole("group")
+    .filter({ hasNot: page.getByRole("article") });
+/** Each Turn's What was sent, in Transcript order. */
+const whatWasSentRows = (page: Page) => disclosures(page).filter({ hasText: /^What was sent/ });
+/** The copied-from markers of the Transcript's rows and Turns. */
+const copiedMarkers = (page: Page) => page.getByRole("main").getByText(/^copied from /);
+
 /** Open the seeded Conversation titled `title` from the Conversations list. */
 async function openConversation(page: Page, title: string): Promise<void> {
   await page.goto("/");
@@ -83,17 +94,16 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     await page.goto("/");
     const path = await page.getByRole("link", { name: CONTINUATION_TITLE, exact: true }).getAttribute("href");
     const ownerPathname = new URL((await titleLink(page).getAttribute("href"))!, baseURL).pathname;
-    // In a transcript row, not the family banner above it, which links the parent too.
-    const ownerLinks = (p: Page) =>
-      p.getByRole("main").getByRole("article").getByRole("link", { name: TITLE, exact: true });
+    // In a copied-from marker, not the family banner above the transcript, which links the parent too.
+    const ownerLinks = (p: Page) => copiedMarkers(p).getByRole("link", { name: TITLE, exact: true });
     await expectInstantLoad(page, baseURL, path!, {
       ...conversation,
       data: (p) => [p.getByRole("heading", { level: 1, name: CONTINUATION_TITLE }), ownerLinks(p)],
     });
 
-    // The last Message copied, far below the top of its owner's Transcript.
+    // The last Reply copied, far below the top of its owner's Transcript.
     const ownerLink = ownerLinks(page).last();
-    await expect(ownerLink.locator("..")).toHaveText(`from ${TITLE}`);
+    await expect(ownerLink.locator("..")).toHaveText(`copied from ${TITLE}`);
     const href = (await ownerLink.getAttribute("href"))!;
     expect(href.startsWith(`${ownerPathname}?msg=`)).toBe(true);
     const messageUuid = new URL(href, baseURL).searchParams.get("msg")!;
@@ -121,10 +131,14 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
 
     await agents.getByTitle("Explore #1", { exact: true }).click();
     await page.waitForURL((url) => url.searchParams.has("agent"));
-    const rows = page.getByRole("main").getByRole("article");
-    const ownerLinks = rows.getByRole("link", { name: LINKED_PARENT_TITLE, exact: true });
-    await expect(rows.first()).toBeVisible();
-    await expect(ownerLinks).toHaveCount(await rows.count());
+    // Each Message addressed to it, and each Reply as a whole, wholly copied: its Turns carry no marker of their own.
+    const main = page.getByRole("main");
+    const addressedMessages = main.getByRole("article", { name: /^(?!Turn \d)/ });
+    const replies = main.getByRole("group", { name: /^Explore #1 \d+ turns? · / });
+    const ownerLinks = copiedMarkers(page).getByRole("link", { name: LINKED_PARENT_TITLE, exact: true });
+    await expect(replies.first()).toBeVisible();
+    await expect(ownerLinks).toHaveCount((await addressedMessages.count()) + (await replies.count()));
+    await expect(main.getByRole("article", { name: /^Turn \d/ }).filter({ hasText: /\$\d/ })).toHaveCount(0);
     // Each names the parent's own Sub-agent, the Message's owner.
     const agentId = new URL(page.url()).searchParams.get("agent")!;
     await expect(ownerLinks.first()).toHaveAttribute("href", new RegExp(`^${parentPathname}\\?agent=${agentId}&`));
@@ -145,7 +159,8 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     await page.waitForURL((url) => url.searchParams.has("agent"));
     const rows = page.getByRole("main").getByRole("article");
     const copiedMarker = page.getByTitle("Copied from general-purpose", { exact: true });
-    // The lead's prompt and first Turn, then its spawning Turn re-written: each marked from the lead, linked to it.
+    // The lead's prompt, then, in a partly copied Reply, its first Turn and its spawning Turn re-written: each
+    // marked from the lead on its own header or marker line, linked to it.
     const copiedRows = rows.filter({ has: copiedMarker });
     await expect(copiedRows).toHaveCount(3);
     await expect(copiedRows.first().getByRole("link", { name: "general-purpose", exact: true })).toHaveAttribute(
@@ -155,7 +170,7 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     // Its own Turns: each shows what it cost.
     const ownTurns = page
       .getByRole("main")
-      .getByRole("article", { name: /^Assistant/ })
+      .getByRole("article", { name: /^Turn \d/ })
       .filter({ hasNot: copiedMarker });
     await expect(ownTurns).toHaveCount(2);
     for (const turn of await ownTurns.all()) await expect(turn).toContainText(/\$\d+\.\d{2,4}/);
@@ -202,7 +217,7 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     page,
   }) => {
     await openConversation(page, LOGGED_REQUESTS_TITLE);
-    const whatWasSent = page.getByRole("main").getByRole("group").filter({ hasText: "What was sent" }).first();
+    const whatWasSent = whatWasSentRows(page).first();
     await whatWasSent.getByText("What was sent").click();
 
     await expect(
@@ -244,7 +259,7 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     await openConversation(page, LOGGED_REQUESTS_TITLE);
 
     // The third Turn: the day after, its system prompt changed and Grep was loaded.
-    const whatWasSent = page.getByRole("main").getByRole("group").filter({ hasText: "What was sent" }).nth(2);
+    const whatWasSent = whatWasSentRows(page).nth(2);
     await whatWasSent.getByText("What was sent").click();
 
     const systemPrompt = whatWasSent.getByRole("group").filter({ hasText: /^System prompt/ });
@@ -281,11 +296,12 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
   }) => {
     await openConversation(page, LOGGED_REQUESTS_TITLE);
 
-    // The second Turn went through on a retry, 300 ms after its one Failed attempt.
-    const whatWasSent = page.getByRole("main").getByRole("group").filter({ hasText: "What was sent" }).nth(1);
-    await expect(whatWasSent.getByText("1 failed attempt · lost 300ms", { exact: true })).toBeVisible();
+    // The second Turn went through on a retry, 300 ms after its one Failed attempt: its marker line says so.
+    const turn = page.getByRole("main").getByRole("article", { name: /^Turn 2\b/ });
+    await expect(turn.getByText("1 failed attempt · 300ms lost", { exact: true })).toBeVisible();
     await expect(page.getByRole("main").getByText(/failed attempt/)).toHaveCount(1);
 
+    const whatWasSent = turn.getByRole("group").filter({ hasText: /^What was sent/ });
     await whatWasSent.getByText("What was sent").click();
     await expect(whatWasSent.getByRole("heading", { name: "1 failed attempt before this request" })).toBeVisible();
     await expect(whatWasSent.getByText("lost 300ms", { exact: true })).toBeVisible();
@@ -369,7 +385,7 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
 
     // A Tool call that succeeded: its summary carries the result size.
     const size = page.getByText(/^[\d,]+ chars$/);
-    const call = main.getByRole("group").filter({ has: size }).first();
+    const call = disclosures(page).filter({ has: size }).first();
     await call.locator(size).click();
     await expect(call.getByText(/export function handler/)).toBeVisible();
     await expect(call.getByText("Input", { exact: true })).toBeVisible();
@@ -382,7 +398,7 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
 
     // The seeded Plan spawn (its type pinned in `agentMessagesConversation`):
     // collapsed, its summary shows its description.
-    const call = page.getByRole("main").getByRole("group").filter({ hasText: "plan the change" }).first();
+    const call = disclosures(page).filter({ hasText: "plan the change" }).first();
     await call.getByText("plan the change").click();
     const prompt = call.getByRole("group", { name: "Prompt" });
     const returned = call.getByRole("group", { name: "Returned" });
@@ -409,7 +425,7 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
   }) => {
     await openConversation(page, PLAN_HANDOFF_TITLE);
 
-    const call = page.getByRole("main").getByRole("group").filter({ hasText: "SendMessage" }).first();
+    const call = disclosures(page).filter({ hasText: "SendMessage" }).first();
     await call.getByText("SendMessage").click();
     const input = call.getByRole("group", { name: "Input" });
     const result = call.getByRole("group", { name: "Result" });

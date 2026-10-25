@@ -51,40 +51,43 @@ export function TaskNotificationRow({
       : labels.has(taskAgentId)
         ? agentSectionHref(taskAgentId)
         : undefined;
-  const className = ["notice", anchor.anchored && "anchored"].filter(Boolean).join(" ");
+  const className = ["row task", anchor.anchored && "anchored"].filter(Boolean).join(" ");
 
   return (
     <article id={anchor.id} className={className} aria-labelledby={labelledBy(anchor, time)}>
-      <span className="kind kind-tool">Task</span>
-      <span id={`${anchor.labelId}-who`} className="notice-summary">
-        {origin?.taskSummary ?? "Task notification"}
-      </span>
-      {status &&
-        (FLAGGED_STATUSES.has(status) ? (
-          <ErrorBadge>{status}</ErrorBadge>
-        ) : (
-          <span className="notice-status">
-            <span aria-hidden>· </span>
-            {status}
-          </span>
-        ))}
-      {openTranscriptHref !== undefined && (
-        <OpenTranscriptLink href={openTranscriptHref} isInFile={agentLinksAreInFile} />
-      )}
-      <span className="spacer" />
-      <RowTime time={time} timestamp={message.timestamp} labelId={anchor.labelId} />
-      {copiedFrom}
-      {message.text && (
-        <details className="notice-result" open={anchor.anchored || undefined}>
-          <summary>
-            <ChevronRight aria-hidden className="chev" />
-            Result
-          </summary>
-          <div className="turn-body">
-            <TurnMarkdown text={message.text} />
-          </div>
-        </details>
-      )}
+      <div className="gutter" />
+      <div className="notice">
+        <span className="kind kind-tool">Task</span>
+        <span id={`${anchor.labelId}-who`} className="notice-summary">
+          {origin?.taskSummary ?? "Task notification"}
+        </span>
+        {status &&
+          (FLAGGED_STATUSES.has(status) ? (
+            <ErrorBadge>{status}</ErrorBadge>
+          ) : (
+            <span className="notice-status">
+              <span aria-hidden>· </span>
+              {status}
+            </span>
+          ))}
+        {openTranscriptHref !== undefined && (
+          <OpenTranscriptLink href={openTranscriptHref} isInFile={agentLinksAreInFile} />
+        )}
+        <span className="spacer" />
+        <RowTime time={time} timestamp={message.timestamp} labelId={anchor.labelId} />
+        {copiedFrom}
+        {message.text && (
+          <details className="notice-result" open={anchor.anchored || undefined}>
+            <summary>
+              <ChevronRight aria-hidden className="chev" />
+              Result
+            </summary>
+            <div className="turn-body">
+              <TurnMarkdown text={message.text} />
+            </div>
+          </details>
+        )}
+      </div>
     </article>
   );
 }
