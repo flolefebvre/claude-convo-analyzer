@@ -1,5 +1,5 @@
 // Ingest spine (ADR-0001, ADR-0002). `refresh()` discovers top-level session
-// files + their sub-agent transcripts, parses them, and writes ALL thirteen
+// files + their sub-agent transcripts, parses them, and writes ALL fourteen
 // tables.
 // The read seams (`listConversations()`, `getConversation()`) live in `read.ts`.
 // It writes through a bare better-sqlite3 connection, not Prisma (ADR-0005);
@@ -960,7 +960,7 @@ function writeAgentMessages(
  * Write one agent's log file's request records (log-format §9): each distinct
  * system prompt, tool set and sent message under its hash, unless already
  * stored, then one `api_request` row per `api-request` record, in file
- * order; then link each Turn of the file to the request of the file its
+ * order, each with a row per message of its tail; then link each Turn of the file to the request of the file its
  * `requestRef` names. A Turn whose `requestRef` names a request of another
  * file is linked by the links pass (`refresh`).
  */
@@ -985,14 +985,13 @@ function writeApiRequests(
   for (const [hash, sentMessage] of parsed.sentMessageByHash) statements.insertSentMessage(hash, sentMessage);
   const failedAttemptOfMessageRowIds = failedAttemptOwners(parsed.apiRequests, messageRowIdByRequestRef);
   parsed.apiRequests.forEach((request, positionInFile) => {
-    statements.insertApiRequest({
+    const apiRequestId = statements.insertApiRequest({
       conversationId,
       agentId,
       failedAttemptOfMessageId: failedAttemptOfMessageRowIds[positionInFile]!,
       recordId: request.recordId,
       baseRecordId: request.baseRecordId,
       keptMessageCount: request.keptMessageCount,
-      tailMessageHashesJson: JSON.stringify(request.tailMessageHashes),
       parametersJson: JSON.stringify(request.parameters),
       cacheBreakpointsJson: JSON.stringify(request.cacheBreakpoints),
       querySource: request.querySource,
@@ -1002,6 +1001,7 @@ function writeApiRequests(
       systemPromptHash: request.systemPromptHash,
       toolSetHash: request.toolSetHash,
     });
+    statements.insertApiRequestTail(apiRequestId, request.tailMessageHashes);
   });
   statements.updateTurnApiRequestsInFile(agentId);
 }

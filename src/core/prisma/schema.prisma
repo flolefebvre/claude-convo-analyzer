@@ -377,40 +377,40 @@ model ApiRequest {
   failedAttemptOfMessageId Int? @map("failed_attempt_of_message_id")
 
   /// The record's own `id`: what an assistant record's `requestRef` names.
-  recordId              String  @map("record_id")
+  recordId             String  @map("record_id")
   /// `base`: the `recordId` of the request whose first `keptMessageCount`
   /// messages this one's start with; NULL when its tail holds them all.
-  baseRecordId          String? @map("base_record_id")
+  baseRecordId         String? @map("base_record_id")
   /// `keep`: how many of the base request's messages it starts with.
-  keptMessageCount      Int     @map("kept_message_count")
-  /// `tail`: the hashes of the messages that follow, in order, as a JSON array.
-  tailMessageHashesJson String  @map("tail_message_hashes_json")
+  keptMessageCount     Int     @map("kept_message_count")
   /// `params` as JSON, without `safeguards`, which is never stored (ADR-0007).
-  parametersJson        String  @map("parameters_json")
+  parametersJson       String  @map("parameters_json")
   /// `cacheControl` as JSON: `[{path, value}]`, where its `cache_control` markers go.
-  cacheBreakpointsJson  String  @map("cache_breakpoints_json")
+  cacheBreakpointsJson String  @map("cache_breakpoints_json")
   /// `repl_main_thread`, `sdk`, `agent:builtin:<type>`, …
-  querySource           String? @map("query_source")
+  querySource          String? @map("query_source")
   /// The sha256 of the whole request body, as Claude Code computed it.
-  requestDigest         String? @map("request_digest")
+  requestDigest        String? @map("request_digest")
   /// When the request was sent (epoch ms).
-  sentAt                BigInt? @map("sent_at")
+  sentAt               BigInt? @map("sent_at")
   /// Its 0-based place among the `api-request` records of its file: the
   /// previous API request of an Agent is the previous one in file order.
-  positionInFile        Int     @map("position_in_file")
+  positionInFile       Int     @map("position_in_file")
   /// NULL when its file holds no `api-request-shape` under its `shapeHash`.
-  systemPromptHash      String? @map("system_prompt_hash")
+  systemPromptHash     String? @map("system_prompt_hash")
   /// NULL when its file holds no `api-request-shape` under its `shapeHash`.
-  toolSetHash           String? @map("tool_set_hash")
+  toolSetHash          String? @map("tool_set_hash")
 
-  conversation           Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  agent                  Agent         @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  conversation           Conversation            @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  agent                  Agent                   @relation(fields: [agentId], references: [id], onDelete: Cascade)
   /// The Turns that answered it: its own file's, and their copies in resumed
   /// and forked sessions' files; none for a request then retried, or never answered.
-  turns                  Message[]     @relation("ApiRequestTurn")
-  failedAttemptOfMessage Message?      @relation("ApiRequestFailedAttempt", fields: [failedAttemptOfMessageId], references: [id], onDelete: SetNull)
-  systemPrompt           SystemPrompt? @relation(fields: [systemPromptHash], references: [hash], onDelete: Restrict)
-  toolSet                ToolSet?      @relation(fields: [toolSetHash], references: [hash], onDelete: Restrict)
+  turns                  Message[]               @relation("ApiRequestTurn")
+  failedAttemptOfMessage Message?                @relation("ApiRequestFailedAttempt", fields: [failedAttemptOfMessageId], references: [id], onDelete: SetNull)
+  systemPrompt           SystemPrompt?           @relation(fields: [systemPromptHash], references: [hash], onDelete: Restrict)
+  toolSet                ToolSet?                @relation(fields: [toolSetHash], references: [hash], onDelete: Restrict)
+  /// `tail`: the hashes of the messages that follow, one row each.
+  tailMessages           ApiRequestTailMessage[]
 
   @@index([conversationId])
   @@index([recordId])
@@ -419,6 +419,22 @@ model ApiRequest {
   @@index([systemPromptHash])
   @@index([toolSetHash])
   @@map("api_request")
+}
+
+/// One message of an API request's `tail`: the hash the tail names there.
+model ApiRequestTailMessage {
+  apiRequestId Int    @map("api_request_id")
+  /// Its 0-based place in the tail.
+  position     Int
+  /// No foreign key to `SentMessage`: a tail may name a message its file
+  /// cannot rebuild, which is then not stored (log-format §9).
+  messageHash  String @map("message_hash")
+
+  apiRequest ApiRequest @relation(fields: [apiRequestId], references: [id], onDelete: Cascade)
+
+  @@id([apiRequestId, position])
+  @@index([messageHash])
+  @@map("api_request_tail_message")
 }
 
 /// One per distinct system prompt an API request sent, shared across
@@ -457,10 +473,10 @@ model SentMessage {
   /// The sha256 hex of the message's canonical JSON (`canonical-json.ts`), a
   /// string `content` first rewritten as one text block: the hash a `tail`
   /// names, its identity only, never what is shown.
-  hash        String @id
+  hash                      String  @id
   /// The message as logged, key order and a string `content` kept: what the
   /// model saw. When logs spell the same message two ways, the smallest spelling.
-  messageJson String @map("message_json")
+  messageJson               String  @map("message_json")
   /// The pieces of Injected context its text blocks hold, as JSON
   /// (`InjectedContextPiece[]`, `injected-context.ts`): each one's block, its
   /// span there and its kind — the attachment type, never a label — as the

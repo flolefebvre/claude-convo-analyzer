@@ -442,7 +442,8 @@ type MessageChainRow = {
   recordId: string;
   baseRecordId: string | null;
   keptMessageCount: number;
-  tailMessageHashesJson: string;
+  /** Its tail, in order. */
+  tailMessages: { messageHash: string }[];
   positionInFile: number;
 };
 
@@ -451,15 +452,15 @@ type MessageHash = string | null;
 
 /**
  * Read the requests of `row`'s Agent up to it, once, and return what gives
- * the message hashes of any of them (log-format §9, step 1): the first
- * `keep` of its base's, then its tail — its base being the latest earlier
- * request of the file with that record id, and a base the file does not hold
- * leaving its `keep` messages unknown.
+ * the message hashes of any of them, named by its place in the file
+ * (log-format §9, step 1): the first `keep` of its base's, then its tail —
+ * its base being the latest earlier request of the file with that record id,
+ * and a base the file does not hold leaving its `keep` messages unknown.
  */
 async function messageHashesOfAgentRequests(
   prisma: ReadPrisma,
   row: { agentId: number; positionInFile: number },
-): Promise<(request: MessageChainRow) => MessageHash[]> {
+): Promise<(request: { positionInFile: number }) => MessageHash[]> {
   const agentRequests = await prisma.apiRequest.findMany({
     where: { agentId: row.agentId, positionInFile: { lte: row.positionInFile } },
     orderBy: { positionInFile: "asc" },
@@ -467,13 +468,15 @@ async function messageHashesOfAgentRequests(
       recordId: true,
       baseRecordId: true,
       keptMessageCount: true,
-      tailMessageHashesJson: true,
+      tailMessages: { orderBy: { position: "asc" }, select: { messageHash: true } },
       positionInFile: true,
     },
   });
   const requestsByRecordId = new Map<string, MessageChainRow[]>();
+  const requestByPositionInFile = new Map<number, MessageChainRow>();
   for (const request of agentRequests) {
     requestsByRecordId.set(request.recordId, [...(requestsByRecordId.get(request.recordId) ?? []), request]);
+    requestByPositionInFile.set(request.positionInFile, request);
   }
   const baseOf = (request: MessageChainRow): MessageChainRow | undefined =>
     request.baseRecordId === null
@@ -481,7 +484,8 @@ async function messageHashesOfAgentRequests(
       : requestsByRecordId
           .get(request.baseRecordId)
           ?.findLast((candidate) => candidate.positionInFile < request.positionInFile);
-  return (request) => {
+  return ({ positionInFile }) => {
+    const request = requestByPositionInFile.get(positionInFile)!;
     const chain = [request];
     for (let base = baseOf(request); base !== undefined; base = baseOf(base)) chain.unshift(base);
     let messageHashes: MessageHash[] = [];
@@ -490,8 +494,7 @@ async function messageHashesOfAgentRequests(
         { length: link.keptMessageCount },
         (_, index) => messageHashes[index] ?? null,
       );
-      // Every column was written by `JSON.stringify` (refresh.ts).
-      messageHashes = [...keptMessageHashes, ...(JSON.parse(link.tailMessageHashesJson) as string[])];
+      messageHashes = [...keptMessageHashes, ...link.tailMessages.map((tailMessage) => tailMessage.messageHash)];
     }
     return messageHashes;
   };

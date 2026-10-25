@@ -159,7 +159,6 @@ const API_REQUEST_COLUMN_BY_FIELD = {
   recordId: "record_id",
   baseRecordId: "base_record_id",
   keptMessageCount: "kept_message_count",
-  tailMessageHashesJson: "tail_message_hashes_json",
   parametersJson: "parameters_json",
   cacheBreakpointsJson: "cache_breakpoints_json",
   querySource: "query_source",
@@ -557,8 +556,11 @@ export function prepareRefreshStatements(db: Database.Database) {
        (SELECT 1 FROM "api_request" WHERE "tool_set_hash" = "tool_set"."hash")`,
   );
   const deleteUnnamedSentMessages = db.prepare(
-    `DELETE FROM "sent_message" WHERE "hash" NOT IN
-       (SELECT "tail_hash"."value" FROM "api_request", json_each("tail_message_hashes_json") AS "tail_hash")`,
+    `DELETE FROM "sent_message" WHERE NOT EXISTS
+       (SELECT 1 FROM "api_request_tail_message" WHERE "message_hash" = "sent_message"."hash")`,
+  );
+  const insertApiRequestTailMessage = db.prepare(
+    `INSERT INTO "api_request_tail_message" ("api_request_id", "position", "message_hash") VALUES (?, ?, ?)`,
   );
   // A Turn's API request in its own file: of several with its `request_ref`,
   // the latest in file order. The unary `+` keeps the planner off the
@@ -741,6 +743,11 @@ export function prepareRefreshStatements(db: Database.Database) {
     insertPrLink: prepareInsert(db, "pr_link", PR_LINK_COLUMN_BY_FIELD),
     insertTurnDuration: prepareInsert(db, "turn_duration", TURN_DURATION_COLUMN_BY_FIELD),
     insertApiRequest: prepareInsert(db, "api_request", API_REQUEST_COLUMN_BY_FIELD),
+    /** Store the tail of API request row `apiRequestId`: one row per hash it names, at its place. */
+    insertApiRequestTail: (apiRequestId: number, tailMessageHashes: string[]) =>
+      tailMessageHashes.forEach((messageHash, position) =>
+        insertApiRequestTailMessage.run(apiRequestId, position, messageHash),
+      ),
     insertContinuedIn: prepareInsert(db, "continued_in", CONTINUED_IN_COLUMN_BY_FIELD),
     /** Link each Turn of Agent `agentId` to the API request its `requestRef` names in the same file, if any. */
     updateTurnApiRequestsInFile: (agentId: number) => void updateTurnApiRequestsInFile.run(agentId),

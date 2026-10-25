@@ -1,5 +1,5 @@
 // Read API (ADR-0001, ADR-0002). `listConversations()` and `getConversation()`
-// are the stable read seams over the thirteen tables written by `refresh()`
+// are the stable read seams over the fourteen tables written by `refresh()`
 // (the ingest spine, in `refresh.ts`). This module is read-only — it issues SUM
 // queries and prices/assembles summaries, and never writes.
 //
