@@ -577,9 +577,11 @@ records of every file of a Conversation, main thread and sub-agents
 - **`api_request`**: one row per `api-request` record, whether or not a
   Turn answered it, with its file's Agent and its place in that file. A
   Failed attempt (Retries, below) also names the Turn that owns it, in
-  `failed_attempt_of_message_id`. It keeps `base`, `keep`, `tail`, `params`
+  `failed_attempt_of_message_id`. It keeps `base`, `keep`, `params`
   **without `safeguards`**, `cacheControl`, `querySource`, `requestDigest` and
-  `timestamp`, and the hashes of its system prompt and tool set.
+  `timestamp`, and the hashes of its system prompt and tool set. Its `tail`
+  is stored a row per hash, at its place (`api_request_tail_message`), so
+  whether any tail still names a message is one indexed lookup.
 - **A Turn's request** is named on its `message` row, `api_request_id`, beside
   its `requestRef` (`request_ref`): several Turns can name one request — its
   own file's and their copies in resumed and forked sessions. As each file is
