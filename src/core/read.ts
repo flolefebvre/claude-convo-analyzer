@@ -241,6 +241,14 @@ export type TranscriptView = {
   turnCount: number;
   /** Tool calls in the selected agent's whole transcript. */
   toolCallCount: number;
+  /** Turns of the selected agent's whole transcript that thought: a summary, a duration, or both. */
+  turnWithThinkingCount: number;
+  /** Turns of the selected agent's whole transcript whose own API request the logs hold; a copied Turn's is its owner's. */
+  turnWithWhatWasSentCount: number;
+  /** Inter-agent messages addressed to the selected agent, across its whole transcript. */
+  interAgentMessageCount: number;
+  /** Task notifications addressed to the selected agent, across its whole transcript. */
+  taskNotificationCount: number;
   /** The distinct reasoning-effort levels of the selected agent's whole transcript, sorted. */
   effortLevels: string[];
   /**
@@ -1129,6 +1137,10 @@ type TranscriptPage = Pick<
   | "messageCount"
   | "turnCount"
   | "toolCallCount"
+  | "turnWithThinkingCount"
+  | "turnWithWhatWasSentCount"
+  | "interAgentMessageCount"
+  | "taskNotificationCount"
   | "effortLevels"
   | "effortBefore"
   | "openingReply"
@@ -1145,6 +1157,10 @@ function emptyTranscriptPage(pageSize: number): TranscriptPage {
     messageCount: 0,
     turnCount: 0,
     toolCallCount: 0,
+    turnWithThinkingCount: 0,
+    turnWithWhatWasSentCount: 0,
+    interAgentMessageCount: 0,
+    taskNotificationCount: 0,
     effortLevels: [],
     effortBefore: null,
     openingReply: null,
@@ -1174,10 +1190,27 @@ async function readTranscriptPage(
   opts: TranscriptOptions,
 ): Promise<TranscriptPage> {
   const rendered = renderedMessages(agent.id);
-  const [messageCount, turnCount, toolCallCount, effortRows, anchorIndex] = await Promise.all([
+  const turns = assistantTurns(agent.id);
+  const [
+    messageCount,
+    turnCount,
+    toolCallCount,
+    turnWithThinkingCount,
+    turnWithWhatWasSentCount,
+    interAgentMessageCount,
+    taskNotificationCount,
+    effortRows,
+    anchorIndex,
+  ] = await Promise.all([
     prisma.message.count({ where: rendered }),
-    prisma.message.count({ where: assistantTurns(agent.id) }),
+    prisma.message.count({ where: turns }),
     prisma.toolCall.count({ where: { agentId: agent.id } }),
+    prisma.message.count({
+      where: { ...turns, OR: [{ thinkingText: { not: null } }, { thinkingDurationMs: { not: null } }] },
+    }),
+    prisma.message.count({ where: { ...turns, copiedFromMessageId: null, apiRequestId: { not: null } } }),
+    prisma.message.count({ where: { agentId: agent.id, role: "user", kind: "inter-agent" } }),
+    prisma.message.count({ where: { agentId: agent.id, role: "user", kind: "task-notification" } }),
     prisma.message.groupBy({
       by: ["effort"],
       where: { agentId: agent.id, role: "assistant", effort: { not: null } },
@@ -1218,6 +1251,10 @@ async function readTranscriptPage(
     messageCount,
     turnCount,
     toolCallCount,
+    turnWithThinkingCount,
+    turnWithWhatWasSentCount,
+    interAgentMessageCount,
+    taskNotificationCount,
     effortLevels: effortRows.flatMap((r) => (r.effort === null ? [] : [r.effort])),
     effortBefore,
     openingReply,

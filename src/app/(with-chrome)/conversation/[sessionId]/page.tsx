@@ -24,6 +24,10 @@
 // The pane shows one Transcript page (`?page=`, page 1 the bare URL). A
 // deep link carries no page: core opens the page holding its anchor.
 //
+// The Transcript filter is no URL state: both regions read it from the settings
+// file, the tree for its Show section, the pane to render already filtered. A
+// toggle saves it and re-renders the page at the same URL.
+//
 // The transcript read goes through the cached/`connection()`-gated
 // `loadTranscript` seam (ADR-0002 — the component never touches core/DB
 // directly).
@@ -34,8 +38,9 @@ import { Suspense } from "react";
 
 import { LoadingRegion } from "@/app/_components/loading-region";
 import { TranscriptPane } from "@/app/_components/transcript/transcript-pane";
+import { TranscriptFilterSection } from "@/app/_components/transcript/transcript-filter-section";
 import { BackLink, TranscriptTree } from "@/app/_components/transcript/transcript-tree";
-import { loadConversations, loadFamily, loadTranscript } from "@/app/_lib/conversations";
+import { loadConversations, loadFamily, loadTranscript, loadTranscriptFilter } from "@/app/_lib/conversations";
 import { activeNowUntil } from "@/app/_lib/live";
 import { resolvePage } from "@/app/_lib/search-params";
 import { agentLabels } from "@/app/_lib/transcript";
@@ -116,19 +121,35 @@ async function TranscriptBackLink({ searchParams }: Pick<RouteProps, "searchPara
 
 async function TreeRegion(props: RouteProps) {
   const { view, labels, listReturn } = await readRoute(props);
+  const transcriptFilter = await loadTranscriptFilter();
   return (
-    <TranscriptTree
-      view={view}
-      labels={labels}
-      lowerBound={view.hasUnpriced}
-      listReturn={listReturn}
-      activeUntil={activeNowUntil(view.sourceChangedAt, new Date())}
-    />
+    <>
+      <TranscriptTree
+        view={view}
+        labels={labels}
+        lowerBound={view.hasUnpriced}
+        listReturn={listReturn}
+        activeUntil={activeNowUntil(view.sourceChangedAt, new Date())}
+      />
+      {/* The counts describe the selected Agent's whole Transcript, never the page. */}
+      <TranscriptFilterSection
+        filter={transcriptFilter}
+        countByKind={{
+          toolCalls: view.toolCallCount,
+          thinking: view.turnWithThinkingCount,
+          whatWasSent: view.turnWithWhatWasSentCount,
+          interAgentMessages: view.interAgentMessageCount,
+          taskNotifications: view.taskNotificationCount,
+        }}
+      />
+    </>
   );
 }
 
 async function PaneRegion(props: RouteProps) {
   const { view, labels, anchoredCall, anchoredMessage, listReturn } = await readRoute(props);
+  // The server renders the Transcript already filtered: no flash of what the filter hides.
+  const transcriptFilter = await loadTranscriptFilter();
   // The continuation lineage of this session (issue #46): the pane shows its
   // DIRECT parent/continuations as a banner. Standalone sessions get `size === 1`
   // and no banner at all.
@@ -144,6 +165,7 @@ async function PaneRegion(props: RouteProps) {
       anchoredCall={anchoredCall}
       anchoredMessage={anchoredMessage}
       listReturn={listReturn}
+      transcriptFilter={transcriptFilter}
     />
   );
 }
@@ -175,6 +197,16 @@ function TreeFallback() {
       </div>
       <div className="tree-total">
         <Skeleton className="h-5" />
+      </div>
+      <div className="show-section">
+        <div className="tree-caption">
+          <Skeleton className="h-4 w-10" />
+        </div>
+        <div className="show-body">
+          {[0, 1, 2, 3, 4].map((index) => (
+            <Skeleton key={index} className="my-0.5 h-7" />
+          ))}
+        </div>
       </div>
     </LoadingRegion>
   );

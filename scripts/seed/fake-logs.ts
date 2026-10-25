@@ -701,7 +701,8 @@ function buildConversation(
      *  message in place of the first prompt — a Conversation without a title
      *  takes its first Prompt as one, so it must have none. */
     title?: string | null;
-    /** Starts it this long before the anchor, in ms, rather than at a random offset. */
+    /** Starts it this long before the anchor, in ms, rather than at a random offset — or, on a
+     *  continuation, rather than a random few hours after its resume point. */
     startedAgo?: number;
     /** Puts the first turn on this Resolved model; the rest stay on priced ones. */
     unpricedModel?: string;
@@ -715,10 +716,10 @@ function buildConversation(
   const sessionId = `seed-${logFolderName.slice(1)}-${index}`;
 
   const start =
-    opts.resumeFrom !== undefined
-      ? opts.resumeFrom.resumePoint.ms + g.int(1, 8) * 3_600_000
-      : opts.startedAgo !== undefined
-        ? g.now - opts.startedAgo
+    opts.startedAgo !== undefined
+      ? g.now - opts.startedAgo
+      : opts.resumeFrom !== undefined
+        ? opts.resumeFrom.resumePoint.ms + g.int(1, 8) * 3_600_000
         : g.now - g.int(0, 21) * DAY - g.int(0, 18) * 3_600_000;
   let t = start;
   const lines: string[] = [];
@@ -1637,7 +1638,7 @@ function atLoggedRequestsVersion(line: string, requestRef?: string): string {
  * Sub-agent's own skill list. It ends hours before the agent-messages one, so
  * the anchor does not move.
  *
- * Drawn last, so every earlier Conversation keeps its draws.
+ * Drawn after every randomly placed Conversation, so each of them keeps its draws.
  */
 function loggedRequestsConversation(g: Gen, index: number): Conversation {
   const cwd = PROJECTS[4].path;
@@ -1848,6 +1849,26 @@ function loggedRequestsSubAgent(
       meta: { agentType: "Explore", description: SUBAGENT_DESCRIPTIONS.Explore, toolUseId, spawnDepth: 1 },
     },
   };
+}
+
+/** The seeded continuation of {@link LOGGED_REQUESTS_TITLE}, whose copied Turns name their owner's API requests. */
+export const LOGGED_REQUESTS_CONTINUATION_TITLE = "Trace the slow invoice query — fix the date filter";
+
+/**
+ * A continuation of {@link loggedRequestsConversation} (`parent`): it opens
+ * with a copy of its Messages, whose Turns name API requests only `parent`'s
+ * log holds, so a copied Turn whose owner has What was sent is on screen. It
+ * starts five hours before the anchor — after `parent` ends, before the
+ * agent-messages Conversation — so it never becomes the newest.
+ *
+ * Drawn last, so every earlier Conversation keeps its draws.
+ */
+function loggedRequestsContinuation(g: Gen, parent: Conversation, index: number): Conversation {
+  return buildConversation(g, PROJECTS[4], index, {
+    resumeFrom: parent,
+    title: LOGGED_REQUESTS_CONTINUATION_TITLE,
+    startedAgo: 5 * 3_600_000,
+  });
 }
 
 /** The seeded Conversation where a Sub-agent forks twice from one Turn and the Main thread forks (issue #309). */
@@ -2135,8 +2156,10 @@ function buildCorpus(anchor: number): Conversation[] {
   conversations.push(...twoPromptConversations(g));
   conversations.push(planHandoffConversation(g, conversations.length));
   conversations.push(untitledConversation(g, conversations.length));
-  conversations.push(loggedRequestsConversation(g, conversations.length));
+  const loggedRequests = loggedRequestsConversation(g, conversations.length);
+  conversations.push(loggedRequests);
   conversations.push(forkedAgentsConversation(g, conversations.length));
+  conversations.push(loggedRequestsContinuation(g, loggedRequests, conversations.length));
   return conversations;
 }
 
@@ -2214,7 +2237,8 @@ export type FakeLogsCounts = {
  * pages, one that enters a worktree and one that states no cwd, three in
  * per-session scratch directories under `/tmp`, two of two prompts each,
  * one that hands a plan to another session, one with no title, one whose
- * log records its API requests, then one whose Agents fork — 73 in all. The
+ * log records its API requests, one whose Agents fork, then a continuation
+ * of the one whose log records its API requests — 74 in all. The
  * same `now` always writes the same bytes. Returns the counts.
  *
  * @example

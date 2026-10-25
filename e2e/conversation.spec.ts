@@ -13,6 +13,8 @@ const LONG_TITLE = "Port every report to the new rendering engine";
 const PAGE_TWO_TEXT = "Now port the quarterly heatmap export the same way.";
 // The seeded Conversation whose log records its API requests (issue #216).
 const LOGGED_REQUESTS_TITLE = "Trace the slow invoice query";
+// Its continuation, whose copied Turns name API requests only its log holds (`loggedRequestsContinuation`).
+const LOGGED_REQUESTS_CONTINUATION_TITLE = "Trace the slow invoice query — fix the date filter";
 // What the thinking of its first Main-thread and first Sub-agent Turns left (issue #215).
 const LOGGED_REQUESTS_THINKING_TEXT =
   "Eight seconds on a list suggests a missing index or an N+1. Checking the query plan before reading the code.";
@@ -68,6 +70,8 @@ const conversation: RouteShell = {
   ],
   data: (page) => [
     page.getByRole("navigation", { name: "Agents" }),
+    // The Transcript filter: request-time settings and whole-Transcript counts, drawn by the tree's skeleton.
+    page.getByRole("group", { name: "Show in the transcript" }),
     page.getByRole("heading", { level: 1, name: TITLE }),
   ],
 };
@@ -277,6 +281,23 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     await openConversation(page, TITLE);
     await expect(page.getByRole("main").getByRole("article", { name: /^Turn 1\b/ })).toBeVisible();
     await expect(page.getByRole("main").getByRole("button", { name: "What was sent" })).toHaveCount(0);
+  });
+
+  test("offers no What was sent on a copied Turn, whose owner's Transcript offers it", async ({ page }) => {
+    await openConversation(page, LOGGED_REQUESTS_CONTINUATION_TITLE);
+    const copiedTurn = page.getByRole("main").getByRole("article", { name: /^Turn 1\b/ });
+    await expect(copiedTurn).toBeVisible();
+    await expect(
+      page
+        .getByRole("main")
+        .getByText(/^copied from /)
+        .first(),
+    ).toBeVisible();
+    await expect(copiedTurn.getByRole("button", { name: "What was sent" })).toHaveCount(0);
+
+    await openConversation(page, LOGGED_REQUESTS_TITLE);
+    const ownerTurn = page.getByRole("main").getByRole("article", { name: /^Turn 1\b/ });
+    await expect(ownerTurn.getByRole("button", { name: "What was sent", exact: true })).toBeVisible();
   });
 
   test("shows what a later Turn sent: the system prompt's real change and its diff, the tools added, and the new messages", async ({
