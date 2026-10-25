@@ -171,7 +171,11 @@ test.describe("Conversation export (/api/conversation/[sessionId]/export)", () =
     await planSection.getByRole("link", { name: "Back to the Agent call in main" }).click();
     await expect(mainSection).toBeVisible();
     await expect(planSection).toBeHidden();
-    const planCall = mainSection.getByRole("group").filter({ hasText: PLAN_CALL_DESCRIPTION }).first();
+    // The Agent call, not the Reply around it, which holds Turns.
+    const planCall = mainSection
+      .getByRole("group")
+      .filter({ hasText: PLAN_CALL_DESCRIPTION, hasNot: page.getByRole("article") })
+      .first();
     await expect(planCall).toBeInViewport();
 
     // Its summary: the body holds the description too.

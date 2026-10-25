@@ -4,6 +4,7 @@ import { Fragment } from "react";
 import { PendingLink } from "@/app/_components/pending-link";
 import { formatCount, formatModelName } from "@/app/_lib/format";
 import { type AgentLabel, agentLineage, effortSummary, type TranscriptExport } from "@/app/_lib/transcript";
+import { groupTurnsIntoReplies } from "@/app/_lib/transcript-replies";
 import { agentHref, agentSectionHref, callAnchorId, messageAnchorId, withListReturn } from "@/app/_lib/transcript-url";
 import type { ConversationFamily } from "@/core/family";
 import type { TranscriptView } from "@/core/read";
@@ -12,6 +13,7 @@ import { FamilyBanner } from "./family-banner";
 import { ScrollToAnchor } from "./scroll-to-anchor";
 import { TranscriptMessageRow } from "./transcript-message";
 import { TranscriptPager } from "./transcript-pager";
+import { TranscriptReply } from "./transcript-reply";
 import { AgentName, CostFigure, PaneHeader, agentLabelText } from "./transcript-parts";
 
 /**
@@ -21,7 +23,8 @@ import { AgentName, CostFigure, PaneHeader, agentLabelText } from "./transcript-
  * It renders inside the route's <main>, headed by the conversation title
  * (visually the agent tree shows it). Header, banner and transcript share one centred
  * column. Below the header one Transcript page of the agent's messages renders
- * in order, then a "N meta records hidden" divider on the last page when the
+ * in order on the Rail — each Message addressed to the agent a row, the Turns
+ * between two of them one Reply — then a "N meta records hidden" divider on the last page when the
  * reader dropped meta rows for this agent, and the pager when the transcript
  * spans several pages. On the main agent of a conversation that belongs to a
  * continuation family, a one-line banner names the sitting before and the
@@ -163,21 +166,34 @@ export function TranscriptPane({
 
       <h2 className="sr-only">{agentLabelText(selectedLabel)} transcript</h2>
       <div className="transcript">
-        {view.messages.map((message) => (
-          <TranscriptMessageRow
-            key={message.id}
-            message={message}
-            view={view}
-            labels={labels}
-            agentModel={selected.resolvedModel}
-            promptAuthor={promptAuthor}
-            effortChanged={effort.changedIds.has(message.id)}
-            anchoredCall={anchoredCall}
-            anchoredMessage={anchoredMessage}
-            listReturn={listReturn}
-            transcriptExport={transcriptExport}
-          />
-        ))}
+        {groupTurnsIntoReplies(view.messages, view).map((entry) =>
+          entry.kind === "reply" ? (
+            <TranscriptReply
+              key={`reply-${entry.reply.turns[0]?.id}`}
+              reply={entry.reply}
+              speaker={parent === null ? "Assistant" : agentLabelText(selectedLabel)}
+              view={view}
+              labels={labels}
+              agentModel={selected.resolvedModel}
+              effortChangedIds={effort.changedIds}
+              anchoredCall={anchoredCall}
+              anchoredMessage={anchoredMessage}
+              listReturn={listReturn}
+              transcriptExport={transcriptExport}
+            />
+          ) : (
+            <TranscriptMessageRow
+              key={entry.message.id}
+              message={entry.message}
+              view={view}
+              labels={labels}
+              promptAuthor={promptAuthor}
+              anchoredMessage={anchoredMessage}
+              listReturn={listReturn}
+              transcriptExport={transcriptExport}
+            />
+          ),
+        )}
         {view.metaHiddenCount > 0 && view.page === view.pageCount && (
           <div className="meta-hidden">
             {view.metaHiddenCount} meta record

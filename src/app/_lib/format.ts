@@ -132,6 +132,29 @@ export function formatClock(iso: string | null): string {
 }
 
 /**
+ * Two {@link formatClock} times joined by an en dash, or one when both read
+ * the same; "" when either end is missing or unparseable.
+ *
+ * @example formatClockRange(reply.startedAt, reply.endedAt) // "14:02–14:05"
+ */
+export function formatClockRange(startIso: string | null, endIso: string | null): string {
+  const start = formatClock(startIso);
+  const end = formatClock(endIso);
+  if (start === "" || end === "") return "";
+  return start === end ? start : `${start}–${end}`;
+}
+
+/**
+ * A Turn's Failed attempts: how many, then the time they lost when the logs know it.
+ *
+ * @example formatFailedAttempts(2, 9_400) // "2 failed attempts · 9.4s lost"
+ */
+export function formatFailedAttempts(count: number, lostMs: number | null): string {
+  const attempts = `${count} failed attempt${count === 1 ? "" : "s"}`;
+  return lostMs === null ? attempts : `${attempts} · ${formatLatency(lostMs)} lost`;
+}
+
+/**
  * Render an ISO8601 timestamp for the conversation list's Date column,
  * returning both a compact `label` and a full `absolute` string for hover.
  *

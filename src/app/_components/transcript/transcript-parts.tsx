@@ -8,6 +8,7 @@ import type { ReactNode } from "react";
 
 import { formatCost } from "@/app/_lib/format";
 import type { AgentLabel } from "@/app/_lib/transcript";
+import { messageAnchorId } from "@/app/_lib/transcript-url";
 
 /**
  * The pane's top: the page's (visually hidden) h1, the conversation title,
@@ -117,6 +118,29 @@ export function ErrorBadge({
 
 /** A row's element id and `?msg=` highlight, and the id prefix of its speaker/time labels. */
 export type MessageAnchor = { id?: string; anchored: boolean; labelId: string };
+
+/**
+ * The element id and highlight of one Message's row, given the `?msg=`
+ * target. A search result links to `?msg=<uuid>#msg-<uuid>`: the query
+ * highlights the row server-side (a fragment never reaches the server), and
+ * the pane's `ScrollToAnchor` scrolls to the id. A row that is no anchor
+ * target carries no element id.
+ *
+ * @example const anchor = anchorProps(message, anchoredMessage, message.copiedFrom === null);
+ */
+export function anchorProps(
+  message: { id: number; uuid: string | null },
+  anchoredMessage: string | undefined,
+  isAnchorTarget: boolean,
+): MessageAnchor {
+  const labelId = `turn-${message.id}`;
+  if (message.uuid === null) return { anchored: false, labelId };
+  return {
+    id: isAnchorTarget ? messageAnchorId(message.uuid) : undefined,
+    anchored: message.uuid === anchoredMessage,
+    labelId,
+  };
+}
 
 /**
  * The speaker label and clock time that head a row and name its article.

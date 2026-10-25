@@ -6,15 +6,17 @@ import type { AgentLabel } from "@/app/_lib/transcript";
 import { agentHref, agentSectionHref, withListReturn } from "@/app/_lib/transcript-url";
 import type { TranscriptMessage } from "@/core/read";
 
-import { AgentName, type MessageAnchor, MidTurnBadge, RowHead, agentLabelText, labelledBy } from "./transcript-parts";
+import { AgentName, type MessageAnchor, MidTurnBadge, agentLabelText } from "./transcript-parts";
+import { SpeakerRow } from "./speaker-row";
 import { TurnMarkdown } from "./turn-markdown";
 
 /**
- * An Inter-agent message: a prompt-style row in the agent accent, labelled with
- * its sender — a Sub-agent of this conversation or the parent agent, linked to
- * its transcript, else the other session's name — and its body as markdown
- * (agents write it). A hand-back is tagged and starts collapsed, unless it is
- * the `?msg=` target.
+ * An Inter-agent message: a row labelled with its sender and its body as
+ * markdown (agents write it). A sender of this conversation — a Sub-agent or
+ * the parent agent — is linked to its transcript, under the agent avatar in an
+ * agent-tinted bubble; another Conversation's agent is named by its session,
+ * under an outlined avatar in an outlined bubble. A hand-back is tagged and
+ * starts collapsed, unless it is the `?msg=` target.
  */
 export function InterAgentMessageRow({
   message,
@@ -43,34 +45,47 @@ export function InterAgentMessageRow({
   copiedFrom?: ReactNode;
 }) {
   const origin = message.origin;
-  const className = ["prompt", "is-agent", anchor.anchored && "anchored"].filter(Boolean).join(" ");
+  // A sender this Conversation does not hold is another Conversation's agent.
+  const isFromOtherConversation = origin?.senderAgentId == null;
+  const className = [
+    "row inter",
+    isFromOtherConversation && "is-other-conversation",
+    message.copiedFrom !== null && "is-copied",
+    anchor.anchored && "anchored",
+  ]
+    .filter(Boolean)
+    .join(" ");
   const body = <TurnMarkdown text={message.text ?? ""} />;
 
   return (
-    <article id={anchor.id} className={className} aria-labelledby={labelledBy(anchor, time)}>
-      <RowHead
-        speaker={
-          <>
-            From{" "}
-            <Sender
-              message={message}
-              sessionId={sessionId}
-              rootAgentId={rootAgentId}
-              labels={labels}
-              listReturn={listReturn}
-              agentLinksAreInFile={agentLinksAreInFile}
-            />
-          </>
-        }
-        speakerClass="speaker"
-        time={time}
-        timestamp={message.timestamp}
-        labelId={anchor.labelId}
-        trailing={copiedFrom}
-      >
-        {origin?.handback && <span className="badge-note">hand-back</span>}
-        {origin?.midTurn && <MidTurnBadge />}
-      </RowHead>
+    <SpeakerRow
+      speaker={isFromOtherConversation ? "other-conversation" : "agent"}
+      label={
+        <>
+          From{" "}
+          <Sender
+            message={message}
+            sessionId={sessionId}
+            rootAgentId={rootAgentId}
+            labels={labels}
+            listReturn={listReturn}
+            agentLinksAreInFile={agentLinksAreInFile}
+          />
+        </>
+      }
+      className={className}
+      anchor={anchor}
+      time={time}
+      timestamp={message.timestamp}
+      trailing={copiedFrom}
+      notes={
+        <>
+          {isFromOtherConversation && <span className="row-note">another Conversation</span>}
+          {origin?.handback && <span className="badge-note">hand-back</span>}
+          {origin?.midTurn && <MidTurnBadge />}
+        </>
+      }
+    >
       {origin?.handback ? (
         <details className="handback" open={anchor.anchored || undefined}>
           <summary>
@@ -82,7 +97,7 @@ export function InterAgentMessageRow({
       ) : (
         <div className="turn-body">{body}</div>
       )}
-    </article>
+    </SpeakerRow>
   );
 }
 
