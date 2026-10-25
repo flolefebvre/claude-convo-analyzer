@@ -23,6 +23,7 @@ import {
   AGENT_MESSAGES_TITLE,
   CWD_LESS_TITLE,
   FAMILY_WORKTREE_PROJECT_PATH,
+  FORKED_AGENTS_TITLE,
   LONG_PAGE_TWO_TEXT,
   LOGGED_REQUESTS_SUB_AGENT_THINKING_TEXT,
   LOGGED_REQUESTS_THINKING_TEXT,
@@ -56,8 +57,8 @@ describe("seedEnvironment", () => {
     expect(seed.summary.duplicateSessionsSkipped).toEqual([]);
 
     const conversations = await listConversations({ dbPath: seed.dbPath });
-    expect(conversations).toHaveLength(72);
-    expect(conversations.reduce((sum, c) => sum + c.subAgentCount, 0)).toBe(87);
+    expect(conversations).toHaveLength(73);
+    expect(conversations.reduce((sum, c) => sum + c.subAgentCount, 0)).toBe(91);
 
     const continued = conversations.filter((c) => c.continuedFromId !== null);
     expect(continued).toHaveLength(5);
@@ -243,6 +244,37 @@ describe("seedEnvironment", () => {
     expect(coordinator.every((m) => m.origin?.senderAgentId === main?.tree.id && m.origin?.midTurn)).toBe(true);
   });
 
+  it("seeds a Sub-agent forking twice from one Turn and a Main-thread fork, each fork under its spawner, copying it", async () => {
+    const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
+
+    const conversations = await listConversations({ dbPath: seed.dbPath });
+    const convo = conversations.find((c) => c.title === FORKED_AGENTS_TITLE);
+    // On the list's first page, where the e2e specs open it.
+    expect(sortConversations(conversations, DEFAULT_SORT).slice(0, PAGE_SIZE)).toContain(convo);
+    const main = await getTranscript(convo!.id, { dbPath: seed.dbPath });
+    expect(main?.tree.children.map((node) => node.agentType)).toEqual(["general-purpose", "fork"]);
+    const [lead, mainThreadFork] = main!.tree.children;
+    expect(lead?.children.map((node) => node.agentType)).toEqual(["fork", "fork"]);
+
+    for (const fork of lead!.children) {
+      const forkView = await getTranscript(convo!.id, { dbPath: seed.dbPath, agentId: fork.id });
+      const copied = forkView!.messages.filter((m) => m.copiedFrom !== null);
+      const own = forkView!.messages.filter((m) => m.copiedFrom === null && m.role === "assistant");
+      // The lead's prompt and first Turn, then its spawning Turn re-written.
+      expect(copied.map((m) => [m.role, m.copiedFrom?.agentId])).toEqual([
+        ["user", lead!.id],
+        ["assistant", lead!.id],
+        ["assistant", lead!.id],
+      ]);
+      expect(own.length).toBeGreaterThan(0);
+      expect(own.every((m) => m.costUsd > 0)).toBe(true);
+    }
+    const mainThreadForkView = await getTranscript(convo!.id, { dbPath: seed.dbPath, agentId: mainThreadFork!.id });
+    expect(mainThreadForkView!.messages.filter((m) => m.copiedFrom !== null).map((m) => m.copiedFrom?.agentId)).toEqual(
+      [null],
+    );
+  });
+
   it("seeds a background Sub-agent whose type only its meta file states", async () => {
     const seed = await seedEnvironment({ dir: path.join(tmpDir, "seed"), now: NOW });
 
@@ -264,11 +296,16 @@ describe("seedEnvironment", () => {
     expect(metaFiles).toHaveLength(seed.generated.subAgents);
     for (const [file, text] of metaFiles) {
       const transcript = readFileSync(path.join(seed.logsRoot, file.replace(/\.meta\.json$/, ".jsonl")), "utf8");
-      const firstRecord = JSON.parse(transcript.split("\n")[0]!) as { timestamp: string };
+      // A Main-thread fork's transcript opens with a `fork-context-ref`, which has no timestamp.
+      const firstTimestamp = transcript
+        .split("\n")
+        .filter((line) => line !== "")
+        .map((line) => (JSON.parse(line) as { timestamp?: string }).timestamp)
+        .find((timestamp) => timestamp !== undefined)!;
       expect(JSON.parse(text)).toMatchObject({ agentType: expect.any(String), toolUseId: expect.any(String) });
       expect({ file, mtime: mtimeOf(path.join(seed.logsRoot, file)) }).toEqual({
         file,
-        mtime: Date.parse(firstRecord.timestamp),
+        mtime: Date.parse(firstTimestamp),
       });
     }
   });
@@ -363,7 +400,7 @@ describe("seedEnvironment", () => {
     const after = await seedEnvironment({ dir, now: NOW });
 
     expect(existsSync(leftover)).toBe(false);
-    expect(await listConversations({ dbPath: after.dbPath })).toHaveLength(72);
+    expect(await listConversations({ dbPath: after.dbPath })).toHaveLength(73);
   });
 });
 

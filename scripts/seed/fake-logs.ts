@@ -270,12 +270,15 @@ function makeUsage(g: Gen, scale: number): Usage {
 
 /**
  * What Claude Code writes into `agent-<id>.meta.json` at a sub-agent's spawn
- * (log-format §4): `requestShape` only on a background launch.
+ * (log-format §4): `requestShape` only on a background launch, `isFork` only
+ * on a fork, and `parentAgentId` only on one a Sub-agent spawned.
  */
 type SubAgentMeta = {
   agentType: string;
+  isFork?: true;
   description: string;
   toolUseId: string;
+  parentAgentId?: string;
   spawnDepth: number;
   requestShape?: "background";
 };
@@ -1832,6 +1835,272 @@ function loggedRequestsSubAgent(
   };
 }
 
+/** The seeded Conversation where a Sub-agent forks twice from one Turn and the Main thread forks (issue #309). */
+export const FORKED_AGENTS_TITLE = "Audit last week's pipeline runs with forked agents";
+
+/** The synthetic result a fork's transcript holds for its spawning call (log-format §10). */
+const FORK_STARTED_TEXT = "Fork started — processing in background";
+
+/** `line`'s record as a Sub-agent's record: `agentId`'s, chained to `parentUuid`, with `extra` set. */
+function asSidechain(
+  line: string,
+  agentId: string,
+  parentUuid: string | null,
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return { ...(JSON.parse(line) as Record<string, unknown>), parentUuid, isSidechain: true, agentId, ...extra };
+}
+
+/** An `Agent` tool_use block, as an assistant record holds it. */
+type AgentCall = {
+  type: "tool_use";
+  id: string;
+  name: "Agent";
+  input: { description: string; subagent_type: string; prompt: string };
+};
+
+/** An `Agent` call starting a fork described as `description`, with `prompt`. */
+function forkCall(g: Gen, description: string, prompt: string): AgentCall {
+  return { type: "tool_use", id: g.uid("tu"), name: "Agent", input: { description, subagent_type: "fork", prompt } };
+}
+
+/** The `async_launched` ledger of an `Agent` call that started fork `agentId` in the background. */
+function forkLedger(agentId: string, description: string, prompt: string, model: string): object {
+  return {
+    isAsync: true,
+    status: "async_launched",
+    agentId,
+    description,
+    resolvedModel: model,
+    prompt,
+    outputFile: `/tmp/claude/tasks/${agentId}.output`,
+    canReadOutputFile: true,
+  };
+}
+
+/** A user record carrying the result of `toolUseId` as `text`, its ledger `ledger`. */
+function textToolResult(g: Gen, ms: number, cwd: string, toolUseId: string, text: string, ledger: object): string {
+  return JSON.stringify({
+    type: "user",
+    uuid: g.uid("u"),
+    timestamp: iso(ms),
+    cwd,
+    message: {
+      role: "user",
+      content: [{ type: "tool_result", tool_use_id: toolUseId, content: [{ type: "text", text }] }],
+    },
+    toolUseResult: ledger,
+  });
+}
+
+/**
+ * Fork `forkId`'s transcript, as Claude Code writes it (log-format §10): the
+ * records it copied (`copiedRecords`, already its own), then the spawning Turn
+ * `spawningTurn` re-written under a new uuid holding only `call`, the
+ * synthetic result of that call, and two Turns of its own.
+ */
+function forkTranscriptLines(
+  g: Gen,
+  cwd: string,
+  model: string,
+  forkId: string,
+  copiedRecords: Record<string, unknown>[],
+  spawningTurn: Record<string, unknown>,
+  call: AgentCall,
+): string[] {
+  const spawningMessage = spawningTurn.message as Record<string, unknown>;
+  const rewrittenSpawn = {
+    ...spawningTurn,
+    uuid: g.uid("sa"),
+    parentUuid: copiedRecords.at(-1)?.uuid ?? null,
+    isSidechain: true,
+    agentId: forkId,
+    message: { ...spawningMessage, content: [call] },
+  };
+  const spawnedAt = Date.parse(spawningTurn.timestamp as string);
+  const { prompt } = call.input;
+  const syntheticResult = {
+    type: "user",
+    uuid: g.uid("u"),
+    parentUuid: rewrittenSpawn.uuid,
+    isSidechain: true,
+    agentId: forkId,
+    timestamp: iso(spawnedAt + 1_000),
+    cwd,
+    message: {
+      role: "user",
+      content: [
+        { type: "tool_result", tool_use_id: call.id, content: [{ type: "text", text: FORK_STARTED_TEXT }] },
+        { type: "text", text: `<fork-boilerplate>${prompt}</fork-boilerplate>` },
+      ],
+    },
+  };
+  const records: Record<string, unknown>[] = [...copiedRecords, rewrittenSpawn, syntheticResult];
+  for (let i = 0; i < 2; i++) {
+    const turn = assistantTurn(g, spawnedAt + 20_000 + i * 30_000, cwd, model, { scale: 0.4 });
+    records.push(asSidechain(turn, forkId, records.at(-1)!.uuid as string, { attributionAgent: "fork" }));
+  }
+  return records.map((record) => JSON.stringify(record));
+}
+
+/**
+ * One Conversation holding both fork shapes of log-format §10, so the e2e
+ * specs can show them: a general-purpose Sub-agent whose one Turn starts two
+ * forks, each copying its records up to that Turn, and a fork the Main thread
+ * starts, its transcript opening with a `fork-context-ref`. Four days old, so
+ * it lands on the list's first page below the newest ones.
+ */
+function forkedAgentsConversation(g: Gen, index: number): Conversation {
+  const project = PROJECTS[4];
+  const cwd = project.path;
+  const logFolderName = logFolderNameOf(cwd);
+  const sessionId = `seed-${logFolderName.slice(1)}-${index}`;
+  const model = MODELS[1];
+  let t = g.now - 4 * DAY;
+  const at = (seconds: number) => (t += seconds * 1_000);
+
+  const lines: string[] = [JSON.stringify({ type: "ai-title", aiTitle: FORKED_AGENTS_TITLE })];
+  lines.push(userPrompt(g, t, cwd, "Audit last week's pipeline runs and tell me which ones to rerun."));
+
+  // The lead: a general-purpose Sub-agent that forks one agent per failed run, both from one Turn.
+  const leadId = g.uid("agent").replace("agent-", "");
+  const leadPrompt = "Audit the pipeline runs of the last week, and fork one agent per failed run.";
+  const leadDescription = "Audit the pipeline runs";
+  const leadCall: AgentCall = {
+    type: "tool_use",
+    id: g.uid("tu"),
+    name: "Agent",
+    input: { description: leadDescription, subagent_type: "general-purpose", prompt: leadPrompt },
+  };
+  lines.push(assistantTurn(g, at(30), cwd, model, { toolUses: [leadCall] }));
+
+  const leadAgent = { agentId: leadId };
+  const leadPromptRecord = asSidechain(userPrompt(g, at(1), cwd, leadPrompt, undefined, leadAgent), leadId, null);
+  const leadFirstTurn = asSidechain(
+    assistantTurn(g, at(5), cwd, model, { scale: 0.5 }),
+    leadId,
+    leadPromptRecord.uuid as string,
+    {
+      attributionAgent: "general-purpose",
+    },
+  );
+  const forkPrompts = ["Audit Monday's failed run.", "Audit Tuesday's failed run."];
+  const forkIds = forkPrompts.map(() => g.uid("agent").replace("agent-", ""));
+  const forkCalls = forkPrompts.map((prompt) => forkCall(g, prompt.replace(/\.$/, ""), prompt));
+  const leadForkTurn = asSidechain(
+    assistantTurn(g, at(5), cwd, model, { toolUses: forkCalls, scale: 0.5 }),
+    leadId,
+    leadFirstTurn.uuid as string,
+    { attributionAgent: "general-purpose" },
+  );
+  const leadRecords: Record<string, unknown>[] = [leadPromptRecord, leadFirstTurn, leadForkTurn];
+  at(1);
+  forkCalls.forEach((call, i) => {
+    const description = call.input.description;
+    const ledger = forkLedger(forkIds[i]!, description, forkPrompts[i]!, model);
+    const result = textToolResult(g, t, cwd, call.id, FORK_STARTED_TEXT, ledger);
+    leadRecords.push(asSidechain(result, leadId, leadRecords.at(-1)!.uuid as string));
+  });
+  const leadLastTurn = assistantTurn(g, at(20), cwd, model, { scale: 0.5 });
+  leadRecords.push(
+    asSidechain(leadLastTurn, leadId, leadRecords.at(-1)!.uuid as string, { attributionAgent: "general-purpose" }),
+  );
+  const lead: SubAgent = {
+    agentId: leadId,
+    lines: leadRecords.map((record) => JSON.stringify(record)),
+    meta: { agentType: "general-purpose", description: leadDescription, toolUseId: leadCall.id, spawnDepth: 1 },
+  };
+  const leadForks: SubAgent[] = forkIds.map((forkId, i) => ({
+    agentId: forkId,
+    lines: forkTranscriptLines(
+      g,
+      cwd,
+      model,
+      forkId,
+      [leadPromptRecord, leadFirstTurn].map((record) => ({ ...record, agentId: forkId })),
+      leadForkTurn,
+      forkCalls[i]!,
+    ),
+    meta: {
+      agentType: "fork",
+      isFork: true,
+      description: forkCalls[i]!.input.description,
+      toolUseId: forkCalls[i]!.id,
+      parentAgentId: leadId,
+      spawnDepth: 2,
+      requestShape: "background",
+    },
+  }));
+  lines.push(
+    toolResult(g, at(10), cwd, leadCall.id, {
+      agentId: leadId,
+      agentType: "general-purpose",
+      status: "completed",
+      content: [{ type: "text", text: "Two runs failed; a fork is auditing each." }],
+      resolvedModel: model,
+      totalToolUseCount: 2,
+      totalDurationMs: 42_000,
+    }),
+  );
+
+  // The Main thread's own fork: its transcript copies none of its records, it opens with a `fork-context-ref`.
+  const mainThreadForkId = g.uid("agent").replace("agent-", "");
+  const mainThreadForkPrompt = "Draft the incident summary for the two failed runs.";
+  const mainThreadForkCall = forkCall(g, "Draft the incident summary", mainThreadForkPrompt);
+  const parentLastUuid = (JSON.parse(lines.at(-1)!) as { uuid: string }).uuid;
+  const mainThreadSpawningTurn = assistantTurn(g, at(30), cwd, model, { toolUses: [mainThreadForkCall] });
+  lines.push(mainThreadSpawningTurn);
+  lines.push(
+    textToolResult(
+      g,
+      at(1),
+      cwd,
+      mainThreadForkCall.id,
+      FORK_STARTED_TEXT,
+      forkLedger(mainThreadForkId, "Draft the incident summary", mainThreadForkPrompt, model),
+    ),
+  );
+  const mainThreadFork: SubAgent = {
+    agentId: mainThreadForkId,
+    lines: [
+      JSON.stringify({
+        type: "fork-context-ref",
+        agentId: mainThreadForkId,
+        parentSessionId: sessionId,
+        parentLastUuid,
+        contextLength: lines.length - 2,
+      }),
+      ...forkTranscriptLines(
+        g,
+        cwd,
+        model,
+        mainThreadForkId,
+        [],
+        JSON.parse(mainThreadSpawningTurn),
+        mainThreadForkCall,
+      ),
+    ],
+    meta: {
+      agentType: "fork",
+      isFork: true,
+      description: "Draft the incident summary",
+      toolUseId: mainThreadForkCall.id,
+      spawnDepth: 1,
+      requestShape: "background",
+    },
+  };
+  lines.push(assistantTurn(g, at(90), cwd, model));
+
+  return {
+    logFolderName,
+    projectPath: cwd,
+    sessionId,
+    mainLines: lines,
+    subAgents: [lead, ...leadForks, mainThreadFork],
+    resumePoint: { uuid: lastAssistantUuid(lines), ms: t },
+  };
+}
+
 /** Every seeded Conversation, its conversations starting up to three weeks before `anchor`. */
 function buildCorpus(anchor: number): Conversation[] {
   const g = createGen(anchor);
@@ -1852,6 +2121,7 @@ function buildCorpus(anchor: number): Conversation[] {
   conversations.push(planHandoffConversation(g, conversations.length));
   conversations.push(untitledConversation(g, conversations.length));
   conversations.push(loggedRequestsConversation(g, conversations.length));
+  conversations.push(forkedAgentsConversation(g, conversations.length));
   return conversations;
 }
 
@@ -1874,12 +2144,16 @@ function latestTimestamp(conversations: readonly Conversation[]): number {
 }
 
 /**
- * Write `sub`'s meta file at `filePath`, dated at its first record, as Claude
- * Code writes it at the spawn.
+ * Write `sub`'s meta file at `filePath`, dated at its first timestamped record
+ * (a Main-thread fork's `fork-context-ref` has none), as Claude Code writes it
+ * at the spawn.
  */
 function writeSubAgentMeta(filePath: string, sub: SubAgent): void {
   writeFileSync(filePath, JSON.stringify(sub.meta));
-  const spawnedAt = new Date(Date.parse((JSON.parse(sub.lines[0]!) as { timestamp: string }).timestamp));
+  const firstTimestamp = sub.lines
+    .map((line) => (JSON.parse(line) as { timestamp?: string }).timestamp)
+    .find((timestamp) => timestamp !== undefined)!;
+  const spawnedAt = new Date(Date.parse(firstTimestamp));
   utimesSync(filePath, spawnedAt, spawnedAt);
 }
 
@@ -1921,8 +2195,9 @@ export type FakeLogsCounts = {
  * where agents message each other, one long enough to span three Transcript
  * pages, one that enters a worktree and one that states no cwd, three in
  * per-session scratch directories under `/tmp`, two of two prompts each,
- * one that hands a plan to another session, one with no title, then one
- * whose log records its API requests — 72 in all. The same `now` always writes the same bytes. Returns the counts.
+ * one that hands a plan to another session, one with no title, one whose
+ * log records its API requests, then one whose Agents fork — 73 in all. The
+ * same `now` always writes the same bytes. Returns the counts.
  *
  * @example
  * const counts = generateFakeLogs({ logsRoot: "data/seed/projects", now: new Date() });

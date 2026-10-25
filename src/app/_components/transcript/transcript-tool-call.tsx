@@ -34,6 +34,7 @@ const KIND_LABEL = { agent: "Agent", skill: "Skill", tool: "Tool" } as const;
 export function TranscriptToolCallRow({
   call,
   messageId,
+  isAnchorTarget,
   view,
   labels,
   anchoredCall,
@@ -42,6 +43,8 @@ export function TranscriptToolCallRow({
 }: {
   call: TranscriptToolCall;
   messageId: number;
+  /** False when another rendering of this call carries its `call-<id>` anchor (a Copied Message's in the export). */
+  isAnchorTarget: boolean;
   view: TranscriptView;
   /** Every agent's display name, from `agentLabels(view.tree)`. */
   labels: Map<string, AgentLabel>;
@@ -68,7 +71,7 @@ export function TranscriptToolCallRow({
         : ToolCallDisclosure;
   const disclosure = {
     id: call.id,
-    anchorId: call.toolUseId === null ? undefined : callAnchorId(call.toolUseId),
+    anchorId: call.toolUseId === null || !isAnchorTarget ? undefined : callAnchorId(call.toolUseId),
     anchored,
     body: transcriptExport?.toolCallBodyById.get(call.id),
   };

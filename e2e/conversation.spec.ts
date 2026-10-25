@@ -20,6 +20,10 @@ const LOGGED_REQUESTS_SUB_AGENT_THINKING_TEXT =
 // The seeded Conversation with an ExitPlanMode call, then a SendMessage call (issue #149).
 const PLAN_HANDOFF_TITLE = "Hand the search plan to the docs team";
 
+// The seeded Conversation whose general-purpose Sub-agent forks twice from one Turn, and whose Main thread
+// forks too (`forkedAgentsConversation` in `scripts/seed/fake-logs.ts`).
+const FORKED_AGENTS_TITLE = "Audit last week's pipeline runs with forked agents";
+
 // A seeded continuation of TITLE, whose copied history TITLE owns (`continuationFamilies` in `scripts/seed/fake-logs.ts`).
 const CONTINUATION_TITLE = "Billing split — extract the invoice writer";
 
@@ -97,6 +101,64 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     const ownerMessage = page.locator(`article[id="msg-${messageUuid}"]`).filter({ visible: true });
     await expect(ownerMessage).toHaveClass(/\banchored\b/);
     await expect(ownerMessage).toBeInViewport();
+  });
+
+  test("nests a Sub-agent's forks under it, their copied rows marked from it and their own Turns costed", async ({
+    page,
+  }) => {
+    await openConversation(page, FORKED_AGENTS_TITLE);
+    const agents = page.getByRole("navigation", { name: "Agents" });
+    // The lead under the Main thread, its two forks under it, and the Main thread's own fork beside it.
+    await expect(agents.getByTitle("general-purpose", { exact: true })).toHaveAttribute("style", /--depth:\s*1\b/);
+    await expect(agents.getByTitle("fork #1", { exact: true })).toHaveAttribute("style", /--depth:\s*2\b/);
+    await expect(agents.getByTitle("fork #2", { exact: true })).toHaveAttribute("style", /--depth:\s*2\b/);
+    await expect(agents.getByTitle("fork", { exact: true })).toHaveAttribute("style", /--depth:\s*1\b/);
+
+    await agents.getByTitle("fork #1", { exact: true }).click();
+    await page.waitForURL((url) => url.searchParams.has("agent"));
+    const rows = page.getByRole("main").getByRole("article");
+    const copiedMarker = page.getByTitle("Copied from general-purpose", { exact: true });
+    // The lead's prompt and first Turn, then its spawning Turn re-written: each marked from the lead, linked to it.
+    const copiedRows = rows.filter({ has: copiedMarker });
+    await expect(copiedRows).toHaveCount(3);
+    await expect(copiedRows.first().getByRole("link", { name: "general-purpose", exact: true })).toHaveAttribute(
+      "href",
+      /[?&]agent=/,
+    );
+    // Its own Turns: each shows what it cost.
+    const ownTurns = page
+      .getByRole("main")
+      .getByRole("article", { name: /^Assistant/ })
+      .filter({ hasNot: copiedMarker });
+    await expect(ownTurns).toHaveCount(2);
+    for (const turn of await ownTurns.all()) await expect(turn).toContainText(/\$\d+\.\d{2,4}/);
+  });
+
+  test("links each Agent call of a Turn that forks twice to its own fork", async ({ page }) => {
+    await openConversation(page, FORKED_AGENTS_TITLE);
+    const agents = page.getByRole("navigation", { name: "Agents" });
+    await agents.getByTitle("general-purpose", { exact: true }).click();
+    await page.waitForURL((url) => url.searchParams.has("agent"));
+
+    // The lead's forking Turn: its two calls, each named after the fork it spawned and opening that fork.
+    const forkCalls = page
+      .getByRole("main")
+      .getByRole("group")
+      .filter({ hasText: /^Agentfork #\d/ });
+    await expect(forkCalls).toHaveCount(2);
+    const forkNames: string[] = [];
+    for (const call of await forkCalls.all()) {
+      const forkName = (await call.textContent())!.match(/fork #\d/)![0];
+      forkNames.push(forkName);
+      // Its summary: the body holds the description too.
+      await call
+        .getByText(/^Audit \w+'s failed run$/)
+        .first()
+        .click();
+      const forkHref = await agents.getByTitle(forkName, { exact: true }).getAttribute("href");
+      await expect(call.getByRole("link", { name: "Open transcript" })).toHaveAttribute("href", forkHref!);
+    }
+    expect(forkNames.sort()).toEqual(["fork #1", "fork #2"]);
   });
 
   test("publishes the chrome's measured height, which the agent tree fits under", async ({ page }) => {

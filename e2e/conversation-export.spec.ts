@@ -26,6 +26,9 @@ const PLAN_TASK_PROMPT_TEXT = "Draft the implementation plan";
 // (`continuationFamilies` in `scripts/seed/fake-logs.ts`).
 const CONTINUATION_TITLE = "Billing split — extract the invoice writer";
 const CONTINUED_FROM_TITLE = "Split the billing service out of the monolith";
+// The seeded Conversation whose general-purpose Sub-agent forks twice from one Turn, and whose Main thread
+// forks too (`forkedAgentsConversation` in `scripts/seed/fake-logs.ts`).
+const FORKED_AGENTS_TITLE = "Audit last week's pipeline runs with forked agents";
 
 /**
  * Open the seeded Conversation titled `title`, download its export, save it under its own name, and return
@@ -196,6 +199,52 @@ test.describe("Conversation export (/api/conversation/[sessionId]/export)", () =
     await expect(copiedPrompt).toBeVisible();
     // The owner is another Conversation, not in the file: no link leads to it.
     await expect(copiedPrompt.getByRole("link", { name: CONTINUED_FROM_TITLE })).toHaveCount(0);
+  });
+
+  test("marks a fork's copied rows with its spawner, linked to the spawner's section of the file", async ({ page }) => {
+    const { filePath } = await downloadExport(page, FORKED_AGENTS_TITLE);
+    await page.goto(pathToFileURL(filePath).href);
+    const mainSection = page.getByRole("region", { name: "main transcript" });
+    const forkSection = page.getByRole("region", { name: "fork #1 transcript" });
+    const leadSection = page.getByRole("region", { name: "general-purpose transcript" });
+
+    await mainSection.getByRole("navigation", { name: "Agents" }).getByTitle("fork #1", { exact: true }).click();
+    await expect(forkSection).toBeVisible();
+    const copiedRows = forkSection
+      .getByRole("article")
+      .filter({ has: page.getByTitle("Copied from general-purpose", { exact: true }) });
+    await expect(copiedRows).toHaveCount(3);
+    const ownerLink = copiedRows.first().getByRole("link", { name: "general-purpose", exact: true });
+    await expect(ownerLink).toHaveAttribute("href", /^#agent-/);
+    await ownerLink.click();
+    await expect(leadSection).toBeVisible();
+    await expect(forkSection).toBeHidden();
+  });
+
+  test("anchors each Message and Tool call once, on its owner, so a fork's way back lands in its spawner's section", async ({
+    page,
+  }) => {
+    const { filePath, html } = await downloadExport(page, FORKED_AGENTS_TITLE);
+
+    // A fork's file copies its spawner's records and `tool_use` blocks: only the owner's rendering is an anchor.
+    const ids = [...html.matchAll(/\sid="([^"]*)"/g)].map((match) => match[1]);
+    expect(ids.filter((id, i) => ids.indexOf(id) !== i)).toEqual([]);
+
+    await page.goto(pathToFileURL(filePath).href);
+    // Every section but the main thread's is hidden until linked to.
+    const sectionOf = (agent: string) => page.getByRole("region", { name: `${agent} transcript`, includeHidden: true });
+    const spawnerByFork = { "fork #1": "general-purpose", "fork #2": "general-purpose", fork: "main" };
+    for (const [fork, spawner] of Object.entries(spawnerByFork)) {
+      const backLink = sectionOf(fork).getByRole("link", {
+        name: `Back to the Agent call in ${spawner}`,
+        includeHidden: true,
+      });
+      const href = (await backLink.getAttribute("href"))!;
+      expect(href).toMatch(/^#call-/);
+      const target = `[id="${decodeURIComponent(href.slice(1))}"]`;
+      await expect(page.locator(target)).toHaveCount(1);
+      await expect(sectionOf(spawner).locator(target)).toHaveCount(1);
+    }
   });
 
   test("keeps the thinking and leaves What was sent out", async ({ page }) => {

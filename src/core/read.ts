@@ -200,7 +200,7 @@ export type TranscriptAgentNode = {
   metaCount: number;
   /** Parent-transcript `TranscriptMessage.id` whose Agent tool call spawned this node; null for main. */
   spawnedByMessageId: number | null;
-  /** The spawning Agent tool_use id (matches a parent `TranscriptToolCall.toolUseId`); null when unavailable. */
+  /** The spawning Agent tool_use id (matches a parent `TranscriptToolCall.toolUseId`); null exactly when `spawnedByMessageId` is. */
   spawnedByToolUseId: string | null;
   /** Sub-agents, nested by lineage and ordered by spawn time. */
   children: TranscriptAgentNode[];
@@ -549,6 +549,7 @@ type AgentRow = {
   parentAgentId: number | null;
   externalAgentId: string | null;
   spawnedByMessageId: number | null;
+  spawnedByToolUseId: string | null;
   agentType: string | null;
   resolvedModel: string | null;
 };
@@ -582,6 +583,7 @@ export async function getTranscript(id: string, opts: TranscriptOptions = {}): P
         parentAgentId: true,
         externalAgentId: true,
         spawnedByMessageId: true,
+        spawnedByToolUseId: true,
         agentType: true,
         resolvedModel: true,
       },
@@ -597,14 +599,11 @@ export async function getTranscript(id: string, opts: TranscriptOptions = {}): P
       firstMessageTsByAgent(prisma, convo.id),
     ]);
 
-    const spawnToolUseByAgent = await resolveSpawnToolUseIds(prisma, agents, firstTsByAgent);
-
     const tree = buildAgentTree(agents, {
       ownCost,
       errorAgentIds,
       metaByAgent,
       firstTsByAgent,
-      spawnToolUseByAgent,
     });
 
     // Grand total = sum of every agent's OWN cost (each counted once).
@@ -1019,56 +1018,6 @@ async function firstMessageTsByAgent(prisma: PrismaClient, conversationId: numbe
   return out;
 }
 
-/**
- * Correlate each spawned sub-agent to the exact `Agent` tool_use that launched
- * it. The `agent` row stores `spawnedByMessageId` (the parent turn) but NOT the
- * tool_use id, so we read the parent turns' `Agent` tool calls and zip them to
- * the children sharing that message — ordered by spawn time — recovering each
- * child's `spawnedByToolUseId` (exact for the common one-spawn-per-turn case).
- */
-async function resolveSpawnToolUseIds(
-  prisma: PrismaClient,
-  agents: AgentRow[],
-  firstTsByAgent: Map<number, number>,
-): Promise<Map<number, string | null>> {
-  const out = new Map<number, string | null>();
-  const spawnMsgIds = [...new Set(agents.map((a) => a.spawnedByMessageId).filter((x): x is number => x !== null))];
-  if (spawnMsgIds.length === 0) return out;
-
-  const calls = await prisma.toolCall.findMany({
-    where: { messageId: { in: spawnMsgIds }, name: "Agent" },
-    select: { messageId: true, toolUseId: true },
-    orderBy: { id: "asc" },
-  });
-  const callsByMsg = new Map<number, (string | null)[]>();
-  for (const c of calls) {
-    let arr = callsByMsg.get(c.messageId);
-    if (arr === undefined) {
-      arr = [];
-      callsByMsg.set(c.messageId, arr);
-    }
-    arr.push(c.toolUseId);
-  }
-
-  const kidsByMsg = new Map<number, AgentRow[]>();
-  for (const a of agents) {
-    if (a.spawnedByMessageId === null) continue;
-    let arr = kidsByMsg.get(a.spawnedByMessageId);
-    if (arr === undefined) {
-      arr = [];
-      kidsByMsg.set(a.spawnedByMessageId, arr);
-    }
-    arr.push(a);
-  }
-  const ts = (aid: number) => firstTsByAgent.get(aid) ?? Number.MAX_SAFE_INTEGER;
-  for (const [msgId, kids] of kidsByMsg) {
-    const ordered = [...kids].sort((x, y) => ts(x.id) - ts(y.id) || x.id - y.id);
-    const msgCalls = callsByMsg.get(msgId) ?? [];
-    ordered.forEach((kid, i) => out.set(kid.id, msgCalls[i] ?? null));
-  }
-  return out;
-}
-
 /** Assemble the lineage-nested agent tree (siblings ordered by spawn time). */
 function buildAgentTree(
   agents: AgentRow[],
@@ -1077,7 +1026,6 @@ function buildAgentTree(
     errorAgentIds: Set<number>;
     metaByAgent: Map<number, number>;
     firstTsByAgent: Map<number, number>;
-    spawnToolUseByAgent: Map<number, string | null>;
   },
 ): TranscriptAgentNode {
   const nodeById = new Map<number, TranscriptAgentNode>();
@@ -1097,7 +1045,7 @@ function buildAgentTree(
       hasError: ctx.errorAgentIds.has(a.id),
       metaCount: ctx.metaByAgent.get(a.id) ?? 0,
       spawnedByMessageId: a.spawnedByMessageId,
-      spawnedByToolUseId: ctx.spawnToolUseByAgent.get(a.id) ?? null,
+      spawnedByToolUseId: a.spawnedByToolUseId,
       children: [],
     });
   }
