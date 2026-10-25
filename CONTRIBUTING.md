@@ -57,7 +57,9 @@ approach and fixtures.
 `pnpm seed` builds a self-contained seed environment in `data/seed/`: invented
 logs in `data/seed/projects/`, ingested into `data/seed/seed.db`. Each run wipes
 and rebuilds that directory; your real database and logs are never read or
-written. To seed and serve the app on it in one step:
+written. On Windows, the seed and `linked-sub-agent.test.ts` create symlinks,
+which need Developer Mode or an elevated shell: without either, `symlinkSync`
+fails with EPERM. To seed and serve the app on it in one step:
 
 ```bash
 pnpm dev:seed

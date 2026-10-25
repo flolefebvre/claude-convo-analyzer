@@ -1,12 +1,11 @@
-// Log discovery (ADR-0002, finding #1). Walks a Claude Code logs root and yields
-// only TOP-LEVEL session files: `<logsRoot>/<project>/<sessionId>.jsonl`.
+// Log discovery (ADR-0002, finding #1). Walks a Claude Code logs root.
 //
-// Sub-agent transcripts live three levels deep at
-// `<project>/<sessionId>/subagents/agent-<agentId>.jsonl` and MUST be skipped
-// here (finding #1) — a later slice ingests them. We identify them by the
-// `/subagents/` path segment and by their nesting depth (they are not direct
-// children of a log folder), so a naive recursive walk does not conflate
-// them with sessions.
+// `discoverSessions` yields only TOP-LEVEL session files,
+// `<logsRoot>/<project>/<sessionId>.jsonl`: direct children of a log folder,
+// with no `/subagents/` path segment, so a Sub-agent transcript is never taken
+// for a session. `discoverSubAgents` finds one session's Sub-agent transcripts,
+// `<project>/<sessionId>/subagents/agent-<agentId>.jsonl`, links to another
+// session's included (log-format §10).
 
 import { readdirSync } from "node:fs";
 import os from "node:os";
