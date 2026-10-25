@@ -101,7 +101,7 @@ The images, each with its height, path and subject:
   errors" on, the higher of the two web-dashboard "Containerize the service"
   rows (2 errors) is expanded: one failure in main, one in a general-purpose
   sub-agent.
-- `transcript-view.png` — 1182,
+- `transcript-view.png` — 1216,
   `/conversation/seed-<home>-dev-docs-site-60`. The Transcript of
   "Coordinate the search rewrite across agents", on main, with its Plan Agent
   call opened by `click "summary:has-text('plan the change')"`: the Task
