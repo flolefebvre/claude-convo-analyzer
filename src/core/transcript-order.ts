@@ -39,3 +39,15 @@ export function orderedBefore(row: { id: number; timestamp: bigint | null }): Pr
     OR: [{ timestamp: null }, { timestamp: { lt: row.timestamp } }, { timestamp: row.timestamp, id: { lt: row.id } }],
   };
 }
+
+/**
+ * The messages that come after `row` in {@link TRANSCRIPT_ORDER}: every
+ * message neither {@link orderedBefore} it nor `row` itself.
+ *
+ * @example
+ * const next = await prisma.message.findFirst({ where: { AND: [{ agentId }, orderedAfter(message)] }, orderBy: TRANSCRIPT_ORDER });
+ */
+export function orderedAfter(row: { id: number; timestamp: bigint | null }): Prisma.MessageWhereInput {
+  if (row.timestamp === null) return { OR: [{ timestamp: { not: null } }, { timestamp: null, id: { gt: row.id } }] };
+  return { OR: [{ timestamp: { gt: row.timestamp } }, { timestamp: row.timestamp, id: { gt: row.id } }] };
+}
