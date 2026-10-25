@@ -1,532 +1,607 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
 <title>Transcript view — prototype</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<!--
+  The Transcript view's look: the Rail. Open it in a browser; it needs nothing else.
+  Fake data. One avatar per Reply in a speaker gutter, a dot and a faint marker
+  line per Turn, light Tool-call lines, and the Transcript filter in the agent
+  tree's sidebar. Hidden content folds into a line that reveals it in place and
+  hides it again. Click "Explore" in the sidebar for a Sub-agent's Transcript.
+  Vocabulary: GLOSSARY.md (Reply, Turn, Transcript filter, Copied Message, …).
+-->
 <style>
   /* ---- Tokens (mirrors src/app/globals.css) ---- */
   :root {
     --background: oklch(1 0 0);
     --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
     --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
+    --muted-foreground: oklch(0.53 0 0);
     --border: oklch(0.922 0 0);
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.955 0 0);
-    --ring: oklch(0.708 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --destructive-muted: oklch(0.577 0.245 27.325 / 10%);
     --cost: oklch(0.62 0.13 40);
-    --cost-muted: oklch(0.62 0.13 40 / 12%);
-    --skill: oklch(0.55 0.15 295);
-    --skill-muted: oklch(0.55 0.15 295 / 10%);
+    --cost-foreground: oklch(0.52 0.13 45);
     --agent: oklch(0.55 0.13 250);
     --agent-muted: oklch(0.55 0.13 250 / 10%);
-    --radius: 0.625rem;
+    --agent-foreground: oklch(0.5 0.13 250);
+    --destructive-muted: oklch(0.577 0.245 27.325 / 10%);
+    --destructive-foreground: oklch(0.52 0.2 27);
+    /* The Turn dot's ring and the dashed fold line. */
+    --rail-dot: oklch(0.72 0 0);
+    --fold-border: oklch(0.85 0 0);
     --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
     --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
   }
   @media (prefers-color-scheme: dark) {
-    :root {
+    :root:not([data-theme="light"]) {
       --background: oklch(0.145 0 0);
       --foreground: oklch(0.985 0 0);
-      --card: oklch(0.185 0 0);
-      --muted: oklch(0.24 0 0);
-      --muted-foreground: oklch(0.66 0 0);
-      --border: oklch(1 0 0 / 12%);
-      --sidebar: oklch(0.185 0 0);
-      --sidebar-accent: oklch(0.26 0 0);
-      --ring: oklch(0.556 0 0);
-      --destructive: oklch(0.704 0.191 22.216);
+      --muted: oklch(0.269 0 0);
+      --muted-foreground: oklch(0.708 0 0);
+      --border: oklch(1 0 0 / 10%);
+      --cost: oklch(0.72 0.14 45);
+      --cost-foreground: oklch(0.76 0.13 55);
+      --agent: oklch(0.68 0.12 250);
+      --agent-muted: oklch(0.68 0.12 250 / 18%);
+      --agent-foreground: oklch(0.76 0.11 250);
       --destructive-muted: oklch(0.704 0.191 22.216 / 14%);
-      --cost: oklch(0.72 0.13 45);
-      --cost-muted: oklch(0.72 0.13 45 / 16%);
-      --skill: oklch(0.72 0.13 295);
-      --skill-muted: oklch(0.72 0.13 295 / 14%);
-      --agent: oklch(0.72 0.11 250);
-      --agent-muted: oklch(0.72 0.11 250 / 14%);
+      --destructive-foreground: oklch(0.704 0.191 22.216);
+      --rail-dot: oklch(0.5 0 0);
+      --fold-border: oklch(1 0 0 / 22%);
     }
-  }
-  :root[data-theme="light"] {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --border: oklch(0.922 0 0);
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.955 0 0);
-    --ring: oklch(0.708 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --destructive-muted: oklch(0.577 0.245 27.325 / 10%);
-    --cost: oklch(0.62 0.13 40);
-    --cost-muted: oklch(0.62 0.13 40 / 12%);
-    --skill: oklch(0.55 0.15 295);
-    --skill-muted: oklch(0.55 0.15 295 / 10%);
-    --agent: oklch(0.55 0.13 250);
-    --agent-muted: oklch(0.55 0.13 250 / 10%);
   }
   :root[data-theme="dark"] {
     --background: oklch(0.145 0 0);
     --foreground: oklch(0.985 0 0);
-    --card: oklch(0.185 0 0);
-    --muted: oklch(0.24 0 0);
-    --muted-foreground: oklch(0.66 0 0);
-    --border: oklch(1 0 0 / 12%);
-    --sidebar: oklch(0.185 0 0);
-    --sidebar-accent: oklch(0.26 0 0);
-    --ring: oklch(0.556 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
+    --muted: oklch(0.269 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --border: oklch(1 0 0 / 10%);
+    --cost: oklch(0.72 0.14 45);
+    --cost-foreground: oklch(0.76 0.13 55);
+    --agent: oklch(0.68 0.12 250);
+    --agent-muted: oklch(0.68 0.12 250 / 18%);
+    --agent-foreground: oklch(0.76 0.11 250);
     --destructive-muted: oklch(0.704 0.191 22.216 / 14%);
-    --cost: oklch(0.72 0.13 45);
-    --cost-muted: oklch(0.72 0.13 45 / 16%);
-    --skill: oklch(0.72 0.13 295);
-    --skill-muted: oklch(0.72 0.13 295 / 14%);
-    --agent: oklch(0.72 0.11 250);
-    --agent-muted: oklch(0.72 0.11 250 / 14%);
+    --destructive-foreground: oklch(0.704 0.191 22.216);
+    --rail-dot: oklch(0.5 0 0);
+    --fold-border: oklch(1 0 0 / 22%);
   }
 
   * { box-sizing: border-box; }
-  html, body { height: 100%; }
-  body {
-    margin: 0;
-    font-family: var(--font-sans);
-    background: var(--background);
-    color: var(--foreground);
-    font-size: 14px;
-    line-height: 1.55;
-  }
-  button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; padding: 0; text-align: left; }
-  button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 4px; }
+  body { margin: 0; font-family: var(--font-sans); font-size: 14px; line-height: 1.55; color: var(--foreground); background: var(--background); }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; cursor: pointer; text-align: left; }
+  button:focus-visible, a:focus-visible { outline: 2px solid var(--muted-foreground); outline-offset: 2px; }
   a { color: inherit; }
-  code, pre { font-family: var(--font-mono); }
-  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  svg { display: block; }
 
-  .num { font-variant-numeric: tabular-nums; }
-  .cost { color: var(--cost); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12px; }
-  .microlabel { font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted-foreground); }
+  /* ---- Prototype-only theme switch ---- */
+  .proto-bar { display: flex; gap: 6px; align-items: center; padding: 8px 16px; background: var(--muted); border-bottom: 1px solid var(--border); font-size: 12px; color: var(--muted-foreground); }
+  .proto-bar button { min-height: 28px; padding: 3px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--background); }
+  .proto-bar button[aria-pressed="true"] { background: var(--foreground); color: var(--background); border-color: var(--foreground); }
 
-  /* ---- Two-pane layout ---- */
-  .app { display: flex; height: 100vh; }
+  /* ---- Frame: agent-tree sidebar + pane ---- */
+  .tview { display: flex; align-items: flex-start; }
+  .tree { position: sticky; top: 0; width: 264px; flex-shrink: 0; min-height: 100vh; max-height: 100vh; overflow-y: auto; border-right: 1px solid var(--border); }
+  .pane { flex: 1; min-width: 0; }
+  .tree-block { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .tree-link { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted-foreground); text-decoration: none; }
+  .tree-link:hover { color: var(--foreground); }
+  .tree-link svg { width: 13px; height: 13px; }
+  .tree-title { margin: 10px 0 4px; font-size: 14.5px; font-weight: 600; line-height: 1.35; }
+  .tree-id { margin-bottom: 6px; font-family: var(--font-mono); font-size: 11.5px; color: var(--muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tree-caption { margin-bottom: 6px; font-size: 12px; color: var(--muted-foreground); }
+  .node { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 32px; padding: 0 8px; border-radius: 6px; font-size: 13px; }
+  .node:hover, .node[aria-current="page"] { background: var(--muted); }
+  .node[aria-current="page"] { font-weight: 600; }
+  .node.is-sub { margin-left: 16px; width: calc(100% - 16px); }
+  .node-dot { width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid var(--muted-foreground); }
+  .node[aria-current="page"] .node-dot { background: var(--agent); border-color: var(--agent); }
+  .tree-total { display: flex; align-items: baseline; font-size: 13.5px; color: var(--muted-foreground); }
+  .tree-total .cost { font-size: 15px; font-weight: 600; }
 
-  /* ---- Agent tree sidebar ---- */
-  .tree {
-    width: 280px; flex-shrink: 0;
-    background: var(--sidebar);
-    border-right: 1px solid var(--border);
-    display: flex; flex-direction: column;
-    overflow-y: auto;
-  }
-  .tree-header { padding: 16px 16px 12px; border-bottom: 1px solid var(--border); }
-  .back-link { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted-foreground); text-decoration: none; margin-bottom: 10px; }
-  .back-link:hover { color: var(--foreground); }
-  .conv-title { font-size: 14px; font-weight: 600; line-height: 1.35; text-wrap: balance; margin: 0 0 6px; }
-  .conv-meta { font-size: 11.5px; color: var(--muted-foreground); font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .tree-caption { padding: 14px 16px 6px; }
-  .tree-nodes { padding: 0 8px 16px; display: flex; flex-direction: column; gap: 1px; }
-  .node {
-    display: flex; align-items: center; gap: 7px;
-    width: 100%;
-    padding: 5px 8px 5px calc(8px + var(--depth) * 16px);
-    border-radius: calc(var(--radius) * 0.6);
-    color: var(--foreground);
-  }
-  .node:hover { background: var(--sidebar-accent); }
-  .node[aria-current="true"] { background: var(--sidebar-accent); font-weight: 600; }
-  .node-glyph { color: var(--muted-foreground); flex-shrink: 0; width: 14px; text-align: center; font-size: 11px; }
-  .node[aria-current="true"] .node-glyph { color: var(--agent); }
-  .node-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-  .node-sub { color: var(--muted-foreground); font-weight: 400; }
-  .node-err { width: 6px; height: 6px; border-radius: 50%; background: var(--destructive); flex-shrink: 0; }
-  .tree-total { margin-top: auto; padding: 12px 16px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: baseline; }
-  .tree-total .cost { font-size: 13px; font-weight: 600; }
+  /* ---- Transcript filter (the sidebar's Show section) ---- */
+  .show-toggle { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 32px; padding: 4px 8px; border-radius: 6px; font-size: 13px; color: var(--muted-foreground); }
+  .show-toggle:hover { background: var(--muted); }
+  .show-toggle[aria-pressed="true"] { color: var(--foreground); }
+  .check { width: 14px; height: 14px; flex-shrink: 0; border-radius: 4px; border: 1.5px solid currentColor; display: grid; place-items: center; }
+  .check svg { width: 10px; height: 10px; opacity: 0; }
+  [aria-pressed="true"] > .check { background: var(--foreground); border-color: var(--foreground); }
+  [aria-pressed="true"] > .check svg { opacity: 1; color: var(--background); }
+  .show-count { margin-left: auto; font-size: 11.5px; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+  .show-presets { display: flex; gap: 2px; margin-top: 6px; }
+  .show-preset { min-height: 30px; padding: 4px 8px; border-radius: 6px; font-size: 12.5px; color: var(--muted-foreground); }
+  .show-preset:hover { background: var(--muted); color: var(--foreground); }
+  .show-preset[aria-pressed="true"] { color: var(--foreground); font-weight: 600; }
 
-  /* ---- Transcript pane ---- */
-  .pane { flex: 1; overflow-y: auto; }
-  .pane-header {
-    position: sticky; top: 0; z-index: 10;
-    background: color-mix(in oklch, var(--background) 88%, transparent);
-    backdrop-filter: blur(8px);
-    border-bottom: 1px solid var(--border);
-    padding: 12px 32px;
-    display: flex; align-items: baseline; gap: 10px;
-  }
-  .crumb { display: flex; align-items: baseline; gap: 8px; font-size: 13px; flex: 1; min-width: 0; }
-  .crumb button { color: var(--muted-foreground); }
-  .crumb button:hover { color: var(--foreground); text-decoration: underline; }
-  .crumb .sep { color: var(--muted-foreground); }
-  .crumb .here { font-weight: 600; }
-  .pane-header .stats { display: flex; gap: 14px; align-items: baseline; flex-shrink: 0; font-size: 12px; color: var(--muted-foreground); }
-  .pane-header .cost { font-size: 13px; font-weight: 600; }
+  /* ---- Pane header ---- */
+  .pane-header { position: sticky; top: 0; z-index: 2; background: var(--background); border-bottom: 1px solid var(--border); }
+  .pane-header-inner { max-width: 880px; margin: 0 auto; padding: 12px 24px; display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline; }
+  .crumbs { display: flex; gap: 6px; align-items: baseline; }
+  .crumbs a { color: var(--muted-foreground); text-decoration: none; }
+  .crumbs a:hover { color: var(--foreground); text-decoration: underline; }
+  .crumbs .here { font-weight: 600; }
+  .crumbs .sep { color: var(--muted-foreground); }
+  .stats { margin-left: auto; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--muted-foreground); }
 
-  .transcript { max-width: 46rem; margin: 0 auto; padding: 28px 32px 80px; display: flex; flex-direction: column; gap: 22px; }
+  /* ---- Transcript ---- */
+  .transcript { max-width: 880px; margin: 0 auto; padding: 28px 24px 96px; display: flex; flex-direction: column; gap: 22px; }
+  .cost { font-size: 12px; color: var(--cost-foreground); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .time { font-size: 12px; color: var(--muted-foreground); white-space: nowrap; }
+  .spacer { flex: 1; }
+  .copied-from { font-size: 12px; color: var(--muted-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 22rem; }
+  .copied-from a { text-decoration: underline; text-decoration-color: var(--fold-border); text-underline-offset: 2px; }
 
-  /* ---- Prompt (human) ---- */
-  .prompt { border-left: 3px solid var(--foreground); background: var(--muted); border-radius: 0 var(--radius) var(--radius) 0; padding: 10px 16px 12px; }
-  .prompt-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
-  .prompt-body { white-space: pre-wrap; }
-  .slash { display: inline-flex; align-items: baseline; gap: 8px; font-family: var(--font-mono); font-size: 13px; }
-  .slash-cmd { background: var(--background); border: 1px solid var(--border); border-radius: 6px; padding: 1px 7px; font-weight: 600; }
-  .slash-args { color: var(--muted-foreground); }
+  /* A row: the speaker gutter (avatar, and a Reply's rail line), then the body. */
+  .row { display: grid; grid-template-columns: 44px minmax(0, 1fr); column-gap: 14px; }
+  .gutter { position: relative; display: flex; justify-content: center; align-items: flex-start; }
+  .reply > .gutter::after { content: ""; position: absolute; top: 34px; bottom: 2px; left: 21px; width: 2px; border-radius: 1px; background: var(--border); }
+  .avatar { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; color: var(--background); flex-shrink: 0; }
+  .avatar svg { width: 15px; height: 15px; }
+  .avatar.is-you { background: var(--foreground); }
+  .avatar.is-assistant { background: var(--cost); }
+  .avatar.is-agent { background: var(--agent); border-radius: 8px; }
+  .avatar.is-other-conversation { background: var(--agent-muted); color: var(--agent-foreground); border-radius: 8px; box-shadow: inset 0 0 0 1.5px var(--agent); }
+  .reply.is-copied .avatar.is-assistant { background: var(--muted); color: var(--muted-foreground); }
+  .row-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-height: 28px; margin-bottom: 2px; font-size: 12px; }
+  .speaker { font-size: 13px; font-weight: 600; }
+  .reply .speaker { color: var(--cost-foreground); }
+  .inter .speaker, .prompt.is-agent .speaker { color: var(--agent-foreground); }
+  .row-note { color: var(--muted-foreground); }
 
-  /* ---- Assistant turn ---- */
-  .turn-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
-  .turn-head .model { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted-foreground); }
-  .turn-head .spacer { flex: 1; }
-  .turn-cost { background: var(--cost-muted); border-radius: 999px; padding: 1px 9px; }
-  .badge-err { font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--destructive); background: var(--destructive-muted); border-radius: 999px; padding: 2px 9px; }
-  .turn-body > p { margin: 0 0 10px; }
-  .turn-body > p:last-child { margin-bottom: 0; }
-  .turn-body ul { margin: 0 0 10px; padding-left: 22px; }
-  .turn-body li { margin: 2px 0; }
-  .turn-body code { background: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; font-size: 12.5px; }
-  .turn-body h3 { font-size: 14px; margin: 14px 0 6px; }
-  .api-error-note { color: var(--muted-foreground); font-size: 13px; font-style: italic; }
+  .bubble { border-radius: 4px 14px 14px 14px; padding: 10px 14px; overflow-wrap: anywhere; }
+  .bubble p { margin: 0 0 6px; }
+  .bubble > :last-child { margin-bottom: 0; }
+  .prompt .bubble { background: var(--muted); font-size: 15px; white-space: pre-wrap; }
+  .prompt.is-agent .bubble { background: var(--agent-muted); font-size: 14px; white-space: normal; }
+  .prompt.is-copied .bubble, .reply.is-copied .turn-body { opacity: 0.78; }
+  .inter .bubble { background: var(--agent-muted); }
+  .inter.is-other-conversation .bubble { background: none; box-shadow: inset 0 0 0 1px var(--agent-muted); }
 
-  /* ---- Tool calls ---- */
-  .calls { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
-  details.call { border: 1px solid var(--border); border-radius: calc(var(--radius) * 0.8); background: var(--card); overflow: hidden; }
-  details.call summary { list-style: none; display: flex; align-items: center; gap: 9px; padding: 7px 12px; cursor: pointer; }
-  details.call summary::-webkit-details-marker { display: none; }
-  details.call summary:hover { background: var(--muted); }
-  .chev { color: var(--muted-foreground); font-size: 10px; transition: transform 0.15s; flex-shrink: 0; width: 10px; }
-  details[open] .chev { transform: rotate(90deg); }
-  .kind {
-    font-size: 10.5px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase;
-    border-radius: 5px; padding: 2px 7px; flex-shrink: 0;
-  }
-  .kind-tool { background: var(--muted); color: var(--muted-foreground); }
-  .kind-skill { background: var(--skill-muted); color: var(--skill); }
-  .kind-agent { background: var(--agent-muted); color: var(--agent); }
-  .call-name { font-weight: 600; font-size: 13px; flex-shrink: 0; }
-  .call-snippet { font-family: var(--font-mono); font-size: 12px; color: var(--muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
-  .call-meta { font-size: 11.5px; color: var(--muted-foreground); flex-shrink: 0; }
-  .call-err { color: var(--destructive); font-weight: 600; font-size: 11.5px; flex-shrink: 0; }
-  .call-body { border-top: 1px solid var(--border); padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 10px; }
-  .io-block .microlabel { display: block; margin-bottom: 4px; }
-  .io-block pre {
-    margin: 0; background: var(--muted); border-radius: 6px; padding: 8px 10px;
-    font-size: 12px; line-height: 1.5; overflow-x: auto; white-space: pre;
-  }
-  .io-block pre.err { background: var(--destructive-muted); color: var(--destructive); }
-  .trunc { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted-foreground); background: var(--muted); border-radius: 0 0 6px 6px; padding: 4px 10px; border-top: 1px dashed var(--border); margin-top: -6px; }
-  .open-agent {
-    display: inline-flex; align-items: center; gap: 6px;
-    font-size: 12.5px; font-weight: 600; color: var(--agent);
-    background: var(--agent-muted); border-radius: 6px; padding: 5px 11px;
-    align-self: flex-start;
-  }
-  .open-agent:hover { filter: brightness(1.08); }
+  /* A Turn: its dot on the rail, its faint marker line, then its body. */
+  .turns > * + * { margin-top: 14px; }
+  .turn { position: relative; }
+  .turn::before { content: ""; position: absolute; left: -42px; top: 5px; width: 8px; height: 8px; border-radius: 50%; background: var(--background); border: 2px solid var(--rail-dot); }
+  .turn.is-failed::before { border-color: var(--destructive-foreground); }
+  .turn-marker { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-bottom: 3px; font-size: 11.5px; color: var(--muted-foreground); }
+  .turn-number { font-weight: 500; }
+  .chip { font-size: 11px; border-radius: 4px; padding: 0 6px; background: var(--muted); color: var(--muted-foreground); white-space: nowrap; }
+  .chip.is-model { font-family: var(--font-mono); }
+  .chip.is-error { background: var(--destructive-muted); color: var(--destructive-foreground); }
+  .sent-trigger { display: inline-flex; align-items: center; gap: 4px; min-height: 24px; padding: 1px 7px; border-radius: 5px; font-size: 11.5px; color: var(--muted-foreground); }
+  .sent-trigger svg { width: 11px; height: 11px; }
+  .sent-trigger:hover, .sent-trigger[aria-expanded="true"] { background: var(--muted); color: var(--foreground); }
+  .turn-body p { margin: 0 0 8px; max-width: 36rem; }
+  .turn-body ul { margin: 0 0 8px; padding-left: 20px; max-width: 36rem; }
+  .turn-body > :last-child { margin-bottom: 0; }
+  .turn-failed { margin: 0; padding: 8px 12px; border-radius: 8px; background: var(--destructive-muted); color: var(--destructive-foreground); font-size: 13px; }
+  .thinking { margin: 0 0 6px; font-size: 12px; color: var(--muted-foreground); }
+  details.thinking summary { cursor: pointer; list-style: none; }
+  details.thinking summary::-webkit-details-marker { display: none; }
+  details.thinking summary::before { content: "›"; display: inline-block; width: 10px; transition: transform 150ms; }
+  details.thinking[open] summary::before { transform: rotate(90deg); }
+  .thinking-text { margin: 4px 0 0 10px; font-style: italic; max-width: 36rem; }
 
-  /* ---- Meta divider ---- */
-  .meta-hidden { display: flex; align-items: center; gap: 10px; color: var(--muted-foreground); font-size: 11.5px; }
-  .meta-hidden::before, .meta-hidden::after { content: ""; flex: 1; border-top: 1px dashed var(--border); }
+  /* Tool calls: one quiet container per Turn, a borderless line per call. */
+  .calls { display: flex; flex-direction: column; margin: 8px 0; border-left: 2px solid var(--border); padding-left: 4px; }
+  .call { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 30px; padding: 4px 10px; border-radius: 6px; font-size: 12.5px; }
+  .call:hover { background: var(--muted); }
+  .chev { width: 13px; height: 13px; flex-shrink: 0; color: var(--muted-foreground); }
+  .call-kind { font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; border-radius: 4px; padding: 1px 6px; background: var(--agent-muted); color: var(--agent-foreground); }
+  .call-name { font-weight: 600; flex-shrink: 0; }
+  .call-snippet { flex: 1; min-width: 0; font-family: var(--font-mono); font-size: 12px; color: var(--muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .call-meta { font-size: 11.5px; color: var(--muted-foreground); white-space: nowrap; }
+  .badge-err { font-size: 11px; color: var(--destructive-foreground); background: var(--destructive-muted); border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
 
-  .proto-note { position: fixed; bottom: 12px; right: 16px; font-size: 10.5px; color: var(--muted-foreground); background: var(--card); border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; }
+  .sent-panel { margin: 8px 0 0; padding: 10px 12px; border-radius: 8px; background: var(--muted); font-size: 12px; display: grid; gap: 3px; }
+  .sent-panel strong { font-weight: 600; }
 
-  @media (max-width: 760px) {
-    .app { flex-direction: column; height: auto; }
-    .tree { width: 100%; border-right: none; border-bottom: 1px solid var(--border); }
-    .tree-total { margin-top: 0; }
-    .pane-header, .transcript { padding-left: 16px; padding-right: 16px; }
+  /* What the filter hides folds into one line; once revealed, the same line hides it again. */
+  .fold { display: inline-flex; align-items: center; min-height: 28px; padding: 3px 10px; border-radius: 6px; border: 1px dashed var(--fold-border); font-size: 12px; color: var(--muted-foreground); }
+  .fold:hover { color: var(--foreground); border-color: var(--muted-foreground); }
+  .fold[aria-expanded="true"] { border-style: solid; color: var(--foreground); background: var(--muted); }
+  .turn-body > .fold { margin: 4px 0 2px; }
+
+  .task-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding-top: 3px; font-size: 12.5px; color: var(--muted-foreground); }
+  .task-kind { font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; border-radius: 4px; padding: 1px 6px; background: var(--muted); }
+
+  @media (max-width: 720px) {
+    .tview { flex-wrap: wrap; }
+    .tree { position: static; width: 100%; min-height: 0; max-height: none; border-right: 0; border-bottom: 1px solid var(--border); }
   }
 </style>
-
-<div class="app">
-  <aside class="tree" aria-label="Agent tree">
-    <div class="tree-header">
-      <a class="back-link" href="#" onclick="return false"><span aria-hidden>←</span> All conversations</a>
-      <h1 class="conv-title">Add transcript view to the analyzer</h1>
-      <div class="conv-meta" title="session id">9f2c41aa-77b3-4e0e-a1c2-8d3f5b6e0c19</div>
-    </div>
-    <div class="tree-caption microlabel">Agents</div>
-    <nav class="tree-nodes" id="tree"></nav>
-    <div class="tree-total">
-      <span class="microlabel">Conversation total</span>
-      <span class="cost num">$5.81</span>
-    </div>
-  </aside>
-
-  <main class="pane" id="pane">
-    <div class="pane-header" id="pane-header"></div>
-    <div class="transcript" id="transcript"></div>
-  </main>
+</head>
+<body>
+<div class="proto-bar" role="group" aria-label="Prototype theme">
+  <span>Theme</span>
+  <button type="button" data-theme-pick="system" aria-pressed="true">System</button>
+  <button type="button" data-theme-pick="light" aria-pressed="false">Light</button>
+  <button type="button" data-theme-pick="dark" aria-pressed="false">Dark</button>
 </div>
-<div class="proto-note">prototype · fake data</div>
+<div class="tview" id="app"></div>
 
 <script>
-"use strict";
-
-/* ---------------- Fake data ---------------- */
-
-const AGENTS = {
-  main: {
-    id: "main", label: "main", parent: null, model: "claude-opus-4-8",
-    cost: "$3.42", turns: 24, tools: 61, hasError: true,
-  },
-  exp1: {
-    id: "exp1", label: "Explore", sub: "scan core readers", parent: "main",
-    model: "claude-haiku-4-5", cost: "$0.31", turns: 9, tools: 17, hasError: false,
-  },
-  plan1: {
-    id: "plan1", label: "Plan", sub: "transcript reader design", parent: "main",
-    model: "claude-opus-4-8", cost: "$0.87", turns: 7, tools: 11, hasError: false,
-  },
-  gp1: {
-    id: "gp1", label: "claude", sub: "implement slice 1", parent: "main",
-    model: "claude-sonnet-5", cost: "$1.12", turns: 15, tools: 32, hasError: false,
-  },
-  exp2: {
-    id: "exp2", label: "Explore", sub: "find JSONL fixtures", parent: "gp1",
-    model: "claude-haiku-4-5", cost: "$0.09", turns: 4, tools: 6, hasError: false,
-  },
-};
-
-/* Transcript items. kind: prompt | slash | turn | metaHidden */
-const TRANSCRIPTS = {
-  main: [
-    { kind: "prompt", time: "09:14", text:
-      "I want to open a conversation and see its full transcript — my messages, the agent's messages, skill loads, tool calls. And if it spawned sub-agents I want to walk into those too." },
-    { kind: "turn", time: "09:14", model: "claude-opus-4-8", cost: "$0.42",
-      html: "<p>Before proposing anything, let me check what the database already stores — the schema may cover most of this.</p>",
-      calls: [
-        { type: "tool", name: "Read", snippet: "src/core/prisma/schema.prisma",
-          input: '{ "file_path": "src/core/prisma/schema.prisma" }',
-          result: "1  // Claude Conversation Analyzer — data model.\n2  // Seven tables per ADR-0001 …\n3  model Message {\n4    id        Int    @id\n5    role      String\n6    text      String?\n…", size: "6.2k chars" },
-        { type: "tool", name: "Bash", snippet: 'grep -rn "toolUses" src/core/parse.ts',
-          input: '{ "command": "grep -rn \\"toolUses\\" src/core/parse.ts" }',
-          result: "374:        toolUses: [],\n407:      toolUses: extractToolUseBlocks(message.content),",
-          size: "0.1k chars" },
+  // ---- Fake data ----
+  const MAIN = {
+    speaker: "Assistant",
+    model: "opus-4-8",
+    stats: ["8 turns", "11 tool calls", "opus-4-8", "mixed effort"],
+    cost: "$0.55",
+    items: [
+      { kind: "prompt", id: "p0", time: "Oct 24 · 17:40", copiedFrom: "Harden the upload path", paras: ["Sketch how we could stop retry storms on uploads."] },
+      { kind: "reply", id: "r0", range: "17:40", copiedFrom: "Harden the upload path", turns: [
+        { id: "t0", time: "17:40", copied: true, paras: ["Two levers: a per-user rate limit at the route, or backoff hints for the client. The limit is the one we control today, so start there."], calls: [] },
       ] },
-    { kind: "turn", time: "09:16", model: "claude-opus-4-8", cost: "$0.51",
-      html: "<p>The schema already stores every <code>Message</code>, every <code>ToolCall</code> (with truncated results), and the full agent lineage. What's missing is a transcript reader in core and the view itself.</p><p>Loading the TDD skill before writing the reader:</p>",
-      calls: [
-        { type: "skill", name: "tdd", snippet: "red → green → refactor, one slice at a time",
-          input: '{ "skill": "tdd", "args": "getTranscript() core reader" }',
-          result: "Launching skill: tdd" },
-        { type: "agent", agent: "exp1", name: "Explore", snippet: "scan core readers + fixtures for transcript shapes",
-          cost: "$0.31",
-          input: "Find every reader in src/core/read.ts and how the JSONL fixtures represent tool_use / tool_result pairs. Report shapes only.",
-          result: "read.ts exposes listConversations() and getConversation(); fixtures pair tool_use ↔ tool_result by toolUseId; sub-agent files parse identically (isSidechain: true)." },
+      { kind: "prompt", id: "p1", time: "14:02", paras: ["Uploads are getting hammered by client retries. Add a per-user rate limit to the upload endpoint and keep the existing tests green."] },
+      { kind: "reply", id: "r1", range: "14:02–14:05", cost: "$0.32", turns: [
+        { id: "t1", time: "14:02", cost: "$0.08", thinking: { duration: "2.1s" }, paras: ["I’ll read the upload route and the middleware chain first."], calls: [
+          { tool: "Read", snippet: "src/routes/upload.ts", meta: "3,120 chars" },
+          { tool: "Read", snippet: "src/middleware/index.ts", meta: "1,804 chars" },
+          { tool: "Grep", snippet: "\"rateLimit|throttle\" in src/", meta: "212 chars" },
+        ], repeated: 2, sentNew: "your Prompt, 2 pieces of Injected context" },
+        { id: "t2", time: "14:03", cost: "$0.06", paras: [], calls: [
+          { tool: "Bash", snippet: "pnpm test upload", meta: "8,410 chars" },
+          { tool: "Read", snippet: "tests/upload.test.ts", meta: "5,977 chars" },
+        ], repeated: 5, sentNew: "3 tool results" },
+        { id: "t3", time: "14:03", cost: "$0.11", thinking: { duration: "6.4s", summary: "No limiter exists yet, and the middleware chain is the right seam. A token bucket keyed by user id keeps bursts cheap." }, paras: ["Nothing limits requests today. I’ll have a sub-agent survey the limiter libraries already in the dependency tree while I write the middleware."], calls: [
+          { tool: "Agent", agent: "Explore", snippet: "survey limiter libraries", meta: "$0.21" },
+          { tool: "Write", snippet: "src/middleware/rate-limit.ts", meta: "1,240 chars" },
+        ], repeated: 8, sentNew: "2 tool results" },
+        { id: "t4", time: "14:05", cost: "$0.07", paras: [], calls: [
+          { tool: "Edit", snippet: "src/routes/upload.ts", meta: "418 chars" },
+          { tool: "Bash", snippet: "pnpm test upload", meta: "2,316 chars", failed: "exit 1" },
+        ], repeated: 11, sentNew: "2 tool results" },
       ] },
-    { kind: "slash", time: "09:31", cmd: "/grill-me", args: "transcript view — walk every design branch" },
-    { kind: "metaHidden", count: 3 },
-    { kind: "turn", time: "09:33", model: "claude-opus-4-8", cost: "$0.38",
-      html: "<h3>Question 1 — new route or grow the expanded panel?</h3><p>The <code>?expanded=</code> panel is a cost breakdown; a transcript with a tree sidebar doesn't fit a table row. My recommendation:</p><ul><li>New route <code>/conversation/&lt;sessionId&gt;</code></li><li>Pane-switch navigation — the tree shows agents, the pane shows one transcript</li><li>Tool calls collapsed by default, client-side disclosure</li></ul>",
-      calls: [] },
-    { kind: "turn", time: "09:47", model: "claude-opus-4-8", cost: "$0.29", apiError: "529 — overloaded, retried",
-      html: "",
-      calls: [] },
-    { kind: "turn", time: "09:48", model: "claude-opus-4-8", cost: "$0.64",
-      html: "<p>Design agreed. Planning the core reader, then delegating the first implementation slice:</p>",
-      calls: [
-        { type: "agent", agent: "plan1", name: "Plan", snippet: "getTranscript() reader + message-kind migration", cost: "$0.87",
-          input: "Design the getTranscript(sessionId, agentId?) core reader and the message-kind migration (prompt | tool-result | meta). Respect the ADR-0002 boundary.",
-          result: "Plan: new kind column derived at parse time; reader returns agent tree + one agent's ordered messages with nested tool calls; forced full re-parse via parse-version bump." },
-        { type: "agent", agent: "gp1", name: "claude", snippet: "implement slice 1 — schema migration + reader, TDD", cost: "$1.12",
-          input: "Implement slice 1 of the transcript view per the plan: message.kind migration + getTranscript() reader, test-first against the sanitized fixtures.",
-          result: "Slice 1 done. 14 new tests green — TEST OK, LINT OK, FALLOW OK, BUILD OK. Reader returns tree + transcript; carriers and meta records excluded from prompts." },
-        { type: "tool", name: "Bash", snippet: "pnpm test",
-          input: '{ "command": "pnpm test" }',
-          result: " ✓ src/core/__tests__/get-transcript.test.ts (14)\n ✓ src/core/__tests__/refresh.test.ts (11)\n\n Test Files  9 passed (9)\n      Tests  87 passed (87)\n\nTEST OK", size: "1.4k chars" },
-        { type: "tool", name: "Bash", snippet: "pnpm build", isError: true,
-          input: '{ "command": "pnpm build" }',
-          result: "Type error: 'kind' does not exist on type 'MessageRow'.\n  src/app/_lib/transcript.ts:41:19\n\nBUILD FAILED", size: "0.8k chars" },
+      { kind: "inter", id: "i1", time: "14:06", from: "Explore", note: "hand-back", text: "rate-limiter-flexible is already a transitive dependency. Its in-memory store fits a single instance; a Redis store only matters once uploads run on several." },
+      { kind: "task", id: "k1", time: "14:06", text: "Background command \"pnpm test --watch\" was stopped", status: "stopped" },
+      { kind: "inter", id: "i2", time: "14:06", otherConversation: true, from: "docs-site release", note: "another Conversation · sent while working", text: "Docs freeze starts Friday: ping me before renaming any endpoint." },
+      { kind: "reply", id: "r2", range: "14:06–14:08", cost: "$0.17", turns: [
+        { id: "t5", time: "14:06", error: "the API was overloaded", paras: [], calls: [], repeated: 13, sentNew: "2 Inter-agent messages, 1 Task notification" },
+        { id: "t6", time: "14:07", cost: "$0.12", thinking: { duration: "3.0s" }, effort: "medium effort", failedAttempts: "2 failed attempts · 9.4s lost", paras: ["The failure came from the test client reusing one user id for 30 requests in a row. The suite now gets its own limit."], calls: [
+          { tool: "Edit", snippet: "tests/upload.test.ts", meta: "512 chars" },
+          { tool: "Bash", snippet: "pnpm test", meta: "6,980 chars" },
+        ], repeated: 16, sentNew: "1 tool result" },
+        { id: "t7", time: "14:08", cost: "$0.05", model: "sonnet-5-5", paras: ["Done. Uploads are now limited to 20 requests a minute per user:"], bullets: [
+          "src/middleware/rate-limit.ts: the token bucket, keyed by user id",
+          "src/routes/upload.ts: mounts it before the body parser",
+          "Tests: 14 passed, two of them new for the limit",
+        ], calls: [], repeated: 16, sentNew: "2 tool results" },
       ] },
-    { kind: "prompt", time: "10:22", text: "Nice — fix the build error and show me the view." },
-    { kind: "turn", time: "10:23", model: "claude-opus-4-8", cost: "$0.47",
-      html: "<p>Fixed — the app-zone type import was stale after the migration. All four gates pass now: <code>TEST OK</code>, <code>LINT OK</code>, <code>FALLOW OK</code>, <code>BUILD OK</code>.</p>",
-      calls: [
-        { type: "tool", name: "Read", snippet: "src/app/_lib/transcript.ts",
-          input: '{ "file_path": "src/app/_lib/transcript.ts" }',
-          result: "// Pure presentation helpers for the transcript pane …", size: "3.1k chars" },
-        { type: "tool", name: "Bash", snippet: "pnpm lint && pnpm fallow && pnpm build",
-          input: '{ "command": "pnpm lint && pnpm fallow && pnpm build" }',
-          result: "LINT OK\nFALLOW OK\n\n▲ Next.js 16.2.9\n✓ Compiled successfully\n\nBUILD OK",
-          size: "12.6k chars", truncated: "12,619 chars total — stored result truncated at 10,000" },
+      { kind: "prompt", id: "p2", time: "14:09", paras: ["Make the limit configurable through an env var, default 20."] },
+    ],
+  };
+
+  const EXPLORE = {
+    speaker: "Explore",
+    model: "haiku-4-5",
+    stats: ["3 turns", "5 tool calls", "haiku-4-5"],
+    cost: "$0.21",
+    items: [
+      { kind: "prompt", id: "e0", time: "14:03", fromAgent: "main", paras: [
+        "Survey the rate-limiting libraries already in this repo’s dependency tree.",
+        "For each one: which stores it supports, whether it is a direct or a transitive dependency, and how actively it is maintained. Keep it under 200 words.",
       ] },
-  ],
-
-  exp1: [
-    { kind: "prompt", time: "09:16", text:
-      "Find every reader in src/core/read.ts and how the JSONL fixtures represent tool_use / tool_result pairs. Report shapes only." },
-    { kind: "turn", time: "09:16", model: "claude-haiku-4-5", cost: "$0.02",
-      html: "<p>Scanning the core readers and fixtures.</p>",
-      calls: [
-        { type: "tool", name: "Grep", snippet: '"export (async )?function" src/core/read.ts',
-          input: '{ "pattern": "export (async )?function", "path": "src/core/read.ts" }',
-          result: "71:export async function listConversations(\n183:export async function getConversation(", size: "0.1k chars" },
-        { type: "tool", name: "Read", snippet: "src/core/__tests__/fixtures/session-basic.jsonl",
-          input: '{ "file_path": "src/core/__tests__/fixtures/session-basic.jsonl" }',
-          result: '{"type":"user","message":{"content":"hello"}}\n{"type":"assistant","message":{"id":"msg_01","content":[{"type":"text","text":"hi"}]}}', size: "2.3k chars" },
+      { kind: "reply", id: "er1", range: "14:03–14:06", cost: "$0.21", turns: [
+        { id: "e1", time: "14:03", cost: "$0.04", paras: [], calls: [
+          { tool: "Read", snippet: "package.json", meta: "2,204 chars" },
+          { tool: "Grep", snippet: "\"limit\" in pnpm-lock.yaml", meta: "1,118 chars" },
+        ], repeated: 0, sentNew: "the Task prompt" },
+        { id: "e2", time: "14:04", cost: "$0.05", thinking: { duration: "1.2s" }, paras: ["Only one limiter shows up, pulled in by the queue package."], calls: [
+          { tool: "Bash", snippet: "pnpm why rate-limiter-flexible", meta: "640 chars" },
+          { tool: "Read", snippet: "node_modules/rate-limiter-flexible/README.md", meta: "12,000 chars" },
+          { tool: "WebFetch", snippet: "npmjs.com/package/rate-limiter-flexible", meta: "3,410 chars" },
+        ], repeated: 3, sentNew: "2 tool results" },
+        { id: "e3", time: "14:06", cost: "$0.12", paras: ["rate-limiter-flexible is already a transitive dependency."], bullets: [
+          "Stores: memory, Redis, Postgres, and a cluster mode",
+          "Pulled in by bull-queue, so depending on it directly installs nothing new",
+          "Maintained: a release this month",
+        ], calls: [], repeated: 6, sentNew: "3 tool results" },
       ] },
-    { kind: "turn", time: "09:18", model: "claude-haiku-4-5", cost: "$0.29",
-      html: "<p><code>read.ts</code> exposes <code>listConversations()</code> and <code>getConversation()</code> — both aggregate readers, no transcript reader. Fixtures pair <code>tool_use</code> ↔ <code>tool_result</code> by <code>toolUseId</code>; sub-agent files parse identically (<code>isSidechain: true</code>).</p>",
-      calls: [] },
-  ],
+    ],
+  };
 
-  plan1: [
-    { kind: "prompt", time: "09:48", text:
-      "Design the getTranscript(sessionId, agentId?) core reader and the message-kind migration (prompt | tool-result | meta). Respect the ADR-0002 boundary." },
-    { kind: "turn", time: "09:49", model: "claude-opus-4-8", cost: "$0.87",
-      html: "<h3>Plan</h3><ul><li>Migration: <code>message.kind</code> derived at parse time from <code>isMeta</code> / <code>tool_result</code> content</li><li>Reader: agent tree + one agent's ordered messages, tool calls nested per turn</li><li>Backfill: parse-version bump forces a full re-parse on next Refresh</li></ul>",
-      calls: [
-        { type: "tool", name: "Read", snippet: "docs/adr/0002-local-architecture-and-persistence.md",
-          input: '{ "file_path": "docs/adr/0002-local-architecture-and-persistence.md" }',
-          result: "# Local architecture and persistence …", size: "3.4k chars" },
-      ] },
-  ],
+  const AGENTS = [
+    { key: "main", label: "main", cost: "$0.55", transcript: MAIN, isSub: false },
+    { key: "explore", label: "Explore", cost: "$0.21", transcript: EXPLORE, isSub: true },
+  ];
 
-  gp1: [
-    { kind: "prompt", time: "09:52", text:
-      "Implement slice 1 of the transcript view per the plan: message.kind migration + getTranscript() reader, test-first against the sanitized fixtures." },
-    { kind: "turn", time: "09:53", model: "claude-sonnet-5", cost: "$0.31",
-      html: "<p>Starting red: writing the failing reader tests first. I need a fixture with a sub-agent — checking what exists:</p>",
-      calls: [
-        { type: "agent", agent: "exp2", name: "Explore", snippet: "find JSONL fixtures with sub-agent transcripts", cost: "$0.09",
-          input: "List the sanitized JSONL fixtures under src/core/__tests__/fixtures and which ones include subagents/ transcripts.",
-          result: "session-subagents.jsonl + subagents/agent-a1.jsonl cover the spawn ↔ transcript pairing; session-basic.jsonl has none." },
-        { type: "tool", name: "Write", snippet: "src/core/__tests__/get-transcript.test.ts",
-          input: '{ "file_path": "src/core/__tests__/get-transcript.test.ts", "content": "…" }',
-          result: "File created.", size: "0.1k chars" },
-      ] },
-    { kind: "turn", time: "10:08", model: "claude-sonnet-5", cost: "$0.81",
-      html: "<p>Green. 14 new tests pass; carriers and meta records are excluded from prompts, tool calls nest under their turn, and the agent tree comes back with own-cost per node.</p>",
-      calls: [
-        { type: "tool", name: "Bash", snippet: "pnpm test",
-          input: '{ "command": "pnpm test" }',
-          result: " ✓ src/core/__tests__/get-transcript.test.ts (14)\n\nTEST OK", size: "1.1k chars" },
-      ] },
-  ],
+  // The Transcript filter's kinds, in the sidebar's order.
+  const KINDS = [
+    ["toolCalls", "Tool calls"],
+    ["thinking", "Thinking"],
+    ["whatWasSent", "What was sent"],
+    ["interAgent", "Inter-agent messages"],
+    ["taskNotifications", "Task notifications"],
+  ];
+  const EVERYTHING = { toolCalls: true, thinking: true, whatWasSent: true, interAgent: true, taskNotifications: true };
+  const MESSAGES_ONLY = { toolCalls: false, thinking: false, whatWasSent: false, interAgent: true, taskNotifications: false };
 
-  exp2: [
-    { kind: "prompt", time: "09:53", text:
-      "List the sanitized JSONL fixtures under src/core/__tests__/fixtures and which ones include subagents/ transcripts." },
-    { kind: "turn", time: "09:54", model: "claude-haiku-4-5", cost: "$0.09",
-      html: "<p><code>session-subagents.jsonl</code> + <code>subagents/agent-a1.jsonl</code> cover the spawn ↔ transcript pairing; <code>session-basic.jsonl</code> has none.</p>",
-      calls: [
-        { type: "tool", name: "Bash", snippet: "ls -R src/core/__tests__/fixtures",
-          input: '{ "command": "ls -R src/core/__tests__/fixtures" }',
-          result: "session-basic.jsonl\nsession-subagents.jsonl\nsubagents/agent-a1.jsonl", size: "0.1k chars" },
-      ] },
-  ],
-};
+  // ---- Icons (lucide) ----
+  const svg = (body, width = 2) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+  const ICON = {
+    you: svg('<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>', 2.2),
+    assistant: svg('<path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4"/>', 2.4),
+    agent: svg('<rect x="5" y="8" width="14" height="11" rx="2"/><path d="M12 8V4M9 13v1M15 13v1"/>', 2.2),
+    otherConversation: svg('<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>', 2.2),
+    chevron: svg('<path d="m9 18 6-6-6-6"/>'),
+    send: svg('<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>'),
+    check: svg('<path d="M20 6 9 17l-5-5"/>', 3.5),
+    back: svg('<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>'),
+    download: svg('<path d="M12 15V3"/><path d="m7 10 5 5 5-5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>'),
+  };
 
-/* ---------------- Rendering ---------------- */
+  // ---- State ----
+  const state = { agent: "main", show: { ...EVERYTHING }, revealed: new Set(), sentOpen: new Set() };
 
-const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  const isRevealed = (ids) => ids.every((id) => state.revealed.has(id));
 
-let current = "main";
+  /** A line standing in for what the filter hides, or, once revealed, hiding it again. */
+  function fold(ids, what) {
+    const open = isRevealed(ids);
+    return `<button type="button" class="fold" aria-expanded="${open}" data-fold="${ids.join(" ")}">${esc(what)}${open ? " · hide" : " hidden · show"}</button>`;
+  }
 
-function lineage(id) {
-  const chain = [];
-  for (let a = AGENTS[id]; a; a = a.parent ? AGENTS[a.parent] : null) chain.unshift(a);
-  return chain;
-}
-
-function renderTree() {
-  const order = ["main", "exp1", "plan1", "gp1", "exp2"];
-  const depth = (id) => lineage(id).length - 1;
-  document.getElementById("tree").innerHTML = order.map((id) => {
-    const a = AGENTS[id];
-    const sub = a.sub ? ` <span class="node-sub">· ${esc(a.sub)}</span>` : "";
-    return `<button class="node" style="--depth:${depth(id)}" aria-current="${id === current}" onclick="select('${id}')">
-      <span class="node-glyph" aria-hidden>${a.parent ? "◇" : "◆"}</span>
-      <span class="node-label">${esc(a.label)}${sub}</span>
-      ${a.hasError ? '<span class="node-err" title="transcript recorded an API error"></span>' : ""}
-      <span class="cost num">${a.cost}</span>
-    </button>`;
-  }).join("");
-}
-
-function renderHeader() {
-  const chain = lineage(current);
-  const crumb = chain.map((a, i) =>
-    i === chain.length - 1
-      ? `<span class="here">${esc(a.label)}</span>`
-      : `<button onclick="select('${a.id}')">${esc(a.label)}</button><span class="sep" aria-hidden>/</span>`
-  ).join(" ");
-  const a = AGENTS[current];
-  document.getElementById("pane-header").innerHTML = `
-    <nav class="crumb" aria-label="Agent lineage">${crumb}</nav>
-    <div class="stats">
-      <span class="num">${a.turns} turns</span>
-      <span class="num">${a.tools} tool calls</span>
-      <span class="model">${esc(a.model)}</span>
-      <span class="cost num turn-cost">${a.cost}</span>
+  function turnMarker(turn, number, transcript) {
+    const chips = [];
+    if (turn.model) chips.push(`<span class="chip is-model">${esc(turn.model)}</span>`);
+    if (turn.effort) chips.push(`<span class="chip">${esc(turn.effort)}</span>`);
+    if (turn.error) chips.push(`<span class="chip is-error">API error</span>`);
+    if (turn.failedAttempts) chips.push(`<span class="chip">${esc(turn.failedAttempts)}</span>`);
+    const sentShown = state.show.whatWasSent && !turn.copied;
+    const sentOpen = sentShown && state.sentOpen.has(turn.id);
+    return `<div class="turn-marker">
+      <span class="turn-number">Turn ${number}</span>
+      <span class="time">${esc(turn.time)}</span>
+      ${turn.cost ? `<span class="cost">${esc(turn.cost)}</span>` : ""}
+      ${chips.join("")}
+      ${sentShown ? `<button type="button" class="sent-trigger" aria-expanded="${sentOpen}" data-sent="${turn.id}">${ICON.send}What was sent</button>` : ""}
     </div>`;
-}
+  }
 
-function renderCall(c) {
-  if (c.type === "agent") {
-    return `<details class="call">
-      <summary><span class="chev" aria-hidden>▶</span><span class="kind kind-agent">Agent</span>
-        <span class="call-name">${esc(c.name)}</span>
-        <span class="call-snippet">${esc(c.snippet)}</span>
-        <span class="cost num">${c.cost}</span></summary>
-      <div class="call-body">
-        <div class="io-block"><span class="microlabel">Prompt</span><pre>${esc(c.input)}</pre></div>
-        <div class="io-block"><span class="microlabel">Returned</span><pre>${esc(c.result)}</pre></div>
-        <button class="open-agent" onclick="select('${c.agent}')">Open transcript <span aria-hidden>→</span></button>
+  function sentPanel(turn, transcript) {
+    if (!state.show.whatWasSent || turn.copied || !state.sentOpen.has(turn.id)) return "";
+    const model = (turn.model || transcript.model) + (turn.effort ? ` · ${turn.effort}` : "");
+    return `<div class="sent-panel">
+      <strong>What was sent · ${esc(turn.time)}:12</strong>
+      <div>${esc(model)} · 32k max output</div>
+      <div>System prompt: unchanged · Tool definitions: unchanged</div>
+      <div>${turn.repeated === 0 ? "No earlier messages repeated" : `Repeated ${plural(turn.repeated, "earlier message")}`}</div>
+      <div>New: ${esc(turn.sentNew)}</div>
+    </div>`;
+  }
+
+  /** One Turn. `inFold`: it belongs to a run of Turns the filter emptied, revealed as a whole. */
+  function renderTurn(turn, number, transcript, inFold) {
+    const open = state.revealed.has(turn.id);
+    const callsShown = turn.calls.length > 0 && (state.show.toolCalls || open);
+    const thinkingShown = turn.thinking && (state.show.thinking || (inFold && open));
+    let thinking = "";
+    if (thinkingShown) {
+      const label = `Thinking · ${turn.thinking.duration}`;
+      thinking = turn.thinking.summary
+        ? `<details class="thinking"><summary>${label}</summary><p class="thinking-text">${esc(turn.thinking.summary)}</p></details>`
+        : `<p class="thinking">${label}</p>`;
+    }
+    const calls = callsShown
+      ? `<div class="calls">${turn.calls
+          .map(
+            (call) => `<button type="button" class="call">${ICON.chevron.replace("<svg", '<svg class="chev"')}
+              ${call.tool === "Agent" ? '<span class="call-kind">Agent</span>' : ""}
+              <span class="call-name">${esc(call.agent || call.tool)}</span>
+              <span class="call-snippet">${esc(call.snippet)}</span>
+              ${call.failed ? `<span class="badge-err">${esc(call.failed)}</span>` : ""}
+              <span class="call-meta">${esc(call.meta)}</span>
+            </button>`,
+          )
+          .join("")}</div>`
+      : "";
+    return `<section class="turn${turn.error ? " is-failed" : ""}" aria-label="Turn ${number}, ${esc(turn.time)}">
+      ${turnMarker(turn, number, transcript)}
+      <div class="turn-body">
+        ${thinking}
+        ${turn.error ? `<p class="turn-failed">Turn failed: ${esc(turn.error)}.</p>` : ""}
+        ${turn.paras.map((p) => `<p>${esc(p)}</p>`).join("")}
+        ${turn.bullets ? `<ul>${turn.bullets.map((b) => `<li>${esc(b)}</li>`).join("")}</ul>` : ""}
+        ${!inFold && turn.calls.length > 0 && !state.show.toolCalls ? fold([turn.id], plural(turn.calls.length, "tool call")) : ""}
+        ${calls}
+        ${sentPanel(turn, transcript)}
       </div>
-    </details>`;
+    </section>`;
   }
-  const kindClass = c.type === "skill" ? "kind-skill" : "kind-tool";
-  const kindLabel = c.type === "skill" ? "Skill" : "Tool";
-  const meta = c.isError
-    ? '<span class="call-err">error</span>'
-    : (c.size ? `<span class="call-meta num">${c.size}</span>` : "");
-  const trunc = c.truncated
-    ? `<div class="trunc"><span aria-hidden>✂</span> truncated — ${c.truncated}</div>` : "";
-  return `<details class="call">
-    <summary><span class="chev" aria-hidden>▶</span><span class="kind ${kindClass}">${kindLabel}</span>
-      <span class="call-name">${esc(c.name)}</span>
-      <span class="call-snippet">${esc(c.snippet)}</span>${meta}</summary>
-    <div class="call-body">
-      <div class="io-block"><span class="microlabel">Input</span><pre>${esc(c.input)}</pre></div>
-      <div class="io-block"><span class="microlabel">Result</span><pre${c.isError ? ' class="err"' : ""}>${esc(c.result)}</pre>${trunc}</div>
-    </div>
-  </details>`;
-}
 
-function renderItem(item) {
-  if (item.kind === "prompt") {
-    return `<article class="prompt">
-      <div class="prompt-head"><span class="microlabel">You</span><span class="call-meta num">${item.time}</span></div>
-      <div class="prompt-body">${esc(item.text)}</div>
+  /**
+   * A Reply's Turns. A Turn left with nothing to show (no text, no error, its
+   * calls and thinking filtered out) joins a run with its empty neighbours, and
+   * the run folds into one line: "2 turns · 4 tool calls hidden · show".
+   */
+  function renderTurns(reply, firstNumber, transcript) {
+    const out = [];
+    let run = null;
+    const flush = () => {
+      if (run === null) return;
+      const ids = run.map((entry) => entry.turn.id);
+      const calls = run.reduce((n, entry) => n + entry.turn.calls.length, 0);
+      out.push(fold(ids, `${plural(run.length, "turn")} · ${plural(calls, "tool call")}`));
+      if (isRevealed(ids)) run.forEach((entry) => out.push(renderTurn(entry.turn, entry.number, transcript, true)));
+      run = null;
+    };
+    reply.turns.forEach((turn, i) => {
+      const number = firstNumber + i;
+      const hasText = turn.paras.length > 0 || !!turn.bullets || !!turn.error;
+      const visible = hasText || (turn.calls.length > 0 && state.show.toolCalls) || (turn.thinking && state.show.thinking);
+      if (visible) {
+        flush();
+        out.push(renderTurn(turn, number, transcript, false));
+      } else {
+        (run ??= []).push({ turn, number });
+      }
+    });
+    flush();
+    return out.join("");
+  }
+
+  function renderItem(item, transcript, turnNumber) {
+    if (item.kind === "prompt") {
+      const byAgent = !!item.fromAgent;
+      const who = byAgent ? `From ${item.fromAgent}` : "You";
+      return `<article class="row prompt${byAgent ? " is-agent" : ""}${item.copiedFrom ? " is-copied" : ""}">
+        <div class="gutter"><span class="avatar ${byAgent ? "is-agent" : "is-you"}">${byAgent ? ICON.agent : ICON.you}</span></div>
+        <div>
+          <div class="row-head"><span class="speaker">${esc(who)}</span><span class="time">${esc(item.time)}</span>
+            ${item.copiedFrom ? `<span class="spacer"></span><span class="copied-from">copied from <a href="#">${esc(item.copiedFrom)}</a></span>` : ""}</div>
+          <div class="bubble">${item.paras.map((p) => (byAgent ? `<p>${esc(p)}</p>` : esc(p))).join("")}</div>
+        </div>
+      </article>`;
+    }
+    if (item.kind === "inter" || item.kind === "task") {
+      const shownByFilter = item.kind === "inter" ? state.show.interAgent : state.show.taskNotifications;
+      const what = item.kind === "inter" ? `Inter-agent message from ${item.from}` : "Task notification";
+      const line = shownByFilter ? "" : `<div class="row"><div class="gutter"></div><div>${fold([item.id], what)}</div></div>`;
+      if (!shownByFilter && !state.revealed.has(item.id)) return line;
+      if (item.kind === "task") {
+        return `${line}<div class="row task"><div class="gutter"></div>
+          <div class="task-line"><span class="task-kind">Task</span><span>${esc(item.text)}</span><span class="badge-err">${esc(item.status)}</span><span class="spacer"></span><span class="time">${esc(item.time)}</span></div>
+        </div>`;
+      }
+      const other = !!item.otherConversation;
+      return `${line}<article class="row inter${other ? " is-other-conversation" : ""}">
+        <div class="gutter"><span class="avatar ${other ? "is-other-conversation" : "is-agent"}">${other ? ICON.otherConversation : ICON.agent}</span></div>
+        <div>
+          <div class="row-head"><span class="speaker">From ${esc(item.from)}</span><span class="row-note">${esc(item.note)}</span><span class="spacer"></span><span class="time">${esc(item.time)}</span></div>
+          <div class="bubble"><p>${esc(item.text)}</p></div>
+        </div>
+      </article>`;
+    }
+    const calls = item.turns.reduce((n, turn) => n + turn.calls.length, 0);
+    return `<article class="row reply${item.copiedFrom ? " is-copied" : ""}">
+      <div class="gutter"><span class="avatar is-assistant">${ICON.assistant}</span></div>
+      <div>
+        <div class="row-head">
+          <span class="speaker">${esc(transcript.speaker)}</span>
+          <span class="row-note">${plural(item.turns.length, "turn")} · ${plural(calls, "tool call")}</span>
+          <span class="spacer"></span>
+          ${item.copiedFrom
+            ? `<span class="copied-from">copied from <a href="#">${esc(item.copiedFrom)}</a></span>`
+            : `<span class="time">${esc(item.range)}</span><span class="cost">${esc(item.cost)}</span>`}
+        </div>
+        <div class="turns">${renderTurns(item, turnNumber, transcript)}</div>
+      </div>
     </article>`;
   }
-  if (item.kind === "slash") {
-    return `<article class="prompt">
-      <div class="prompt-head"><span class="microlabel">You</span><span class="call-meta num">${item.time}</span></div>
-      <div class="slash"><span class="slash-cmd">${esc(item.cmd)}</span><span class="slash-args">${esc(item.args)}</span></div>
-    </article>`;
-  }
-  if (item.kind === "metaHidden") {
-    return `<div class="meta-hidden">${item.count} meta records hidden</div>`;
-  }
-  const err = item.apiError ? `<span class="badge-err">API error</span>` : "";
-  const body = item.apiError && !item.html
-    ? `<p class="api-error-note">turn failed — ${esc(item.apiError)}</p>`
-    : item.html;
-  return `<article class="turn">
-    <div class="turn-head">
-      <span class="microlabel" style="color:var(--agent)">Assistant</span>
-      <span class="model">${esc(item.model)}</span>${err}
-      <span class="spacer"></span>
-      <span class="call-meta num">${item.time}</span>
-      <span class="cost num turn-cost">${item.cost}</span>
-    </div>
-    <div class="turn-body">${body}</div>
-    ${item.calls.length ? `<div class="calls">${item.calls.map(renderCall).join("")}</div>` : ""}
-  </article>`;
-}
 
-function select(id) {
-  current = id;
-  renderTree();
-  renderHeader();
-  document.getElementById("transcript").innerHTML = TRANSCRIPTS[id].map(renderItem).join("");
-  document.getElementById("pane").scrollTop = 0;
-}
+  /** The filter counts describe the Agent's whole Transcript. */
+  function counts(transcript) {
+    const n = { toolCalls: 0, thinking: 0, whatWasSent: 0, interAgent: 0, taskNotifications: 0 };
+    for (const item of transcript.items) {
+      if (item.kind === "inter") n.interAgent += 1;
+      if (item.kind === "task") n.taskNotifications += 1;
+      for (const turn of item.turns ?? []) {
+        n.toolCalls += turn.calls.length;
+        if (turn.thinking) n.thinking += 1;
+        if (!turn.copied) n.whatWasSent += 1;
+      }
+    }
+    return n;
+  }
 
-select("main");
+  function sameShow(target) {
+    return KINDS.every(([key]) => state.show[key] === target[key]);
+  }
+
+  function render() {
+    const agent = AGENTS.find((a) => a.key === state.agent);
+    const transcript = agent.transcript;
+    const n = counts(transcript);
+    let turnNumber = 1;
+    const items = transcript.items
+      .map((item) => {
+        const html = renderItem(item, transcript, turnNumber);
+        turnNumber += item.turns?.length ?? 0;
+        return html;
+      })
+      .join("");
+    const crumbs =
+      agent.key === "main"
+        ? `<span class="here" aria-current="page">main</span>`
+        : `<a href="#" data-agent="main">main</a><span class="sep" aria-hidden="true">/</span><span class="here" aria-current="page">${esc(agent.label)}</span>`;
+
+    document.getElementById("app").innerHTML = `
+      <aside class="tree" aria-label="Agent tree">
+        <div class="tree-block">
+          <a class="tree-link" href="#">${ICON.back}All conversations</a>
+          <div class="tree-title">Add a per-user rate limit to uploads</div>
+          <div class="tree-id">3f9c2a1e-77b0-4c1d-9a52-1e0d5b6c8f40</div>
+          <a class="tree-link" href="#">${ICON.download}Export as HTML</a>
+        </div>
+        <div class="tree-block">
+          <div class="tree-caption">Agents</div>
+          ${AGENTS.map(
+            (a) => `<button type="button" class="node${a.isSub ? " is-sub" : ""}" data-agent="${a.key}" ${a.key === state.agent ? 'aria-current="page"' : ""}>
+              <span class="node-dot"></span><span>${esc(a.label)}</span><span class="spacer"></span><span class="cost">${a.cost}</span></button>`,
+          ).join("")}
+        </div>
+        <div class="tree-block tree-total"><span>Conversation total</span><span class="spacer"></span><span class="cost">$0.76</span></div>
+        <div class="tree-block">
+          <div class="tree-caption">Show</div>
+          <div role="group" aria-label="Show in the transcript">
+            ${KINDS.map(
+              ([key, label]) => `<button type="button" class="show-toggle" aria-pressed="${state.show[key]}" data-kind="${key}">
+                <span class="check">${ICON.check}</span><span>${label}</span><span class="show-count">${n[key]}</span></button>`,
+            ).join("")}
+          </div>
+          <div class="show-presets">
+            <button type="button" class="show-preset" aria-pressed="${sameShow(MESSAGES_ONLY)}" data-preset="messages">Messages only</button>
+            <button type="button" class="show-preset" aria-pressed="${sameShow(EVERYTHING)}" data-preset="everything">Everything</button>
+          </div>
+        </div>
+      </aside>
+      <main class="pane">
+        <div class="pane-header"><div class="pane-header-inner">
+          <nav class="crumbs" aria-label="Agent lineage">${crumbs}</nav>
+          <div class="stats">${transcript.stats.map((s) => `<span>${s}</span>`).join("")}<span class="cost">${transcript.cost}</span></div>
+        </div></div>
+        <div class="transcript">${items}</div>
+      </main>`;
+  }
+
+  // ---- Events ----
+  document.getElementById("app").addEventListener("click", (event) => {
+    const target = event.target.closest("[data-agent],[data-kind],[data-preset],[data-fold],[data-sent]");
+    if (!target) return;
+    event.preventDefault();
+    const { agent, kind, preset, fold: foldIds, sent } = target.dataset;
+    if (agent) {
+      state.agent = agent;
+      state.revealed.clear();
+      state.sentOpen.clear();
+    } else if (kind) {
+      state.show[kind] = !state.show[kind];
+      state.revealed.clear();
+    } else if (preset) {
+      state.show = { ...(preset === "messages" ? MESSAGES_ONLY : EVERYTHING) };
+      state.revealed.clear();
+    } else if (foldIds) {
+      const ids = foldIds.split(" ");
+      const open = isRevealed(ids);
+      ids.forEach((id) => (open ? state.revealed.delete(id) : state.revealed.add(id)));
+    } else if (sent) {
+      state.sentOpen.has(sent) ? state.sentOpen.delete(sent) : state.sentOpen.add(sent);
+    }
+    render();
+  });
+
+  document.querySelectorAll("[data-theme-pick]").forEach((button) =>
+    button.addEventListener("click", () => {
+      const pick = button.dataset.themePick;
+      if (pick === "system") delete document.documentElement.dataset.theme;
+      else document.documentElement.dataset.theme = pick;
+      document.querySelectorAll("[data-theme-pick]").forEach((b) => b.setAttribute("aria-pressed", String(b === button)));
+    }),
+  );
+
+  render();
 </script>
+</body>
+</html>

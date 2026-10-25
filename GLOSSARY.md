@@ -214,6 +214,26 @@ about the Agent as a whole (its turn and Tool-call counts, its effort) always
 describes the whole Transcript, never the page. A link to one Message opens the
 page that holds it.
 
+### Reply
+
+In a Transcript, the run of an Agent's Turns between two Messages addressed to
+it — a Prompt, an Inter-agent message or a Task notification: everything the
+Agent did in answer to one of them, shown under a single speaker. A Reply is
+only a view: each of its Turns stays its own, with its own time, Cost and Tool
+calls, and the reader can always tell where one Turn ends and the next begins.
+_Avoid_: response (one Turn is the model's response), exchange.
+
+### Transcript filter
+
+The reader's choice of which kinds of content a Transcript shows: Tool calls,
+Thinking, What was sent, Inter-agent messages and Task notifications, each on
+or off. A Prompt and the Agent's own text always show. What the filter hides
+folds into a line that says what it holds and reveals it in place; the same
+line hides it again. The filter is one choice for every Transcript, and only a
+view: it changes no Transcript page, no count and no Conversation export, and a
+link to one Message or Tool call always reveals its target.
+_Avoid_: view, preferences (for the choice itself).
+
 ### Conversation export
 
 A self-contained document of one Conversation, made to be read outside the app
