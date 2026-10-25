@@ -1,57 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { groupTurnsIntoReplies } from "@/app/_lib/transcript-replies";
-import type { ReplyFigures, TranscriptMessage, TranscriptToolCall } from "@/core/read";
+import type { ReplyFigures } from "@/core/read";
 
-let nextId = 1;
-
-/** A rendered Message: a Turn unless `kind` names a Message addressed to the Agent; every other field neutral. */
-function message(partial: Partial<TranscriptMessage> = {}): TranscriptMessage {
-  const id = nextId++;
-  const isTurn = (partial.kind ?? null) === null;
-  return {
-    id,
-    uuid: `u${id}`,
-    role: isTurn ? "assistant" : "user",
-    kind: null,
-    text: null,
-    origin: null,
-    model: null,
-    effort: null,
-    thinkingText: null,
-    thinkingDurationMs: null,
-    tokens: null,
-    costUsd: 0,
-    unpriced: false,
-    isApiError: false,
-    apiErrorMessage: null,
-    isCopied: false,
-    copiedFrom: null,
-    timestamp: null,
-    turnNumber: isTurn ? id : null,
-    toolCalls: [],
-    apiRequestId: null,
-    failedAttemptCount: 0,
-    failedAttemptsLostMs: null,
-    ...partial,
-  };
-}
-
-const prompt = (partial: Partial<TranscriptMessage> = {}) => message({ kind: "prompt", ...partial });
-const turn = (partial: Partial<TranscriptMessage> = {}) => message(partial);
-
-/** `count` Tool calls, enough for the figures to count them. */
-function toolCalls(count: number): TranscriptToolCall[] {
-  return Array.from({ length: count }, (_, i) => ({
-    id: i,
-    toolUseId: `tu${i}`,
-    name: "Bash",
-    inputJson: "{}",
-    resultTruncated: false,
-    resultCharSize: null,
-    isError: false,
-  }));
-}
+import { message, prompt, toolCalls, turn } from "./helpers/transcript-messages";
 
 const NO_SPLIT = { openingReply: null, closingReply: null };
 
