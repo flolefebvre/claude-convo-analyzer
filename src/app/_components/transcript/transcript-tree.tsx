@@ -1,4 +1,4 @@
-import { ArrowLeft, Download } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import type { CSSProperties } from "react";
 
@@ -8,6 +8,7 @@ import type { AgentLabel } from "@/app/_lib/transcript";
 import { agentHref, agentSectionHref, withListReturn } from "@/app/_lib/transcript-url";
 import type { TranscriptAgentNode, TranscriptView } from "@/core/read";
 
+import { ConversationExportButton } from "./conversation-export-button";
 import { AgentName, CostFigure, ErrorBadge, agentLabelText } from "./transcript-parts";
 import { TreeNodeLink } from "./tree-node-link";
 
@@ -74,10 +75,7 @@ export function TranscriptTree({
           {view.sessionId}
         </div>
         {exportHeaderFacts === undefined ? (
-          <a className="export-link" href={`/api/conversation/${encodeURIComponent(view.sessionId)}/export`} download>
-            <Download aria-hidden className="size-3.5" />
-            Export as HTML
-          </a>
+          <ConversationExportButton sessionId={view.sessionId} />
         ) : (
           <ExportHeader facts={exportHeaderFacts} />
         )}

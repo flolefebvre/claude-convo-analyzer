@@ -57,7 +57,7 @@ export function TaskNotificationRow({
     <article id={anchor.id} className={className} aria-labelledby={labelledBy(anchor, time)}>
       <div className="gutter" />
       <div className="notice">
-        <span className="kind kind-tool">Task</span>
+        <span className="kind kind-task">Task</span>
         <span id={`${anchor.labelId}-who`} className="notice-summary">
           {origin?.taskSummary ?? "Task notification"}
         </span>

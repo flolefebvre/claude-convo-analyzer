@@ -17,15 +17,16 @@ import { AgentName, CostFigure, ErrorBadge, OpenTranscriptLink } from "./transcr
 import { ToolCallDisclosure } from "./transcript-tool-call-body";
 import { IoBlockFrame, type IoBlockProps, ToolCallBodyBlocks } from "./transcript-tool-call-io";
 
-/** Badge label per visual kind (set in small caps by the CSS). */
-const KIND_LABEL = { agent: "Agent", skill: "Skill", tool: "Tool" } as const;
+/** The kind chip of the calls that carry one (set in small caps by the CSS); any other call shows none. */
+const KIND_LABEL = { agent: "Agent", skill: "Skill" } as const;
 
 /**
- * One collapsed-by-default tool call. Its summary — and an Agent call's link to
- * the sub-agent it spawned — render here; the body (input and result) is left
- * to the {@link ToolCallDisclosure} leaf, which fetches it when the reader opens
- * the call. Three visual kinds — generic tool, skill load, and Agent call —
- * share the summary shell but differ in the badge: an Agent call correlates to
+ * One collapsed-by-default tool call, as one light line of its Turn's calls.
+ * Its summary — and an Agent call's link to the sub-agent it spawned — render
+ * here; the body (input and result) is left to the {@link ToolCallDisclosure}
+ * leaf, which fetches it when the reader opens the call. Three visual kinds —
+ * generic tool, skill load, and Agent call — share the summary shell, only a
+ * skill load and an Agent call carrying a kind chip: an Agent call correlates to
  * the sub-agent it spawned to show that agent's name (as the tree shows it),
  * exact cost and an "Open transcript" deep-link. In the Conversation export the
  * body is inlined from `transcriptExport` and the deep-link points at the
@@ -112,7 +113,6 @@ export function TranscriptToolCallRow({
     );
   }
 
-  const kindClass = kind === "skill" ? "kind-skill" : "kind-tool";
   return (
     <Disclosure
       {...disclosure}
@@ -120,7 +120,7 @@ export function TranscriptToolCallRow({
       summary={
         <summary>
           <ChevronRight aria-hidden className="chev" />
-          <span className={`kind ${kindClass}`}>{KIND_LABEL[kind]}</span>
+          {kind === "skill" && <span className="kind kind-skill">{KIND_LABEL.skill}</span>}
           <span className="call-name">{call.name}</span>
           <span className="call-snippet">{snippet}</span>
           {call.isError ? (

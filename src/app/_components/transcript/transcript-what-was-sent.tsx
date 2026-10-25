@@ -1,10 +1,10 @@
 "use client";
 
-// The "What was sent" disclosure of one Turn. The page ships only where to
-// read it — the `api_request` row id of the Turn's API request in the
-// logs; what it sent is fetched from `GET /api/api-request/<id>` the first time the reader
-// opens it, and kept for every later open. Native `<details>` stays the
-// disclosure, as for tool calls. Under the parameters line, the request reads
+// The "What was sent" disclosure of one Turn: a button on its marker line
+// opening a panel under the Turn. The page ships only where to read it — the
+// `api_request` row id of the Turn's API request in the logs; what it sent is
+// fetched from `GET /api/api-request/<id>` the first time the reader opens it,
+// and kept for every later open. Under the parameters line, the request reads
 // in the order the model read it: the system prompt, the tools, the earlier
 // messages as a count, then each part new for this Turn, every row one
 // summary line that opens for detail. The "Raw JSON" toggle swaps all of it
@@ -16,8 +16,8 @@
 // the core-free `_lib/transcript`.
 
 import { callRoute } from "@flefebvre/next-pipe/client";
-import { ChevronRight } from "lucide-react";
-import { useState } from "react";
+import { ChevronRight, Send } from "lucide-react";
+import { createContext, use, useId, useState } from "react";
 
 import { CopyButton } from "@/app/_components/copy-button";
 import { JsonTree } from "@/app/_components/json-tree";
@@ -36,30 +36,82 @@ const BLOCK_CLAMP_LINES = 15;
 /** How many characters of a block show, when its lines do not overflow, before it is clamped behind "Show all N characters". */
 const BLOCK_CLAMP_CHARS = 2_000;
 
+/** What a Turn's What was sent trigger and panel share: whether it is open, and its read. */
+type WhatWasSentDisclosure = {
+  apiRequestId: number;
+  panelId: string;
+  isOpen: boolean;
+  toggle: () => void;
+  state: ReadOnFirstOpenState<WhatWasSent>;
+};
+
+const WhatWasSentDisclosureContext = createContext<WhatWasSentDisclosure | null>(null);
+
+function useWhatWasSentDisclosure(): WhatWasSentDisclosure {
+  const disclosure = use(WhatWasSentDisclosureContext);
+  if (disclosure === null) throw new Error("What was sent's trigger and panel render inside a WhatWasSentProvider");
+  return disclosure;
+}
+
 /**
- * A Turn's "What was sent" `<details>`, fetched on the first open from its API
- * request in the logs, `apiRequestId`.
+ * The open state and lazy read of one Turn's What was sent, shared by its
+ * {@link WhatWasSentTrigger} on the marker line and its
+ * {@link WhatWasSentPanel} under the Turn, both somewhere in the
+ * server-rendered `children`. The read of `apiRequestId` starts on the first
+ * open and is kept for every later one.
  *
- * @example
- * {message.apiRequestId !== null && <WhatWasSentDisclosure apiRequestId={message.apiRequestId} />}
+ * @example <WhatWasSentProvider apiRequestId={message.apiRequestId}>{markerLine}{body}<WhatWasSentPanel /></WhatWasSentProvider>
  */
-export function WhatWasSentDisclosure({ apiRequestId }: { apiRequestId: number }) {
-  const { state, onToggle, detailsRef } = useReadOnFirstOpen<WhatWasSent>(() =>
+export function WhatWasSentProvider({ apiRequestId, children }: { apiRequestId: number; children: React.ReactNode }) {
+  const panelId = useId();
+  const [isOpen, setIsOpen] = useState(false);
+  const { state, startReading } = useReadOnFirstOpen<WhatWasSent>(() =>
     callRoute(routes.api["api-request"](String(apiRequestId)).GET()),
   );
+  const disclosure: WhatWasSentDisclosure = {
+    apiRequestId,
+    panelId,
+    isOpen,
+    state,
+    toggle() {
+      if (!isOpen) startReading();
+      setIsOpen(!isOpen);
+    },
+  };
+  return <WhatWasSentDisclosureContext value={disclosure}>{children}</WhatWasSentDisclosureContext>;
+}
 
+/**
+ * The "What was sent" button on a Turn's marker line, opening and closing the
+ * Turn's {@link WhatWasSentPanel}.
+ *
+ * @example <WhatWasSentTrigger />
+ */
+export function WhatWasSentTrigger() {
+  const { panelId, isOpen, toggle } = useWhatWasSentDisclosure();
   return (
-    <details ref={detailsRef} className="call sent" onToggle={onToggle}>
-      <summary>
-        <ChevronRight aria-hidden className="chev" />
-        <span className="call-name">What was sent</span>
-      </summary>
-      <div className="call-body sent-body">
-        <ReadBody state={state} subject="what was sent">
-          {(whatWasSent) => <WhatWasSentView whatWasSent={whatWasSent} apiRequestId={apiRequestId} />}
-        </ReadBody>
-      </div>
-    </details>
+    <button type="button" className="sent-trigger" aria-expanded={isOpen} aria-controls={panelId} onClick={toggle}>
+      <Send aria-hidden />
+      What was sent
+    </button>
+  );
+}
+
+/**
+ * Under a Turn, what its API request sent, while its {@link WhatWasSentTrigger}
+ * holds it open. Kept mounted when closed, so what the reader opened inside it
+ * is still open on the next opening.
+ *
+ * @example <WhatWasSentPanel />
+ */
+export function WhatWasSentPanel() {
+  const { apiRequestId, panelId, isOpen, state } = useWhatWasSentDisclosure();
+  return (
+    <div id={panelId} role="group" aria-label="What was sent" className="sent-panel" hidden={!isOpen}>
+      <ReadBody state={state} subject="what was sent">
+        {(whatWasSent) => <WhatWasSentView whatWasSent={whatWasSent} apiRequestId={apiRequestId} />}
+      </ReadBody>
+    </div>
   );
 }
 

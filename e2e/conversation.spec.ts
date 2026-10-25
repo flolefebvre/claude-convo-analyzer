@@ -1,6 +1,7 @@
 import { instant } from "@next/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
+import { openConversation } from "./open-conversation";
 import { type RouteShell, expectData, expectInstantLoad, expectShell } from "./route-shell";
 
 // A seeded conversation title (`scripts/seed/fake-logs.ts`).
@@ -39,17 +40,20 @@ const disclosures = (page: Page) =>
     .getByRole("main")
     .getByRole("group")
     .filter({ hasNot: page.getByRole("article") });
-/** Each Turn's What was sent, in Transcript order. */
-const whatWasSentRows = (page: Page) => disclosures(page).filter({ hasText: /^What was sent/ });
+/** Each Turn whose marker line offers What was sent, in Transcript order. */
+const turnsWithWhatWasSent = (page: Page) =>
+  page
+    .getByRole("main")
+    .getByRole("article")
+    .filter({ has: page.getByRole("button", { name: "What was sent", exact: true }) });
+
+/** Open `turn`'s What was sent from its marker line, and return the panel it opened under the Turn. */
+async function openWhatWasSent(turn: Locator): Promise<Locator> {
+  await turn.getByRole("button", { name: "What was sent", exact: true }).click();
+  return turn.getByRole("group", { name: "What was sent", exact: true });
+}
 /** The copied-from markers of the Transcript's rows and Turns. */
 const copiedMarkers = (page: Page) => page.getByRole("main").getByText(/^copied from /);
-
-/** Open the seeded Conversation titled `title` from the Conversations list. */
-async function openConversation(page: Page, title: string): Promise<void> {
-  await page.goto("/");
-  await page.getByRole("link", { name: title, exact: true }).click();
-  await page.waitForURL((url) => url.pathname.startsWith("/conversation/"));
-}
 
 const conversation: RouteShell = {
   shell: (page) => [
@@ -217,8 +221,16 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     page,
   }) => {
     await openConversation(page, LOGGED_REQUESTS_TITLE);
-    const whatWasSent = whatWasSentRows(page).first();
-    await whatWasSent.getByText("What was sent").click();
+    const reads: string[] = [];
+    page.on("request", (request) => {
+      if (new URL(request.url()).pathname.startsWith("/api/api-request/")) reads.push(request.url());
+    });
+    const turn = turnsWithWhatWasSent(page).first();
+    const trigger = turn.getByRole("button", { name: "What was sent", exact: true });
+    await expect(trigger).toHaveAttribute("aria-expanded", "false");
+    const whatWasSent = await openWhatWasSent(turn);
+    await expect(trigger).toHaveAttribute("aria-expanded", "true");
+    await expect(trigger).toHaveAttribute("aria-controls", (await whatWasSent.getAttribute("id"))!);
 
     await expect(
       whatWasSent.getByText(
@@ -251,6 +263,20 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
 
     await rawToggle.click();
     await expect(whatWasSent.getByRole("heading", { name: "New for this Turn" })).toBeVisible();
+
+    // The trigger closes it again; reopened, it shows what it read, reading nothing again.
+    await trigger.click();
+    await expect(trigger).toHaveAttribute("aria-expanded", "false");
+    await expect(whatWasSent).toBeHidden();
+    await trigger.click();
+    await expect(whatWasSent.getByRole("heading", { name: "New for this Turn" })).toBeVisible();
+    expect(reads.filter((url) => !url.endsWith("/raw"))).toHaveLength(1);
+  });
+
+  test("offers What was sent only on a Turn whose API request the logs hold", async ({ page }) => {
+    await openConversation(page, TITLE);
+    await expect(page.getByRole("main").getByRole("article", { name: /^Turn 1\b/ })).toBeVisible();
+    await expect(page.getByRole("main").getByRole("button", { name: "What was sent" })).toHaveCount(0);
   });
 
   test("shows what a later Turn sent: the system prompt's real change and its diff, the tools added, and the new messages", async ({
@@ -259,8 +285,7 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     await openConversation(page, LOGGED_REQUESTS_TITLE);
 
     // The third Turn: the day after, its system prompt changed and Grep was loaded.
-    const whatWasSent = whatWasSentRows(page).nth(2);
-    await whatWasSent.getByText("What was sent").click();
+    const whatWasSent = await openWhatWasSent(turnsWithWhatWasSent(page).nth(2));
 
     const systemPrompt = whatWasSent.getByRole("group").filter({ hasText: /^System prompt/ });
     await expect(systemPrompt.getByText(/^2 blocks · [\d.]+ (?:B|KB)$/)).toBeVisible();
@@ -301,8 +326,7 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     await expect(turn.getByText("1 failed attempt · 300ms lost", { exact: true })).toBeVisible();
     await expect(page.getByRole("main").getByText(/failed attempt/)).toHaveCount(1);
 
-    const whatWasSent = turn.getByRole("group").filter({ hasText: /^What was sent/ });
-    await whatWasSent.getByText("What was sent").click();
+    const whatWasSent = await openWhatWasSent(turn);
     await expect(whatWasSent.getByRole("heading", { name: "1 failed attempt before this request" })).toBeVisible();
     await expect(whatWasSent.getByText("lost 300ms", { exact: true })).toBeVisible();
     await expect(whatWasSent.getByText(/no error message/)).toHaveCount(0);
@@ -386,6 +410,8 @@ test.describe("Conversation (/conversation/[sessionId])", () => {
     // A Tool call that succeeded: its summary carries the result size.
     const size = page.getByText(/^[\d,]+ chars$/);
     const call = disclosures(page).filter({ has: size }).first();
+    // A call that is neither an Agent call nor a skill load carries no kind chip.
+    await expect(call.getByText("Tool", { exact: true })).toHaveCount(0);
     await call.locator(size).click();
     await expect(call.getByText(/export function handler/)).toBeVisible();
     await expect(call.getByText("Input", { exact: true })).toBeVisible();

@@ -21,7 +21,7 @@ import { CopiedFrom } from "./copied-from";
 import { SpeakerAvatar } from "./speaker-row";
 import { CostFigure, ErrorBadge, anchorProps } from "./transcript-parts";
 import { TranscriptToolCallRow } from "./transcript-tool-call";
-import { WhatWasSentDisclosure } from "./transcript-what-was-sent";
+import { WhatWasSentPanel, WhatWasSentProvider, WhatWasSentTrigger } from "./transcript-what-was-sent";
 import { TurnMarkdown } from "./turn-markdown";
 
 /**
@@ -138,7 +138,7 @@ export function TranscriptReply({
   );
 }
 
-/** One Turn of a Reply: its dot on the rail, its marker line, its thinking, its text (or the API error when it failed), its tool calls, and, when the logs hold its API request, what that request sent. */
+/** One Turn of a Reply: its dot on the rail, its marker line, its thinking, its text (or the API error when it failed), its tool calls, and, when the logs hold its own API request, what that request sent, opened from the marker line. */
 function ReplyTurn({
   message,
   view,
@@ -175,9 +175,13 @@ function ReplyTurn({
   const className = ["turn", message.isApiError && "is-failed", anchor.anchored && "anchored"]
     .filter(Boolean)
     .join(" ");
+  // The export leaves What was sent out: it holds the user's CLAUDE.md files,
+  // environment and system prompt. A copied Turn's request is its owner's.
+  const whatWasSentRequestId =
+    transcriptExport === undefined && message.copiedFrom === null ? message.apiRequestId : null;
 
-  return (
-    <article id={anchor.id} className={className} aria-label={time ? `${name}, ${time}` : name}>
+  const content = (
+    <>
       <div className="turn-marker">
         <span className="turn-number">{name}</span>
         {time && (
@@ -198,6 +202,7 @@ function ReplyTurn({
         {message.failedAttemptCount > 0 && (
           <span className="chip">{formatFailedAttempts(message.failedAttemptCount, message.failedAttemptsLostMs)}</span>
         )}
+        {whatWasSentRequestId !== null && <WhatWasSentTrigger />}
       </div>
 
       <div className="turn-body">
@@ -227,12 +232,16 @@ function ReplyTurn({
         </div>
       )}
 
-      {/* The export leaves What was sent out: it holds the user's CLAUDE.md
-          files, environment and system prompt. */}
-      {message.apiRequestId !== null && transcriptExport === undefined && (
-        <div className="calls">
-          <WhatWasSentDisclosure apiRequestId={message.apiRequestId} />
-        </div>
+      {whatWasSentRequestId !== null && <WhatWasSentPanel />}
+    </>
+  );
+
+  return (
+    <article id={anchor.id} className={className} aria-label={time ? `${name}, ${time}` : name}>
+      {whatWasSentRequestId === null ? (
+        content
+      ) : (
+        <WhatWasSentProvider apiRequestId={whatWasSentRequestId}>{content}</WhatWasSentProvider>
       )}
     </article>
   );
