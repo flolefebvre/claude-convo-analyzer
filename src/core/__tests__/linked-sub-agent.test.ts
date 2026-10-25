@@ -79,4 +79,22 @@ describe("a Sub-agent transcript linked from a copier's subagents/", () => {
     expect(withLinkCosts["sess-fam-a"]).toBe(withoutLinkCosts["sess-fam-a"]);
     expect(withLinkCosts["sess-fam-b"]).toBe(withoutLinkCosts["sess-fam-b"]);
   });
+
+  it("skips a dangling link and one outside the logs root, counting each as vanished when its Conversation is re-parsed", async () => {
+    const parentHelperPath = path.join(subagentsDir("sess-fam-a"), "agent-fam-helper.jsonl");
+    const outsidePath = path.join(tmpDir, "outside", "agent-fam-helper.jsonl");
+    cpSync(parentHelperPath, outsidePath);
+    symlinkSync(outsidePath, path.join(subagentsDir("sess-fam-b"), "agent-outside.jsonl"));
+    symlinkSync(path.join(subagentsDir("sess-fam-a"), "agent-gone.jsonl"), copierHelperPath());
+
+    const cold = await refreshInto("analyzer");
+    const warm = await refresh({ logsRoot, dbPath: cold.dbPath });
+
+    expect(cold.summary.vanishedLogFilesSkipped).toBe(2);
+    const copier = await getTranscript("sess-fam-b", { dbPath: cold.dbPath });
+    expect(copier?.tree.children).toEqual([]);
+    // Nothing changed since, so nothing is re-parsed and nothing counted again.
+    expect(warm.conversationsParsed).toBe(0);
+    expect(warm.vanishedLogFilesSkipped).toBe(0);
+  });
 });

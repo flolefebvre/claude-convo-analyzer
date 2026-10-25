@@ -42,7 +42,11 @@
 // file is skipped and counted in `RefreshSummary.vanishedLogFilesSkipped`: a
 // main transcript is treated as gone (its stored row deleted), a sub-agent
 // transcript is left out of its Conversation (its stored Agent deleted). Only ENOENT counts as vanished; any
-// other error fails the run (see `vanished-file.ts`).
+// other error fails the run (see `vanished-file.ts`). A Sub-agent link that
+// dangles or resolves outside the logs root is skipped at discovery and counted
+// the same way, once per re-parse of its Conversation, not on every run: a
+// Conversation left unchanged around a dead link would otherwise report a
+// vanished file on every Refresh.
 //
 // ROLLUP DESIGN (ADR-0001, ADR-0011): conversation totals/cost are SUM queries
 // over the `turn` rows the conversation owns — one per API response, however
@@ -103,7 +107,11 @@ export type RefreshSummary = {
   logFilesParsed: number;
   /** Files dropped for sharing a session id with an already-claimed file. */
   duplicateSessionsSkipped: DuplicateSessionSkip[];
-  /** Log files (main or sub-agent) picked to re-parse, then gone before their read. */
+  /**
+   * Log files (main or sub-agent) picked to re-parse, then gone before their
+   * read, and Sub-agent links of each re-parsed Conversation that dangle or
+   * resolve outside the logs root. Counted per re-parse, never per run.
+   */
   vanishedLogFilesSkipped: number;
   durationMs: number;
   /** Where `durationMs` went, in fractional milliseconds per phase (see `RefreshPhase`). */
@@ -251,6 +259,8 @@ type SessionToReparse = {
   /** The change key of the Main thread's own file. */
   mainThreadFileKey: FileChangeKey;
   subAgentFiles: SubAgentFile[];
+  /** Sub-agent links discovery did not follow (see `discoverSubAgents`), counted as vanished files when written. */
+  unfollowedLinkCount: number;
   /** Row id of the stored conversation the re-parse rewrites (null = new). */
   priorConversationId: number | null;
   /**
@@ -330,6 +340,8 @@ type DiscoveredWithKey = {
   session: DiscoveredSession;
   /** Sub-agent log files (folded into the change key + parsed if changed). */
   subAgentFiles: SubAgentFile[];
+  /** Sub-agent links not followed: dangling, or resolving outside the logs root. */
+  unfollowedLinkCount: number;
   /** Composite mtime: max over the session file + every sub-agent transcript. */
   compositeMtime: number;
   /** Composite size: sum over the session file + every sub-agent transcript. */
@@ -493,6 +505,7 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
         session: { ...d.session, sourceMtime: d.compositeMtime, sourceSize: d.compositeSize },
         mainThreadFileKey: { sourceMtime: d.session.sourceMtime, sourceSize: d.session.sourceSize },
         subAgentFiles: d.subAgentFiles,
+        unfollowedLinkCount: d.unfollowedLinkCount,
         priorConversationId: prior?.id ?? null,
         isEveryAgentRewritten:
           prior !== undefined && (prior.parserVersion !== PARSER_VERSION || prior.sourcePath !== d.session.sourcePath),
@@ -549,7 +562,7 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RefreshSummary
         endPhase("parse");
         return;
       }
-      vanishedLogFilesSkipped += vanishedSubAgentFileCount;
+      vanishedLogFilesSkipped += vanishedSubAgentFileCount + sessionToReparse.unfollowedLinkCount;
       logFilesParsed += parsedConversation.parsedLogFileCount;
       malformedLinesSkipped += parsedConversation.parsed.malformedLines;
       for (const sub of parsedConversation.subAgents) malformedLinesSkipped += sub.parsed?.malformedLines ?? 0;
@@ -684,7 +697,11 @@ function discoverWithKeys(logsRoot: string): DiscoveredWithKey[] {
   const out: DiscoveredWithKey[] = [];
   for (const session of sessions) {
     const projectDir = path.dirname(session.sourcePath);
-    const { subAgents: subAgentFiles } = discoverSubAgents(projectDir, session.sessionId, logsRootRealPath);
+    const { subAgents: subAgentFiles, unfollowedLinkCount } = discoverSubAgents(
+      projectDir,
+      session.sessionId,
+      logsRootRealPath,
+    );
 
     let compositeMtime = session.sourceMtime;
     let compositeSize = session.sourceSize;
@@ -692,7 +709,7 @@ function discoverWithKeys(logsRoot: string): DiscoveredWithKey[] {
       compositeMtime = Math.max(compositeMtime, sub.sourceMtime);
       compositeSize += sub.sourceSize;
     }
-    out.push({ session, subAgentFiles, compositeMtime, compositeSize });
+    out.push({ session, subAgentFiles, unfollowedLinkCount, compositeMtime, compositeSize });
   }
   return out;
 }

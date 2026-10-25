@@ -7,7 +7,9 @@
 // (a `stat` during discovery) the file is simply absent at discovery: skipped,
 // not counted, its stored row removed by the Refresh's delete pass. At READ time,
 // after the compare put it in the re-parse set, it is counted in
-// `RefreshSummary.vanishedLogFilesSkipped`.
+// `RefreshSummary.vanishedLogFilesSkipped`. A Sub-agent link whose target is gone
+// is the exception: discovery skips it, and it is counted when its Conversation
+// is re-parsed (see `discoverSubAgents`).
 
 import { readFileSync, realpathSync, type Stats, statSync } from "node:fs";
 
