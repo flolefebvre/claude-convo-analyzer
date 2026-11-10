@@ -9,34 +9,38 @@
 // UNITS: every rate below is USD per *single* token (USD/MTok ÷ 1_000_000).
 // Storing per-token keeps computeCost a plain multiply with no scaling factor.
 //
-// SOURCE & DATE: Anthropic list prices as of 2026-09-23, read from
+// SOURCE & DATE: Anthropic list prices as of 2026-11-10, read from
 //   platform.claude.com/docs/en/about-claude/pricing (model pricing table).
 //   - Base input/output USD/MTok:
-//       fable-5-1 $10 / $50,  fable-5 $10 / $50,  opus-5-5 $4 / $20,
-//       opus-5 $5 / $25,  opus-4-8 $5 / $25,  opus-4-7 $5 / $25,  opus-4-6 $5 / $25,
-//       sonnet-5 $2 / $10,  sonnet-4-6 $3 / $15,  haiku-4-5 $1 / $5.
+//       fable-5-2 $8 / $40,  fable-5-1 $10 / $50,  fable-5 $10 / $50,
+//       opus-5-5 $4 / $20,  opus-5 $5 / $25,  opus-4-8 $5 / $25,  opus-4-7 $5 / $25,
+//       opus-4-6 $5 / $25,  sonnet-5-5 $2 / $10,  sonnet-5 $2 / $10,
+//       sonnet-4-6 $3 / $15,  haiku-4-5 $1 / $5.
 //   - sonnet-5: the $2 / $10 rate announced at launch as introductory (through
 //       2026-08-31) is now the standard list price; the increase to $3 / $15 that
 //       was scheduled for 2026-09-01 was cancelled. So $2 / $10 IS the list rate
 //       ADR-0003 asks for, not a discount.
-//   - Fast mode (opus-5-5 at $8 / $40, opus-5 / opus-4-8 at $10 / $50) is a
-//       per-request premium, not a distinct model id in the logs, so it gets no
-//       row here — same reasoning as the Batch API's 50% discount (ADR-0003:
+//   - haiku-5-5 has no row: it is priced per request by prompt length ($0.10 /
+//       $0.50 up to 100,000 prompt tokens, $0.50 / $2.50 over), which one flat
+//       row per model cannot express. It stays unpriced rather than wrong.
+//   - Fast mode (fable-5-2 at $16 / $80, opus-5-5 at $8 / $40, opus-5 /
+//       opus-4-8 at $10 / $50) is a per-request premium, not a distinct model
+//       id in the logs, so it gets no row here — same reasoning as the Batch API's 50% discount (ADR-0003:
 //       price at standard list rate).
 //   - Cache-tier multipliers vs base input (platform.claude.com prompt-caching docs):
 //       cache write 5m = 1.25x base input,  cache write 1h = 2x base input,
-//       cache read = 0.1x base input — EXCEPT fable-5-1, whose cache read is
-//       0.025x base input ($0.25 / MTok), and opus-5-5, whose cache read is
-//       0.05x base input ($0.20 / MTok). Cache writes on both keep the standard
-//       multipliers (fable-5-1 $12.50 / $20, opus-5-5 $5 / $8 per MTok).
+//       cache read = 0.1x base input — EXCEPT fable-5-2 and fable-5-1, whose
+//       cache read is 0.025x base input ($0.20 and $0.25 / MTok), and opus-5-5
+//       and sonnet-5-5, whose cache read is 0.05x base input ($0.20 and $0.10 /
+//       MTok). Cache writes on all four keep the standard multipliers.
 //   Cache tiers are kept DISTINCT here (not derived by a shared multiplier at call
 //   time) so a model with atypical cache pricing stays correct — ADR-0003.
 //
-// PRICE TABLE VERSION: 2026-09-23.1
+// PRICE TABLE VERSION: 2026-11-10.1
 
 const PER_MTOK = 1_000_000;
 
-/** Cache-read multiplier vs base input on every model except fable-5-1 and opus-5-5. */
+/** Cache-read multiplier vs base input, unless a model's row passes its own. */
 const STANDARD_CACHE_READ_MULTIPLIER = 0.1;
 
 /** Explicit per-token (USD) rates for one resolved model. Cache tiers distinct. */
@@ -72,6 +76,7 @@ function priceRow(
  * are handled by the resolver, not by extra rows here.
  */
 export const PRICES: Record<string, ModelPrices> = {
+  "claude-fable-5-2": priceRow(8, 40, 0.025),
   "claude-fable-5-1": priceRow(10, 50, 0.025),
   "claude-fable-5": priceRow(10, 50),
   "claude-opus-5-5": priceRow(4, 20, 0.05),
@@ -79,6 +84,7 @@ export const PRICES: Record<string, ModelPrices> = {
   "claude-opus-4-8": priceRow(5, 25),
   "claude-opus-4-7": priceRow(5, 25),
   "claude-opus-4-6": priceRow(5, 25),
+  "claude-sonnet-5-5": priceRow(2, 10, 0.05),
   "claude-sonnet-5": priceRow(2, 10),
   "claude-sonnet-4-6": priceRow(3, 15),
   "claude-haiku-4-5-20251001": priceRow(1, 5),
@@ -91,6 +97,6 @@ export const PRICES: Record<string, ModelPrices> = {
  */
 export const ALIAS_TO_LATEST: Record<string, string> = {
   opus: "claude-opus-5-5",
-  sonnet: "claude-sonnet-5",
+  sonnet: "claude-sonnet-5-5",
   haiku: "claude-haiku-4-5-20251001",
 };
