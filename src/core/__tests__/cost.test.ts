@@ -112,6 +112,40 @@ describe("computeCost — known resolved models", () => {
     expect(priceTokenSplit(split({ cacheWrite5m: 1_000_000 }), "claude-opus-5-5").usd).toBe(5);
     expect(priceTokenSplit(split({ cacheWrite1h: 1_000_000 }), "claude-opus-5-5").usd).toBe(8);
   });
+
+  it("prices claude-fable-5-2 at $8/$40 per MTok (below the older Fable tier)", () => {
+    // 1M input @ $8 + 1M output @ $40 = $48.
+    const result = computeCost(tokens({ input: 1_000_000, output: 1_000_000 }), "claude-fable-5-2");
+    expect(result).toEqual({ usd: 48, unpriced: false, approximate: false });
+  });
+
+  it("prices claude-fable-5-2 cache reads at $0.20/MTok (0.025x input, not the standard 0.1x)", () => {
+    const result = computeCost(tokens({ cacheRead: 1_000_000 }), "claude-fable-5-2");
+    expect(result).toEqual({ usd: 0.2, unpriced: false, approximate: false });
+  });
+
+  it("prices claude-fable-5-2 cache writes at the standard multipliers ($10 5m / $16 1h per MTok)", () => {
+    expect(priceTokenSplit(split({ cacheWrite5m: 1_000_000 }), "claude-fable-5-2").usd).toBe(10);
+    expect(priceTokenSplit(split({ cacheWrite1h: 1_000_000 }), "claude-fable-5-2").usd).toBe(16);
+  });
+
+  it("prices claude-sonnet-5-5 at $2/$10 per MTok (same base rates as sonnet-5)", () => {
+    // 1M input @ $2 + 1M output @ $10 = $12.
+    const result = computeCost(tokens({ input: 1_000_000, output: 1_000_000 }), "claude-sonnet-5-5");
+    expect(result).toEqual({ usd: 12, unpriced: false, approximate: false });
+  });
+
+  it("prices claude-sonnet-5-5 cache reads at $0.10/MTok (0.05x input, not the standard 0.1x)", () => {
+    const result = computeCost(tokens({ cacheRead: 1_000_000 }), "claude-sonnet-5-5");
+    expect(result).toEqual({ usd: 0.1, unpriced: false, approximate: false });
+    // sonnet-5 keeps the standard 0.1x cache read: $0.20/MTok.
+    expect(computeCost(tokens({ cacheRead: 1_000_000 }), "claude-sonnet-5").usd).toBe(0.2);
+  });
+
+  it("prices claude-sonnet-5-5 cache writes at the standard multipliers ($2.50 5m / $4 1h per MTok)", () => {
+    expect(priceTokenSplit(split({ cacheWrite5m: 1_000_000 }), "claude-sonnet-5-5").usd).toBe(2.5);
+    expect(priceTokenSplit(split({ cacheWrite1h: 1_000_000 }), "claude-sonnet-5-5").usd).toBe(4);
+  });
 });
 
 function split(partial: Partial<TokenSplit>): TokenSplit {
@@ -155,9 +189,10 @@ describe("computeCost — bare aliases price at family-latest, flagged approxima
     expect(alias.approximate).toBe(true);
   });
 
-  it("prices `sonnet` at claude-sonnet-5 (family-latest) rates, approximate", () => {
-    const result = computeCost(tokens({ input: 1_000_000 }), "sonnet");
-    expect(result).toEqual({ usd: 2, unpriced: false, approximate: true });
+  it("prices `sonnet` at claude-sonnet-5-5 (family-latest) rates, approximate", () => {
+    // Cache reads tell sonnet-5-5 ($0.10/MTok) from sonnet-5 ($0.20/MTok); base rates are equal.
+    const result = computeCost(tokens({ cacheRead: 1_000_000 }), "sonnet");
+    expect(result).toEqual({ usd: 0.1, unpriced: false, approximate: true });
   });
 
   it("prices `haiku` at claude-haiku-4-5 rates, approximate", () => {
